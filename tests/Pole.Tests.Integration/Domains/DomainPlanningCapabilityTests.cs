@@ -16,18 +16,19 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
-        await new DomainIndexesMigration().Up(fixture.Database);
+        await base.InitializeAsync();
+        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(Fixture.Database);
+        await new DomainIndexesMigration().Up(Fixture.Database);
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Named_reads_are_tenant_scoped_and_generated_identity_is_not_named()
@@ -68,7 +69,7 @@ public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture
         await Bindings.InsertOneAsync(binding);
         var zoneReferences = new MongoDomainZoneReferences(Zones);
         var bindingReferences = new MongoHostnameBindingReferences(Bindings);
-        using var session = await fixture.Client.StartSessionAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         Assert.IsType<DomainZoneFenced>((await zoneReferences.FenceAsync(
             new FenceDomainZoneRequest(zone.TenantId, zone.Id, zone.Revision, 0), session, default)).Value);
@@ -120,10 +121,10 @@ public sealed class DomainPlanningCapabilityTests(MongoReplicaSetFixture fixture
     }
 
     private IMongoCollection<TenantDomainZone> Zones =>
-        fixture.Database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+        Fixture.Database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
 
     private IMongoCollection<HostnameBinding> Bindings =>
-        fixture.Database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
+        Fixture.Database.GetCollection<HostnameBinding>(DomainCollectionNames.HostnameBindings);
 
     private static TenantDomainZone Zone() => TenantDomainZoneFactory.CreateManagedReservation(
         Id(), Id(), "company", DnsName.Create("example.test"), "company-zone",

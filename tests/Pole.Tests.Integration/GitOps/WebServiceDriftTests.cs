@@ -22,7 +22,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class WebServiceDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task WebServiceSameCommitRepairsFullManagedConfigurationAndKeepsServerCredentials()
@@ -72,7 +73,7 @@ public sealed partial class DeclarativePipelineTests
         var physical = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
         Assert.Equal(placement.ResolvedPlacement.Compute.Limits, physical.ResolvedPlacement.Compute.Limits);
         var queries = Services.GetRequiredService<GitRepositoryQueries>();
-        var operations = (await queries.OperationsAsync(TestData.TenantId, source, result.Context!.RunId, 1, 20,
+        var operations = (await queries.OperationsAsync(Data.TenantId, source, result.Context!.RunId, 1, 20,
             default))!.Items.Where(item => item.Kind == "WebService").ToArray();
         Assert.Equal(GitPlannedAction.NoOp,
             operations.Single(item => item.Phase == DeclarationPhase.Prepare).Plan!.Action);
@@ -92,7 +93,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(repaired.Revision, (await Service()).Revision);
         Assert.Equal(releases + 1, await Releases());
         Assert.Equal(events, await BusinessEvents());
-        var view = await queries.RunAsync(TestData.TenantId, source, stable.Context!.RunId, default);
+        var view = await queries.RunAsync(Data.TenantId, source, stable.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 5, 0, 0, null), view.Operations);
     }
@@ -104,7 +105,7 @@ public sealed partial class DeclarativePipelineTests
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
         var service = await Service();
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var events = await BusinessEvents();
         var releases = await Releases();
         var intercepted = false;
@@ -117,31 +118,19 @@ public sealed partial class DeclarativePipelineTests
             await Secrets.UpdateOneAsync(item => item.Id == secret.Id,
                 Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
         });
-        var pipeline = new RepositoryPipelineDriver(Services, Fixture, repository, customMutations: mutations);
-        var result = await pipeline.SubmitAsync(new(TestData.TenantId, source), Snapshot());
+        var pipeline = new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations);
+        var result = await pipeline.SubmitAsync(new(Data.TenantId, source), Snapshot());
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.Equal(service.Revision, (await Service()).Revision);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(releases, await Releases());
-        var operations = await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(TestData.TenantId,
+        var operations = await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(Data.TenantId,
             source, result.Context!.RunId, 1, 20, default);
         var plan = operations!.Items.Single(item => item.Kind == "WebService" &&
             item.Phase == DeclarationPhase.Configure)
             .Plan!;
         Assert.Equal(2, plan.Revision);
         Assert.Equal(GitPlannedAction.NoOp, plan.Action);
-    }
-
-    private sealed class BeforeNoOp(IGitOpsMutations inner,
-        Func<GitOperation, CancellationToken, Task> action) : DelegatingGitOpsMutations(inner)
-    {
-        public override async Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct)
-        {
-            if (operation.Plan.Decision is NoOpDeclarationPlan)
-                await action(operation, ct);
-            return await base.ExecuteAsync(operation, mutation, ct);
-        }
     }
 }

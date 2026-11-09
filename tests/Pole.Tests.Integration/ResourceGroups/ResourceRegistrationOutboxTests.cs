@@ -15,6 +15,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -28,7 +29,7 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
     [Fact]
     public async Task AcceptedRegistrationAndDisplayNameChangeWriteTenantEventsExactlyOnce()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         using var trace = TraceContext.Push(new("0123456789abcdef0123456789abcdef", "registration-realtime-test"));
         using (var session = await DbContext.Client.StartSessionAsync())
@@ -42,7 +43,7 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
                         Resource: Descriptor),
                     session: session)).Value);
             // The event and registration are both invisible outside the uncommitted transaction.
-            Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Registered));
+            Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, Registered));
             await session.CommitTransactionAsync();
         }
 
@@ -84,8 +85,8 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
             await session.CommitTransactionAsync();
         }
 
-        var registered = await DbContext.OutboxMessages.Find(message => message.EventType == Registered).SingleAsync();
-        var updated = await DbContext.OutboxMessages.Find(message => message.EventType == Updated).SingleAsync();
+        var registered = await DbContext.OutboxMessages.Find(message => message.TenantId == Data.TenantId && message.EventType == Registered).SingleAsync();
+        var updated = await DbContext.OutboxMessages.Find(message => message.TenantId == Data.TenantId && message.EventType == Updated).SingleAsync();
         Assert.Equal(group.TenantId, registered.TenantId);
         Assert.Equal(group.TenantId, updated.TenantId);
         Assert.Equal("0123456789abcdef0123456789abcdef", updated.TraceId);
@@ -105,7 +106,7 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
     [InlineData(true)]
     public async Task OutboxFailureRollsBackRegistrationOrDisplayNameMutation(bool updating)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         if (updating)
         {
             using var seed = await DbContext.Client.StartSessionAsync();
@@ -121,7 +122,7 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
         }
 
         var before = await DbContext.ResourceGroups.Find(candidate => candidate.Id == group.Id).SingleAsync();
-        var outboxCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        var outboxCount = await DbContext.OutboxMessages.CountDocumentsAsync(item => item.TenantId == Data.TenantId);
         var realStore = Services.GetRequiredService<StoreOutboxWrites>();
         var mutations = new MongoResourceRegistrationMutations(DbContext.ResourceGroups,
             DbContext.ResourceRegistrations,
@@ -147,12 +148,12 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
             await session.AbortTransactionAsync();
         }
 
-        Assert.Equal(outboxCount, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
+        Assert.Equal(outboxCount, await DbContext.OutboxMessages.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         Assert.Equal(before.RegistrationFence,
             (await DbContext.ResourceGroups.Find(candidate => candidate.Id == group.Id).SingleAsync())
             .RegistrationFence);
         var registration = await DbContext.ResourceRegistrations
-            .Find(candidate => candidate.ResourceId == Descriptor.ResourceId).SingleOrDefaultAsync();
+            .Find(candidate => candidate.TenantId == Data.TenantId && candidate.ResourceId == Descriptor.ResourceId).SingleOrDefaultAsync();
         if (updating)
             Assert.Equal("Before", registration!.DisplayName);
         else
@@ -162,8 +163,8 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
     [Fact]
     public async Task TypedConflictsAndMissingUpdatesDoNotWriteRegistryEvents()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
-        var other = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
+        var other = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         using (var session = await DbContext.Client.StartSessionAsync())
         {
@@ -206,7 +207,7 @@ public sealed class ResourceRegistrationOutboxTests(MongoReplicaSetFixture fixtu
             await session.CommitTransactionAsync();
         }
 
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Registered));
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Updated));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, Registered));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, Updated));
     }
 }

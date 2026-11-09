@@ -14,26 +14,27 @@ using Xunit;
 
 namespace Pole.Tests.Integration.PrivateAccess;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task PrivateAccessReference_AdmitsAttestedPausedTarget_WithoutRelaxingOrdinaryOwners()
     {
         var target = CreateTarget();
         var paused = target.SetWorkloadAdmission(false, target.UpdatedAtUtc.AddSeconds(1));
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(paused);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(paused);
         var apply = new MongoApplyDeploymentTargetReferenceChanges(
-            fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetReferences,
+            Fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargetReferences,
             TimeProvider.System).InvokeAsync;
         var specialOwner = new DeploymentTargetReferenceOwner(
             DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
             ObjectId.GenerateNewId().ToString());
-        var added = await new MongoRunTransaction(fixture.Client)
+        var added = await new MongoRunTransaction(Fixture.Client)
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
                 async (transaction, ct) =>
                 {
@@ -49,11 +50,11 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
                         : transaction.Abort(result);
                 });
         Assert.IsType<DeploymentTargetReferencesChanged>(added.Value);
-        Assert.Equal(1, await fixture.DbContext.DeploymentTargetReferences
+        Assert.Equal(1, await Fixture.DbContext.DeploymentTargetReferences
             .CountDocumentsAsync(item => item.OwnerType ==
                 DeploymentTargetReferenceOwnerTypes.PrivateAccessSession));
 
-        var ordinary = await new MongoRunTransaction(fixture.Client)
+        var ordinary = await new MongoRunTransaction(Fixture.Client)
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
                 async (transaction, ct) =>
                 {
@@ -72,8 +73,8 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(ordinary.Value);
 
         var fence = new MongoFenceDeploymentTargetPrivateAccess(
-            fixture.DbContext.DeploymentTargets).InvokeAsync;
-        var checkedTarget = await new MongoRunTransaction(fixture.Client)
+            Fixture.DbContext.DeploymentTargets).InvokeAsync;
+        var checkedTarget = await new MongoRunTransaction(Fixture.Client)
             .InvokeOutcomeAsync<FenceDeploymentTargetPrivateAccessOutcome>(
                 async (transaction, ct) =>
                 {
@@ -92,12 +93,12 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
             NetworkPolicyEnforcement.Unsupported,
             allowIsolationNotEnforced: true,
             DateTime.UtcNow.AddSeconds(1));
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var apply = new MongoApplyDeploymentTargetReferenceChanges(
-            fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetReferences,
+            Fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargetReferences,
             TimeProvider.System).InvokeAsync;
-        var result = await new MongoRunTransaction(fixture.Client)
+        var result = await new MongoRunTransaction(Fixture.Client)
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
                 async (transaction, ct) =>
                 {
@@ -121,17 +122,17 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
     public async Task GatewayRegistration_HoldsTargetReferenceUntilCleanupCompletes()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var services = new ServiceCollection();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(fixture.Client);
-        services.AddSingleton(fixture.Database);
+        services.AddSingleton(Fixture.Client);
+        services.AddSingleton(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddPrivateAccessFeature();
         services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
             new MongoApplyDeploymentTargetReferenceChanges(
-                fixture.DbContext.DeploymentTargets,
-                fixture.DbContext.DeploymentTargetReferences,
+                Fixture.DbContext.DeploymentTargets,
+                Fixture.DbContext.DeploymentTargetReferences,
                 TimeProvider.System).InvokeAsync);
         using var provider = services.BuildServiceProvider();
         var tenantId = ObjectId.GenerateNewId().ToString();
@@ -146,7 +147,7 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
                 Endpoints: []));
 
         Assert.True(saved);
-        var reference = Assert.Single(await fixture.DbContext.DeploymentTargetReferences
+        var reference = Assert.Single(await Fixture.DbContext.DeploymentTargetReferences
             .Find(item => item.DeploymentTargetId == target.Id).ToListAsync());
         Assert.Equal(DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway,
             reference.OwnerType);
@@ -155,7 +156,7 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture) : 
             identity with { Revision = 2 }));
         Assert.True(await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(
             identity));
-        Assert.Empty(await fixture.DbContext.DeploymentTargetReferences
+        Assert.Empty(await Fixture.DbContext.DeploymentTargetReferences
             .Find(item => item.DeploymentTargetId == target.Id).ToListAsync());
     }
 

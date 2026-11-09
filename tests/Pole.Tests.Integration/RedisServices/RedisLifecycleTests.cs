@@ -29,9 +29,11 @@ using Xunit;
 
 namespace Pole.Tests.Integration.RedisServices;
 
-public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global)]
+public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
-    private readonly ReviewedAuthority authorization = new();
+    private ReviewedAuthority? _authorization;
+    private ReviewedAuthority authorization => _authorization ??= new(Data.TenantId);
     protected override void ConfigureServices(IServiceCollection services)
     {
         Pole.Tests.Integration.GitOps.NamedCatalogTestData.ConfigureIsolatedApi(services);
@@ -103,7 +105,7 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
         var resource = await Seed(kind);
         var provider = Services.GetServices<IDeclarativeResourceLifecycleProvider>().Single(item => item.Kind == kind);
         var usages = Services.GetRequiredService<IMongoCollection<TenantQuotaUsage>>();
-        var initial = QuotaDomainFactory.CreateUsage(TestData.TenantId, DateTime.UtcNow) with
+        var initial = QuotaDomainFactory.CreateUsage(Data.TenantId, DateTime.UtcNow) with
         {
             Values = ImmutableList.Create(new QuotaValue(CpuQuota.QuotaKey, 250),
                 new QuotaValue(RamQuota.QuotaKey, 256))
@@ -113,33 +115,33 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var snapshot = Assert.IsType<GitLifecycleResourceSnapshot>((await provider.ReadLifecycleAsync(
-            new(TestData.TenantId, resource), session, default)).Value);
+            new(Data.TenantId, resource), session, default)).Value);
         Assert.Equal(GitLifecycleProtection.ProtectedData, snapshot.Protection);
         var request = new RemoveLifecycleResourceRequest(authorization.Authority, resource, snapshot.Version);
         Assert.IsType<GitLifecycleRemovalRequested>((await provider.RemoveAsync(request, session, default)).Value);
         await session.AbortTransactionAsync();
         Assert.Equal(baselineEvents, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
         Assert.Equal(initial.Values,
-            (await usages.Find(item => item.TenantId == TestData.TenantId).SingleAsync()).Values);
+            (await usages.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Values);
         session.StartTransaction();
         Assert.Equal(GitLifecyclePresence.Active, Assert.IsType<GitLifecycleResourceSnapshot>(
-            (await provider.ReadLifecycleAsync(new(TestData.TenantId, resource), session, default)).Value).Presence);
+            (await provider.ReadLifecycleAsync(new(Data.TenantId, resource), session, default)).Value).Presence);
         Assert.IsType<GitLifecycleRemovalRequested>((await provider.RemoveAsync(request, session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.True(await DbContext.OutboxMessages.CountDocumentsAsync(_ => true) > baselineEvents);
-        var released = await usages.Find(item => item.TenantId == TestData.TenantId).SingleAsync();
+        var released = await usages.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         Assert.Equal(0, QuotaValues.GetValue(released.Values, CpuQuota.QuotaKey));
         var eventCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
         session.StartTransaction();
         var pending = Assert.IsType<GitLifecycleResourceSnapshot>((await provider.ReadLifecycleAsync(
-            new(TestData.TenantId, resource), session, default)).Value);
+            new(Data.TenantId, resource), session, default)).Value);
         Assert.Equal(GitLifecyclePresence.Deleting, pending.Presence);
         Assert.IsType<GitLifecycleRemovalRequested>((await provider.RemoveAsync(request with
         { Expected = pending.Version }, session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(eventCount, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
         Assert.Equal(released.AdmissionRevision,
-            (await usages.Find(item => item.TenantId == TestData.TenantId).SingleAsync()).AdmissionRevision);
+            (await usages.Find(item => item.TenantId == Data.TenantId).SingleAsync()).AdmissionRevision);
     }
 
     [Theory]
@@ -151,7 +153,7 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var current = Assert.IsType<GitLifecycleResourceSnapshot>((await provider.ReadLifecycleAsync(
-            new(TestData.TenantId, resource), session, default)).Value);
+            new(Data.TenantId, resource), session, default)).Value);
         Assert.IsType<GitLifecycleResourceAbsent>((await provider.ReadLifecycleAsync(new(Id(), resource), session,
             default)).Value);
         var changed = new DeclarationVersionToken(current.Version.Documents.Select(item =>
@@ -169,7 +171,7 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
         var provider = Services.GetServices<IDeclarativeResourceLifecycleProvider>()
             .Single(item => item.Kind == resource.Address.Kind);
         await Services.GetRequiredService<IMongoCollection<TenantQuotaUsage>>().InsertOneAsync(
-            QuotaDomainFactory.CreateUsage(TestData.TenantId, DateTime.UtcNow) with
+            QuotaDomainFactory.CreateUsage(Data.TenantId, DateTime.UtcNow) with
             {
                 Values = ImmutableList.Create(new QuotaValue(CpuQuota.QuotaKey, 250),
                     new QuotaValue(RamQuota.QuotaKey, 256))
@@ -177,7 +179,7 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var active = Assert.IsType<GitLifecycleResourceSnapshot>((await provider.ReadLifecycleAsync(
-            new(TestData.TenantId, resource), session, default)).Value);
+            new(Data.TenantId, resource), session, default)).Value);
         Assert.IsType<GitLifecycleRemovalRequested>((await provider.RemoveAsync(
             new(authorization.Authority, resource, active.Version), session, default)).Value);
         await session.CommitTransactionAsync();
@@ -186,7 +188,7 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
         {
             session.StartTransaction();
             var current = Assert.IsType<GitLifecycleResourceSnapshot>((await provider.ReadLifecycleAsync(
-                new(TestData.TenantId, resource), session, default)).Value);
+                new(Data.TenantId, resource), session, default)).Value);
             await session.CommitTransactionAsync();
             Assert.Equal(GitLifecyclePresence.Deleting, current.Presence);
             return current.Version;
@@ -280,7 +282,7 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
 
     private async Task<GitLifecycleResourceReference> Seed(string kind)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var target = TestData.SeedDeploymentTarget().AttestForTests() with { TechnicalName = "lab" };
         await Fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets").InsertOneAsync(target);
         var id = Id();
@@ -315,11 +317,11 @@ public sealed class RedisLifecycleTests(MongoReplicaSetFixture fixture) : Mediat
     private static string Id() => ObjectId.GenerateNewId().ToString();
 
     // Isolate the owning feature's transaction boundary; the GitOps suite exercises real admission.
-    private sealed class ReviewedAuthority : IGitOpsMutations, IGitLifecyclePlanGuard
+    private sealed class ReviewedAuthority(string tenantId) : IGitOpsMutations, IGitLifecyclePlanGuard
     {
         public Dictionary<ResourceAddress, string> References { get; } = [];
         public HashSet<(string Kind, string Id)> Managed { get; } = [];
-        public GitLifecycleAuthority Authority { get; } = new(TestData.TenantId, "source", "run", 1, 1, 1,
+        public GitLifecycleAuthority Authority { get; } = new(tenantId, "source", "run", 1, 1, 1,
             "worker", 1, "preview", "reviewed");
         public GitLifecycleAuthority? Observed { get; private set; }
         public Task<ReadLifecycleApprovedScopeOutcome> ReadScopeAsync(GitLifecycleAuthority authority,

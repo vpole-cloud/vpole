@@ -10,8 +10,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class SourceBuildQueueRecoveryTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Recovery_EnqueuesOnlyStaleQueuedJobs()
@@ -46,9 +47,9 @@ public sealed class SourceBuildQueueRecoveryTests(MongoReplicaSetFixture fixture
         Assert.Equal(stale.Id, Assert.Single(dispatcher.BuildJobIds));
     }
 
-    private static SourceBuildJob CreateJob(DateTime createdAtUtc) =>
+    private SourceBuildJob CreateJob(DateTime createdAtUtc) =>
         SourceBuildJobFactory.CreateManual(
-            TestData.TenantId,
+            Data.TenantId,
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
@@ -56,8 +57,8 @@ public sealed class SourceBuildQueueRecoveryTests(MongoReplicaSetFixture fixture
             "abc123",
             new SourceBuildInputVersion(1, 1, 1),
             new SourceBuildRecipe("FROM scratch"),
-            TestData.UserId,
-            TestData.UserEmail,
+            Data.UserId,
+            Data.UserEmail,
             new SourceBuildJobFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 createdAtUtc));

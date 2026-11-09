@@ -13,7 +13,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class RedisAdoptionExecutionTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Redis_adoption_refreshes_receipt_versions_for_external_group_and_scope_without_rebinding()
@@ -29,7 +30,7 @@ public sealed partial class DeclarativePipelineTests
         });
         using var scope = host.CreateScope();
         var executionServices = scope.ServiceProvider;
-        var original = await RedisResources.Find(_ => true).SingleAsync();
+        var original = await RedisResources.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == original.Id).SingleAsync();
         var adopter = await AdoptionSourceAsync([AdoptionManifest("RedisService", files)]);
         var previews = executionServices.GetRequiredService<GitLifecyclePreviews>();
@@ -41,7 +42,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Contains(preview.References, item => item.Target.Kind == "IsolationScope" &&
             item.Target.ResourceId == placement.IsolationScopeId);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(
-            new(adopter.TenantId, adopter.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(adopter.TenantId, adopter.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
 
         var claim = Assert.IsType<GitWorkClaim>((await executionServices.GetRequiredService<GitRunStore>()
             .ClaimAsync(new(adopter.TenantId, adopter.Id), "adoption-regression", default)).Value);

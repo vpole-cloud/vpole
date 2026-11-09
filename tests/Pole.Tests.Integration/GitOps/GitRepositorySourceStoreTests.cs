@@ -11,6 +11,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -25,7 +26,6 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
         var results = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Sources.CreateAsync(request, default)));
         var ids = results.Select(result => Assert.IsType<RepositorySource>(result.Value).Id).Distinct().ToArray();
         var id = Assert.Single(ids);
-        var state = await Sources.StateAsync(TestData.TenantId, id, default);
+        var state = await Sources.StateAsync(Data.TenantId, id, default);
         Assert.Equal(1, state.RequestedGeneration);
         Assert.Equal(0, state.CompletedGeneration);
         Assert.Null(state.CurrentRun);
@@ -63,7 +63,7 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
             Repository = request.Repository with { Branch = "other" }
         },
             default)).Value);
-        Assert.Equal(1, await Documents.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await Documents.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         Assert.Equal(1, await WakeCount());
     }
 
@@ -77,7 +77,7 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
         {
             Prune = GitPrunePolicy.Retain
         }, default)).Value);
-        Assert.Equal(1, await Documents.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await Documents.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
@@ -90,8 +90,8 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
             Services.GetRequiredService<MongoRunTransaction>(),
             (_, _, _) => throw new InvalidOperationException("Injected outbox failure"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing.CreateAsync(Request(), default));
-        Assert.Equal(0, await Documents.CountDocumentsAsync(_ => true));
-        Assert.Equal(0, await States.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await Documents.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await States.CountDocumentsAsync(item => item.Source.TenantId == Data.TenantId));
         Assert.Equal(0, await WakeCount());
     }
 
@@ -103,7 +103,7 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
             source.Id,
             source.Revision,
             Guid.NewGuid().ToString("D"),
-            new(GitRunTrigger.Manual, TestData.UserId));
+            new(GitRunTrigger.Manual, Data.UserId));
         var results = await Task.WhenAll(Enumerable.Range(0, 4)
             .Select(_ => Sources.RequestSyncAsync(request, default)));
         Assert.All(results, result => Assert.Equal(2, Assert.IsType<GitSourceScheduled>(result.Value).Generation));
@@ -161,13 +161,13 @@ public sealed class GitRepositorySourceStoreTests(MongoReplicaSetFixture fixture
         Assert.Empty((await queries.ListAsync("foreign", 1, 50, default)).Items);
     }
 
-    private static CreateGitRepositorySource Request() => new(TestData.TenantId,
+    private CreateGitRepositorySource Request() => new(Data.TenantId,
         Guid.NewGuid().ToString("D"),
         new("Example", "connection", "repository", "main", ""),
         new(TimeSpan.FromMinutes(5)),
-        new(TestData.UserId, DateTime.UtcNow),
+        new(Data.UserId, DateTime.UtcNow),
         "https://example.test/repository");
 
     private Task<long> WakeCount() =>
-        DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == "pole.gitops/v1/source-work-requested");
+        DbContext.OutboxMessages.CountDocumentsAsync(item => item.TenantId == Data.TenantId && item.EventType == "pole.gitops/v1/source-work-requested");
 }

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class QuotaActiveFilterTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     [Fact]

@@ -9,6 +9,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -16,7 +17,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
     public async Task OperationalEndpoints_ListGetAndRetryFailedCell()
     {
         var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
+            Data.SeedResourceGroup());
         var initialTime = DateTime.UtcNow.AddMinutes(-2);
         var provisioning = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
@@ -59,7 +60,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
         Assert.Null(retried.FailureCode);
         Assert.Null(retried.RetryNotBeforeUtc);
 
-        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
@@ -67,9 +68,9 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
     public async Task OperationalEndpoints_ValidateIds_AndEnforceResourceGroupOwnership()
     {
         var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
+            Data.SeedResourceGroup());
         var otherResourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup("other"));
+            Data.SeedResourceGroup("other"));
         var cell = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -92,7 +93,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
     public async Task DeleteResourceGroup_WithRuntimeCell_ReturnsAccepted()
     {
         var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
+            Data.SeedResourceGroup());
         var cell = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,

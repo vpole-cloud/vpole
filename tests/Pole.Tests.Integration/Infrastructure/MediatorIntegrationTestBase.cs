@@ -8,19 +8,32 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
-[Collection(IntegrationTestCollection.Name)]
 public abstract class MediatorIntegrationTestBase : IAsyncLifetime
 {
     private ServiceProvider? _serviceProvider;
     private IServiceScope? _scope;
 
-    protected MediatorIntegrationTestBase(MongoReplicaSetFixture fixture)
+    private readonly bool _isolatedDatabase;
+
+    protected MediatorIntegrationTestBase(MongoReplicaSetFixture fixture) : this(fixture, false) { }
+
+    protected MediatorIntegrationTestBase(
+        MongoReplicaSetFixture fixture,
+        bool isolatedDatabase,
+        IntegrationSchemaProfile schemaProfile = IntegrationSchemaProfile.Full)
     {
-        Fixture = fixture;
+        if (!isolatedDatabase && schemaProfile != IntegrationSchemaProfile.Full)
+            throw new ArgumentException("Shared tenant databases require the Full schema profile.", nameof(schemaProfile));
+        _isolatedDatabase = isolatedDatabase;
+        Fixture = isolatedDatabase ? fixture.CreateDatabase(schemaProfile) : fixture.SharedDatabase;
+        TestScope = IntegrationTestScope.Create(Fixture);
+        Data = new IntegrationTestData(TestScope);
         Timings = new TestTimings(GetType());
     }
 
-    protected MongoReplicaSetFixture Fixture { get; }
+    protected TestDatabaseScope Fixture { get; }
+    protected IntegrationTestScope TestScope { get; }
+    protected IntegrationTestData Data { get; }
     protected TestTimings Timings { get; }
     protected MongoTestStore DbContext => Fixture.DbContext;
     protected IMediator Mediator => _scope!.ServiceProvider.GetRequiredService<IMediator>();
@@ -32,29 +45,39 @@ public abstract class MediatorIntegrationTestBase : IAsyncLifetime
 
     public virtual async Task InitializeAsync()
     {
-        using (Timings.Measure("database.reset"))
-            await Fixture.ResetDatabaseAsync();
+        using (Timings.Measure("database.prepare"))
+            await Fixture.PrepareAsync();
         using (Timings.Measure("seed.base"))
-        {
-            await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
-            await Fixture.Database
-                .GetCollection<ComputeProfile>("ComputeProfiles")
-                .InsertOneAsync(TestData.SeedComputeProfile());
-            await Fixture.DbContext.Tenants.InsertOneAsync(TenantFactory.Create(
-                "Test tenant",
-                TestData.TenantId));
-        }
-        _serviceProvider = TestServiceProviderFactory.Create(Fixture, ConfigureServices, Timings);
+            await TestScope.SeedAsync();
+        _serviceProvider = TestServiceProviderFactory.Create(Fixture, ConfigureServices, Timings, TestScope);
         using (Timings.Measure("mediator.scope.create"))
             _scope = _serviceProvider.CreateScope();
     }
 
-    public virtual Task DisposeAsync()
+    public virtual async Task DisposeAsync()
     {
-        using (Timings.Measure("mediator.scope.dispose"))
-            _scope?.Dispose();
-        using (Timings.Measure("mediator.provider.dispose"))
-            _serviceProvider?.Dispose();
-        return Task.CompletedTask;
+        try
+        {
+            using (Timings.Measure("mediator.scope.dispose"))
+                _scope?.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                using (Timings.Measure("mediator.provider.dispose"))
+                    if (_serviceProvider is not null) await _serviceProvider.DisposeAsync();
+            }
+            finally
+            {
+                if (_isolatedDatabase)
+                    using (Timings.Measure("database.dispose")) await Fixture.DisposeAsync();
+            }
+        }
     }
 }
+
+public abstract class IsolatedMediatorIntegrationTestBase(
+    MongoReplicaSetFixture fixture,
+    IntegrationSchemaProfile schemaProfile = IntegrationSchemaProfile.Full)
+    : MediatorIntegrationTestBase(fixture, true, schemaProfile), IIsolatedIntegrationTest;

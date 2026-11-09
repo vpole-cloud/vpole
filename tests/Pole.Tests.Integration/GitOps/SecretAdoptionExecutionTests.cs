@@ -29,6 +29,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SecretAdoptionExecutionTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private readonly TestRepositorySnapshots repository = new();
@@ -42,8 +43,6 @@ public sealed class SecretAdoptionExecutionTests(MongoReplicaSetFixture fixture)
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
-        await new SecretIndexesMigration().Up(Fixture.Database);
     }
 
     [Theory]
@@ -52,7 +51,7 @@ public sealed class SecretAdoptionExecutionTests(MongoReplicaSetFixture fixture)
     public async Task Manual_secret_adoption_pins_scope_versions_and_preserves_existing_values(bool scopeChanged)
     {
         const string syntheticValue = "synthetic-adoption-fixture";
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("manual-group"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("manual-group"));
         var secret = Assert.IsType<Secret>((await Services.GetRequiredService<PersistCreatedSecret>()(
             group.TenantId, group.Id, group.DefaultIsolationScopeId, "manual-secret", "test purpose",
             new() { ["token"] = syntheticValue }, default)).Value);
@@ -73,17 +72,17 @@ public sealed class SecretAdoptionExecutionTests(MongoReplicaSetFixture fixture)
             }, DeclarationJson.Options))
         ]);
         var sources = Services.GetRequiredService<GitRepositorySources>();
-        var source = Assert.IsType<RepositorySource>((await sources.CreateAsync(new(TestData.TenantId,
+        var source = Assert.IsType<RepositorySource>((await sources.CreateAsync(new(Data.TenantId,
             Guid.NewGuid().ToString("D"),
             new(repository.Provider, TestRepositorySnapshots.ConnectionId, repositoryId, "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow),
+            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow),
             TestRepositorySnapshots.DisplayUrl), default)).Value);
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
         var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(new(
             new(source.TenantId, source.Id), source.Revision,
             new GitPreviewAdoption([new("Secret", secret.Name, secret.Id)])), default)).Value);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(
-            new(source.TenantId, source.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(source.TenantId, source.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         if (scopeChanged)
             await DbContext.IsolationScopes.UpdateOneAsync(item => item.Id == group.DefaultIsolationScopeId,
                 Builders<IsolationScope>.Update.Inc(item => item.Revision, 1));

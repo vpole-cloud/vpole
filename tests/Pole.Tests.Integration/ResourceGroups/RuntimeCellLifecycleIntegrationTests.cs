@@ -22,12 +22,10 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : RuntimeCellLifecycleTestBase(fixture)
 {
-    private static readonly DateTime InitialTime =
-        new(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
-
     [Fact]
     public async Task ReconciliationSuccess_MarksReady_AndDuplicateEventIsNoOp()
     {
@@ -44,7 +42,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.IsType<ReadyRuntimeCellState>(saved.State);
         Assert.Equal(1, saved.ObservedGeneration);
         Assert.Equal(1, manager.EnsureCallCount);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-ready"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/runtime-cell-ready"));
     }
 
     [Fact]
@@ -66,7 +64,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal("NamespaceOwnershipConflict", failed.FailureCode);
         Assert.DoesNotContain(providerSecret, failed.FailureMessage, StringComparison.Ordinal);
         Assert.True(failed.RetryNotBeforeUtc > failed.AttemptedAtUtc);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-reconciliation-failed"));
     }
 
@@ -88,7 +86,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal("NetworkPolicyApplyFailed", failed.FailureCode);
         Assert.Contains("ingress policy", failed.FailureMessage, StringComparison.Ordinal);
         Assert.True(failed.RetryNotBeforeUtc > failed.AttemptedAtUtc);
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-ready"));
     }
 
@@ -113,7 +111,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal(deleting.DesiredGeneration, saved.ObservedGeneration);
         Assert.Equal(1, manager.DeleteCallCount);
         Assert.Equal(1, admission.UnregisterCallCount);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/runtime-cell-deleted"));
     }
 
     [Fact]
@@ -137,13 +135,13 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var failed = Assert.IsType<FailedRuntimeCellState>(saved.State);
         Assert.Equal(RuntimeCellOperation.Deletion, failed.Operation);
         Assert.Equal(0, admission.UnregisterCallCount);
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-deleted"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/runtime-cell-deleted"));
     }
 
     [Fact]
     public async Task DeletionSuccess_FinalizesDeletingResourceGroupAfterLastCell()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var requestedAt = resourceGroup.UpdatedAtUtc.AddMinutes(1);
         await DbContext.ResourceGroups.ReplaceOneAsync(
             group => group.Id == resourceGroup.Id,
@@ -182,10 +180,15 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.False(await DbContext.RuntimeCells
             .Find(item => item.ResourceGroupId == resourceGroup.Id)
             .AnyAsync());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/runtime-cell-deleted"));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/runtime-cell-deleted"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/resource-group-deleted"));
     }
+}
 
+[Collection(IntegrationTestCollection.Global)]
+public sealed class RuntimeCellRecoveryIntegrationTests(MongoReplicaSetFixture fixture)
+    : RuntimeCellLifecycleTestBase(fixture, true), IIsolatedIntegrationTest
+{
     [Fact]
     public async Task Recovery_AdvancesDueFailure_AndOnlyWritesAnOutboxRequest()
     {
@@ -206,7 +209,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var recovered = await DbContext.RuntimeCells.Find(item => item.Id == cell.Id).SingleAsync();
         Assert.IsType<ProvisioningRuntimeCellState>(recovered.State);
         Assert.Equal(cell.DesiredGeneration + 1, recovered.DesiredGeneration);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountAllOutboxMessagesAsync(
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
         var pendingRequest = await DbContext.OutboxMessages
             .Find(message => message.EventType == "pole.resource-groups/v1/runtime-cell-reconciliation-requested")
@@ -222,14 +225,14 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
 
         await CreateRecoveryJob(InitialTime.AddMinutes(3)).RecoverAsync();
 
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountAllOutboxMessagesAsync(
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
     [Fact]
     public async Task Recovery_FinalizesDeletionAfterDeletedCellCrashWindow()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var requestedAt = resourceGroup.UpdatedAtUtc.AddMinutes(1);
         await DbContext.ResourceGroups.ReplaceOneAsync(
             group => group.Id == resourceGroup.Id,
@@ -257,119 +260,6 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         Assert.False(await DbContext.ResourceGroups
             .Find(group => group.Id == resourceGroup.Id)
             .AnyAsync());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
-    }
-
-    private async Task<RuntimeCell> InsertCellAsync()
-    {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var cell = RuntimeCellFactory.Create(
-            resourceGroup.TenantId,
-            resourceGroup.Id,
-            resourceGroup.DefaultIsolationScopeId,
-            "507f1f77bcf86cd799439071",
-            "pole-runtime-cell",
-            new RuntimeCellFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), InitialTime));
-        await DbContext.RuntimeCells.InsertOneAsync(cell);
-        return cell;
-    }
-
-    private RuntimeCellLifecyclePersistence CreateLifecyclePersistence(
-        DateTime utcNow,
-        ApplyDeploymentTargetReferenceChanges? applyReferenceChanges = null) =>
-        new(
-            DbContext.RuntimeCells,
-            StoreOutboxWrites,
-            applyReferenceChanges ?? NoOpReferenceChanges,
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<Unit>,
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<bool>,
-            new FixedTimeProvider(utcNow));
-
-    private RuntimeCellRecoveryJob CreateRecoveryJob(DateTime utcNow)
-    {
-        var transaction = new MongoRunTransaction(Fixture.Client);
-        var persistence = new RuntimeCellRecoveryPersistence(
-            DbContext.IsolationScopes,
-            DbContext.RuntimeCells,
-            StoreOutboxWrites,
-            transaction.InvokeOutcomeAsync<Unit>);
-        return new RuntimeCellRecoveryJob(
-            persistence,
-            CreateDeletionFinalizer(utcNow),
-            new FixedTimeProvider(utcNow));
-    }
-
-    private FinalizeResourceGroupDeletion CreateDeletionFinalizer(DateTime utcNow) =>
-        Services.GetRequiredService<FinalizeResourceGroupDeletion>();
-
-    private Task StoreOutboxWrites(
-        IClientSessionHandle session,
-        IReadOnlyCollection<OutboxWrite> writes,
-        CancellationToken cancellationToken = default) =>
-        Fixture.StoreOutboxWrites(session, writes, cancellationToken);
-
-    private static Task<ApplyDeploymentTargetReferenceChangesOutcome>
-        NoOpReferenceChanges(
-        ApplyDeploymentTargetReferenceChangesRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
-            new DeploymentTargetReferencesChanged());
-
-    private static RuntimeCellReconciliationRequestedEvent ReconciliationEvent(RuntimeCell cell) =>
-        new(cell.Id, cell.DesiredGeneration)
-        {
-            EventCore = EventCore.Create(cell.TenantId)
-        };
-
-    private static RuntimeCellDeletionRequestedEvent DeletionEvent(RuntimeCell cell) =>
-        new(cell.Id, cell.DesiredGeneration)
-        {
-            EventCore = EventCore.Create(cell.TenantId)
-        };
-
-    private sealed class RecordingNamespaceManager(
-        RuntimeCellEnsureOutcome ensureResult,
-        RuntimeCellDeleteOutcome deleteResult)
-    {
-        public int EnsureCallCount { get; private set; }
-        public int DeleteCallCount { get; private set; }
-
-        public Task<RuntimeCellEnsureOutcome> EnsureCreatedAsync(
-            RuntimeCell runtimeCell,
-            CancellationToken cancellationToken = default)
-        {
-            EnsureCallCount++;
-            return Task.FromResult(ensureResult);
-        }
-
-        public Task<RuntimeCellDeleteOutcome> DeleteAsync(
-            RuntimeCell runtimeCell,
-            CancellationToken cancellationToken = default)
-        {
-            DeleteCallCount++;
-            return Task.FromResult(deleteResult);
-        }
-    }
-
-    private sealed class RecordingReferenceAdmission
-    {
-        public int UnregisterCallCount { get; private set; }
-
-        public Task<ApplyDeploymentTargetReferenceChangesOutcome>
-            ApplyChangesOutcomeAsync(
-            ApplyDeploymentTargetReferenceChangesRequest request,
-            IClientSessionHandle session,
-            CancellationToken cancellationToken = default)
-        {
-            UnregisterCallCount += request.RemovedDeploymentTargetIds.Count;
-            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
-                new DeploymentTargetReferencesChanged());
-        }
-    }
-
-    private sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => new(utcNow);
+        Assert.Equal(1L, await DbContext.CountAllOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
     }
 }

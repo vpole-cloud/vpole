@@ -26,34 +26,23 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class CatalogTechnicalNameApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class CatalogTechnicalNameApiTests(MongoReplicaSetFixture fixture)
+    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.Catalogs)
 {
     protected override void ConfigureTestServices(IServiceCollection services) =>
         NamedCatalogTestData.ConfigureIsolatedApi(services);
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
-        await new ComputeProfileHistoryMigration().Up(Fixture.Database);
-        await NamedCatalogTestData.SeedAsync(Fixture);
+        await Fixture.PrepareNamedCatalogAsync();
     }
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private IMongoCollection<ComputeProfile> Profiles =>
         Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
     private static string Root(string catalog) => $"/api/v1/platform/{catalog}/";
 
-    [Fact]
-    public async Task Isolated_api_fixture_rejects_every_external_client_lookup()
-    {
-        var services = new ServiceCollection();
-        NamedCatalogTestData.ConfigureIsolatedApi(services);
-        using var provider = services.BuildServiceProvider();
-        var clients = provider.GetRequiredService<IKubernetesClientProvider>();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => clients.GetAsync(TestData.DefaultDeploymentTargetId));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            clients.GetForCleanupAsync(TestData.DefaultDeploymentTargetId));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => clients.GetDefaultAsync());
-    }
+
     internal static JsonObject Body(string catalog, string? name,
         string targetId = TestData.DefaultDeploymentTargetId) =>
         JsonSerializer.SerializeToNode(catalog == "compute-profiles"
@@ -162,11 +151,11 @@ public sealed class CatalogTechnicalNameApiTests(MongoReplicaSetFixture fixture)
         var profile = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
         await Profiles.UpdateOneAsync(item => item.Id == profile,
             Builders<ComputeProfile>.Update.Set(item => item.TenantAccess,
-                SelectedTenantsComputeProfileAccess.Create([TestData.TenantId])));
+                SelectedTenantsComputeProfileAccess.Create([Data.TenantId])));
         using var provider = TestServiceProviderFactory.Create(Fixture);
         using var scope = provider.CreateScope();
         var resolve = scope.ServiceProvider.GetRequiredService<ResolveNamedComputeProfile>();
-        var request = new NamedComputeProfileRequest(TestData.TenantId, ResourceTypeId.Create("pole/web-service"),
+        var request = new NamedComputeProfileRequest(Data.TenantId, ResourceTypeId.Create("pole/web-service"),
             "pinned", TestData.DefaultDeploymentTargetId, 1);
         var accepted = Assert.IsType<ResolvedComputeProfile>((await resolve(request)).Value);
         Assert.Equal(profile, accepted.ComputeProfileId); Assert.Equal(1, accepted.ComputeProfileRevision);
@@ -193,7 +182,7 @@ public sealed class CatalogTechnicalNameApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Ambiguous_names_in_corrupted_catalogs_are_rejected_instead_of_choosing_a_match()
     {
-        await NamedCatalogTestData.SeedAsync(Fixture);
+        await Fixture.PrepareNamedCatalogAsync();
         await Profiles.Indexes.DropOneAsync("UX_ComputeProfiles_TechnicalName");
         await Profiles.InsertOneAsync(TestData.SeedComputeProfile(ObjectId.GenerateNewId().ToString(), isDefault: false)
             with
@@ -202,7 +191,7 @@ public sealed class CatalogTechnicalNameApiTests(MongoReplicaSetFixture fixture)
         using var scope = provider.CreateScope();
         Assert.IsType<NamedComputeProfileAmbiguous>((
             await scope.ServiceProvider.GetRequiredService<ResolveNamedComputeProfile>()(
-            new(TestData.TenantId, ResourceTypeId.Create("pole/web-service"), NamedCatalogTestData.ProfileName,
+            new(Data.TenantId, ResourceTypeId.Create("pole/web-service"), NamedCatalogTestData.ProfileName,
                 TestData.DefaultDeploymentTargetId, 1))).Value);
         await Fixture.DbContext.DeploymentTargets.Indexes.DropOneAsync("UX_DeploymentTargets_TechnicalName");
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(ComputeProfileTestData.CreateTarget()
@@ -210,6 +199,6 @@ public sealed class CatalogTechnicalNameApiTests(MongoReplicaSetFixture fixture)
         { TechnicalName = NamedCatalogTestData.TargetName });
         Assert.IsType<NamedDeploymentTargetAmbiguous>((
             await scope.ServiceProvider.GetRequiredService<ResolveNamedDeploymentTarget>()(
-            new(TestData.TenantId, ResourceTypeId.Create("pole/web-service"), NamedCatalogTestData.TargetName))).Value);
+            new(Data.TenantId, ResourceTypeId.Create("pole/web-service"), NamedCatalogTestData.TargetName))).Value);
     }
 }

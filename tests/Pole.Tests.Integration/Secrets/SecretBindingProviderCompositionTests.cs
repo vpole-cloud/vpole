@@ -18,6 +18,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SecretBindingProviderCompositionTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {

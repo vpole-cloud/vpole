@@ -27,7 +27,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
-public sealed class StorageObservationReadMetricsTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class StorageObservationReadMetricsTests(MongoReplicaSetFixture fixture)
+    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageObservation)
 {
     private readonly Meter meter = new(StorageObservationMetrics.MeterName);
     private readonly StorageNativeApi api = new(false);
@@ -131,11 +133,12 @@ public sealed class StorageObservationReadMetricsTests(MongoReplicaSetFixture fi
     }
 }
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Theory]
     [InlineData("accepted")]
@@ -148,15 +151,15 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
         using var meter = new Meter(StorageObservationMetrics.MeterName);
         using var capture = new StorageMetricCapture(meter);
         using var metrics = new StorageObservationMetrics(meter);
-        var context = await StorageMetricFixtures.SeedAsync(fixture);
+        var context = await StorageMetricFixtures.SeedAsync(Fixture);
         var failSnapshot = false;
         var blockSnapshot = false;
         var commitEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var commitRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var store = StorageMetricFixtures.Store(fixture,
+        var store = StorageMetricFixtures.Store(Fixture,
             async (session, writes, ct) =>
             {
-                await fixture.StoreOutboxWrites(session, writes, ct);
+                await Fixture.StoreOutboxWrites(session, writes, ct);
                 if (failSnapshot)
                     throw new InvalidOperationException("private-native-canary persistence failure");
                 if (blockSnapshot)
@@ -188,7 +191,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
             Assert.Equal(1, capture.Count("pole.storage.observation.sources.transitions", "gained"));
             Assert.DoesNotContain(capture.Measurements, item => item.Name == "pole.storage.observation.samples");
             if (mode == "rejected")
-                await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
+                await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
                     .UpdateManyAsync(FilterDefinition<BsonDocument>.Empty,
                         Builders<BsonDocument>.Update.Set("ExpiresAtUtc", DateTime.UnixEpoch));
             if (mode == "failed")
@@ -204,7 +207,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
                 await commitEntered.Task.WaitAsync(lifetime.Token);
                 Assert.Equal(0, capture.Count("pole.storage.observation.samples", "accepted"));
                 Assert.Equal(0,
-                    await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
+                    await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
                         .CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty));
                 commitRelease.TrySetResult();
             }
@@ -216,7 +219,7 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
             Assert.All(capture.Measurements.Where(item => item.Name == "pole.storage.observation.sample.duration"),
                 item => Assert.True(double.IsFinite(item.Value) && item.Value >= 0));
             Assert.Equal(mode == "accepted" ? 1 : 0,
-                await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
+                await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
                     .CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty));
             if (mode == "failed")
                 Assert.Equal("private-native-canary persistence failure",
@@ -253,8 +256,8 @@ public sealed class StorageObservationOwnerMetricsTests(MongoReplicaSetFixture f
         using var meter = new Meter(StorageObservationMetrics.MeterName);
         using var capture = new StorageMetricCapture(meter);
         using var metrics = new StorageObservationMetrics(meter);
-        var context = await StorageMetricFixtures.SeedAsync(fixture);
-        var store = StorageMetricFixtures.Store(fixture);
+        var context = await StorageMetricFixtures.SeedAsync(Fixture);
+        var store = StorageMetricFixtures.Store(Fixture);
         var ownership =
             Assert.IsType<StorageObservationOwnership>(
                 (await store.ClaimLeaseAsync(context, "private-replica-native-canary")).Value);
@@ -345,19 +348,19 @@ internal static class StorageMetricFixtures
         NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
     internal static MongoStorageObservationStore
-        Store(MongoReplicaSetFixture fixture, StoreOutboxWrites? writes = null) => new(
-            fixture.Database.GetCollection<StorageObservationControlDocument>(
+        Store(TestDatabaseScope Fixture, StoreOutboxWrites? writes = null) => new(
+            Fixture.Database.GetCollection<StorageObservationControlDocument>(
                 MongoStorageObservationStore.ControlsCollection),
-            fixture.Database.GetCollection<StorageObservationDemandDocument>(
+            Fixture.Database.GetCollection<StorageObservationDemandDocument>(
                 MongoStorageObservationStore.DemandsCollection),
-            fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+            Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
                 MongoStorageObservationStore.SnapshotsCollection),
-            new MongoRunTransaction(fixture.Client),
+            new MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>
-                new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
+                new MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets).InvokeAsync(request,
                     session,
                     ct),
-            writes ?? fixture.StoreOutboxWrites,
+            writes ?? Fixture.StoreOutboxWrites,
             new());
 
     internal static StorageObservationNativeReader Native(IKubernetes client,
@@ -366,12 +369,12 @@ internal static class StorageMetricFixtures
         budget,
         new());
 
-    internal static async Task<StorageObservationContext> SeedAsync(MongoReplicaSetFixture fixture)
+    internal static async Task<StorageObservationContext> SeedAsync(TestDatabaseScope Fixture)
     {
         var id = TestData.DefaultDeploymentTargetId;
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         var context = new StorageObservationContext(id, 1);
-        await Store(fixture)
+        await Store(Fixture)
             .PutDemandAsync(
                 new(new(id,
                         "private-subscription-native-canary",

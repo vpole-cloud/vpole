@@ -20,6 +20,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -34,7 +35,6 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var ct = timeout.Token;
-        var seeded = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("manual-group"));
+        var seeded = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("manual-group"));
         var group = await DbContext.ResourceGroups.Find(item => item.Id == seeded.Id).SingleAsync(ct);
         var source = await ConfirmAdoptionAsync(group, ct);
         var mutations = new PausingMutations(Services.GetRequiredService<IGitOpsMutations>());
@@ -52,7 +52,7 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
             UpdateLog<string>.Of(group.Description, replacement.Description),
             UpdateLog<ImmutableHashSet<string>>.Of(group.Tags, replacement.Tags));
         var eventType = EventTypeIdentity.GetRequiredName(typeof(ResourceGroupUpdatedEvent));
-        var eventCount = await DbContext.CountOutboxMessagesAsync(eventType);
+        var eventCount = await DbContext.CountOutboxMessagesAsync(Data.TenantId, eventType);
         var manual = update.InvokeAsync(group, replacement, changes, ct);
         await mutations.ManualAuthorized.Task.WaitAsync(ct);
 
@@ -86,7 +86,7 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
         Assert.Equal(group.Revision, current.Revision);
         Assert.Equal(group.UpdatedAtUtc, current.UpdatedAtUtc);
         Assert.Equal(eventCount,
-            await DbContext.CountOutboxMessagesAsync(eventType));
+            await DbContext.CountOutboxMessagesAsync(Data.TenantId, eventType));
         var state = await Services.GetRequiredService<GitRepositorySources>()
             .StateAsync(source.TenantId, source.Id, ct);
         var run = (await Services.GetRequiredService<GitRepositorySources>()
@@ -112,16 +112,16 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
             }, DeclarationJson.Options))
         ]);
         var source = Assert.IsType<RepositorySource>((await Services.GetRequiredService<GitRepositorySources>()
-            .CreateAsync(new(TestData.TenantId, Guid.NewGuid().ToString("D"),
+            .CreateAsync(new(Data.TenantId, Guid.NewGuid().ToString("D"),
                 new(repository.Provider, TestRepositorySnapshots.ConnectionId, repositoryId, "main", ""),
-                new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow),
+                new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow),
                 TestRepositorySnapshots.DisplayUrl), ct)).Value);
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
         var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(new(
             new(source.TenantId, source.Id), source.Revision,
             new GitPreviewAdoption([new("ResourceGroup", group.Name, group.Id)])), ct)).Value);
         Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(new(source.TenantId, source.Id),
-            preview.Id, preview.Revision, TestData.UserId), ct)).Value);
+            preview.Id, preview.Revision, Data.UserId), ct)).Value);
         return source;
     }
 

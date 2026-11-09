@@ -13,7 +13,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class WebServiceDerivedWriteGuardTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("name")]
@@ -24,7 +25,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedApplicationConnectionAsync();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(SourceDeliverySnapshot())).Status);
-        var current = await WebServices.Find(item => item.Name == "demo-api").SingleAsync();
+        var current = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "demo-api").SingleAsync();
         var jobId = Id();
         var configurationId = current.Spec.Image.SourceBuildConfigurationId!;
         var artifact = DeliveredSourceBuildImage.Create(configurationId, new("registry.test", "app", "1", "pull"),

@@ -19,6 +19,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -65,7 +66,7 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(destinationDeployment.Id, snapshot.DestinationResourceDeploymentId);
         Assert.Equal("destination-namespace", snapshot.DestinationNamespace);
         Assert.Equal(6379, snapshot.DestinationPort);
-        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
         Assert.Equal(1, (await Fixture.DbContext.ResourceRegistrations
             .Find(item => item.ResourceId == sourceId)
             .SingleAsync()).ReferenceFence);
@@ -78,8 +79,8 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
             Body(sourceId, destinationId));
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
         Assert.Equal(1, await Connections.CountDocumentsAsync(
-            item => item.TenantId == TestData.TenantId));
-        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+            item => item.TenantId == Data.TenantId));
+        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
     }
 
     [Fact]
@@ -106,8 +107,8 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal(0, await Connections.CountDocumentsAsync(
-            item => item.TenantId == TestData.TenantId));
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+            item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
         Assert.Equal(0, (await Fixture.DbContext.ResourceRegistrations
             .Find(item => item.ResourceId == sourceId)
             .SingleAsync()).ReferenceFence);
@@ -155,7 +156,7 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
             new[] { firstTarget, secondTarget }.OrderBy(id => id),
             active.Targets.Select(target => target.Snapshot.TargetId).OrderBy(id => id));
         Assert.All(active.Targets, target => Assert.IsType<PendingConnectionApply>(target.Status));
-        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
     }
 
     [Fact]
@@ -178,8 +179,8 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(0, await Connections.CountDocumentsAsync(
-            item => item.TenantId == TestData.TenantId));
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+            item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
     }
 
     [Fact]
@@ -199,8 +200,8 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal(0, await Connections.CountDocumentsAsync(
-            item => item.TenantId == TestData.TenantId));
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+            item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
     }
 
     [Fact]
@@ -234,8 +235,8 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal(0, await Connections.CountDocumentsAsync(
-            item => item.TenantId == TestData.TenantId));
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+            item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
     }
 
     [Fact]
@@ -297,8 +298,8 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
             });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, unsupportedEndpoint.StatusCode);
         Assert.Equal(0, await Connections.CountDocumentsAsync(
-            item => item.TenantId == TestData.TenantId));
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(CreatedEventType));
+            item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, CreatedEventType));
         Assert.Equal(0, (await Fixture.DbContext.ResourceRegistrations
             .Find(item => item.ResourceId == sourceId)
             .SingleAsync()).ReferenceFence);
@@ -365,11 +366,11 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
         var persisted = await Connections.Find(item => item.Id == accepted.Id).SingleAsync();
         var cleanup = Assert.IsType<DeletingResourceConnection>(persisted.Lifecycle);
         Assert.Equal("source-namespace", Assert.Single(cleanup.Targets).Snapshot.Sources[0].Namespace);
-        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(DeletionEventType));
+        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEventType));
 
         using var repeated = await Client.DeleteAsync($"/api/v1/resource-connections/{accepted.Id}");
         Assert.Equal(HttpStatusCode.Accepted, repeated.StatusCode);
-        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(DeletionEventType));
+        Assert.Equal(1, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEventType));
         using var deletingRead = await Client.GetAsync($"/api/v1/resource-connections/{accepted.Id}");
         Assert.Equal("Deleting", (await deletingRead.Content.ReadFromJsonAsync<ResourceConnectionDto>())!.Status);
     }
@@ -397,7 +398,7 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
             [new ConnectionSourcePlacement(Id(), Id(), "source-namespace")]);
         var connection = ResourceConnectionFactory.Create(
                 Id(),
-                TestData.TenantId,
+                Data.TenantId,
                 "moved-cache",
                 SourceType,
                 Id(),
@@ -440,16 +441,16 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
     private async Task SetTenantRoleAsync(TenantRole role)
     {
         var tenant = await Fixture.DbContext.Tenants
-            .Find(item => item.Id == TestData.TenantId)
+            .Find(item => item.Id == Data.TenantId)
             .SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(
             item => item.Id == tenant.Id,
             tenant with
             {
                 Members = ImmutableList.Create(TenantFactory.CreateMember(
-                    TestData.TenantId,
-                    TestData.UserId,
-                    TestData.UserEmail,
+                    Data.TenantId,
+                    Data.UserId,
+                    Data.UserEmail,
                     role))
             });
     }
@@ -458,10 +459,11 @@ public sealed class ResourceConnectionCreateApiTests(MongoReplicaSetFixture fixt
         ResourceTypeId resourceType,
         string resourceId,
         string groupName,
-        string tenantId = TestData.TenantId)
+        string? tenantId = null)
     {
+        tenantId ??= Data.TenantId;
         var group = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup(groupName, tenantId));
+            Data.SeedResourceGroup(groupName, tenantId));
         await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(
             ResourceRegistrationFactory.Create(
                 tenantId,

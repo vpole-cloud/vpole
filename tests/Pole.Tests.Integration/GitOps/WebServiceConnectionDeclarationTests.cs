@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 using MongoDB.Driver;
@@ -10,35 +11,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class WebServiceConnectionDeclarationTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private static ManifestFile[] WebConnectionSnapshot()
-    {
-        var documents = StageFiveWebSnapshot(_ => { })[0].Content.Split("\n---\n")
-            .Select(item => JsonNode.Parse(item)!).ToList();
-        var web = documents.Single(item => item["kind"]!.GetValue<string>() == "WebService");
-        var peer = web.DeepClone();
-        peer["metadata"]!["name"] = "backend";
-        documents.Add(peer);
-        web["spec"]!["connectionEnvironment"] = JsonNode.Parse("""
-            {"PEER_HOST":{"connection":"api-backend","valueKind":"Host"},
-             "PEER_PORT":{"connection":"api-backend","valueKind":"Port"}}
-            """);
-        documents.Add(JsonNode.Parse("""
-            {"apiVersion":"pole.io/v1alpha1","kind":"ResourceConnection","metadata":{"name":"api-backend"},
-             "spec":{"source":{"kind":"WebService","name":"demo-api"},
-             "destination":{"kind":"WebService","name":"backend"},"endpoint":"http"}}
-            """)!);
-        return [new("web-connections.yaml", string.Join("\n---\n", documents.Select(item => item.ToJsonString())))];
-    }
-
     [Fact]
     public async Task WebConnectionReferencesCreateInDependencyOrderRepairThenNoOp()
     {
         var files = WebConnectionSnapshot();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
-        var web = await WebServices.Find(item => item.Name == "demo-api").SingleAsync();
-        var connection = await Connections.Find(Builders<ResourceConnection>.Filter.Empty).SingleAsync();
+        var web = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "demo-api").SingleAsync();
+        var connection = await Connections.Find(Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         Assert.Equal(web.Id, connection.SourceResourceId);
         var expected = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
             .Add("PEER_HOST", new(connection.Id, "Host", null))
@@ -78,9 +60,9 @@ public sealed partial class DeclarativePipelineTests
                 """);
         files[0] = files[0] with { Content = string.Join("\n---\n", documents.Select(item => item.ToJsonString())) };
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, (await Apply(files)).Status);
-        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
+        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<Pole.Features.GitOps.Domain.ManagedDeclaration>
-            .Filter.Empty));
+            .Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Theory]
@@ -95,6 +77,6 @@ public sealed partial class DeclarativePipelineTests
         spec["connectionEnvironment"]!["PEER_HOST"]!["valueKind"] = valueKind;
         files[0] = files[0] with { Content = string.Join("\n---\n", documents.Select(item => item.ToJsonString())) };
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, (await Apply(files)).Status);
-        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
+        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 }

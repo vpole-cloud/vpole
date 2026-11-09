@@ -2,15 +2,29 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class MongoReplicaSetFixture : Pole.Testing.MongoReplicaSetFixture
 {
-    public MongoTestStore DbContext { get; private set; } = null!;
+    public TestDatabaseScope SharedDatabase { get; private set; } = null!;
+    public MongoTestStore DbContext => SharedDatabase.DbContext;
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        DbContext = new MongoTestStore(Client, Database);
+        SharedDatabase = new TestDatabaseScope(Database, IntegrationSchemaProfile.Full);
     }
-    public override async Task ResetDatabaseAsync()
+
+    public TestDatabaseScope CreateDatabase(IntegrationSchemaProfile schemaProfile = IntegrationSchemaProfile.Full) =>
+        new(Client.GetDatabase("pole-integration-" + Guid.NewGuid().ToString("N")), schemaProfile);
+
+    public override Task ResetDatabaseAsync() =>
+        throw new NotSupportedException("Use a tenant scope or a dedicated TestDatabaseScope instead of resetting shared storage.");
+
+    public override async Task DisposeAsync()
     {
-        await base.ResetDatabaseAsync();
-        DbContext = new MongoTestStore(Client, Database);
+        try
+        {
+            if (SharedDatabase is not null) await SharedDatabase.DisposeAsync();
+        }
+        finally
+        {
+            await base.DisposeAsync();
+        }
     }
 }

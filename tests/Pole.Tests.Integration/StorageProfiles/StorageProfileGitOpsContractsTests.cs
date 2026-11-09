@@ -14,8 +14,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
 {
     private IMongoCollection<StorageProfileRevision> History =>
         Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions");
@@ -45,7 +46,7 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         Assert.Single(results, result => result.Value is StorageProfile);
         Assert.Single(results, result => result.Value is StorageProfileTechnicalNameConflict);
         Assert.Equal(1, await History.CountDocumentsAsync(Builders<StorageProfileRevision>.Filter.Empty));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(
             "pole.storage-profiles/v1/storage-profile-catalog-changed"));
     }
 
@@ -63,7 +64,7 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         Assert.Equal(profile.ToBson(), revision.Snapshot.ToBson());
         var roundTrip = BsonSerializer.Deserialize<StorageProfileRevision>(revision.ToBson());
         Assert.Equal(revision.ToBson(), roundTrip.ToBson());
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(
             "pole.storage-profiles/v1/storage-profile-catalog-changed"));
         await Assert.ThrowsAsync<ArgumentException>(() => update(profile,
             profile with { TechnicalName = "renamed", Revision = 2 }));
@@ -106,7 +107,7 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         var profile = await CreateAsync();
         var read = Services.GetRequiredService<ResolveStorageProfilePlanningSnapshot>();
         var fence = Services.GetRequiredService<FenceStorageProfilePlanningSnapshot>();
-        var request = new StorageProfilePlanningRequest(TestData.TenantId,
+        var request = new StorageProfilePlanningRequest(Data.TenantId,
             ResourceTypeId.Create("third-party/widget"), profile.Id, TestData.DefaultDeploymentTargetId, 10, 1);
         StorageProfilePlanningSnapshot snapshot;
         using (var session = await Fixture.Database.Client.StartSessionAsync())
@@ -172,8 +173,8 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
             profile)).Value);
     }
 
-    private static NamedStorageProfileRequest Named(StorageProfile profile, int size) =>
-        new(TestData.TenantId, ResourceTypeId.Create("third-party/widget"), profile.TechnicalName,
+    private NamedStorageProfileRequest Named(StorageProfile profile, int size) =>
+        new(Data.TenantId, ResourceTypeId.Create("third-party/widget"), profile.TechnicalName,
             TestData.DefaultDeploymentTargetId, size, 1);
 
     private static StorageProfile Candidate() =>

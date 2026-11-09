@@ -18,15 +18,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Api;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task MemberTargetUsesRouteMembershipIndependentlyOfTheActiveHeader()
     {
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, "malformed-active-selection");
-        var response = await Client.GetAsync($"/api/v1/tenants/{TestData.TenantId}/members");
+        var response = await Client.GetAsync($"/api/v1/tenants/{Data.TenantId}/members");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var forbidden = await Client.GetAsync("/api/v1/tenants/507f1f77bcf86cd799439099/members");
@@ -71,7 +72,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     public async Task TenantMemberMutations_PreserveDirectConflictMappingsAndSuccessfulResponses()
     {
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
-        var path = $"/api/v1/tenants/{TestData.TenantId}/members";
+        var path = $"/api/v1/tenants/{Data.TenantId}/members";
         var members = await Client.GetFromJsonAsync<TenantMemberDto[]>(path);
         var owner = Assert.Single(members!);
         using var demotion = await Client.PutAsJsonAsync($"{path}/{owner.Id}",
@@ -107,7 +108,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task CreateResourceGroup_ReturnsCreated()
     {
-        var response = await Client.PostAsJsonAsync("/api/v1/resource-groups/", TestData.CreateResourceGroupRequest().Body);
+        var response = await Client.PostAsJsonAsync("/api/v1/resource-groups/", Data.CreateResourceGroupRequest().Body);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
@@ -172,13 +173,13 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task CreateWebService_ReturnsGeneratedDeployment()
     {
-        var resourceGroupResponse = await Client.PostAsJsonAsync("/api/v1/resource-groups/", TestData.CreateResourceGroupRequest("web-rg").Body);
+        var resourceGroupResponse = await Client.PostAsJsonAsync("/api/v1/resource-groups/", Data.CreateResourceGroupRequest("web-rg").Body);
         var resourceGroup = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>();
         Assert.NotNull(resourceGroup);
 
         var response = await Client.PostAsJsonAsync(
             "/api/v1/web-services/",
-            TestData.CreateWebServiceRequest(resourceGroup.Id, name: "generated-hostname-web").Body);
+            Data.CreateWebServiceRequest(resourceGroup.Id, name: "generated-hostname-web").Body);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>();

@@ -16,34 +16,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class IsolationScopePlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private static ManifestFile[] IsolationSnapshot(string group = "scope-group") =>
-    [
-        new("scope.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: IsolationScope
-            metadata:
-              name: tenant-private
-            spec:
-              resourceGroup: {{group}}
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceGroup
-            metadata:
-              name: {{group}}
-            spec: {}
-            """)
-    ];
-
     [Fact]
     public async Task IsolationScopeCreatesAfterGroupThenNoOpsAndRejectsManualDeletion()
     {
-        await new ResourceGroupPlacementMigration().Up(Fixture.Database);
         var files = IsolationSnapshot();
         var created = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, created.Status);
-        var scope = await DbContext.IsolationScopes.Find(item => item.Name == "tenant-private").SingleAsync();
+        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "tenant-private").SingleAsync();
         var inventory = await Inventory.Find(item => item.ResourceId == scope.Id).SingleAsync();
         Assert.Equal(GitResourceMaterialization.Created, inventory.Materialization);
         var events = await BusinessEvents();
@@ -51,7 +33,7 @@ public sealed partial class DeclarativePipelineTests
         var unchanged = await Apply(files);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(scope, await DbContext.IsolationScopes.Find(item => item.Id == scope.Id).SingleAsync());
-        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(TestData.TenantId, source,
+        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(Data.TenantId, source,
             unchanged.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
         Assert.Equal(2, view.Operations!.NoOp);
@@ -73,7 +55,7 @@ public sealed partial class DeclarativePipelineTests
     {
         var files = IsolationSnapshot();
         await Apply(files);
-        var original = await DbContext.IsolationScopes.Find(item => item.Name == "tenant-private").SingleAsync();
+        var original = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "tenant-private").SingleAsync();
         await DbContext.IsolationScopes.DeleteOneAsync(item => item.Id == original.Id);
         var result = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
@@ -94,7 +76,7 @@ public sealed partial class DeclarativePipelineTests
     [Fact]
     public async Task IsolationScopeOwnershipCannotBeBypassedByParentDeletion()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("scope-group"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("scope-group"));
         var files = IsolationSnapshot();
         files = [files[0] with { Content = files[0].Content.Split("---", StringSplitOptions.None)[0] }];
         var applied = await Apply(files);
@@ -112,7 +94,7 @@ public sealed partial class DeclarativePipelineTests
     public async Task IsolationScopeCannotMoveToAnotherGroup()
     {
         await Apply(IsolationSnapshot());
-        var original = await DbContext.IsolationScopes.Find(item => item.Name == "tenant-private").SingleAsync();
+        var original = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "tenant-private").SingleAsync();
         var changed = await Apply(IsolationSnapshot("another-group"), commit: "changed-parent");
         Assert.Equal(RepositoryPipelineStatus.Blocked, changed.Status);
         Assert.Equal(original.ResourceGroupId,

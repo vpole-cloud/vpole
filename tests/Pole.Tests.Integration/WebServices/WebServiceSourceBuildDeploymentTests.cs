@@ -32,15 +32,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
+[Collection(IntegrationTestCollection.Tenant1)]
 public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     protected override void ConfigureServices(IServiceCollection services) =>
         services.AddGitProvidersFeature(new ConfigurationBuilder().Build());
 
-    private const string ConfigurationId = "507f1f77bcf86cd799439081";
-    private const string JobId = "507f1f77bcf86cd799439082";
-    private const string RepositoryId = "507f1f77bcf86cd799439083";
+    private readonly string ConfigurationId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string JobId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string RepositoryId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
     private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Fact]
@@ -86,7 +87,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             releaseDeployment.DeploymentGeneration,
             releaseDeployment.ResourceRevision)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
         var consumer = new WebServiceDeploymentConsumer(
             Services.GetRequiredService<CompleteWebServiceDeployment>(),
@@ -115,7 +116,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, completedRelease.Outcome);
         Assert.True(await Fixture.DbContext.OutboxMessages
-            .Find(item => item.EventType == "pole.web-services/v1/web-service-deployment-completed")
+            .Find(item => item.TenantId == Data.TenantId && item.EventType == "pole.web-services/v1/web-service-deployment-completed")
             .AnyAsync());
     }
 
@@ -150,7 +151,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             .Find(item => item.WebServiceId == webService.Id)
             .AnyAsync());
         Assert.False(await Fixture.DbContext.OutboxMessages
-            .Find(item => item.EventType == "pole.web-services/v1/web-service-updated")
+            .Find(item => item.TenantId == Data.TenantId && item.EventType == "pole.web-services/v1/web-service-updated")
             .AnyAsync());
     }
 
@@ -180,8 +181,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
 
     private async Task<WebService> SeedWebServiceAsync()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var allocated = TestData.SeedWebService(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var allocated = Data.SeedWebService(group.Id);
         allocated = allocated with
         {
             IsolationScopeId = group.DefaultIsolationScopeId,
@@ -192,23 +193,23 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var webService = allocated.AcceptConfigurationAwaitingArtifact(
             allocated.Spec with { Image = WebServiceImageFactory.Pending(ConfigurationId) },
             allocated.Tags, allocated.Exposure);
-        var connection = GitProviderConnectionFactory.Create(TestData.TenantId, "build-github", GitProviderKind.GitHub,
-            "installation", "account", "owner", GitProviderAccountType.User, GitProviderRepositorySelection.All,
-            TestData.UserId, GitProviderConnectionFactory.DefaultOptions);
+        var connection = GitProviderConnectionFactory.Create(Data.TenantId, "build-github", GitProviderKind.GitHub,
+            "installation-" + Data.TenantId, "account", "owner", GitProviderAccountType.User, GitProviderRepositorySelection.All,
+            Data.UserId, GitProviderConnectionFactory.DefaultOptions);
         await DbContext.GitProviderConnections.InsertOneAsync(connection);
         var now = DateTime.UtcNow;
-        await DbContext.SourceRepositories.InsertOneAsync(SourceRepositoryFactory.Create(TestData.TenantId,
+        await DbContext.SourceRepositories.InsertOneAsync(SourceRepositoryFactory.Create(Data.TenantId,
             "application", connection.Id, "application", "owner/application", "https://github.test/owner/application",
             true, "main", new(RepositoryId, now, now)));
-        var configuration = SourceBuildConfigurationFactory.Create(TestData.TenantId, "application-build", RepositoryId,
-            webService.Id, new("FROM scratch"), new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+        var configuration = SourceBuildConfigurationFactory.Create(Data.TenantId, "application-build", RepositoryId,
+            webService.Id, new("FROM scratch"), new ManualSourceBuildConfigurationOrigin(Data.UserId),
             new(ConfigurationId, now)) with
         {
             BuildGeneration = 1
         };
         await DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
-        var job = SourceBuildJobFactory.CreateManual(TestData.TenantId, ConfigurationId, RepositoryId, webService.Id,
-            "main", new string('a', 40), new(1, 1, 1), configuration.Recipe, TestData.UserId, TestData.UserEmail,
+        var job = SourceBuildJobFactory.CreateManual(Data.TenantId, ConfigurationId, RepositoryId, webService.Id,
+            "main", new string('a', 40), new(1, 1, 1), configuration.Recipe, Data.UserId, Data.UserEmail,
             new(JobId, now)) with
         {
             Execution = new ClaimedSourceBuildExecution("deployment-test", 1, now.AddMinutes(2))
@@ -255,16 +256,16 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
             TimeProvider.System);
 
-    private static SourceBuildDeploymentRequest CreateRequest(string webServiceId) =>
+    private SourceBuildDeploymentRequest CreateRequest(string webServiceId) =>
         new(
-            TestData.TenantId,
+            Data.TenantId,
             webServiceId,
             JobId,
             RepositoryId,
             new string('a', 40),
             new(ConfigurationId, 1, 1, "deployment-test", 1),
-            TestData.UserId,
-            TestData.UserEmail,
+            Data.UserId,
+            Data.UserEmail,
             new SourceBuildDeploymentImage(
                 "harbor.test",
                 "pole-test/web-services/service-1",

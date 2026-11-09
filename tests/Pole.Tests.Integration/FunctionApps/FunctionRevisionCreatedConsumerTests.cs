@@ -30,6 +30,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -41,15 +42,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         NetworkPolicyEnforcement enforcement,
         bool rotateCredentials)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "revoked-functions",
-                "revoked-functions",
+                $"revoked-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         var target = DeploymentTargetNetworkPolicyTests.Attest(
             DeploymentTargetNetworkPolicyTests.Target() with { Id = created.Placement.DeploymentTargetId },
             enforcement,
@@ -101,7 +102,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Placement(created),
             null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         });
         Assert.Equal(0, provider.Calls);
         var revision = await DbContext.FunctionRevisions
@@ -134,15 +135,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [Fact]
     public async Task Failed_kubernetes_apply_marks_revision_failed_and_redelivery_is_a_noop()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "consumer-functions",
-                "consumer-functions",
+                $"consumer-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(
             new FunctionRevisionKubernetesOperationError(
                 new FunctionRevisionKubernetesOperationRejected("Kubernetes rejected the manifest.")));
@@ -164,7 +165,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Placement(created),
             null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
 
         await consumer.HandleAsync(message);
@@ -186,15 +187,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [Fact]
     public async Task Missing_runtime_authentication_fails_closed_after_manifest_apply()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "unconfigured-runtime-functions",
-                "unconfigured-runtime-functions",
+                $"unconfigured-runtime-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(new FunctionRevisionKubernetesMutationCompleted());
         var consumer = new FunctionRevisionCreatedConsumer(
             new MongoLoadFunctionRevisionProvisioningSubject(
@@ -214,7 +215,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Placement(created),
             null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
 
         await consumer.HandleAsync(message);
@@ -230,19 +231,19 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [Fact]
     public async Task Ready_revision_redelivery_resumes_provisioner_without_reapplying_manifest()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "ready-redelivery-functions",
-                "ready-redelivery-functions",
+                $"ready-redelivery-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
         var fail = Services.GetRequiredService<FailFunctionRevision>();
         (await markReady(
-            TestData.TenantId,
+            Data.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
         var manager = new RecordingKubernetesManager(new FunctionRevisionKubernetesMutationCompleted());
@@ -265,7 +266,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Placement(created),
             null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
 
         await consumer.HandleAsync(message);
@@ -277,19 +278,19 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [Fact]
     public async Task Ready_revision_without_runtime_authentication_is_stopped_before_failure()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "ready-unconfigured-functions",
-                "ready-unconfigured-functions",
+                $"ready-unconfigured-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
         var fail = Services.GetRequiredService<FailFunctionRevision>();
         (await markReady(
-            TestData.TenantId,
+            Data.TenantId,
             created.FunctionAppId,
             created.RevisionId)).RequireLifecycleSuccess();
         var manager = new RecordingKubernetesManager(new FunctionRevisionKubernetesMutationCompleted());
@@ -311,7 +312,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Placement(created),
             null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
 
         await consumer.HandleAsync(message);
@@ -328,15 +329,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [InlineData(true)]
     public async Task Runtime_dependency_restoration_replays_same_pending_revision(bool secretProjectionPending)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "restored-gateway-functions",
-                "restored-gateway-functions",
+                $"restored-gateway-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         FunctionRevisionKubernetesOperationError dependencyFailure = secretProjectionPending
             ? new FunctionRevisionSecretsUnavailable("Secret projection is not ready.")
             : new FunctionRevisionGatewaySourceUnavailable("The Function gateway source is not configured.");
@@ -361,7 +362,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             Placement(created),
             null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
 
         await consumer.HandleAsync(createdEvent);
@@ -396,15 +397,15 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
     [InlineData(FunctionAppDesiredState.Prepared)]
     public async Task Events_do_not_replay_stale_generation_or_inert_app(FunctionAppDesiredState inertState)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = (await Mediator.Send(new CreateFunctionAppRequest(
             new CreateFunctionAppRequestBody(
                 "stale-gateway-functions",
-                "stale-gateway-functions",
+                $"stale-gateway-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []),
-            TestData.TenantId))).RequireSuccess();
+            Data.TenantId))).RequireSuccess();
         var manager = new RecordingKubernetesManager(new FunctionRevisionKubernetesMutationCompleted());
         var loadApp = Services.GetRequiredService<LoadFunctionAppById>();
         var consumer = new FunctionRevisionCreatedConsumer(
@@ -426,7 +427,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
         await consumer.HandleAsync(new FunctionRevisionCreatedEvent(
             created.FunctionAppId, created.RevisionId, created.RevisionNumber, Placement(created), null!)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         });
         await consumer.HandleAppliedAsync(AppliedEvent(created) with
         {
@@ -463,11 +464,11 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.Placement.RuntimeCellId,
             created.Placement.DeploymentTargetId);
 
-    private static LoadExactResourceDeploymentRuntimePlacement AppliedPlacement(
+    private LoadExactResourceDeploymentRuntimePlacement AppliedPlacement(
         CreateFunctionAppResponse created) =>
 (request, ct) =>
             Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                request.TenantId == TestData.TenantId &&
+                request.TenantId == Data.TenantId &&
                 request.ResourceType == FunctionResourceDeployment.ResourceType &&
                 request.ResourceId == created.FunctionAppId &&
                 request.DeploymentId == created.Placement.DeploymentId
@@ -484,7 +485,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
                         "test-scope")
                     : null);
 
-    private static ResourceDeploymentAppliedEvent AppliedEvent(
+    private ResourceDeploymentAppliedEvent AppliedEvent(
         CreateFunctionAppResponse created) =>
         new(
             created.Placement.DeploymentId,
@@ -493,7 +494,7 @@ public sealed class FunctionRevisionCreatedConsumerTests(MongoReplicaSetFixture 
             created.Placement.RuntimeCellId,
             1)
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         };
 
     private sealed class FixedPlacementResolver : IFunctionResourcePlacementResolver

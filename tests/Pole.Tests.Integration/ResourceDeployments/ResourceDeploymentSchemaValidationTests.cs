@@ -8,24 +8,24 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global)]
 public sealed class ResourceDeploymentSchemaValidationTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
     private const string CollectionName = "ResourceDeployments";
     private static readonly DateTime CreatedAtUtc =
         new(2026, 8, 11, 12, 0, 0, DateTimeKind.Utc);
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Migration_creates_strict_collection_for_multi_target_snapshot()
     {
-        await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
+        await new ResourceDeploymentSchemaValidationMigration().Up(Fixture.Database);
         var contract = new MongoDocumentContractTester<ResourceDeployment>(
-            fixture.Database,
+            Fixture.Database,
             CollectionName);
 
         await contract.AssertStrictErrorValidationAsync();
@@ -41,10 +41,10 @@ public sealed class ResourceDeploymentSchemaValidationTests(MongoReplicaSetFixtu
     [Fact]
     public async Task Migration_updates_existing_collection_with_strict_validation()
     {
-        await fixture.Database.CreateCollectionAsync(CollectionName);
-        await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
+        await Fixture.Database.CreateCollectionAsync(CollectionName);
+        await new ResourceDeploymentSchemaValidationMigration().Up(Fixture.Database);
         var contract = new MongoDocumentContractTester<ResourceDeployment>(
-            fixture.Database,
+            Fixture.Database,
             CollectionName);
 
         await contract.AssertStrictErrorValidationAsync();
@@ -56,8 +56,8 @@ public sealed class ResourceDeploymentSchemaValidationTests(MongoReplicaSetFixtu
     [Fact]
     public async Task RecoveryMigration_indexes_state_update_time_and_identity()
     {
-        await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
-        var deployments = fixture.Database
+        await new ResourceDeploymentRecoveryIndexMigration().Up(Fixture.Database);
+        var deployments = Fixture.Database
             .GetCollection<BsonDocument>(CollectionName);
         var indexes = await (await deployments.Indexes.ListAsync()).ToListAsync();
 

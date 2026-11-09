@@ -28,6 +28,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -37,8 +38,8 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Deletion_RejectsActiveBuilds_ThenCleansOnlyOwnConfigurationAndRetainsHistory()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(group.Id))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(Data, group.Id))).AssertSuccess();
         var configuration = Configuration(service.WebServiceId);
         await PersistConfigurationAsync(configuration);
         var other = configuration with
@@ -54,10 +55,10 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         var before = await Fixture.Database.WebServices()
             .Find(x => x.Id == service.WebServiceId)
             .SingleAsync();
-        var outboxBefore = await DbContext.OutboxMessages.CountDocumentsAsync(x => true);
+        var outboxBefore = await DbContext.OutboxMessages.CountDocumentsAsync(item => item.TenantId == Data.TenantId);
         var outcome = (await Mediator.Send(new DeleteWebServiceRequest(
             service.WebServiceId,
-            TestData.TenantId))).AssertSuccess<DeleteWebServiceOutcome>();
+            Data.TenantId))).AssertSuccess<DeleteWebServiceOutcome>();
         var rejection = Assert.IsType<DeleteWebServiceError>(outcome.Value);
         Assert.IsType<SourceBuildWebServiceHasActiveJobs>(rejection.Value);
         var unchanged = await Fixture.Database.WebServices()
@@ -65,13 +66,13 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.IsType<AwaitingFirstArtifactWebServiceLifecycle>(unchanged.Lifecycle);
         Assert.Equal(before.Revision, unchanged.Revision);
-        Assert.Equal(outboxBefore, await DbContext.OutboxMessages.CountDocumentsAsync(x => true));
+        Assert.Equal(outboxBefore, await DbContext.OutboxMessages.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
 
         var completed = job.Fail(SourceBuildPhase.Queued, "test", "finished", DateTime.UtcNow);
         await DbContext.SourceBuildJobs.ReplaceOneAsync(x => x.Id == job.Id, completed);
         (await Mediator.Send(new DeleteWebServiceRequest(
             service.WebServiceId,
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
 
         // Configuration remains until final deletion, but the target already rejects admission.
         var deniedJob = Job(configuration) with { InputVersion = new(1, 1, 2) };
@@ -79,7 +80,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
         Assert.IsType<SourceBuildWebServiceNotFound>(denied.Value);
         Assert.Equal(
             1,
-            await DbContext.SourceBuildJobs.CountDocumentsAsync(x => x.TenantId == TestData.TenantId));
+            await DbContext.SourceBuildJobs.CountDocumentsAsync(x => x.TenantId == Data.TenantId));
         var placement = await DbContext.ResourceDeployments
             .Find(x => x.ResourceId == service.WebServiceId)
             .SingleAsync();
@@ -100,31 +101,33 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
                 now.AddSeconds(1));
         await DbContext.ResourceDeployments.ReplaceOneAsync(x => x.Id == placement.Id, deleted);
         (await Services.GetRequiredService<FinalizeWebServiceDeletion>()(
-            TestData.TenantId,
+            Data.TenantId,
             service.WebServiceId)).AssertSuccess();
 
         var envelope = await DbContext.OutboxMessages
-            .Find(x => x.EventType == "pole.web-services/v1/web-service-deleted")
+            .Find(x => x.TenantId == Data.TenantId && x.EventType == "pole.web-services/v1/web-service-deleted")
             .SingleAsync();
         var message = JsonSerializer.Deserialize<WebServiceDeletedEvent>(
             envelope.PayloadJson,
             EventExtensions.SerializerOptions)!;
-        Assert.Equal(TestData.TenantId, message.EventCore.TenantId);
+        Assert.Equal(Data.TenantId, message.EventCore.TenantId);
         var consumer = new CleanupSourceBuildConfigurationConsumer(
             Services.GetRequiredService<CleanupSourceBuildConfigurations>());
         await consumer.HandleAsync(message);
         await consumer.HandleAsync(message);
 
+        Assert.False(await DbContext.SourceBuildConfigurations
+            .Find(item => item.TenantId == configuration.TenantId && item.Id == configuration.Id).AnyAsync());
         Assert.Equal(
             other.Id,
             (await DbContext.SourceBuildConfigurations
-                .Find(FilterDefinition<SourceBuildConfiguration>.Empty)
+                .Find(item => item.TenantId == other.TenantId && item.Id == other.Id)
                 .SingleAsync()).Id);
         Assert.Equal(
             job.Id,
             (await Services.GetRequiredService<LoadSourceBuildJobPage>()(
                 new(
-                    TestData.TenantId,
+                    Data.TenantId,
                     configuration.Id,
                     service.WebServiceId,
                     1,
@@ -138,8 +141,8 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Admission_InvalidatesStaleDeletionSnapshotWithoutChangingDesiredRevision()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(group.Id))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(Data, group.Id))).AssertSuccess();
         var configuration = Configuration(created.WebServiceId);
         await PersistConfigurationAsync(configuration);
         var snapshot = await Fixture.Database.WebServices()
@@ -167,15 +170,15 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task ConcurrentQueueAndDeletion_NeverCommitBoth()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(group.Id))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(Data, group.Id))).AssertSuccess();
         var configuration = Configuration(service.WebServiceId);
         await PersistConfigurationAsync(configuration);
         var job = Job(configuration);
         var queue = Services.GetRequiredService<QueueSourceBuildJob>()(job, Requested(job));
         var deletion = Mediator.Send(new DeleteWebServiceRequest(
             service.WebServiceId,
-            TestData.TenantId));
+            Data.TenantId));
         await Task.WhenAll(queue, deletion);
         var stored = await Fixture.Database.WebServices()
             .Find(x => x.Id == service.WebServiceId)
@@ -187,22 +190,22 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
 
     private async Task PersistConfigurationAsync(SourceBuildConfiguration configuration)
     {
-        await SourceBuildTestData.SeedRepositoryAsync(DbContext, configuration);
+        await SourceBuildTestData.SeedRepositoryAsync(DbContext, configuration, Data.UserId);
         Assert.IsType<SourceBuildConfiguration>((await Services.GetRequiredService<CreateSourceBuildConfiguration>()(
             new(configuration, 1))).Value);
     }
 
-    private static SourceBuildConfiguration Configuration(string serviceId) =>
+    private SourceBuildConfiguration Configuration(string serviceId) =>
         SourceBuildConfigurationFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             "application-build",
             ObjectId.GenerateNewId().ToString(),
             serviceId,
             new("FROM scratch"),
-            new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+            new ManualSourceBuildConfigurationOrigin(Data.UserId),
             SourceBuildConfigurationFactory.DefaultOptions);
 
-    private static SourceBuildJob Job(SourceBuildConfiguration configuration) =>
+    private SourceBuildJob Job(SourceBuildConfiguration configuration) =>
         SourceBuildJobFactory.CreateManual(
             configuration.TenantId,
             configuration.Id,
@@ -212,7 +215,7 @@ public sealed class SourceBuildDeletionTests(MongoReplicaSetFixture fixture)
             "abc123",
             new SourceBuildInputVersion(1, 1, 1),
             configuration.Recipe,
-            TestData.UserId,
+            Data.UserId,
             null,
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
 

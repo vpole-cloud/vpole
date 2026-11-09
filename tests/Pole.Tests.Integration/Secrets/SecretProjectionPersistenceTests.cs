@@ -18,12 +18,19 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SecretProjectionPersistenceTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Recovery_enumeration_is_bounded_and_retains_due_deleted_tombstones()
     {
+        // Candidate recovery scans every tenant; its page boundary needs a private database.
+        await using var database = new TestDatabaseScope(Fixture.Client.GetDatabase(
+            "pole-secret-projection-recovery-" + ObjectId.GenerateNewId()));
+        await database.PrepareAsync();
+        await using var provider = TestServiceProviderFactory.Create(database);
+        await using var scope = provider.CreateAsyncScope();
         var tenant = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
         SecretProjection Projection(string secretId, string deploymentId) => SecretProjectionFactory.Create(
@@ -36,8 +43,8 @@ public sealed class SecretProjectionPersistenceTests(MongoReplicaSetFixture fixt
         var due = Projection(ObjectId.GenerateNewId().ToString(), "due").Deleted() with { LastAttemptAtUtc = now.AddHours(-1) };
         rows.Add(recent);
         rows.Add(due);
-        await Fixture.Database.GetCollection<SecretProjection>("SecretProjections").InsertManyAsync(rows);
-        var load = Services.GetRequiredService<LoadSecretProjectionCandidates>();
+        await database.Database.GetCollection<SecretProjection>("SecretProjections").InsertManyAsync(rows);
+        var load = scope.ServiceProvider.GetRequiredService<LoadSecretProjectionCandidates>();
         var first = await load(null, now.AddMinutes(-30), default);
         Assert.Equal(128, first.Count);
         var second = await load(first[^1].SecretId, now.AddMinutes(-30), default);

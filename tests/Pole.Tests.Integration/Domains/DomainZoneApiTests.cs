@@ -18,17 +18,18 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture)
 {
-    private const string OtherTenantId = "507f1f77bcf86cd799439099";
+    private readonly string OtherTenantId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
 
     [Fact]
     public async Task Binding_usage_is_paged_tenant_scoped_and_resolves_exact_owner_and_pending_target_for_viewer()
     {
         var zone = await CreateZoneAsync("owners");
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("domain-owners"));
-        using var create = await Client.PostAsJsonAsync("/api/v1/web-services", TestData.CreateWebServiceRequest(group.Id).Body);
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("domain-owners"));
+        using var create = await Client.PostAsJsonAsync("/api/v1/web-services", Data.CreateWebServiceRequest(group.Id).Body);
         Assert.Equal(HttpStatusCode.Accepted, create.StatusCode);
         var service = (await create.Content.ReadFromJsonAsync<CreateWebServiceResponse>())!;
         var placement = Assert.Single(service.Deployments);
@@ -162,7 +163,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
             .ReadFromJsonAsync<IReadOnlyList<TenantDomainZoneSnapshot>>();
         Assert.NotNull(zones);
         var zone = Assert.Single(zones);
-        Assert.Equal(TestData.TenantId, zone.TenantId);
+        Assert.Equal(Data.TenantId, zone.TenantId);
         Assert.Equal("company.apps.test.local", zone.Domain);
     }
 
@@ -181,7 +182,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
     public async Task Delete_RejectsGeneratedZoneAndKeepsIt()
     {
         var zone = TenantDomainZoneFactory.CreateGenerated(
-            TestData.TenantId,
+            Data.TenantId,
             TestData.DefaultDeploymentTargetId,
             $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}delete",
             DnsName.Create("apps.test.local"),
@@ -210,7 +211,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
     {
         var zone = await CreateZoneAsync("delete-bound");
         var binding = HostnameBindingFactory.CreateCustom(
-            TestData.TenantId,
+            Data.TenantId,
             zone.Id,
             TestData.DefaultDeploymentTargetId,
             ResourceTypeId.Create("pole/web-service"),
@@ -319,7 +320,7 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var zone = await response.Content.ReadFromJsonAsync<TenantDomainZoneSnapshot>();
         Assert.NotNull(zone);
-        Assert.Equal(TestData.TenantId, zone.TenantId);
+        Assert.Equal(Data.TenantId, zone.TenantId);
         Assert.Equal(TestData.DefaultDeploymentTargetId, zone.DeploymentTargetId);
         Assert.Equal("company.apps.test.local", zone.Domain);
         Assert.Equal(
@@ -519,18 +520,18 @@ public sealed class DomainZoneApiTests(MongoReplicaSetFixture fixture)
     private async Task SetCurrentUserRoleAsync(TenantRole role)
     {
         var tenant = await Fixture.DbContext.Tenants
-            .Find(item => item.Id == TestData.TenantId)
+            .Find(item => item.Id == Data.TenantId)
             .SingleAsync();
         var updated = tenant with
         {
             Members = tenant.Members
-                .Select(member => member.UserId == TestData.UserId
+                .Select(member => member.UserId == Data.UserId
                     ? member with { Role = role }
                     : member)
                 .ToImmutableList()
         };
         await Fixture.DbContext.Tenants.ReplaceOneAsync(
-            item => item.Id == TestData.TenantId,
+            item => item.Id == Data.TenantId,
             updated);
     }
 }

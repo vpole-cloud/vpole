@@ -17,8 +17,9 @@ using Pole.Workloads;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
 {
     private const string SecondDeploymentTargetId = "507f1f77bcf86cd799439097";
 
@@ -345,7 +346,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             new GetAvailableStorageProfilesRequest(
                 "third-party/widget",
                 SecondDeploymentTargetId,
-                TestData.TenantId));
+                Data.TenantId));
         var response = Assert.IsAssignableFrom<IReadOnlyCollection<StorageProfileDto>>(responseOutcome.Value);
 
         Assert.Equal([bothTargetsId], response.Select(profile => profile.Id).ToArray());
@@ -381,7 +382,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(["bulk", "fast", "standard"], classes.Select(item => item.Name).ToArray());
         Assert.Equal("pv-standard-1", Assert.Single(volumes).Name);
         Assert.Equal(
-            TestData.TenantId,
+            Data.TenantId,
             Assert.Single(claims).Owner.TenantId);
         Assert.Equal(
             Enumerable.Repeat(TestData.DefaultDeploymentTargetId, 3),
@@ -435,7 +436,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             new StorageProfileResolutionRequest(
                 profile.Id,
                 SecondDeploymentTargetId,
-                TestData.TenantId,
+                Data.TenantId,
                 ResourceTypeId.Create("third-party/widget"),
                 SizeGb: 5));
         var resolved = Assert.IsType<ResolvedStorageProfile>(resolvedOutcome.Value);
@@ -459,7 +460,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             new StorageProfileResolutionRequest(
                 TestData.DefaultStorageProfileId,
                 SecondDeploymentTargetId,
-                TestData.TenantId,
+                Data.TenantId,
                 ResourceTypeId.Create("third-party/widget"),
                 SizeGb: 5));
 
@@ -487,7 +488,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
         var result = await resolve(new StorageProfileResolutionRequest(
             profileId,
             TestData.DefaultDeploymentTargetId,
-            TestData.TenantId,
+            Data.TenantId,
             ResourceTypeId.Create("third-party/widget"),
             SizeGb: 5));
 
@@ -504,7 +505,7 @@ public sealed class StorageProfileIntegrationTests(MongoReplicaSetFixture fixtur
             new StorageProfileResolutionRequest(
                 "not-an-object-id",
                 TestData.DefaultDeploymentTargetId,
-                TestData.TenantId,
+                Data.TenantId,
                 ResourceTypeId.Create("third-party/widget"),
                 SizeGb: 5)));
     }

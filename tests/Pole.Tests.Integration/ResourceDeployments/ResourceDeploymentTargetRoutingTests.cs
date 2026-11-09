@@ -21,10 +21,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global)]
 public sealed class ResourceDeploymentTargetRoutingTests(
-    MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
     private ServiceProvider? serviceProvider;
     private IServiceScope? serviceScope;
@@ -41,18 +40,18 @@ public sealed class ResourceDeploymentTargetRoutingTests(
     private const string TargetBId = "507f1f77bcf86cd799439067";
     private const string DeploymentId = "507f1f77bcf86cd799439068";
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        serviceProvider = TestServiceProviderFactory.Create(fixture);
+        await base.InitializeAsync();
+        serviceProvider = TestServiceProviderFactory.Create(Fixture);
         serviceScope = serviceProvider.CreateScope();
     }
 
-    public Task DisposeAsync()
+    public override Task DisposeAsync()
     {
         serviceScope?.Dispose();
         serviceProvider?.Dispose();
-        return Task.CompletedTask;
+        return base.DisposeAsync();
     }
 
     [Theory]
@@ -105,8 +104,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 Id = DeploymentId,
                 CreatedAtUtc = now
             });
-        await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
-        await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        await Fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
 
         using var targetA = CreateKubernetes("target-a.test");
         using var targetB = CreateKubernetes("target-b.test");
@@ -156,7 +155,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         if (!allowed)
         {
             Assert.Empty(provider.RequestedTargetIds);
-            var blocked = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId)
+            var blocked = await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId)
                 .SingleAsync();
             Assert.Equal(
                 !targetEnabled
@@ -177,7 +176,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         Assert.Equal(0, provider.DefaultRequestCount);
         Assert.Same(targetB, adapter.Kubernetes);
         Assert.Equal(TargetBId, adapter.DeploymentTargetId);
-        var saved = await fixture.DbContext.ResourceDeployments
+        var saved = await Fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
             .SingleAsync();
         Assert.IsType<AppliedResourceDeploymentState>(saved.State);
@@ -221,8 +220,8 @@ public sealed class ResourceDeploymentTargetRoutingTests(
                 Id = DeploymentId,
                 CreatedAtUtc = now.AddSeconds(1)
             });
-        await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
-        await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        await Fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
 
         using var kubernetes = CreateKubernetes("target-b.test");
         var provider = new RecordingTwoTargetProvider(
@@ -259,7 +258,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
             generation: 1,
             ResourceDeploymentOperation.Apply);
 
-        var saved = await fixture.DbContext.ResourceDeployments
+        var saved = await Fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
             .SingleAsync();
         var failed = Assert.IsType<FailedResourceDeploymentState>(saved.State);
@@ -268,7 +267,7 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         Assert.Equal([TargetBId], provider.RequestedTargetIds);
         Assert.Equal(
             1L,
-            await fixture.DbContext.CountOutboxMessagesAsync(
+            await Fixture.DbContext.CountAllOutboxMessagesAsync(
                 "pole.resource-deployments/v1/resource-deployment-failed"));
     }
 
@@ -295,21 +294,21 @@ public sealed class ResourceDeploymentTargetRoutingTests(
         ResourceDeploymentSettings settings)
     {
         var completion = new ResourceDeploymentCompletionPersistence(
-            fixture.DbContext.ResourceDeployments,
-            (operation, cancellationToken) => fixture.DbContext
+            Fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => Fixture.DbContext
                 .RunOutcomeInTransactionAsync(
                     operation,
                     cancellationToken: cancellationToken),
-            (session, writes, cancellationToken) => fixture.StoreOutboxWrites(
+            (session, writes, cancellationToken) => Fixture.StoreOutboxWrites(
                 session,
                 writes,
                 cancellationToken));
         var claim = new ClaimResourceDeploymentOperation(
-            fixture.DbContext.ResourceDeployments,
+            Fixture.DbContext.ResourceDeployments,
             settings,
             TimeProvider.System,
-            new MongoRunTransaction(fixture.Client),
-            fixture.StoreOutboxWrites);
+            new MongoRunTransaction(Fixture.Client),
+            Fixture.StoreOutboxWrites);
         var success = new PersistResourceDeploymentSuccessOperation(
             completion,
             TimeProvider.System);

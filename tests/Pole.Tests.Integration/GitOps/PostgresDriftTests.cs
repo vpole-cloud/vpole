@@ -43,102 +43,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private IMongoCollection<PostgresCluster> PostgresResources =>
-        Fixture.Database.GetCollection<PostgresCluster>("Postgres");
-
-    private async Task SeedPostgresPlanningCatalog(PostgresDeploymentMode mode = PostgresDeploymentMode.StatefulSet)
-    {
-        Services.GetRequiredService<PostgresSettings>().DefaultDeploymentMode = mode;
-        await ((IMigration)new PostgresNameIndexesMigration()).Up(Fixture.Database, default);
-        var computes = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
-        var compute = await computes.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
-        compute = compute with { AllowedResourceTypes = compute.AllowedResourceTypes.Add("pole/postgresql") };
-        await computes.ReplaceOneAsync(item => item.Id == compute.Id, compute);
-        await Fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
-            item => item.Id == $"{compute.Id}/1", ComputeProfileRevisionFactory.Create(compute),
-            new ReplaceOptions { IsUpsert = true });
-        var storage = (await DbContext.StorageProfiles.Find(item => item.Id == TestData.DefaultStorageProfileId)
-            .SingleAsync()) with
-        { TechnicalName = "postgres-storage", AllowedResourceTypes = ["pole/postgresql"] };
-        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, storage);
-        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
-            .InsertOneAsync(StorageProfileRevisionFactory.Create(storage));
-    }
-
-    private static ManifestFile[] PostgresSnapshot(int version = 16, string username = "application", int size = 4,
-        int instances = 1, string? scope = "private-data", long storageRevision = 1) =>
-    [
-        new("postgres.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: PostgresCluster
-            metadata:
-              name: database
-            spec:
-              resourceGroup: postgres-group
-              placement:
-                deploymentTarget: lab
-                computeProfile: { name: small, revision: 1 }
-                {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              storage:
-                sizeGb: {{size}}
-                profile: { name: postgres-storage, revision: {{storageRevision}} }
-              version: {{version}}
-              instances: {{instances}}
-              username: {{username}}
-              bootstrapPassword: { secret: database-auth, key: password }
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: SecretBinding
-            metadata:
-              name: database-bootstrap
-            spec:
-              secret: database-auth
-              consumer: {kind: PostgresCluster, name: database}
-              usage: Bootstrap
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: Secret
-            metadata:
-              name: database-auth
-            spec:
-              resourceGroup: postgres-group
-              {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              keys: [password]
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: IsolationScope
-            metadata:
-              name: private-data
-            spec:
-              resourceGroup: postgres-group
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceGroup
-            metadata:
-              name: postgres-group
-            spec:
-              description: PostgreSQL group
-            """)
-    ];
-
-    private async Task<PostgresCluster> InitializePostgres(ManifestFile[]? files = null)
-    {
-        files ??= PostgresSnapshot();
-        var blocked = await Apply(files);
-        Assert.Equal(RepositoryPipelineStatus.Blocked, blocked.Status);
-        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Empty).SingleAsync();
-        Assert.True(prepared.IsPrepared);
-        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == prepared.Id).SingleAsync();
-        Assert.IsType<PreparedResourceDeploymentState>(placement.State);
-        Assert.Equal(1, await Secrets.CountDocumentsAsync(Builders<Secret>.Filter.Empty));
-        await Supply("initial-private-value");
-        var applied = await Apply(files);
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, applied.Status);
-        return await PostgresResources.Find(item => item.Id == prepared.Id).SingleAsync();
-    }
-
     [Fact]
     public async Task PostgresBootstrapSameCommitRepairsCapacityPolicyThenNoOpPreservesBusinessState()
     {
@@ -149,7 +56,7 @@ public sealed partial class DeclarativePipelineTests
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == resource.Id).SingleAsync();
         Assert.IsNotType<PreparedResourceDeploymentState>(placement.State);
         Assert.Equal(1, placement.ResolvedPlacement.Storage!.StorageProfileRevision);
-        var scope = await DbContext.IsolationScopes.Find(item => item.Name == "private-data").SingleAsync();
+        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "private-data").SingleAsync();
         Assert.Equal(scope.Id, placement.IsolationScopeId);
         await DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == placement.Id,
             Builders<ResourceDeployment>.Update.Set(item => item.FixedReplicas, 2).Inc(item => item.Revision, 1));
@@ -161,7 +68,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(1, (await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync())
             .FixedReplicas);
         var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            TestData.TenantId, source, repairedRun.Context!.RunId, 1, 20, default))!.Items;
+            Data.TenantId, source, repairedRun.Context!.RunId, 1, 20, default))!.Items;
         var configure = operations.Single(item => item.Kind == "PostgresCluster" &&
             item.Phase == DeclarationPhase.Configure).Plan!;
         Assert.Equal(GitPlannedAction.Update, configure.Action);
@@ -175,7 +82,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(credential.CurrentVersion, (await Secrets.Find(item => item.Id == credential.Id)
             .SingleAsync()).CurrentVersion);
         Assert.Equal(events, await BusinessEvents());
-        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(TestData.TenantId, source,
+        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(Data.TenantId, source,
             stableRun.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 6, 0, 0, null), view.Operations);
@@ -193,31 +100,6 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(RepositoryPipelineStatus.Blocked, run.Status);
         Assert.Equal(0, await Secrets.CountDocumentsAsync(item => item.Id == bootstrap.CredentialId));
         Assert.Equal(resource.Revision, (await PostgresResources.Find(item => item.Id == resource.Id)
-            .SingleAsync()).Revision);
-        Assert.Equal(events, await BusinessEvents());
-    }
-
-    [Theory]
-    [InlineData("version")]
-    [InlineData("username")]
-    [InlineData("storageRevision")]
-    [InlineData("scope")]
-    public async Task PostgresImmutableChangesBlockWithoutTouchingCredentials(string field)
-    {
-        await SeedPostgresPlanningCatalog();
-        var original = await InitializePostgres();
-        var storage = await DbContext.StorageProfiles.Find(item => item.Id == TestData.DefaultStorageProfileId)
-            .SingleAsync();
-        var updated = storage with { Revision = 2 };
-        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, updated);
-        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
-            .InsertOneAsync(StorageProfileRevisionFactory.Create(updated));
-        var events = await BusinessEvents();
-        var result = await Apply(PostgresSnapshot(version: field == "version" ? 17 : 16,
-            username: field == "username" ? "replacement" : "application",
-            scope: field == "scope" ? null : "private-data", storageRevision: field == "storageRevision" ? 2 : 1));
-        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(original.Revision, (await PostgresResources.Find(item => item.Id == original.Id)
             .SingleAsync()).Revision);
         Assert.Equal(events, await BusinessEvents());
     }
@@ -289,7 +171,7 @@ public sealed partial class DeclarativePipelineTests
         await PostgresResources.DeleteOneAsync(item => item.Id == original.Id);
         var result = await Apply(PostgresSnapshot());
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Empty));
+        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -309,8 +191,8 @@ public sealed partial class DeclarativePipelineTests
                 Builders<ResourceDeployment>.Update.Set(item => item.FixedReplicas, 2).Inc(item => item.Revision, 1),
                 cancellationToken: ct);
         });
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customMutations: mutations)
-            .SubmitAsync(new(TestData.TenantId, source), PostgresSnapshot());
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations)
+            .SubmitAsync(new(Data.TenantId, source), PostgresSnapshot());
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.Equal(1, (await DbContext.ResourceDeployments.Find(item => item.ResourceId == original.Id)
@@ -337,16 +219,16 @@ public sealed partial class DeclarativePipelineTests
         var providers = Services.GetServices<IDeclarativeResourceProvider>();
         var registry = new DeclarativeProviderRegistry(providers.Select(item =>
             item.Kind == "PostgresCluster" ? failing : item));
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customProviders: registry)
-            .SubmitAsync(new(TestData.TenantId, source), PostgresSnapshot());
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
+            .SubmitAsync(new(Data.TenantId, source), PostgresSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Empty));
+        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(item =>
-            item.ResourceType == "pole/postgresql"));
+            item.TenantId == Data.TenantId && item.ResourceType == "pole/postgresql"));
         Assert.Equal(0, await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
-            item.DisplayName == "database"));
-        var owned = await Inventory.Find(item => item.Kind == "PostgresCluster").SingleAsync();
+            item.TenantId == Data.TenantId && item.DisplayName == "database"));
+        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "PostgresCluster").SingleAsync();
         Assert.Equal(GitResourceMaterialization.Allocated, owned.Materialization);
         Assert.Null(owned.Projections.Applied);
     }
@@ -356,7 +238,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedPostgresPlanningCatalog(PostgresDeploymentMode.Operator);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(PostgresSnapshot())).Status);
-        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Empty).SingleAsync();
+        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await Supply("initial-private-value");
         var configuredRun = await Apply(PostgresSnapshot(size: 6, instances: 2));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, configuredRun.Status);
@@ -394,8 +276,8 @@ public sealed partial class DeclarativePipelineTests
         { Content = item.Content.Replace("usage: Bootstrap", "usage: Runtime", StringComparison.Ordinal) }).ToArray();
         var result = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
-        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Empty));
-        Assert.Equal(0, await Secrets.CountDocumentsAsync(Builders<Secret>.Filter.Empty));
+        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(0, await Secrets.CountDocumentsAsync(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -403,7 +285,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedPostgresPlanningCatalog();
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(PostgresSnapshot())).Status);
-        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Empty).SingleAsync();
+        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var bootstrap = Assert.IsType<PreparedPostgresProvisioning>(prepared.Provisioning).Bootstrap;
         await Supply("initial-private-value");
         var original = Services.GetRequiredService<RequestResourceDeploymentSetApply>();
@@ -424,8 +306,8 @@ public sealed partial class DeclarativePipelineTests
         var registry = new DeclarativeProviderRegistry(providers.Select(item =>
             item.Kind == "PostgresCluster" ? failing : item));
         var events = await BusinessEvents();
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customProviders: registry)
-            .SubmitAsync(new(TestData.TenantId, source), PostgresSnapshot());
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
+            .SubmitAsync(new(Data.TenantId, source), PostgresSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
         Assert.Equal(0, await Secrets.CountDocumentsAsync(item => item.Id == bootstrap.CredentialId));
@@ -436,5 +318,35 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(PostgresSnapshot())).Status);
         Assert.Equal(1, await Secrets.CountDocumentsAsync(item => item.Id == bootstrap.CredentialId));
+    }
+}
+
+
+[Collection(IntegrationTestCollection.Global)]
+public sealed class PostgresDriftGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+{
+    [Theory]
+    [InlineData("version")]
+    [InlineData("username")]
+    [InlineData("storageRevision")]
+    [InlineData("scope")]
+    public async Task PostgresImmutableChangesBlockWithoutTouchingCredentials(string field)
+    {
+        await SeedPostgresPlanningCatalog();
+        var original = await InitializePostgres();
+        var storage = await DbContext.StorageProfiles.Find(item => item.Id == NamedCatalogTestData.PostgresStorageProfileId)
+            .SingleAsync();
+        var updated = storage with { Revision = 2 };
+        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, updated);
+        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
+            .InsertOneAsync(StorageProfileRevisionFactory.Create(updated));
+        var events = await BusinessEvents();
+        var result = await Apply(PostgresSnapshot(version: field == "version" ? 17 : 16,
+            username: field == "username" ? "replacement" : "application",
+            scope: field == "scope" ? null : "private-data", storageRevision: field == "storageRevision" ? 2 : 1));
+        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
+        Assert.Equal(original.Revision, (await PostgresResources.Find(item => item.Id == original.Id)
+            .SingleAsync()).Revision);
+        Assert.Equal(events, await BusinessEvents());
     }
 }

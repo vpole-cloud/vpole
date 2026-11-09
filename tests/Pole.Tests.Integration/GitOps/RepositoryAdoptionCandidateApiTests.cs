@@ -16,14 +16,15 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class RepositorySourceApiTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class RepositoryAdoptionCandidateApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Candidate_search_resolves_manual_identity_and_reports_deleting_or_owned_resources()
     {
         var source = await Create(files: [GroupManifest("owned")]);
         await Run(source.Id);
-        var manual = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("manual"));
+        var manual = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("manual"));
         var candidate = Assert.Single((await Candidates(source.Id, "kind=ResourceGroup&name=manual")).Items);
         Assert.Equal(manual.Id, candidate.ResourceId);
         Assert.True(candidate.Selectable);
@@ -61,9 +62,9 @@ public sealed partial class RepositorySourceApiTests
         await Run(source.Id);
         using var scope = ApiServices.CreateScope();
         var secrets = scope.ServiceProvider.GetRequiredService<IMongoCollection<Secret>>();
-        var secret = await secrets.Find(_ => true).SingleAsync();
+        var secret = await secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
-        var placement = await Fixture.DbContext.ResourceDeployments.Find(_ => true).SingleAsync();
+        var placement = await Fixture.DbContext.ResourceDeployments.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         await secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
         {
             Purpose = "private-purpose-not-for-candidates",
@@ -89,9 +90,9 @@ public sealed partial class RepositorySourceApiTests
         foreach (var field in new[] { "private-purpose-not-for-candidates", "keyMappings", "suppliedKeys",
                      "currentVersion", "encrypted", "specJson", "dockerfile" })
             Assert.DoesNotContain(field, json, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(Assert.Single((await secrets.Find(_ => true).SingleAsync()).Bindings).DeclarationName);
+        Assert.Null(Assert.Single((await secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Bindings).DeclarationName);
         Assert.False(await scope.ServiceProvider.GetRequiredService<IMongoCollection<ManagedDeclaration>>()
-            .Find(item => item.Kind == "SecretBinding" && item.ResourceId == binding.Id).AnyAsync());
+            .Find(item => item.TenantId == Data.TenantId && item.Kind == "SecretBinding" && item.ResourceId == binding.Id).AnyAsync());
     }
 
     [Fact]
@@ -101,7 +102,7 @@ public sealed partial class RepositorySourceApiTests
         await Run(source.Id);
         using var scope = ApiServices.CreateScope();
         var services = scope.ServiceProvider.GetRequiredService<IMongoCollection<WebService>>();
-        var original = await services.Find(_ => true).SingleAsync();
+        var original = await services.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         await services.DeleteOneAsync(item => item.Id == original.Id);
         await services.InsertOneAsync(original with { Id = ObjectId.GenerateNewId().ToString() });
         Assert.Empty((await Candidates(source.Id,
@@ -116,7 +117,7 @@ public sealed partial class RepositorySourceApiTests
         await Run(source.Id);
         using var scope = ApiServices.CreateScope();
         var secrets = scope.ServiceProvider.GetRequiredService<IMongoCollection<Secret>>();
-        var secret = await secrets.Find(_ => true).SingleAsync();
+        var secret = await secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
         await secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
         {
@@ -153,13 +154,13 @@ public sealed partial class RepositorySourceApiTests
         var foreign = TenantFactory.Create("Foreign", ObjectId.GenerateNewId().ToString());
         foreign = foreign with
         {
-            Members = [TenantFactory.CreateMember(foreign.Id, TestData.UserId, TestData.UserEmail, TenantRole.Owner)]
+            Members = [TenantFactory.CreateMember(foreign.Id, Data.UserId, Data.UserEmail, TenantRole.Owner)]
         };
         await Fixture.DbContext.Tenants.InsertOneAsync(foreign);
         var foreignGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup("foreign-only", foreign.Id));
+            Data.SeedResourceGroup("foreign-only", foreign.Id));
         using var scope = ApiServices.CreateScope();
-        var foreignConsumer = TestData.SeedWebService(foreignGroup.Id, foreign.Id, "foreign-api");
+        var foreignConsumer = Data.SeedWebService(foreignGroup.Id, foreign.Id, "foreign-api");
         await scope.ServiceProvider.GetRequiredService<IMongoCollection<WebService>>().InsertOneAsync(foreignConsumer);
         var foreignBinding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(),
             WebServiceResourceDeployment.ResourceType.Value, foreignConsumer.Id, new AllSecretDeployments(), []);
@@ -168,10 +169,10 @@ public sealed partial class RepositorySourceApiTests
             DateTime.UtcNow)
             .Bind(foreignBinding, DateTime.UtcNow);
         await scope.ServiceProvider.GetRequiredService<IMongoCollection<Secret>>().InsertOneAsync(foreignSecret);
-        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == TestData.TenantId).SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(item => item.Id == tenant.Id, tenant with
         {
-            Members = [TenantFactory.CreateMember(tenant.Id, TestData.UserId, TestData.UserEmail, TenantRole.Viewer)]
+            Members = [TenantFactory.CreateMember(tenant.Id, Data.UserId, Data.UserEmail, TenantRole.Viewer)]
         });
         Assert.Empty((await Candidates(source.Id, "kind=ResourceGroup&name=foreign-only")).Items);
         Assert.Empty((await Candidates(source.Id,
@@ -192,12 +193,5 @@ public sealed partial class RepositorySourceApiTests
         var source = await Create(files: [GroupManifest("source")]);
         using var response = await Client.GetAsync($"{Root}/{source.Id}/adoption-candidates?{query}");
         await AssertProblem(response, HttpStatusCode.BadRequest, "gitops.candidate-query-unsupported");
-    }
-
-    private async Task<AdoptionCandidatePage> Candidates(string source, string query)
-    {
-        using var response = await Client.GetAsync($"{Root}/{source}/adoption-candidates?{query}");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<AdoptionCandidatePage>())!;
     }
 }

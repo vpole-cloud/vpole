@@ -13,6 +13,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Search;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class ResourceDeploymentSearchProjectionTests(
     MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
@@ -189,7 +190,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             ResolveSourceType);
 
         await consumer.Handle(
-            TestData.TenantId,
+            Data.TenantId,
             ObjectId.GenerateNewId().ToString(),
             "third-party/not-registered",
             ObjectId.GenerateNewId().ToString(),
@@ -199,7 +200,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             CancellationToken.None);
 
         Assert.Equal(0, stub.LoadCount);
-        Assert.Equal(0, await SearchSources.CountDocumentsAsync(FilterDefinition<SearchSourceDocument>.Empty));
+        Assert.Equal(0, await SearchSources.CountDocumentsAsync(Builders<SearchSourceDocument>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     private ResourceDeploymentSearchProjectionConsumer CreateConsumer(

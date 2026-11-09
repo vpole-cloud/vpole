@@ -25,7 +25,7 @@ public sealed partial class ManagedSecretIntegrationTests
     [Fact]
     public async Task New_binding_after_empty_guard_conflicts_with_consumer_deletion_fence()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/web-service", Id());
         using var setup = await Fixture.Client.StartSessionAsync();
         setup.StartTransaction();

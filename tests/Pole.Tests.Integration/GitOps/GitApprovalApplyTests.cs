@@ -111,7 +111,7 @@ public sealed partial class GitPrunePlanningTests
         var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(
             new(new(source.TenantId, source.Id), source.Revision, intent), default)).Value);
         return Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(new(source.TenantId, source.Id),
-            preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            preview.Id, preview.Revision, Data.UserId), default)).Value);
     }
 
     private sealed class InjectedInterruption : Exception;

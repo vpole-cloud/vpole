@@ -30,14 +30,15 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Update_PrivateToPublic_AdmitsTargetsAndCreatesGeneratedHostname()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var template = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var template = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(template with
         {
             Body = template.Body with { Exposure = WebServiceExposureMode.Private }
@@ -50,7 +51,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 TestData.ValidWebServiceSpec(),
                 [],
                 WebServiceExposureMode.Public),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
 
         var service = await Fixture.Database.WebServices()
             .Find(item => item.Id == created.WebServiceId).SingleAsync();
@@ -68,8 +69,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Update_PublicToPrivate_ReleasesHostnameOnlyAfterAppliedRevocation()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var template = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var template = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(template with
         {
             Body = template.Body with { Exposure = WebServiceExposureMode.Public }
@@ -81,7 +82,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 TestData.ValidWebServiceSpec(),
                 [],
                 WebServiceExposureMode.Private),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         var deployment = Assert.Single(privateUpdate.Deployments);
         var hostnameBindings = Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings");
         Assert.Null(deployment.Ingress);
@@ -89,7 +90,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             .Find(binding => binding.ResourceId == created.WebServiceId).ToListAsync());
 
         var completion = await Services.GetRequiredService<CompleteWebServiceDeployment>()(
-            TestData.TenantId,
+            Data.TenantId,
             created.WebServiceId,
             new WebServiceDeploymentCompletion(
                 deployment.DeploymentId,
@@ -101,7 +102,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 DateTime.UtcNow,
                 FailureCode: null,
                 FailureMessage: null,
-                EventCore.Create(TestData.TenantId)));
+                EventCore.Create(Data.TenantId)));
 
         Assert.IsType<WebServiceDeploymentCompletionRecorded>(completion.Value);
         Assert.Empty(await hostnameBindings
@@ -114,8 +115,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Update_RePublicBeforeOldPrivateCompletion_PreservesCurrentHostnameBinding()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var template = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var template = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(template with
         {
             Body = template.Body with { Exposure = WebServiceExposureMode.Public }
@@ -125,17 +126,17 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             created.WebServiceId,
             new UpdateWebServiceRequestBody(
                 TestData.ValidWebServiceSpec(), [], WebServiceExposureMode.Private),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         var stalePrivateDeployment = Assert.Single(privateUpdate.Deployments);
         var publicUpdate = (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
             new UpdateWebServiceRequestBody(
                 TestData.ValidWebServiceSpec(), [], WebServiceExposureMode.Public),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         var publicDeployment = Assert.Single(publicUpdate.Deployments);
 
         var completion = await Services.GetRequiredService<CompleteWebServiceDeployment>()(
-            TestData.TenantId,
+            Data.TenantId,
             created.WebServiceId,
             new WebServiceDeploymentCompletion(
                 stalePrivateDeployment.DeploymentId,
@@ -147,7 +148,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 DateTime.UtcNow,
                 FailureCode: null,
                 FailureMessage: null,
-                EventCore.Create(TestData.TenantId)));
+                EventCore.Create(Data.TenantId)));
 
         Assert.IsType<WebServiceDeploymentCompletionRecorded>(completion.Value);
         Assert.NotNull(publicDeployment.Ingress);
@@ -169,14 +170,14 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 profile => profile.Id == TestData.DefaultComputeProfileId,
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id)))
             .AssertSuccess();
 
         var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
             created.WebServiceId,
             new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
-            TestData.TenantId));
+            Data.TenantId));
         var added = Assert.IsType<PlacementSummaryDto>(
             result.AssertSuccess().Value);
 
@@ -209,8 +210,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 profile => profile.Id == TestData.DefaultComputeProfileId,
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var template = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var template = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(template with
         {
             Body = template.Body with { Exposure = WebServiceExposureMode.Private }
@@ -219,7 +220,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
             created.WebServiceId,
             new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 2),
-            TestData.TenantId));
+            Data.TenantId));
         var added = Assert.IsType<PlacementSummaryDto>(result.AssertSuccess().Value);
 
         Assert.Equal(secondTargetId, added.DeploymentTargetId);
@@ -231,8 +232,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task AddCustomHostname_PrivateServiceIsRejected()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var template = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var template = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(template with
         {
             Body = template.Body with { Exposure = WebServiceExposureMode.Private }
@@ -246,7 +247,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 ObjectId.GenerateNewId().ToString(),
                 "custom",
                 "custom-hostname"),
-            TestData.TenantId));
+            Data.TenantId));
         var outcome = result.AssertSuccess();
 
         var error = Assert.IsType<WebServiceDeploymentHostnameError>(outcome.Value);
@@ -264,15 +265,15 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 profile => profile.Id == TestData.DefaultComputeProfileId,
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id)))
             .AssertSuccess();
         targetLookup.RejectNewWorkloads = true;
 
         var result = await Mediator.Send(new AddWebServiceDeploymentRequest(
             created.WebServiceId,
             new WebServiceDeploymentTargetRequest(secondTargetId, FixedReplicas: 3),
-            TestData.TenantId));
+            Data.TenantId));
 
         var outcome = result.AssertSuccess();
         var addError = Assert.IsType<AddWebServiceDeploymentError>(outcome.Value);
@@ -292,15 +293,15 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task SharedUpdate_AdvancesEveryDeploymentAndCreatesAggregateRelease()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id))).AssertSuccess();
         var spec = TestData.ValidWebServiceSpec() with
         {
             Image = new Pole.Features.WebServices.Application.Common.ImageInfoDto("docker.io", "nginx", "1.28")
         };
 
         var result = await Mediator.Send(new UpdateWebServiceRequest(created.WebServiceId,
-            new UpdateWebServiceRequestBody(spec, ["stable"], WebServiceExposureMode.Public), TestData.TenantId));
+            new UpdateWebServiceRequestBody(spec, ["stable"], WebServiceExposureMode.Public), Data.TenantId));
         var updated = result.AssertSuccess();
         Assert.Equal(2, updated.ResourceRevision);
         Assert.All(updated.Deployments, deployment => Assert.Equal(2, deployment.ResourceRevision));
@@ -314,11 +315,11 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task RemoveDeployment_RejectsLastDesiredDeployment()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id))).AssertSuccess();
         var deployment = created.Deployments.Single();
         var result = await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, deployment.DeploymentId, TestData.TenantId));
+            created.WebServiceId, deployment.DeploymentId, Data.TenantId));
         var error = result.AssertFailure();
         var state = Assert.IsType<DeleteWebServiceDeploymentStateError>(error.Value);
         Assert.IsType<WebServiceLastDeploymentCannotBeRemoved>(state.Value);
@@ -335,10 +336,10 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 profile => profile.Id == TestData.DefaultComputeProfileId,
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var request = TestData.CreateWebServiceRequest(group.Id) with
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var request = Data.CreateWebServiceRequest(group.Id) with
         {
-            Body = TestData.CreateWebServiceRequest(group.Id).Body with
+            Body = Data.CreateWebServiceRequest(group.Id).Body with
             {
                 Placement = new WebServicePlacementRequest(null,
                 [
@@ -353,7 +354,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             deployment.DeploymentTargetId == secondTargetId);
 
         var result = await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, removed.DeploymentId, TestData.TenantId));
+            created.WebServiceId, removed.DeploymentId, Data.TenantId));
         var deleting = result.AssertSuccess();
 
         Assert.Equal(removed.DeploymentId, deleting.DeploymentId);
@@ -388,7 +389,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         await DbContext.ResourceDeployments.ReplaceOneAsync(
             deployment => deployment.Id == removed.DeploymentId, terminal);
         (await Services.GetRequiredService<CompleteWebServiceDeployment>()(
-            TestData.TenantId,
+            Data.TenantId,
             created.WebServiceId,
             new WebServiceDeploymentCompletion(
                 removed.DeploymentId,
@@ -400,7 +401,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 DateTime.UtcNow,
                 null,
                 null,
-                EventCore.Create(TestData.TenantId)))).AssertSuccess();
+                EventCore.Create(Data.TenantId)))).AssertSuccess();
 
         Assert.Equal(1, await DbContext.ResourceDeployments.CountDocumentsAsync(
             deployment => deployment.ResourceId == created.WebServiceId));
@@ -422,10 +423,10 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
         var group = await DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
-        var request = TestData.CreateWebServiceRequest(group.Id) with
+            Data.SeedResourceGroup());
+        var request = Data.CreateWebServiceRequest(group.Id) with
         {
-            Body = TestData.CreateWebServiceRequest(group.Id).Body with
+            Body = Data.CreateWebServiceRequest(group.Id).Body with
             {
                 Placement = new WebServicePlacementRequest(
                     null,
@@ -444,13 +445,13 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         _ = (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
             created.WebServiceId,
             created.Deployments[0].DeploymentId,
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
 
         var secondRemoval = await Mediator.Send(
             new DeleteWebServiceDeploymentRequest(
                 created.WebServiceId,
                 created.Deployments[1].DeploymentId,
-                TestData.TenantId));
+                Data.TenantId));
 
         var error = secondRemoval.AssertFailure();
         var state = Assert.IsType<DeleteWebServiceDeploymentStateError>(error.Value);
@@ -465,8 +466,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task RetryDeployment_CreatesNewRelease_ThatCanCompleteSuccessfully()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id)))
             .AssertSuccess();
         var deployment = await DbContext.ResourceDeployments
             .Find(item => item.Id == created.Deployments.Single().DeploymentId)
@@ -487,7 +488,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             created.WebServiceId,
             deployment.Id,
             new RetryWebServiceDeploymentBody(failed.Revision, "Apply"),
-            TestData.TenantId));
+            Data.TenantId));
         var retried = result.AssertSuccess();
 
         Assert.Equal(2, retried.ResourceRevision);
@@ -501,7 +502,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Equal(WebServiceReleaseDeploymentOutcome.Pending, entry.Outcome);
 
         var completed = await Services.GetRequiredService<CompleteWebServiceDeployment>()(
-            TestData.TenantId,
+            Data.TenantId,
             created.WebServiceId,
             new WebServiceDeploymentCompletion(
                 deployment.Id,
@@ -513,7 +514,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
                 DateTime.UtcNow,
                 null,
                 null,
-                EventCore.Create(TestData.TenantId)));
+                EventCore.Create(Data.TenantId)));
         completed.AssertSuccess();
 
         release = await Fixture.Database.WebServiceReleases()
@@ -525,8 +526,8 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task UpdateDeployment_OmissionPreservesCompute_AndExplicitIdAdoptsLatestRevision()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id)))
             .AssertSuccess();
         var initial = Assert.Single(created.Deployments);
         var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
@@ -547,7 +548,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             created.WebServiceId,
             initial.DeploymentId,
             new UpdateWebServiceDeploymentBody(initial.FixedReplicas),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         var preserved = await DbContext.ResourceDeployments
             .Find(item => item.Id == initial.DeploymentId).SingleAsync();
         Assert.Equal(1, preserved.ResolvedPlacement.Compute.ComputeProfileRevision);
@@ -559,7 +560,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             new UpdateWebServiceDeploymentBody(
                 initial.FixedReplicas,
                 TestData.DefaultComputeProfileId),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         var adopted = await DbContext.ResourceDeployments
             .Find(item => item.Id == initial.DeploymentId).SingleAsync();
         Assert.Equal(2, adopted.ResolvedPlacement.Compute.ComputeProfileRevision);
@@ -569,13 +570,13 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Delete_RetainsBindingsUntilTerminalDeployment_ThenFinalizesEverything()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var created = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id)))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id)))
             .AssertSuccess();
         var deploymentId = Assert.Single(created.Deployments).DeploymentId;
 
         (await Mediator.Send(new DeleteWebServiceRequest(
-            created.WebServiceId, TestData.TenantId))).AssertSuccess();
+            created.WebServiceId, Data.TenantId))).AssertSuccess();
         Assert.Equal(1, await Fixture.Database
             .GetCollection<HostnameBinding>("HostnameBindings")
             .CountDocumentsAsync(binding => binding.ResourceDeploymentId == deploymentId));
@@ -592,7 +593,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             item => item.Id == deploymentId, deleted);
 
         (await Services.GetRequiredService<FinalizeWebServiceDeletion>()(
-                TestData.TenantId,
+                Data.TenantId,
                 created.WebServiceId)).AssertSuccess();
 
         Assert.Equal(0, await Fixture.Database.WebServices()
@@ -604,8 +605,7 @@ public sealed class WebServiceIntegrationTests(MongoReplicaSetFixture fixture)
             .CountDocumentsAsync(binding => binding.ResourceId == created.WebServiceId));
         Assert.Equal(0, await DbContext.ResourceRegistrations
             .CountDocumentsAsync(item => item.ResourceId == created.WebServiceId));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
-            "pole.web-services/v1/web-service-deleted"));
+        Assert.Equal(1L, await DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-deleted"));
         var deletionMessage = await DbContext.OutboxMessages
             .Find(message => message.EventType == "pole.web-services/v1/web-service-deleted")
             .SingleAsync();

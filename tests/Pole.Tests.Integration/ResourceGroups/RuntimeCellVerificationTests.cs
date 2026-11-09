@@ -10,8 +10,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class RuntimeCellVerificationTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ReadyCellsWithoutWorkloads_AreRecheckedInBoundedBatches_WithAtomicOutbox()

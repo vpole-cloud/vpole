@@ -115,14 +115,17 @@ public sealed class TestApiApplication : IAsyncDisposable
         WebApplication app,
         FakeGitHubAppClient gitHubClient,
         TestDeploymentTargetLookup deploymentTargetLookup,
-        string encryptionKeyDirectory)
+        string encryptionKeyDirectory,
+        IntegrationTestScope testScope)
     {
         _app = app;
         _encryptionKeyDirectory = encryptionKeyDirectory;
         GitHubClient = gitHubClient;
         DeploymentTargetLookup = deploymentTargetLookup;
         Client = app.GetTestClient();
-        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, testScope.TenantId);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, testScope.UserId);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.EmailHeader, testScope.UserEmail);
     }
 
     public IServiceProvider Services => _app.Services;
@@ -153,11 +156,13 @@ public sealed class TestApiApplication : IAsyncDisposable
             readiness);
 
     public static async Task<TestApiApplication> StartAsync(
-        MongoReplicaSetFixture fixture,
+        TestDatabaseScope fixture,
+        IntegrationTestScope testScope,
         bool privateAccessEnabled = false,
         Action<IServiceCollection>? configureTestServices = null,
         Pole.Testing.TestTimings? timings = null)
     {
+        await fixture.PrepareAsync();
         using var keyTiming = timings?.Measure("api.encryption-key");
         var encryptionKeyDirectory = Path.Combine(
             Path.GetTempPath(),
@@ -201,7 +206,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<MongoRunTransaction>();
-        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
+        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk") { TenantId = testScope.TenantId };
         builder.Services.AddSingleton(storageDiscovery);
         builder.Services.AddSingleton<DiscoverKubernetesStorageClasses>(
             storageDiscovery.GetStorageClassesAsync);
@@ -336,48 +341,6 @@ public sealed class TestApiApplication : IAsyncDisposable
         WebApplication app;
         using (timings?.Measure("api.services.build"))
             app = builder.Build();
-        using (timings?.Measure("api.migration.DeploymentTargetMigration"))
-            await new DeploymentTargetMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.DeploymentTargetReferenceMigration"))
-            await new DeploymentTargetReferenceMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceGroupPlacementMigration"))
-            await new ResourceGroupPlacementMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceRegistrationMigration"))
-            await new ResourceRegistrationMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceConnectionIndexesMigration"))
-            await new ResourceConnectionIndexesMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceDeploymentMigration"))
-            await new ResourceDeploymentMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceDeploymentSchemaValidationMigration"))
-            await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.WebServiceReleaseSchemaValidationMigration"))
-            await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.TenantDomainZoneSchemaValidationMigration"))
-            await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.HostnameBindingSchemaValidationMigration"))
-            await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.DomainIndexesMigration"))
-            await new DomainIndexesMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ComputeProfileSchemaValidationMigration"))
-            await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ComputeProfileIndexesMigration"))
-            await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceDeploymentComputeProfileIndexMigration"))
-            await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.ResourceDeploymentRecoveryIndexMigration"))
-            await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.StorageProfileMigration"))
-            await new StorageProfileMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.OutboxMessageMigration"))
-            await new OutboxMessageMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.SourceBuildMigration"))
-            await new SourceBuildMigration().Up(fixture.Database);
-        using (timings?.Measure("api.migration.SecretIndexesMigration"))
-            await new SecretIndexesMigration().Up(fixture.Database);
-        using (timings?.Measure("api.seed.compute-profile"))
-            await fixture.Database
-            .GetCollection<ComputeProfile>("ComputeProfiles")
-            .InsertOneAsync(TestData.SeedComputeProfile());
         using var mappingTiming = timings?.Measure("api.endpoints.map");
         app.UseTraceContext();
         app.UseCors("frontend-dev");
@@ -430,7 +393,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             app,
             gitHubClient,
             deploymentTargetLookup,
-            encryptionKeyDirectory);
+            encryptionKeyDirectory,
+            testScope);
     }
 
     public Task StopAsync(CancellationToken cancellationToken = default) => _app.StopAsync(cancellationToken);

@@ -15,23 +15,24 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     private const string DefaultTargetId = TestData.DefaultDeploymentTargetId;
-    private const string SecondTargetId = "507f1f77bcf86cd799439072";
+    private readonly string SecondTargetId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new ResourceGroupPlacementMigration().Up(Fixture.Database);
-        await new RuntimeCellLookupMigration().Up(Fixture.Database);
+
+
     }
 
     [Fact]
     public async Task ConcurrentResolve_CreatesOneCellReferenceAndInitialEvent()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
         var targets = Services.GetRequiredService<TestDeploymentTargetLookup>();
 
@@ -47,10 +48,10 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         Assert.Equal(placements[0].RuntimeCellId, referenceChange.Owner.Id);
         Assert.Equal([DefaultTargetId], referenceChange.AddedDeploymentTargetIds);
         Assert.Empty(referenceChange.RemovedDeploymentTargetIds);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
         var requestMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "pole.resource-groups/v1/runtime-cell-reconciliation-requested")
+            .Find(message => message.TenantId == Data.TenantId && message.EventType == "pole.resource-groups/v1/runtime-cell-reconciliation-requested")
             .SingleAsync();
         Assert.Equal(
             RuntimeCellPendingKey.Reconciliation(placements[0].RuntimeCellId, 1),
@@ -61,7 +62,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     [Fact]
     public async Task ExistingCell_RemainsUsable_WhenTargetRejectsNewWorkloads()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var targets = ConfigureTargets();
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
         var first = AssertPlacement(await ResolveAsync(
@@ -83,7 +84,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     [Fact]
     public async Task SameScope_UsesSameNamespaceName_InDifferentTargets()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         ConfigureTargets();
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
 
@@ -106,7 +107,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     [Fact]
     public async Task BatchResolve_CreatesCellsOnce_AndPreservesRequestedTargetOrder()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         ConfigureTargets();
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacements>();
 
@@ -121,14 +122,14 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
             placements.Select(placement => placement.DeploymentTargetId));
         Assert.Equal(2L, await DbContext.RuntimeCells.CountDocumentsAsync(
             cell => cell.ResourceGroupId == resourceGroup.Id));
-        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
     [Fact]
     public async Task LoadMany_ReturnsRequestedTenantScopedPlacementSnapshots()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         ConfigureTargets();
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
         var first = AssertPlacement(await ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId));
@@ -155,7 +156,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     [Fact]
     public async Task ConcurrentPlacementAndDeletion_DoNotLeaveActivePlacementUnderDeletedAggregate()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
 
         await Task.WhenAll(
@@ -168,7 +169,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
     [Fact]
     public async Task ConcurrentExistingCellReuseAndDeletion_AreParentFenced()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var resolve = Services.GetRequiredService<ResolveResourceGroupPlacement>();
         _ = AssertPlacement(await ResolveAsync(resolve, resourceGroup.Id, null, DefaultTargetId));
 
@@ -197,7 +198,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         {
             var result = await resolve(
                 new ResolveResourceGroupPlacementRequest(
-                    TenantId: TestData.TenantId,
+                    TenantId: Data.TenantId,
                     ResourceGroupId: resourceGroupId,
                     IsolationScopeId: isolationScopeId,
                     DeploymentTargetId: deploymentTargetId),
@@ -223,7 +224,7 @@ public sealed class ResourcePlacementIntegrationTests(MongoReplicaSetFixture fix
         {
             var result = await resolve(
                 new ResolveResourceGroupPlacementsRequest(
-                    TenantId: TestData.TenantId,
+                    TenantId: Data.TenantId,
                     ResourceGroupId: resourceGroupId,
                     IsolationScopeId: isolationScopeId,
                     DeploymentTargetIds: deploymentTargetIds),

@@ -24,67 +24,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class RedisDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private IMongoCollection<Redis> RedisResources => Fixture.Database.GetCollection<Redis>("RedisServices");
-
-    private async Task SeedRedisPlanningCatalog()
-    {
-        await new RedisSchemaValidationMigration().Up(Fixture.Database);
-        await new RedisNameIndexesMigration().Up(Fixture.Database);
-        var computes = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
-        var compute = await computes.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
-        compute = compute with { AllowedResourceTypes = compute.AllowedResourceTypes.Add("pole/redis") };
-        await computes.ReplaceOneAsync(item => item.Id == compute.Id, compute);
-        await Fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
-            item => item.Id == $"{compute.Id}/1", ComputeProfileRevisionFactory.Create(compute),
-            new ReplaceOptions { IsUpsert = true });
-        var storage = (await DbContext.StorageProfiles.Find(item => item.Id == TestData.DefaultStorageProfileId)
-            .SingleAsync()) with
-        { TechnicalName = "redis-storage", AllowedResourceTypes = ["pole/redis"] };
-        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, storage);
-        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
-            .InsertOneAsync(StorageProfileRevisionFactory.Create(storage));
-    }
-
-    private static ManifestFile[] RedisSnapshot(
-        int size = 4,
-        string? scope = "private-cache",
-        long storageRevision = 1) =>
-    [
-        new("redis.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: RedisService
-            metadata:
-              name: cache
-            spec:
-              resourceGroup: redis-group
-              placement:
-                deploymentTarget: lab
-                computeProfile: { name: small, revision: 1 }
-                {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              storage:
-                sizeGb: {{size}}
-                profile: { name: redis-storage, revision: {{storageRevision}} }
-              tags: [production, cache]
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: IsolationScope
-            metadata:
-              name: private-cache
-            spec:
-              resourceGroup: redis-group
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceGroup
-            metadata:
-              name: redis-group
-            spec:
-              description: Redis group
-              tags: []
-            """)
-    ];
-
     [Fact]
     public async Task RedisSameCommitRepairsTagsAndComputeThenNoOpPreservesBusinessState()
     {
@@ -92,10 +34,10 @@ public sealed partial class DeclarativePipelineTests
         var files = RedisSnapshot();
         var created = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, created.Status);
-        var resource = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
+        var resource = await RedisResources.Find(Builders<Redis>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         Assert.IsType<ActiveRedisLifecycle>(resource.Lifecycle);
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == resource.Id).SingleAsync();
-        var scope = await DbContext.IsolationScopes.Find(item => item.Name == "private-cache").SingleAsync();
+        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "private-cache").SingleAsync();
         Assert.Equal(scope.Id, placement.IsolationScopeId);
         Assert.Equal(1, placement.ResolvedPlacement.Storage!.StorageProfileRevision);
         Assert.Equal("standard", placement.ResolvedPlacement.Storage.StorageClassName);
@@ -123,7 +65,7 @@ public sealed partial class DeclarativePipelineTests
             (await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync())
             .ResolvedPlacement.Compute.Limits);
         var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            TestData.TenantId, source, repairedRun.Context!.RunId, 1, 20, default))!.Items;
+            Data.TenantId, source, repairedRun.Context!.RunId, 1, 20, default))!.Items;
         var configure = operations.Single(item => item.Kind == "RedisService" &&
             item.Phase == DeclarationPhase.Configure).Plan!;
         Assert.Equal(GitPlannedAction.Update, configure.Action);
@@ -137,7 +79,7 @@ public sealed partial class DeclarativePipelineTests
         var stable = await RedisResources.Find(item => item.Id == resource.Id).SingleAsync();
         Assert.Equal(repaired.Revision, stable.Revision);
         Assert.Equal(events, await BusinessEvents());
-        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(TestData.TenantId, source,
+        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(Data.TenantId, source,
             stableRun.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 4, 0, 0, null), view.Operations);
@@ -154,41 +96,16 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(events, await BusinessEvents());
     }
 
-    [Theory]
-    [InlineData("size")]
-    [InlineData("scope")]
-    [InlineData("storageRevision")]
-    public async Task RedisImmutablePlacementChangesAreBlocked(string field)
-    {
-        await SeedRedisPlanningCatalog();
-        await Apply(RedisSnapshot());
-        var original = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
-        var storage = await DbContext.StorageProfiles.Find(item => item.Id == TestData.DefaultStorageProfileId)
-            .SingleAsync();
-        var updated = storage with { Revision = 2 };
-        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, updated);
-        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
-            .InsertOneAsync(StorageProfileRevisionFactory.Create(updated));
-        var result = await Apply(RedisSnapshot(size: field == "size" ? 5 : 4,
-            scope: field == "scope" ? null : "private-cache", storageRevision: field == "storageRevision" ? 2 : 1));
-        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        var unchanged = await RedisResources.Find(item => item.Id == original.Id).SingleAsync();
-        Assert.Equal(original.Revision, unchanged.Revision);
-        var receipts = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
-            .Find(item => item.RunId == result.Context!.RunId && item.Kind == "RedisService").ToListAsync();
-        Assert.Contains(receipts, item => item.Blocker == nameof(DeclarationReplacementRequired));
-    }
-
     [Fact]
     public async Task RedisMissingCreatedIdentityIsNotRecreatedOrRebound()
     {
         await SeedRedisPlanningCatalog();
         await Apply(RedisSnapshot());
-        var original = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
+        var original = await RedisResources.Find(Builders<Redis>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await RedisResources.DeleteOneAsync(item => item.Id == original.Id);
         var result = await Apply(RedisSnapshot());
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await RedisResources.CountDocumentsAsync(Builders<Redis>.Filter.Empty));
+        Assert.Equal(0, await RedisResources.CountDocumentsAsync(Builders<Redis>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await RedisResources.InsertOneAsync(original with { Id = ObjectId.GenerateNewId().ToString() });
         result = await Apply(RedisSnapshot());
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
@@ -196,35 +113,12 @@ public sealed partial class DeclarativePipelineTests
     }
 
     [Fact]
-    public async Task RedisPinnedHistoricalStorageUsesCurrentPolicyAndDoesNotMigrateClass()
-    {
-        await SeedRedisPlanningCatalog();
-        var storage = await DbContext.StorageProfiles.Find(item => item.Id == TestData.DefaultStorageProfileId)
-            .SingleAsync();
-        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, storage with
-        {
-            Revision = 2,
-            TargetMappings = [StorageProfileTargetMapping.Create(TestData.DefaultDeploymentTargetId, "fast")]
-        });
-        var result = await Apply(RedisSnapshot());
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
-        var resource = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
-        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == resource.Id).SingleAsync();
-        Assert.Equal("standard", placement.ResolvedPlacement.Storage!.StorageClassName);
-        await DbContext.StorageProfiles.UpdateOneAsync(item => item.Id == storage.Id,
-            Builders<StorageProfile>.Update.Set(item => item.IsEnabled, false).Inc(item => item.Revision, 1));
-        var events = await BusinessEvents();
-        result = await Apply(RedisSnapshot());
-        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(events, await BusinessEvents());
-    }
-    [Fact]
     public async Task RedisNoOpReplansWhenResourceChangesAfterPlanning()
     {
         await SeedRedisPlanningCatalog();
         var files = RedisSnapshot();
         await Apply(files);
-        var original = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
+        var original = await RedisResources.Find(Builders<Redis>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var intercepted = false;
         var mutations = new BeforeNoOp(Services.GetRequiredService<IGitOpsMutations>(), async (operation, ct) =>
         {
@@ -237,13 +131,13 @@ public sealed partial class DeclarativePipelineTests
                 Builders<Redis>.Update.Set(item => item.Tags, ImmutableHashSet.Create("racing-change"))
                     .Inc(item => item.Revision, 1), cancellationToken: ct);
         });
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customMutations: mutations)
-            .SubmitAsync(new(TestData.TenantId, source), files);
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations)
+            .SubmitAsync(new(Data.TenantId, source), files);
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.True(original.Tags.SetEquals((await RedisResources.Find(item => item.Id == original.Id)
             .SingleAsync()).Tags));
-        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(TestData.TenantId,
+        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(Data.TenantId,
             source, result.Context!.RunId, 1, 20, default))!.Items;
         var plan = operations.Single(item => item.Kind == "RedisService" &&
             item.Phase == DeclarationPhase.Configure).Plan!;
@@ -278,28 +172,81 @@ public sealed partial class DeclarativePipelineTests
             redisProvider.GetType(), execution);
         var registry = new DeclarativeProviderRegistry(providers.Select(item =>
             item.Kind == "RedisService" ? failing : item));
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customProviders: registry)
-            .SubmitAsync(new(TestData.TenantId, source), RedisSnapshot());
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
+            .SubmitAsync(new(Data.TenantId, source), RedisSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await RedisResources.CountDocumentsAsync(Builders<Redis>.Filter.Empty));
+        Assert.Equal(0, await RedisResources.CountDocumentsAsync(Builders<Redis>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(item =>
-            item.ResourceType == "pole/redis"));
-        Assert.Equal(0, await DbContext.ResourceRegistrations.CountDocumentsAsync(item => item.DisplayName == "cache"));
+            item.TenantId == Data.TenantId && item.ResourceType == "pole/redis"));
+        Assert.Equal(0, await DbContext.ResourceRegistrations.CountDocumentsAsync(item => item.TenantId == Data.TenantId && item.DisplayName == "cache"));
         Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(item =>
-            item.EventType == "pole.redis/v1/redis-service-created"));
-        var owned = await Inventory.Find(item => item.Kind == "RedisService").SingleAsync();
+            item.TenantId == Data.TenantId && item.EventType == "pole.redis/v1/redis-service-created"));
+        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "RedisService").SingleAsync();
         Assert.Equal(GitResourceMaterialization.Allocated, owned.Materialization);
         Assert.Null(owned.Projections.Applied);
         var receipt = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
             .Find(item => item.RunId == result.Context!.RunId && item.Kind == "RedisService" &&
                 item.Phase == nameof(DeclarationPhase.Prepare)).SingleAsync();
         var usages = await Fixture.Database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages")
-            .Find(item => item.TenantId == TestData.TenantId).ToListAsync();
+            .Find(item => item.TenantId == Data.TenantId).ToListAsync();
         Assert.DoesNotContain(usages.SelectMany(item => item.Values), item =>
             item.Key.Value == "RedisServiceCount" && item.Value != 0);
         Assert.False(receipt.Changed);
         Assert.Equal("PlacementUnavailable", receipt.Blocker);
     }
+}
 
+
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class RedisDriftGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+{
+    [Theory]
+    [InlineData("size")]
+    [InlineData("scope")]
+    [InlineData("storageRevision")]
+    public async Task RedisImmutablePlacementChangesAreBlocked(string field)
+    {
+        await SeedRedisPlanningCatalog();
+        await Apply(RedisSnapshot());
+        var original = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
+        var storage = await DbContext.StorageProfiles.Find(item => item.Id == NamedCatalogTestData.RedisStorageProfileId)
+            .SingleAsync();
+        var updated = storage with { Revision = 2 };
+        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, updated);
+        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
+            .InsertOneAsync(StorageProfileRevisionFactory.Create(updated));
+        var result = await Apply(RedisSnapshot(size: field == "size" ? 5 : 4,
+            scope: field == "scope" ? null : "private-cache", storageRevision: field == "storageRevision" ? 2 : 1));
+        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
+        var unchanged = await RedisResources.Find(item => item.Id == original.Id).SingleAsync();
+        Assert.Equal(original.Revision, unchanged.Revision);
+        var receipts = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
+            .Find(item => item.RunId == result.Context!.RunId && item.Kind == "RedisService").ToListAsync();
+        Assert.Contains(receipts, item => item.Blocker == nameof(DeclarationReplacementRequired));
+    }
+
+    [Fact]
+    public async Task RedisPinnedHistoricalStorageUsesCurrentPolicyAndDoesNotMigrateClass()
+    {
+        await SeedRedisPlanningCatalog();
+        var storage = await DbContext.StorageProfiles.Find(item => item.Id == NamedCatalogTestData.RedisStorageProfileId)
+            .SingleAsync();
+        await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, storage with
+        {
+            Revision = 2,
+            TargetMappings = [StorageProfileTargetMapping.Create(TestData.DefaultDeploymentTargetId, "fast")]
+        });
+        var result = await Apply(RedisSnapshot());
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
+        var resource = await RedisResources.Find(Builders<Redis>.Filter.Empty).SingleAsync();
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == resource.Id).SingleAsync();
+        Assert.Equal("standard", placement.ResolvedPlacement.Storage!.StorageClassName);
+        await DbContext.StorageProfiles.UpdateOneAsync(item => item.Id == storage.Id,
+            Builders<StorageProfile>.Update.Set(item => item.IsEnabled, false).Inc(item => item.Revision, 1));
+        var events = await BusinessEvents();
+        result = await Apply(RedisSnapshot());
+        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
+        Assert.Equal(events, await BusinessEvents());
+    }
 }

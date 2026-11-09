@@ -18,8 +18,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Expired_scale_down_barrier_requires_activation_fence_until_applied()
@@ -28,7 +29,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var databaseName = $"pole_orleans_fence_{suffix}";
         var collectionPrefix = $"FunctionsFence_{suffix}_";
         var resources = new TestResourceScope("Orleans coordination");
-        resources.Defer("drop owned Orleans database", token => fixture.Client.DropDatabaseAsync(databaseName, token));
+        resources.Defer("drop owned Orleans database", token => Fixture.Client.DropDatabaseAsync(databaseName, token));
         await resources.RunAsync(async () =>
         {
             var silo = CreateSilo(
@@ -105,7 +106,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var databaseName = $"pole_orleans_scale_owner_{suffix}";
         var collectionPrefix = $"FunctionsScaleOwner_{suffix}_";
         var resources = new TestResourceScope("Orleans coordination");
-        resources.Defer("drop owned Orleans database", token => fixture.Client.DropDatabaseAsync(databaseName, token));
+        resources.Defer("drop owned Orleans database", token => Fixture.Client.DropDatabaseAsync(databaseName, token));
         await resources.RunAsync(async () =>
         {
             var silo = CreateSilo(
@@ -168,7 +169,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
         var clusterId = $"functions-{suffix}";
         var trafficClock = new ManualTrafficTimeProvider();
         var resources = new TestResourceScope("two Orleans silos");
-        resources.Defer("drop owned Orleans database", token => fixture.Client.DropDatabaseAsync(databaseName, token));
+        resources.Defer("drop owned Orleans database", token => Fixture.Client.DropDatabaseAsync(databaseName, token));
         await resources.RunAsync(async () =>
         {
             var first = CreateSilo(databaseName, collectionPrefix, clusterId, "silo-1",
@@ -295,7 +296,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             Assert.Equal(2, beforeRestart.DesiredReplicas);
             Assert.Equal(pendingScaleLease.Generation, beforeRestart.PendingScaleIntent?.Generation);
             Assert.True(beforeRestart.Generation > activationLease.Generation);
-            var persisted = await fixture.Client.GetDatabase(databaseName)
+            var persisted = await Fixture.Client.GetDatabase(databaseName)
                 .GetCollection<BsonDocument>(
                     collectionPrefix + FunctionCoordinationStorage.RevisionStateName)
                 .Find(FilterDefinition<BsonDocument>.Empty)
@@ -391,7 +392,7 @@ public sealed class FunctionOrleansCoordinationTests(MongoReplicaSetFixture fixt
             [$"{FunctionOrleansOptions.SectionName}:GatewayPort"] = "0",
             [$"{FunctionOrleansOptions.SectionName}:ResponseTimeoutSeconds"] = "10"
         });
-        builder.Services.AddSingleton(fixture.Client);
+        builder.Services.AddSingleton(Fixture.Client);
         builder.Services.AddSingleton(trafficTimeProvider ?? TimeProvider.System);
         // Orleans subsystem timers stay real; only the application's monotonic budget is controlled.
         builder.Services.AddKeyedSingleton<TimeProvider>(KeyedService.AnyKey, TimeProvider.System);

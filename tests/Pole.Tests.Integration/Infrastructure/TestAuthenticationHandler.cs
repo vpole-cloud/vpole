@@ -14,14 +14,18 @@ public sealed class TestAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "Test";
+    public const string UserHeader = "X-Test-User-Id";
+    public const string EmailHeader = "X-Test-User-Email";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (Request.Headers["X-Test-Unauthenticated"] == "true") return Task.FromResult(AuthenticateResult.NoResult());
+        if (!Request.Headers.TryGetValue(UserHeader, out var userId) || string.IsNullOrWhiteSpace(userId))
+            return Task.FromResult(AuthenticateResult.NoResult());
         var claims = new List<Claim>
         {
-            new(Claims.UserId, TestData.UserId),
-            new(Claims.Email, TestData.UserEmail)
+            new(Claims.UserId, userId.ToString()),
+            new(Claims.Email, Request.Headers[EmailHeader].ToString())
         };
 
         if (Request.Headers.TryGetValue("X-Test-Platform-Admin", out var isPlatformAdmin) &&

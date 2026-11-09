@@ -34,7 +34,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("own")]
@@ -44,7 +45,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedPostgresPlanningCatalog();
         var postgres = await InitializePostgres();
-        var credential = await Secrets.Find(item => item.Management is ProviderManagedSecret).SingleAsync();
+        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
         var registrations = await DbContext.ResourceRegistrations.Find(item => item.ResourceGroupId == postgres.GroupId)
             .ToListAsync();
         var credentialRegistration = registrations.Single(item => item.ResourceId == credential.Id);
@@ -62,7 +63,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Contains(mapped.SelectMany(item => item.Versions), item =>
             item.DocumentId == $"Secret/{credential.Id}/ReferenceFence");
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await Services.GetRequiredService<GitLifecyclePreviews>()
-            .ConfirmAsync(new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, TestData.UserId), default))
+            .ConfirmAsync(new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default))
             .Value);
         await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(owner.TenantId, owner.Id), default);
         var deployment = await DbContext.ResourceDeployments.Find(item => item.ResourceId == postgres.Id).SingleAsync();
@@ -146,7 +147,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedPostgresPlanningCatalog();
         var postgres = await InitializePostgres();
-        var credential = await Secrets.Find(item => item.Management is ProviderManagedSecret).SingleAsync();
+        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
         var registration = await DbContext.ResourceRegistrations.Find(item => item.ResourceId == postgres.Id)
             .SingleAsync();
         if (scenario == "manual")
@@ -184,7 +185,7 @@ public sealed partial class DeclarativePipelineTests
         }
 
         var ownerSource = (await Services.GetRequiredService<GitRepositorySources>()
-            .LoadAsync(TestData.TenantId, source, default))!;
+            .LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(ownerSource.Repository.ExternalRepositoryId, [], "remove-managed-group");
         var result = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(
             new(new(ownerSource.TenantId, ownerSource.Id), ownerSource.Revision,
@@ -204,7 +205,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedPostgresPlanningCatalog();
         var postgres = await InitializePostgres();
-        var credential = await Secrets.Find(item => item.Management is ProviderManagedSecret).SingleAsync();
+        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
         var (owner, preview) = await PreviewManagedGroupRemovalAsync();
         if (change == "metadata")
             await Secrets.UpdateOneAsync(item => item.Id == credential.Id,
@@ -216,7 +217,7 @@ public sealed partial class DeclarativePipelineTests
             await InsertUnreviewedUserSecretAsync(postgres.TenantId, postgres.GroupId, credential.IsolationScopeId);
 
         Assert.IsType<GitPreviewStale>((await Services.GetRequiredService<GitLifecyclePreviews>().ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
     }
 
     [Fact]
@@ -224,7 +225,7 @@ public sealed partial class DeclarativePipelineTests
     {
         await SeedPostgresPlanningCatalog();
         await InitializePostgres();
-        var credential = await Secrets.Find(item => item.Management is ProviderManagedSecret).SingleAsync();
+        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
         var provider = Assert.IsAssignableFrom<IDeclarativeRegistrationOwnershipProvider>(Services
             .GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "Secret"));
         using var session = await Fixture.Client.StartSessionAsync();
@@ -240,49 +241,5 @@ public sealed partial class DeclarativePipelineTests
         await session.AbortTransactionAsync();
         Assert.Equal(credential.ReferenceFence, (await Secrets.Find(item => item.Id == credential.Id).SingleAsync())
             .ReferenceFence);
-    }
-
-    private sealed class ManagedRegistrationRollback : Exception;
-
-    private async Task<(RepositorySource Source, GitOperationPreview Preview)> PreviewManagedGroupRemovalAsync()
-    {
-        var owner = (await Services.GetRequiredService<GitRepositorySources>()
-            .LoadAsync(TestData.TenantId, source, default))!;
-        repository.Publish(owner.Repository.ExternalRepositoryId, [], "remove-managed-group");
-        var result = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(new(
-            new(owner.TenantId, owner.Id), owner.Revision,
-            new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)), default);
-        Assert.True(result is GitOperationPreview, result.Value is GitPreviewRejected rejected
-            ? rejected.Failure.GetType().Name : result.Value.ToString());
-        return (owner, Assert.IsType<GitOperationPreview>(result.Value));
-    }
-
-    private async Task InsertUnreviewedUserSecretAsync(string tenant, string group, string scope)
-    {
-        Assert.IsType<Secret>((await Services.GetRequiredService<PersistCreatedSecret>()(tenant, group, scope,
-            "manual-child", "manual", new() { ["key"] = "fixture-value" }, default)).Value);
-    }
-
-    private async Task CompleteManagedGroupCleanupAsync(RepositorySource owner, string runId)
-    {
-        for (var attempt = 0; attempt < 8; attempt++)
-        {
-            var scopes = await DbContext.IsolationScopes.Find(item => item.TenantId == owner.TenantId).ToListAsync();
-            foreach (var scope in scopes.Where(item => item.Lifecycle is DeletingIsolationScopeLifecycleState))
-            {
-                foreach (var cell in await DbContext.RuntimeCells.Find(item => item.IsolationScopeId == scope.Id)
-                             .ToListAsync())
-                    if (cell.State is DeletingRuntimeCellState)
-                        await DbContext.RuntimeCells.ReplaceOneAsync(item => item.Id == cell.Id,
-                            cell.MarkDeleted(cell.DesiredGeneration, cell.UpdatedAtUtc.AddSeconds(1)));
-                await Services.GetRequiredService<FinalizeResourceGroupDeletion>()(owner.TenantId,
-                    scope.ResourceGroupId, scope.Id);
-            }
-            var run = (await Services.GetRequiredService<GitRepositorySources>()
-                .RunAsync(owner.TenantId, owner.Id, runId, default))!;
-            if (run.State is GitRunFinished)
-                return;
-            await ResumeConnectionLifecycleAsync(run);
-        }
     }
 }

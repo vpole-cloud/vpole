@@ -10,8 +10,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-18T12:10:30Z");
 

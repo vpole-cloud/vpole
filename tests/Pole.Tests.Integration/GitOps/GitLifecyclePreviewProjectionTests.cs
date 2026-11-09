@@ -16,12 +16,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Global)]
 public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private readonly Repository repository = new();
-    private readonly ProjectionProvider widgets = new("PreviewWidget", GitLifecycleProtection.ConfigurationOnly,
-        fixture.Database.GetCollection<BsonDocument>("PreviewReviewWidgets"));
+    private ProjectionProvider widgets = null!;
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
     private GitLifecyclePreviews Previews => Services.GetRequiredService<GitLifecyclePreviews>();
     private IMongoCollection<ManagedDeclaration> Inventory =>
@@ -29,6 +29,8 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
 
     protected override void ConfigureServices(IServiceCollection services)
     {
+        widgets = new("PreviewWidget", GitLifecycleProtection.ConfigurationOnly,
+            Fixture.Database.GetCollection<BsonDocument>("PreviewReviewWidgets"));
         services.RemoveAll<IDeclarativeResourceProvider>();
         services.AddSingleton<IDeclarativeResourceProvider>(widgets);
         foreach (var kind in new[] { "PostgresCluster", "RedisService", "Secret" })
@@ -115,9 +117,9 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
     {
         foreach (var provider in Services.GetServices<IDeclarativeResourceProvider>().Cast<ProjectionProvider>())
             provider.Git = Services.GetRequiredService<IGitOpsMutations>();
-        return Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(TestData.TenantId,
+        return Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId,
             Guid.NewGuid().ToString("D"), new(repository.Provider, "connection", "repository", "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow), "https://example.test/source"),
+            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow), "https://example.test/source"),
             default)).Value);
     }
 
@@ -142,7 +144,7 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
     private async Task ConfirmAndRun(RepositorySource source, GitOperationPreview preview)
     {
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await Previews.ConfirmAsync(new(
-            new(source.TenantId, source.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(source.TenantId, source.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(source.TenantId, source.Id), default);
         var run = (await Sources.RunAsync(source.TenantId, source.Id, scheduled.RunId, default))!;
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);

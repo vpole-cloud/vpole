@@ -13,32 +13,13 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class HostnameBindingGitOpsGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
 {
-    private IMongoCollection<HostnameBinding> DomainBindings =>
-        Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings");
-
-    private static ManifestFile[] HostnameSnapshot(string relativeName = "api") =>
-    [
-        .. DomainZoneSnapshot(),
-        new("hostname.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: HostnameBinding
-            metadata:
-              name: api-hostname
-            spec:
-              zone: company-zone
-              resource: {kind: WebService, name: demo-api}
-              deploymentTarget: {{NamedCatalogTestData.TargetName}}
-              relativeName: {{relativeName}}
-            """)
-    ];
-
     [Fact]
     public async Task HostnameBindingAttachesAcrossSourcesRepairsIngressThenNoOpsWithoutAdoptingWorkload()
     {
         await EnablePublicWebTargetAsync();
-        await new DomainIndexesMigration().Up(Fixture.Database);
         var workloadSource = Id();
         var workload = StageFiveWebSnapshot(spec => spec["exposure"] = "Public");
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(workload, workloadSource)).Status);
@@ -49,9 +30,9 @@ public sealed partial class DeclarativePipelineTests
         var binding = await DomainBindings.Find(
             Builders<HostnameBinding>.Filter.Eq("Identity._t", nameof(NamedDomainIdentity))).SingleAsync();
         Assert.Equal(service.Id, binding.ResourceId);
-        Assert.Equal("api.company.apps.test.local", binding.Hostname);
+        Assert.Equal("api.company." + Data.Hostname("apps"), binding.Hostname);
         var listing = (await Mediator.Send(new GetWebServiceDeploymentHostnamesRequest(service.Id,
-            binding.ResourceDeploymentId, TestData.TenantId))).AssertHandlerOutcome();
+            binding.ResourceDeploymentId, Data.TenantId))).AssertHandlerOutcome();
         var listed = Assert.IsAssignableFrom<IReadOnlyList<WebServiceHostnameBindingDto>>(listing.Value);
         Assert.Equal(source, listed.Single(item => item.Id == binding.Id).GitOps!.SourceId);
         Assert.Equal(releaseCount + 1, await Releases());

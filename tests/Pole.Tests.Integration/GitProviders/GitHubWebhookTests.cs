@@ -18,7 +18,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
-public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
 {
     private const string Path = "/api/v1/integrations/github/webhook";
     private const string Sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -42,7 +43,7 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : ApiInte
         var message = await Outbox.Find(Builders<OutboxMessage>.Filter.Empty).SingleAsync();
         var value = JsonSerializer.Deserialize<GitRepositoryPushReceived>(message.PayloadJson,
             EventExtensions.SerializerOptions)!;
-        Assert.Equal(TestData.TenantId, value.EventCore.TenantId);
+        Assert.Equal(Data.TenantId, value.EventCore.TenantId);
         Assert.Equal(connection.Id, value.ConnectionId);
         Assert.Equal("feature/api", value.Branch);
         Assert.Equal("77", value.ExternalRepositoryId);
@@ -146,7 +147,7 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : ApiInte
 
     private async Task<GitProviderConnection> Connection()
     {
-        var connection = GitProviderConnectionFactory.Create(TestData.TenantId,
+        var connection = GitProviderConnectionFactory.Create(Data.TenantId,
             "github",
             GitProviderKind.GitHub,
             "42",
@@ -154,7 +155,7 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : ApiInte
             "test-owner",
             GitProviderAccountType.Organization,
             GitProviderRepositorySelection.All,
-            TestData.UserId,
+            Data.UserId,
             GitProviderConnectionFactory.DefaultOptions);
         await Fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
             .InsertOneAsync(connection);

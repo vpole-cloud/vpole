@@ -19,11 +19,13 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     private const string DeletionEvent = "pole.resource-connections/v1/resource-connection-deletion-requested";
-    private readonly ReviewedAuthority authorization = new();
+    private ReviewedAuthority? _authorization;
+    private ReviewedAuthority authorization => _authorization ??= new(Data.TenantId);
     private IMongoCollection<ResourceConnection> Connections => Fixture.Database
         .GetCollection<ResourceConnection>("ResourceConnections");
     private IDeclarativeResourceLifecycleProvider Provider => Services
@@ -76,12 +78,12 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         await session.AbortTransactionAsync();
 
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
         session.StartTransaction();
         Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(request, session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.IsType<DeletingResourceConnection>((await Load(connection.Id)).Lifecycle);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
     }
 
     [Theory]
@@ -110,7 +112,7 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
             Assert.IsType<DeclarationPreconditionsChanged>(outcome.Value);
         await session.AbortTransactionAsync();
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
     }
 
     [Fact]
@@ -129,7 +131,7 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
             await session.CommitTransactionAsync();
         }
 
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
         var deleting = await Load(connection.Id);
         var location = Assert.Single(Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle).Targets)
             .Snapshot.PolicyLocation;
@@ -199,7 +201,7 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         Assert.IsType<ResourceConnectionCascadeConflict>(result.Value);
         await session.AbortTransactionAsync();
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
     }
 
     [Fact]
@@ -222,7 +224,7 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
             .GetRequiredService<CascadeConnectionsForResourceDeletion>()(request, session)).Value).Count);
         await session.AbortTransactionAsync();
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
         session.StartTransaction();
         Assert.Equal(1, Assert.IsType<ResourceConnectionsCascaded>((await Services
             .GetRequiredService<CascadeConnectionsForResourceDeletion>()(request, session)).Value).Count);
@@ -231,14 +233,14 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         var retained = await Load(deleting.Id);
         Assert.Equal(deleting.Revision, retained.Revision);
         Assert.Equal(deleting.ReferenceFence + 1, retained.ReferenceFence);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(DeletionEvent));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
     }
 
     [Fact]
     public async Task Registration_fence_rejects_a_connection_admitted_after_the_transaction_snapshot()
     {
         var connection = Connection();
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var resourceType = ResourceTypeId.Create(connection.SourceResourceTypeId);
         using var seed = await Fixture.Client.StartSessionAsync();
         seed.StartTransaction();
@@ -268,17 +270,17 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
     private static ReadLifecycleResourceRequest Read(ResourceConnection connection) => new(connection.TenantId,
         new(new("ResourceConnection", connection.Name), connection.Id));
 
-    private static ResourceConnection Connection() => ResourceConnectionFactory.Create(
-        ObjectId.GenerateNewId().ToString(), TestData.TenantId, "reviewed-connection",
+    private ResourceConnection Connection() => ResourceConnectionFactory.Create(
+        ObjectId.GenerateNewId().ToString(), Data.TenantId, "reviewed-connection",
         ResourceTypeId.Create("pole/web-service"), ObjectId.GenerateNewId().ToString(),
         ResourceTypeId.Create("pole/redis"), ObjectId.GenerateNewId().ToString(), "redis",
         [ConnectionTargetSnapshot.Create("target", "destination-deployment", "cell", "namespace", "service", 6379,
             6379, [new("source-deployment", "cell", "namespace")])]);
 
     // Isolate the owning feature's transaction boundary; the GitOps suite exercises real admission.
-    private sealed class ReviewedAuthority : IGitOpsMutations
+    private sealed class ReviewedAuthority(string tenantId) : IGitOpsMutations
     {
-        public GitLifecycleAuthority Authority { get; } = new(TestData.TenantId, "source", "run", 1, 1, 1,
+        public GitLifecycleAuthority Authority { get; } = new(tenantId, "source", "run", 1, 1, 1,
             "worker", 1, "preview", "reviewed");
         public GitLifecycleAuthority? Observed { get; private set; }
         public GitLifecycleMutationEffect? Effect { get; private set; }

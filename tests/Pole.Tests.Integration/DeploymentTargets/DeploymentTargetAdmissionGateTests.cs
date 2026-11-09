@@ -10,15 +10,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task RejectingDefaultTarget_BlocksWorkloadsButNotLogicalResourceGroups()
     {
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("admission-base").Body);
+            Data.CreateResourceGroupRequest("admission-base").Body);
         Assert.Equal(HttpStatusCode.Created, groupResponse.StatusCode);
         var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
         Assert.NotNull(group);
@@ -27,13 +28,13 @@ public sealed class DeploymentTargetAdmissionGateTests(MongoReplicaSetFixture fi
 
         var logicalGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("admission-rejected").Body);
+            Data.CreateResourceGroupRequest("admission-rejected").Body);
         Assert.Equal(HttpStatusCode.Created, logicalGroupResponse.StatusCode);
         var baseline = await CaptureDurableCountsAsync();
 
         await AssertRejectedAsync(
             "/api/v1/web-services/",
-            TestData.CreateWebServiceRequest(
+            Data.CreateWebServiceRequest(
                 group.Id,
                 "admission-web",
                 "admission.example.com").Body);

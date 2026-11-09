@@ -20,6 +20,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     private static readonly ResourceTypeId SourceType = ResourceTypeId.Create("pole/web-service");
@@ -30,16 +31,16 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
     {
         var destination = await SeedAsync(DestinationType);
         var source = await SeedAsync(SourceType);
-        var sourceWeb = TestData.SeedWebService(source.Group.Id, id: source.Id) with { IsolationScopeId = source.Group.DefaultIsolationScopeId };
+        var sourceWeb = Data.SeedWebService(source.Group.Id, id: source.Id) with { IsolationScopeId = source.Group.DefaultIsolationScopeId };
         sourceWeb = sourceWeb with { Spec = sourceWeb.Spec with { Config = sourceWeb.Spec.Config with { EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("PRIVATE_SETTING", "private-environment-canary") } } };
         await Fixture.Database.GetCollection<WebService>("WebServices").InsertOneAsync(sourceWeb);
         var target = Id();
         await PlaceAsync(destination, DestinationType, target);
         await PlaceAsync(source, SourceType, target);
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with
         {
-            Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer))
+            Members = ImmutableList.Create(TenantFactory.CreateMember(Data.TenantId, Data.UserId, Data.UserEmail, TenantRole.Viewer))
         });
         var body = await Client.GetStringAsync(UriFor(destination.Id.ToUpperInvariant(), source.Id.ToUpperInvariant()));
         var discovered = JsonSerializer.Deserialize<ResourceConnectionEndpointsDto>(body,
@@ -82,7 +83,7 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
     {
         var unsupported = await SeedAsync(ResourceTypeId.Create("example/unsupported"));
         var empty = await SeedAsync(SourceType);
-        var emptyWeb = TestData.SeedWebService(empty.Group.Id, id: empty.Id) with { IsolationScopeId = empty.Group.DefaultIsolationScopeId };
+        var emptyWeb = Data.SeedWebService(empty.Group.Id, id: empty.Id) with { IsolationScopeId = empty.Group.DefaultIsolationScopeId };
         emptyWeb = emptyWeb with { Spec = emptyWeb.Spec with { Config = emptyWeb.Spec.Config with { PortMappings = [] } } };
         await Fixture.Database.GetCollection<WebService>("WebServices").InsertOneAsync(emptyWeb);
         var unsupportedResult = await Client.GetFromJsonAsync<ResourceConnectionEndpointsDto>($"/api/v1/resource-connections/endpoints?resourceType=example%2Funsupported&resourceId={unsupported.Id}");
@@ -127,8 +128,8 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
         await PlaceAsync(source, SourceType, Id());
         var response = await Client.PostAsJsonAsync("/api/v1/resource-connections", new CreateResourceConnectionBody("stale", SourceType.Value, source.Id, DestinationType.Value, destination.Id, "redis"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
-        Assert.Equal(0, await Fixture.Database.GetCollection<ResourceConnection>("ResourceConnections").CountDocumentsAsync(x => x.TenantId == TestData.TenantId));
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync("pole.resource-connections/v1/resource-connection-created"));
+        Assert.Equal(0, await Fixture.Database.GetCollection<ResourceConnection>("ResourceConnections").CountDocumentsAsync(x => x.TenantId == Data.TenantId));
+        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-connections/v1/resource-connection-created"));
         var latest = await Client.GetFromJsonAsync<ResourceConnectionEndpointsDto>(UriFor(destination.Id, source.Id));
         Assert.Equal("DestinationTargetMissing", latest!.Topology.ReasonCode);
     }
@@ -143,9 +144,10 @@ public sealed class ResourceConnectionEndpointDiscoveryApiTests(MongoReplicaSetF
     private sealed record Reference(
         string Id,
         ResourceGroup Group);
-    private async Task<Reference> SeedAsync(ResourceTypeId type, string tenant = TestData.TenantId)
+    private async Task<Reference> SeedAsync(ResourceTypeId type, string? tenant = null)
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup($"group-{Id()[..12]}", tenant));
+        tenant ??= Data.TenantId;
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup($"group-{Id()[^12..]}", tenant));
         var id = Id();
         await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(ResourceRegistrationFactory.Create(tenant, group.Id, type, id, "Example resource",
             type.Value.StartsWith("pole/", StringComparison.Ordinal) ? null : type.Value.Split('/')[0], new ResourceRegistrationFactory.CreateOptions(Id(), DateTime.UtcNow)));

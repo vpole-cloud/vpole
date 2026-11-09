@@ -25,7 +25,7 @@ public sealed partial class ManagedSecretIntegrationTests
     [Fact]
     public async Task Asynchronous_consumer_cleanup_retains_owned_bindings_and_removes_only_unowned_bindings()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var type = ResourceTypeId.Create("pole/web-service");
         var consumer = Id();
         var owned = await ConsumerSecretDeletionTestData.InsertAsync(Fixture.Database, group, type, consumer);
@@ -46,7 +46,7 @@ public sealed partial class ManagedSecretIntegrationTests
         Assert.Equal(owned.ToBsonDocument(), (await secrets.Find(item => item.Id == owned.Id).SingleAsync())
             .ToBsonDocument());
         Assert.Empty((await secrets.Find(item => item.Id == manual.Id).SingleAsync()).Bindings);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
 }

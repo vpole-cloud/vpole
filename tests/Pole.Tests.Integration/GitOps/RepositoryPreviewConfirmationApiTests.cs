@@ -10,7 +10,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class RepositorySourceApiTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class RepositoryPreviewConfirmationApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Preview_confirmation_rejects_an_advanced_commit_as_stale_without_consuming_approval()
@@ -70,24 +71,5 @@ public sealed partial class RepositorySourceApiTests
             new { expectedRevision = preview.Revision });
         await AssertProblem(response, HttpStatusCode.Conflict, "gitops.preview-input-unavailable");
         await AssertPreviewAwaiting(source.Id, preview);
-    }
-
-    private async Task<LifecyclePreviewView> CreateRepositoryPreview(string sourceId, long revision)
-    {
-        using var response = await Client.PostAsJsonAsync($"{Root}/{sourceId}/previews",
-            new { intent = "ResourceChanges", expectedRevision = revision });
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
-    }
-
-    private async Task AssertPreviewAwaiting(string sourceId, LifecyclePreviewView preview)
-    {
-        using var scope = ApiServices.CreateScope();
-        var stored = await scope.ServiceProvider.GetRequiredService<GitLifecyclePreviews>()
-            .LoadAsync(new(TestData.TenantId, sourceId), preview.Id, default);
-        Assert.NotNull(stored);
-        Assert.IsType<GitPreviewAwaitingConfirmation>(stored.State);
-        Assert.Equal(preview.Revision, stored.Revision);
-        Assert.Null((await Read(sourceId))!.Synchronization.CurrentRunId);
     }
 }

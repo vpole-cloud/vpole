@@ -6,6 +6,7 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class TestStorageDiscoveryService
 {
+    public string TenantId { get; init; } = string.Empty;
     private readonly IReadOnlyDictionary<string, IReadOnlySet<string>>
         _storageClassNamesByTarget;
     private readonly ConcurrentQueue<string> _requestedDeploymentTargetIds = [];
@@ -108,7 +109,7 @@ public sealed class TestStorageDiscoveryService
                 "standard",
                 "pv-standard-1",
                 new KubernetesStorageOwnerDto(
-                    TestData.TenantId,
+                    TenantId,
                     "rg-1",
                     "Redis",
                     "redis-1",

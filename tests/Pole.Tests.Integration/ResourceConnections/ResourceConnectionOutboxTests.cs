@@ -18,6 +18,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceConnectionOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.resource-connections/v1/resource-connection-changed";
@@ -47,7 +48,7 @@ public sealed class ResourceConnectionOutboxTests(MongoReplicaSetFixture fixture
             current.Revision,
             "private-failure-detail");
         await verify(connection.TenantId, connection.Id, "target", current.Generation, current.Revision, "stale");
-        var rows = await DbContext.OutboxMessages.Find(row => row.EventType == EventName).ToListAsync();
+        var rows = await DbContext.OutboxMessages.Find(row => row.TenantId == Data.TenantId && row.EventType == EventName).ToListAsync();
         Assert.Equal(2, rows.Count);
         Assert.All(rows,
             row =>
@@ -68,7 +69,7 @@ public sealed class ResourceConnectionOutboxTests(MongoReplicaSetFixture fixture
         await Services.GetRequiredService<PurgeResourceConnectionIfComplete>()(connection);
         Assert.Equal(0, await Connections.CountDocumentsAsync(row => row.Id == connection.Id));
         Assert.Equal(1, await Tombstones.CountDocumentsAsync(row => row.Id == connection.Id));
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     [Theory]
@@ -92,7 +93,7 @@ public sealed class ResourceConnectionOutboxTests(MongoReplicaSetFixture fixture
                     .RecordApplied("target", connection.Generation, DateTime.UtcNow).Value).Connection;
         await Connections.InsertOneAsync(connection);
         var before = (await Fixture.Database.GetCollection<BsonDocument>("ResourceConnections")
-            .Find(FilterDefinition<BsonDocument>.Empty).SingleAsync()).ToJson();
+            .Find(new BsonDocument("_id", ObjectId.Parse(connection.Id))).SingleAsync()).ToJson();
         await using var provider = FailingProvider();
         await using var scope = provider.CreateAsyncScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() => mutation switch
@@ -126,9 +127,9 @@ public sealed class ResourceConnectionOutboxTests(MongoReplicaSetFixture fixture
         });
         Assert.Equal(before,
             (await Fixture.Database.GetCollection<BsonDocument>("ResourceConnections")
-                .Find(FilterDefinition<BsonDocument>.Empty).SingleAsync()).ToJson());
-        Assert.Equal(0, await Tombstones.CountDocumentsAsync(_ => true));
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
+                .Find(new BsonDocument("_id", ObjectId.Parse(connection.Id))).SingleAsync()).ToJson());
+        Assert.Equal(0, await Tombstones.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     private ServiceProvider FailingProvider()
@@ -155,9 +156,9 @@ public sealed class ResourceConnectionOutboxTests(MongoReplicaSetFixture fixture
 
     private static ConnectionPolicyLocation Location => Target.PolicyLocation;
 
-    private static ResourceConnection Connection() => ResourceConnectionFactory.Create(
+    private ResourceConnection Connection() => ResourceConnectionFactory.Create(
         ObjectId.GenerateNewId().ToString(),
-        TestData.TenantId,
+        Data.TenantId,
         "connection",
         ResourceTypeId.Create("pole/web-service"),
         ObjectId.GenerateNewId().ToString(),

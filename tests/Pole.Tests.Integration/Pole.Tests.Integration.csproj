@@ -8,7 +8,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
         <ProjectReference Include="../../src/features/Tenants/Tenants.Testing/Tenants.Testing.csproj" />
+        <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Testing/ResourceGroups.Testing.csproj" />
         <!-- Pole API tests opt into the server JSON policy; external protocol fixtures import framework helpers explicitly. -->
         <Using Remove="System.Net.Http.Json" />
     </ItemGroup>

@@ -13,7 +13,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global)]
+public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private const string Commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private GitRunStore Store => Services.GetRequiredService<GitRunStore>();
@@ -142,7 +143,7 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
                     source.Id,
                     1,
                     Guid.NewGuid().ToString("D"),
-                    new(GitRunTrigger.Manual, TestData.UserId)),
+                    new(GitRunTrigger.Manual, Data.UserId)),
                 default);
         Assert.True(await Store.CompleteAsync(claim.Handle, GitRunCompletion.ConfigurationApplied, [], default));
         var state = await Sources.StateAsync(source.TenantId, source.Id, default);
@@ -223,7 +224,7 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
             source.Id,
             1,
             Guid.NewGuid().ToString("D"),
-            new(GitRunTrigger.Manual, TestData.UserId));
+            new(GitRunTrigger.Manual, Data.UserId));
         Assert.IsType<GitSourceScheduled>((await Sources.RetryAsync(new(request, first.Run.Id), default)).Value);
         await Sources.RequestSyncAsync(request with { RequestKey = Guid.NewGuid().ToString("D") }, default);
         var retry = Assert.IsType<GitWorkClaim>((await Store.ClaimAsync(
@@ -302,11 +303,11 @@ public sealed class GitRunLeaseTests(MongoReplicaSetFixture fixture) : MediatorI
                 DateTime.UtcNow.AddMinutes(-1)))));
 
     private async Task<RepositorySource> CreateSource() => Assert.IsType<RepositorySource>((await Sources.CreateAsync(
-        new(TestData.TenantId,
+        new(Data.TenantId,
             Guid.NewGuid().ToString("D"),
             new("Example", "connection", "repository", "main", ""),
             new(TimeSpan.FromMinutes(5)),
-            new(TestData.UserId, DateTime.UtcNow),
+            new(Data.UserId, DateTime.UtcNow),
             "https://example.test/repository"),
         default)).Value);
 }

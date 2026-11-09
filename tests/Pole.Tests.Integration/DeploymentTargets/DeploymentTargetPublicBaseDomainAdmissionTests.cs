@@ -20,22 +20,22 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
-    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
+    public override async Task InitializeAsync() => await base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task ConcurrentAncestorAndDescendantAdmissions_AllowExactlyOneTarget()
     {
         var persistence = new MongoPersistCreatedDeploymentTarget(
-            fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
-            new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
+            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
 
         var results = await Task.WhenAll(
             persistence.InvokeAsync(CreateTarget("example.test")),
@@ -45,7 +45,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         Assert.Single(results, result => result is PersistCreatedDeploymentTargetError);
         Assert.Equal(
             1,
-            await fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
                 Builders<DeploymentTarget>.Filter.Empty));
     }
 
@@ -53,10 +53,10 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     public async Task Admission_RejectsOverlappingActiveTargetDomain()
     {
         var persistence = new MongoPersistCreatedDeploymentTarget(
-            fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
-            new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
+            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
         var first = await persistence.InvokeAsync(CreateTarget("example.test"));
         Assert.IsType<DeploymentTarget>(first.Value);
 
@@ -71,14 +71,14 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     public async Task Admission_KeepsDomainReservedUntilPendingTargetIsPhysicallyRemoved()
     {
         var persistence = new MongoPersistCreatedDeploymentTarget(
-            fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
-            new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
+            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
         var target = CreateTarget("apps.example.test");
         Assert.IsType<DeploymentTarget>((await persistence.InvokeAsync(target)).Value);
         var pending = target.RequestDeletion(target.UpdatedAtUtc.AddSeconds(1));
-        await fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
+        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
             item => item.Id == target.Id,
             pending);
 
@@ -102,7 +102,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 NetworkSources = DeploymentTargetNetworkSources.None
             }
         };
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([publicTarget, privateTarget, missingSource]);
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([publicTarget, privateTarget, missingSource]);
         var admission = CreateWorkloadPlacementAdmission();
         var request = new DeploymentTargetAdmissionRequest(
             ObjectId.GenerateNewId().ToString(),
@@ -155,7 +155,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 "certificate-authority",
                 null!)
         };
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync(
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync(
             [inCluster, remote, remoteServiceAccount]);
         var admission = CreateWorkloadPlacementAdmission();
         var request = new DeploymentTargetAdmissionRequest(
@@ -212,11 +212,11 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 NetworkPolicyCapabilities = capabilities
             }
         };
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
 
         Assert.Empty(await CreateEligibleLoader()(DeploymentTargetRequiredCapabilities.PublicIngress));
         Assert.Equal(0,
-            await fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
                 DeploymentTargetFilters.FenceableWorkloadConfigurations(
                 [
                     new DeploymentTargetWorkloadConfigurationFenceRequest(
@@ -229,7 +229,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     public async Task PublicIngressAdmission_ReturnsTypedUnavailableCase()
     {
         var privateTarget = CreateTarget(publicBaseDomain: null);
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(privateTarget);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(privateTarget);
         var admission = CreatePublicIngressAdmission();
 
         var result = await admission(
@@ -253,7 +253,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     public async Task DomainReservationAdmission_UsesNarrowPublicIngressPath()
     {
         var target = CreateTarget("apps.example.test");
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var admission = CreateDomainReservationAdmission();
 
         var result = await admission(
@@ -269,7 +269,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     public async Task DomainReservationAdmission_ReturnsProviderOwnedTypedError()
     {
         var target = CreateTarget(publicBaseDomain: null);
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var admission = CreateDomainReservationAdmission();
 
         var result = await admission(
@@ -293,8 +293,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         {
             Enabled = false
         };
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
             DeploymentTargetSettings.Create(target.Id, target.CreatedAtUtc));
 
         var result = await CreateDefaultAdmission()();
@@ -316,7 +316,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             "not-an-object-id",
             Revision: 1,
             DateTime.UtcNow);
-        await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(invalidSettings);
+        await Fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(invalidSettings);
 
         await Assert.ThrowsAsync<ArgumentException>(() => CreateLookup()("not-an-object-id"));
         await Assert.ThrowsAsync<ArgumentException>(() => CreateDefaultLookup()());
@@ -326,12 +326,12 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     public async Task PublicBaseDomainChange_IsFencedByActiveDomainZoneReference()
     {
         var target = CreateTarget("apps.example.test");
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var references = new MongoApplyDeploymentTargetReferenceChanges(
-            fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetReferences,
+            Fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargetReferences,
             TimeProvider.System);
-        var registered = await new MongoRunTransaction(fixture.Client)
+        var registered = await new MongoRunTransaction(Fixture.Client)
             .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, cancellationToken) =>
             {
                 var result = await references.InvokeAsync(
@@ -348,18 +348,18 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                     : transaction.Abort(result);
             });
         Assert.IsType<DeploymentTargetReferencesChanged>(registered.Value);
-        var current = await fixture.DbContext.DeploymentTargets
+        var current = await Fixture.DbContext.DeploymentTargets
             .Find(item => item.Id == target.Id)
             .SingleAsync();
         var handler = new UpdateDeploymentTargetHandler(
             LoadById,
             LoadDefaultId,
             new MongoPersistUpdatedDeploymentTarget(
-                fixture.DbContext.DeploymentTargets,
+                Fixture.DbContext.DeploymentTargets,
                 CreateNoPublicBaseDomainReferences(),
                 CreateNoOverlappingPublicBaseDomain(),
-                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
-                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+                new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
+                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
                     "OutboxMessages")).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate,
             TimeProvider.System);
@@ -419,36 +419,36 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         new MongoAdmitDeploymentTargetForWorkload(CreateLoadById()).InvokeAsync;
 
     private LoadEligibleDeploymentTargets CreateEligibleLoader() =>
-        new MongoLoadEligibleDeploymentTargets(fixture.DbContext.DeploymentTargets).InvokeAsync;
+        new MongoLoadEligibleDeploymentTargets(Fixture.DbContext.DeploymentTargets).InvokeAsync;
 
     private LoadDeploymentTargetById CreateLoadById() =>
-        new MongoLoadDeploymentTargetById(fixture.DbContext.DeploymentTargets).InvokeAsync;
+        new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync;
 
     private LoadDefaultDeploymentTargetId CreateLoadDefaultId() =>
-        new MongoLoadDefaultDeploymentTargetId(fixture.DbContext.DeploymentTargetSettings)
+        new MongoLoadDefaultDeploymentTargetId(Fixture.DbContext.DeploymentTargetSettings)
             .InvokeAsync;
 
     private EnsureNoOverlappingDeploymentTargetPublicBaseDomain
         CreateNoOverlappingPublicBaseDomain() =>
         new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
-            fixture.DbContext.DeploymentTargets,
-            fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+            Fixture.DbContext.DeploymentTargets,
+            Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
 
     private EnsureNoDeploymentTargetPublicBaseDomainReferences
         CreateNoPublicBaseDomainReferences() =>
         new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(
-            fixture.DbContext.DeploymentTargetReferences).InvokeAsync;
+            Fixture.DbContext.DeploymentTargetReferences).InvokeAsync;
 
     private async Task<DeploymentTarget?> LoadById(
         string id,
         CancellationToken cancellationToken) =>
-        await fixture.DbContext.DeploymentTargets
+        await Fixture.DbContext.DeploymentTargets
             .Find(item => item.Id == id)
             .FirstOrDefaultAsync(cancellationToken);
 
     private async Task<string?> LoadDefaultId(CancellationToken cancellationToken) =>
-        await fixture.DbContext.DeploymentTargetSettings
+        await Fixture.DbContext.DeploymentTargetSettings
             .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
             .Project(item => item.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);

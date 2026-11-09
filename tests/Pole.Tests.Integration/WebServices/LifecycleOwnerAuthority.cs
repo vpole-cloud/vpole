@@ -6,9 +6,9 @@ using Pole.Tests.Integration.Infrastructure;
 namespace Pole.Tests.Integration.WebServices;
 
 // Tests isolate the owner transaction boundary; the GitOps suite exercises real preview/lease admission.
-internal sealed class LifecycleOwnerAuthority : IGitOpsMutations, IGitLifecyclePlanGuard
+internal sealed class LifecycleOwnerAuthority(string tenantId) : IGitOpsMutations, IGitLifecyclePlanGuard
 {
-    public GitLifecycleAuthority Authority { get; } = new(TestData.TenantId, "source", "run", 1, 1, 1,
+    public GitLifecycleAuthority Authority { get; } = new(tenantId, "source", "run", 1, 1, 1,
         "worker", 1, "preview", "action");
     public IReadOnlyList<GitLifecycleApprovedResource> Resources { get; set; } = [];
     public Dictionary<ResourceAddress, string> References { get; } = [];

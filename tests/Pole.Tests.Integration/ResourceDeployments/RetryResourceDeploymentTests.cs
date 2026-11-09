@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -11,19 +12,20 @@ using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class RetryResourceDeploymentTests(
     MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
-    private const string TenantId = "507f1f77bcf86cd799439011";
-    private const string OtherTenantId = "507f1f77bcf86cd799439012";
-    private const string ResourceId = "507f1f77bcf86cd799439013";
-    private const string ResourceGroupId = "507f1f77bcf86cd799439014";
-    private const string ScopeId = "507f1f77bcf86cd799439015";
-    private const string RuntimeCellId = "507f1f77bcf86cd799439016";
-    private const string TargetId = "507f1f77bcf86cd799439017";
-    private const string DeploymentId = "507f1f77bcf86cd799439018";
-    private const string ClaimId = "507f1f77bcf86cd799439020";
+    private string TenantId => Data.TenantId;
+    private readonly string OtherTenantId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string ResourceId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string ResourceGroupId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string ScopeId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string RuntimeCellId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string TargetId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string DeploymentId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string ClaimId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
     private static readonly ResourceTypeId TestResourceType =
         ResourceTypeId.Create("pole/test-retry");
     private static readonly DateTime CreatedAtUtc =
@@ -48,7 +50,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(
             0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
+                CaseOutbox));
     }
 
     [Fact]
@@ -71,7 +73,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(
             0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
+                CaseOutbox));
     }
 
     [Fact]
@@ -94,7 +96,7 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(ResourceDeploymentOperation.Apply, pending.Operation);
         Assert.Equal(deployment.Revision + 1, persisted.Revision);
         var message = await DbContext.OutboxMessages
-            .Find(FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty)
+            .Find(CaseOutbox)
             .SingleAsync();
         Assert.Equal(
             "pole.resource-deployments/v1/resource-deployment-reconciliation-requested",
@@ -135,15 +137,19 @@ public sealed class RetryResourceDeploymentTests(
         Assert.Equal(deployment.Revision, (await LoadDeploymentAsync()).Revision);
         Assert.IsType<FailedResourceDeploymentState>((await LoadDeploymentAsync()).State);
         Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(
-            FilterDefinition<Pole.Features.Outbox.Domain.OutboxMessage>.Empty));
+            CaseOutbox));
     }
+
+    private FilterDefinition<OutboxMessage> CaseOutbox =>
+        Builders<OutboxMessage>.Filter.Where(message =>
+            message.TenantId == TenantId || message.TenantId == OtherTenantId);
 
     private Task<ResourceDeployment> LoadDeploymentAsync() =>
         DbContext.ResourceDeployments
             .Find(deployment => deployment.Id == DeploymentId)
             .SingleAsync();
 
-    private static ResourceDeployment CreateFailedDeployment(
+    private ResourceDeployment CreateFailedDeployment(
         bool retryable)
     {
         var placement = ResolvedResourcePlacement.Create(

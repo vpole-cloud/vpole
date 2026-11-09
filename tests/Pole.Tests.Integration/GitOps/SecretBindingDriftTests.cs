@@ -10,7 +10,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class SecretBindingDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task BindingSameCommitRepairsMappingWithoutChangingPinsOrCreatingRelease()
@@ -19,7 +20,7 @@ public sealed partial class DeclarativePipelineTests
         var initial = await Apply(snapshot);
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var binding = secret.Bindings.Single();
         await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
         {
@@ -36,14 +37,14 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(binding.Pins.Retained.ToArray(), current.Pins.Retained.ToArray());
         Assert.Equal(releases, await Releases());
         var queries = Services.GetRequiredService<GitRepositoryQueries>();
-        var operations = await queries.OperationsAsync(TestData.TenantId, source, repaired.Context!.RunId, 1, 20,
+        var operations = await queries.OperationsAsync(Data.TenantId, source, repaired.Context!.RunId, 1, 20,
             default);
         Assert.Equal(GitPlannedAction.Update,
             operations!.Items.Single(item => item.Kind == "SecretBinding").Plan!.Action);
         var events = await BusinessEvents();
         var stable = await Apply(snapshot);
         Assert.Equal(events, await BusinessEvents());
-        var view = await queries.RunAsync(TestData.TenantId, source, stable.Context!.RunId, default);
+        var view = await queries.RunAsync(Data.TenantId, source, stable.Context!.RunId, default);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 5, 0, 0, null), view!.Operations);
     }
 }

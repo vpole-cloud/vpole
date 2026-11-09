@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -14,8 +15,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
-public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoReplicaSetFixture fixture)
-    : IClassFixture<Pole.Testing.MongoReplicaSetFixture>
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class SourceBuildConfigurationIdentityTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Theory]
     [InlineData(true)]
@@ -30,7 +32,7 @@ public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoRepl
             new("FROM scratch"),
             new ManualSourceBuildConfigurationOrigin("author"),
             SourceBuildConfigurationFactory.DefaultOptions);
-        var configurations = fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
+        var configurations = Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
         await configurations.InsertOneAsync(current);
         var incoming = current with
         {
@@ -39,8 +41,8 @@ public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoRepl
             WebServiceId = sameName ? ObjectId.GenerateNewId().ToString() : current.WebServiceId
         };
         var admissions = 0;
-        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Client)
-            .AddSingleton(fixture.Database).AddSingleton<MongoRunTransaction>().AddSingleton(fixture.StoreOutboxWrites)
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(Fixture.Client)
+            .AddSingleton(Fixture.Database).AddSingleton<MongoRunTransaction>().AddSingleton(Fixture.StoreOutboxWrites)
             .AddSingleton<FenceSourceRepository>((_, session, _) =>
             {
                 Assert.True(session.IsInTransaction);
@@ -61,7 +63,7 @@ public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoRepl
 
         Assert.Equal(0, admissions);
         Assert.Equal(1, await configurations.CountDocumentsAsync(item => item.TenantId == current.TenantId));
-        Assert.Equal(0, await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
+        Assert.Equal(0, await Fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .CountDocumentsAsync(new BsonDocument("TenantId", current.TenantId)));
     }
     [Theory]
@@ -69,7 +71,7 @@ public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoRepl
     [InlineData(false)]
     public async Task ConcurrentConfigurationCreation_PreservesNamedUniquenessAndOneOutboxWrite(bool sameName)
     {
-        await new SourceBuildMigration().Up(fixture.Database);
+        await new SourceBuildMigration().Up(Fixture.Database);
         var first = SourceBuildConfigurationFactory.Create(
             ObjectId.GenerateNewId().ToString(), "application-build", ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(), new("FROM scratch"),
@@ -82,8 +84,8 @@ public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoRepl
         };
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var arrivals = 0;
-        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Client)
-            .AddSingleton(fixture.Database).AddSingleton<MongoRunTransaction>().AddSingleton(fixture.StoreOutboxWrites)
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(Fixture.Client)
+            .AddSingleton(Fixture.Database).AddSingleton<MongoRunTransaction>().AddSingleton(Fixture.StoreOutboxWrites)
             .AddSingleton<FenceSourceRepository>((_, _, _) =>
                 Task.FromResult<FenceSourceRepositoryOutcome>(new SourceRepositoryFenced()))
             .AddSingleton<AdmitSourceBuildWebService>(async (_, session, ct) =>
@@ -104,9 +106,9 @@ public sealed class SourceBuildConfigurationIdentityTests(Pole.Testing.MongoRepl
         else
             Assert.Single(results, item => item is SourceBuildConfigurationAlreadyExists);
 
-        Assert.Equal(1, await fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
+        Assert.Equal(1, await Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
             .CountDocumentsAsync(item => item.TenantId == first.TenantId));
-        Assert.Equal(1, await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
+        Assert.Equal(1, await Fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .CountDocumentsAsync(new BsonDocument("TenantId", first.TenantId)));
     }
 

@@ -11,13 +11,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
-public sealed class QuotaUsageReleaseTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class QuotaUsageReleaseTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Joined_release_rolls_back_with_owner_transaction_and_does_not_touch_other_tenant()
     {
         var usages = Services.GetRequiredService<IMongoCollection<TenantQuotaUsage>>();
-        var initial = Seed(TestData.TenantId);
+        var initial = Seed(Data.TenantId);
         var other = Seed(MongoDB.Bson.ObjectId.GenerateNewId().ToString());
         await usages.InsertManyAsync([initial, other]);
         using var session = await Fixture.Client.StartSessionAsync();
@@ -47,7 +48,7 @@ public sealed class QuotaUsageReleaseTests(MongoReplicaSetFixture fixture) : Med
     public async Task Concurrent_joined_releases_serialize_usage_fence_without_lost_updates()
     {
         var usages = Services.GetRequiredService<IMongoCollection<TenantQuotaUsage>>();
-        await usages.InsertOneAsync(Seed(TestData.TenantId));
+        await usages.InsertOneAsync(Seed(Data.TenantId));
         async Task Release()
         {
             using var scope = Services.CreateScope();
@@ -55,14 +56,14 @@ public sealed class QuotaUsageReleaseTests(MongoReplicaSetFixture fixture) : Med
                 async (tx, ct) =>
                 {
                     await scope.ServiceProvider.GetRequiredService<IQuotaUsageRelease>().ReleaseAsync(
-                        new ReleaseQuotaUsageRequest<RedisQuotaInput>(TestData.TenantId,
+                        new ReleaseQuotaUsageRequest<RedisQuotaInput>(Data.TenantId,
                             RedisQuotaInput.Create(100, 128)), tx.Session, ct);
                     return tx.Commit(true);
                 }, default);
         }
 
         await Task.WhenAll(Release(), Release());
-        var current = await usages.Find(item => item.TenantId == TestData.TenantId).SingleAsync();
+        var current = await usages.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         Assert.Equal(800, Value(current, CpuQuota.QuotaKey));
         Assert.Equal(1792, Value(current, RamQuota.QuotaKey));
         Assert.Equal(8, Value(current, RedisServiceCountQuota.QuotaKey));

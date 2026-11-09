@@ -27,6 +27,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -48,14 +49,14 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         using var session = await Fixture.Client.StartSessionAsync(); session.StartTransaction();
         Assert.IsType<ResourceConnectionTopologyValid>((await Services.GetRequiredService<ReconcileConnectionsForResource>()(
             new ReconcileConnectionsForResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceType: WebServiceResourceDeployment.ResourceType,
                 ResourceId: connection.SourceResourceId),
             session: session)).Value);
         ResourceConnectionValueReference[] references = [new(connection.Id, "Host"), new(connection.Id, "Port")];
         Assert.IsType<ResourceConnectionReferencesAdmitted>((await Services.GetRequiredService<AdmitResourceConnectionReferences>()(
             new AdmitResourceConnectionReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: connection.SourceResourceId,
                 References: references),
@@ -66,7 +67,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         var resolver = Services.GetRequiredService<ResolveResourceConnectionReferences>();
         var first = Assert.IsType<ResolvedResourceConnectionValues>((await resolver(
             new ResolveResourceConnectionReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: connection.SourceResourceId,
                 DeploymentId: source.Id,
@@ -74,7 +75,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
             ct: default)).Value);
         var second = Assert.IsType<ResolvedResourceConnectionValues>((await resolver(
             new ResolveResourceConnectionReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: connection.SourceResourceId,
                 DeploymentId: secondSource.Id,
@@ -87,7 +88,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         await WebServices.ReplaceOneAsync(item => item.Id == destinationService.Id, destinationService with { Spec = changedSpec });
         Assert.Equal("EndpointChanged", Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(
             new ResolveResourceConnectionReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: connection.SourceResourceId,
                 DeploymentId: source.Id,
@@ -96,7 +97,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         await WebServices.ReplaceOneAsync(item => item.Id == destinationService.Id, destinationService);
         Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(
             new ResolveResourceConnectionReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: connection.DestinationResourceId,
                 DeploymentId: destination.Id,
@@ -113,7 +114,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         await Connections.ReplaceOneAsync(item => item.Id == connection.Id, refreshed.BeginDeletion(DateTime.UtcNow));
         Assert.IsType<ResourceConnectionReferencesUnavailable>((await resolver(
             new ResolveResourceConnectionReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceType: WebServiceResourceDeployment.ResourceType,
                 SourceId: connection.SourceResourceId,
                 DeploymentId: source.Id,
@@ -135,7 +136,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
 
         var result = await Services.GetRequiredService<RequestExactResourceDeploymentDeletion>()(
             new ResourceDeploymentExactMutationRequest(
-                TestData.TenantId,
+                Data.TenantId,
                 WebServiceResourceDeployment.ResourceType,
                 destinationId,
                 deployment.Id,
@@ -156,7 +157,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         var registrationAfter = await DbContext.ResourceRegistrations
             .Find(item => item.ResourceId == destinationId).SingleAsync();
         Assert.Equal(registrationBefore.ReferenceFence, registrationAfter.ReferenceFence);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-connections/v1/resource-connection-reconciliation-requested"));
     }
 
@@ -173,7 +174,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         session.StartTransaction();
         Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
             new FenceRegisteredResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceTypeId: WebServiceResourceDeployment.ResourceType,
                 ResourceId: sourceId),
             session: session));
@@ -181,7 +182,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
 
         var result = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
             new ReconcileConnectionsForResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceType: WebServiceResourceDeployment.ResourceType,
                 ResourceId: sourceId),
             session: session);
@@ -210,7 +211,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         session.StartTransaction();
         Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
             new FenceRegisteredResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceTypeId: WebServiceResourceDeployment.ResourceType,
                 ResourceId: current.Id),
             session: session));
@@ -218,7 +219,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
 
         var result = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
             new ReconcileConnectionsForResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceType: WebServiceResourceDeployment.ResourceType,
                 ResourceId: current.Id),
             session: session);
@@ -242,7 +243,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         session.StartTransaction();
         Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
             new FenceRegisteredResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceTypeId: WebServiceResourceDeployment.ResourceType,
                 ResourceId: current.Id),
             session: session));
@@ -253,7 +254,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
 
         var result = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
             new ReconcileConnectionsForResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceType: WebServiceResourceDeployment.ResourceType,
                 ResourceId: current.Id),
             session: session);
@@ -285,13 +286,13 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         var fence = Services.GetRequiredService<FenceRegisteredResource>();
         Assert.NotNull(await fence(
             new FenceRegisteredResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceTypeId: WebServiceResourceDeployment.ResourceType,
                 ResourceId: source.ResourceId),
             session: session));
         var seeded = await Services.GetRequiredService<ReconcileConnectionsForResource>()(
             new ReconcileConnectionsForResourceRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceType: WebServiceResourceDeployment.ResourceType,
                 ResourceId: source.ResourceId),
             session: session);
@@ -303,7 +304,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         session.StartTransaction();
         var removal = await Services.GetRequiredService<RequestExactResourceDeploymentDeletion>()(
             new ResourceDeploymentExactMutationRequest(
-                TestData.TenantId,
+                Data.TenantId,
                 WebServiceResourceDeployment.ResourceType,
                 source.ResourceId,
                 secondSource.Id,
@@ -328,7 +329,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         var removedDeployment = await DbContext.ResourceDeployments
             .Find(item => item.Id == secondSource.Id).SingleAsync();
         Assert.Equal(ResourceDeploymentOperation.Delete, removedDeployment.DesiredOperation);
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-connections/v1/resource-connection-reconciliation-requested"));
     }
 
@@ -351,7 +352,7 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         var unchanged = await WebServices.Find(item => item.Id == current.Id).SingleAsync();
         Assert.Equal(current.Revision, unchanged.Revision);
         Assert.Equal("http", Assert.Single(unchanged.Spec.Config.PortMappings).Name);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.web-services/v1/web-service-updated"));
 
         session.StartTransaction();
         var changed = current.UpdateDesiredState(
@@ -372,9 +373,9 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         Assert.Equal(81, target.Snapshot.DestinationServicePort);
         Assert.Equal(9090, target.Snapshot.DestinationPort);
         Assert.IsType<PendingConnectionApply>(target.Status);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-connections/v1/resource-connection-reconciliation-requested"));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.web-services/v1/web-service-updated"));
     }
 
     [Fact]
@@ -384,14 +385,14 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
         var original = Assert.Single(Assert.IsType<ActiveResourceConnection>(connection.Lifecycle).Targets).Snapshot;
 
         var result = await Mediator.Send(new DeleteWebServiceRequest(
-            connection.DestinationResourceId, TestData.TenantId));
+            connection.DestinationResourceId, Data.TenantId));
 
         _ = result.AssertSuccess();
         var deleting = await LoadConnectionAsync(connection.Id);
         Assert.Equal(connection.Generation + 1, deleting.Generation);
         var cleanup = Assert.Single(Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle).Targets);
         Assert.True(original.HasSameResolvedValues(cleanup.Snapshot));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-connections/v1/resource-connection-deletion-requested"));
         Assert.All(await DbContext.ResourceDeployments
                 .Find(item => item.ResourceId == connection.DestinationResourceId).ToListAsync(),
@@ -400,12 +401,12 @@ public sealed class ResourceConnectionMutationIntegrationTests(MongoReplicaSetFi
 
     private async Task<ResourceConnection> CreateWebConnectionAsync()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var source = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "caller"))).AssertSuccess();
-        var destination = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "receiver"))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var source = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "caller"))).AssertSuccess();
+        var destination = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "receiver"))).AssertSuccess();
         var outcome = await Services.GetRequiredService<PersistResourceConnectionCreation>()(
             new CreateResourceConnectionCommand(
-                TestData.TenantId,
+                Data.TenantId,
                 "caller-to-receiver",
                 WebServiceResourceDeployment.ResourceType,
                 source.WebServiceId,

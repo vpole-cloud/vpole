@@ -17,7 +17,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
-public sealed class GitRepositorySnapshotTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class GitRepositorySnapshotTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task RegisteredAdapterReadsYamlOnlyRepositoryAndFeedsCurrentCompiler()
@@ -31,7 +32,7 @@ public sealed class GitRepositorySnapshotTests(MongoReplicaSetFixture fixture) :
               description: From a YAML-only repository
             """;
         var connection = GitProviderConnectionFactory.Create(
-            TestData.TenantId, "production-git", GitProviderKind.GitHub,
+            Data.TenantId, "production-git", GitProviderKind.GitHub,
             "42", "account", "display", GitProviderAccountType.Organization, GitProviderRepositorySelection.Selected,
             "departed-author", GitProviderConnectionFactory.DefaultOptions);
         await DbContext.GitProviderConnections.InsertOneAsync(connection);
@@ -49,7 +50,7 @@ public sealed class GitRepositorySnapshotTests(MongoReplicaSetFixture fixture) :
             .AddSingleton<IGitHubAppClient>(client).BuildServiceProvider();
         using var scope = services.CreateScope();
         var provider = Assert.Single(scope.ServiceProvider.GetServices<IRepositorySnapshotProvider>());
-        var reference = new RepositorySourceReference(TestData.TenantId, connection.Id, "9001");
+        var reference = new RepositorySourceReference(Data.TenantId, connection.Id, "9001");
         var commit = Assert.IsType<RepositoryCommitResolved>(
             (await provider.ResolveCommitAsync(new(reference, "main"), default)).Value);
         var snapshot = Assert.IsType<RepositorySnapshotRead>(

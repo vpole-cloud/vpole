@@ -14,9 +14,10 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
-    private readonly WidgetProvider provider = new(fixture.Database.GetCollection<BsonDocument>("LifecycleWidgets"));
+    private WidgetProvider provider = null!;
     private readonly Repository repository = new();
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
     private GitLifecyclePreviews Previews => Services.GetRequiredService<GitLifecyclePreviews>();
@@ -26,6 +27,7 @@ public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) :
 
     protected override void ConfigureServices(IServiceCollection services)
     {
+        provider = new(Fixture.Database.GetCollection<BsonDocument>("LifecycleWidgets"));
         services.AddSingleton<IDeclarativeResourceProvider>(provider);
         services.AddSingleton<IRepositorySnapshotProvider>(repository);
     }
@@ -71,14 +73,14 @@ public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) :
         var preview = await Preview(source, new GitPreviewDetachSource());
         await provider.Documents.UpdateOneAsync(_ => true, Builders<BsonDocument>.Update.Inc("Revision", 1));
         Assert.IsType<GitPreviewStale>((await Previews.ConfirmAsync(new(new(source.TenantId, source.Id), preview.Id,
-            preview.Revision, TestData.UserId), default)).Value);
+            preview.Revision, Data.UserId), default)).Value);
         Assert.Equal(1, await Inventory.CountDocumentsAsync(_ => true));
         Assert.Equal(1, (await Sources.StateAsync(source.TenantId, source.Id, default)).RequestedGeneration);
         var fresh = await Preview(source, new GitPreviewDetachSource());
         await Services.GetRequiredService<IMongoCollection<GitSynchronizationState>>().UpdateOneAsync(_ => true,
             Builders<GitSynchronizationState>.Update.Inc(item => item.InventoryRevision, 1));
         Assert.IsType<GitPreviewStale>((await Previews.ConfirmAsync(new(new(source.TenantId, source.Id), fresh.Id,
-            fresh.Revision, TestData.UserId), default)).Value);
+            fresh.Revision, Data.UserId), default)).Value);
     }
 
     [Fact]
@@ -92,7 +94,7 @@ public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) :
         Assert.Equal(1, await Services.GetRequiredService<IMongoCollection<GitReconciliationRun>>()
             .CountDocumentsAsync(_ => true));
         Assert.IsType<GitSourceNotFound>((await Previews.ConfirmAsync(new(new("other", source.Id), preview.Id,
-            preview.Revision, TestData.UserId), default)).Value);
+            preview.Revision, Data.UserId), default)).Value);
     }
 
     [Fact]
@@ -197,9 +199,9 @@ public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) :
     }
 
     private async Task<RepositorySource> Create(string repositoryProvider = "Example") =>
-        Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(TestData.TenantId, Guid.NewGuid().ToString("D"),
+        Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId, Guid.NewGuid().ToString("D"),
             new(repositoryProvider, "connection", "repository", "main", ""), new(TimeSpan.FromMinutes(5)),
-            new(TestData.UserId, DateTime.UtcNow), "https://example.test/repository"), default)).Value);
+            new(Data.UserId, DateTime.UtcNow), "https://example.test/repository"), default)).Value);
 
     private async Task Own(RepositorySource source, string id = "resource", string name = "demo")
     {
@@ -223,7 +225,7 @@ public sealed class GitLifecycleExecutionTests(MongoReplicaSetFixture fixture) :
     private async Task<GitLifecycleScheduled> Confirm(RepositorySource source, GitOperationPreview preview) =>
         Assert.IsType<GitLifecycleScheduled>((await Previews.ConfirmAsync(new(new(source.TenantId, source.Id),
             preview.Id,
-            preview.Revision, TestData.UserId), default)).Value);
+            preview.Revision, Data.UserId), default)).Value);
 
     private sealed class Repository : IRepositorySnapshotProvider
     {

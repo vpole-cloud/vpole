@@ -18,8 +18,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
 {
     private const string EventType = "pole.storage-profiles/v1/storage-profile-catalog-changed";
 
@@ -113,7 +114,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         Assert.True(defaultAfter.IsDefault);
         Assert.Equal(defaultBefore.Revision, defaultAfter.Revision);
         Assert.Equal(defaultBefore.UpdatedAtUtc, defaultAfter.UpdatedAtUtc);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(0, await DbContext.CountAllOutboxMessagesAsync(EventType));
         var history = Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions");
         Assert.Equal(0, await history.CountDocumentsAsync(Builders<StorageProfileRevision>.Filter.Empty));
     }
@@ -143,7 +144,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
             .Find(profile => profile.Id == TestData.DefaultStorageProfileId).SingleAsync();
         Assert.True(activeDefault.IsDefault);
         Assert.Equal(1, activeDefault.Revision);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(EventType));
     }
 
     [Fact]

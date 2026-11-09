@@ -18,8 +18,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
+[Collection(IntegrationTestCollection.Global)]
 public sealed class SourceRepositoryDeclarativeTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private readonly string sourceId = ObjectId.GenerateNewId().ToString();
     private readonly TestRepositorySnapshots snapshots = new();
@@ -59,7 +60,7 @@ public sealed class SourceRepositoryDeclarativeTests(MongoReplicaSetFixture fixt
         var current = await DbContext.SourceRepositories.Find(item => item.Id == original.Id).SingleAsync();
         Assert.Equal(original with { ReferenceFence = current.ReferenceFence }, current);
         Assert.Equal(0, await DbContext.SourceBuildJobs.CountDocumentsAsync(_ => true));
-        var run = await new RepositoryPipelineDriver(Services, Fixture, snapshots).LatestAsync(sourceId);
+        var run = await new RepositoryPipelineDriver(Services, Fixture, Data, snapshots).LatestAsync(sourceId);
         Assert.Equal(GitRunCompletion.AlreadyCurrent, Assert.IsType<GitRunFinished>(run.State).Completion);
         Assert.IsType<SourceRepositoryGitOwned>((await Services.GetRequiredService<DeleteSourceRepository>()(
             original.TenantId, original.Id)).Value);
@@ -99,7 +100,7 @@ public sealed class SourceRepositoryDeclarativeTests(MongoReplicaSetFixture fixt
     }
 
     private Task<RepositoryPipelineResult> Apply(string branch = "main") =>
-        new RepositoryPipelineDriver(Services, Fixture, snapshots).SubmitAsync(new(TestData.TenantId, sourceId),
+        new RepositoryPipelineDriver(Services, Fixture, Data, snapshots).SubmitAsync(new(Data.TenantId, sourceId),
         [new("application.yaml", $$"""
             apiVersion: pole.io/v1alpha1
             kind: SourceRepository
@@ -113,9 +114,9 @@ public sealed class SourceRepositoryDeclarativeTests(MongoReplicaSetFixture fixt
 
     private async Task<GitProviderConnection> Connection()
     {
-        var connection = GitProviderConnectionFactory.Create(TestData.TenantId, "production", GitProviderKind.GitHub,
+        var connection = GitProviderConnectionFactory.Create(Data.TenantId, "production", GitProviderKind.GitHub,
             "42", "account", "organization", GitProviderAccountType.Organization, GitProviderRepositorySelection.All,
-            TestData.UserId, GitProviderConnectionFactory.DefaultOptions);
+            Data.UserId, GitProviderConnectionFactory.DefaultOptions);
         await DbContext.GitProviderConnections.InsertOneAsync(connection);
         return connection;
     }

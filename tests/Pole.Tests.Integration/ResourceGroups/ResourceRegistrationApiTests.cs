@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceRegistrationApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -17,7 +18,7 @@ public sealed class ResourceRegistrationApiTests(MongoReplicaSetFixture fixture)
     public async Task List_ReturnsTenantScopedRegistrationPage()
     {
         var group = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
+            Data.SeedResourceGroup());
         await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(
             ResourceRegistrationFactory.Create(
                 group.TenantId,
@@ -47,7 +48,7 @@ public sealed class ResourceRegistrationApiTests(MongoReplicaSetFixture fixture)
     public async Task List_ReturnsNotFound_ForAnotherTenantsGroup()
     {
         var group = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup(
+            Data.SeedResourceGroup(
                 tenantId: ObjectId.GenerateNewId().ToString()));
 
         using var response = await Client.GetAsync(

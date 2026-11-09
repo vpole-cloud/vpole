@@ -17,7 +17,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class LifecycleAdoptionPreviewTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task WebService_adoption_preview_rejects_immutable_group_change_before_confirmation()
@@ -26,7 +27,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(originalFiles)).Status);
         var service = await Service();
         await RetainAsManualAsync();
-        await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup() with { Name = "other" });
+        await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup() with { Name = "other" });
         var changedFiles = StageFiveWebSnapshot(spec => spec["resourceGroup"] = "other");
         var file = AdoptionManifest("WebService", changedFiles);
         var adopter = await AdoptionSourceAsync([file]);
@@ -53,7 +54,7 @@ public sealed partial class DeclarativePipelineTests
         await Supply();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply()).Status);
         await RetainAsManualAsync();
-        var secret = await Secrets.Find(_ => true).SingleAsync();
+        var secret = await Secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
         var unnamed = secret with
         {
@@ -71,9 +72,9 @@ public sealed partial class DeclarativePipelineTests
         var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(
             new(new(adopter.TenantId, adopter.Id), adopter.Revision,
                 new GitPreviewAdoption([new("SecretBinding", "adopted-binding", binding.Id)])), default)).Value);
-        Assert.Null(Assert.Single((await Secrets.Find(_ => true).SingleAsync()).Bindings).DeclarationName);
+        Assert.Null(Assert.Single((await Secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Bindings).DeclarationName);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(
-            new(new(adopter.TenantId, adopter.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(new(adopter.TenantId, adopter.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         if (external)
             await Secrets.UpdateOneAsync(item => item.Id == secret.Id,
                 Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1));
@@ -85,12 +86,12 @@ public sealed partial class DeclarativePipelineTests
         {
             Assert.Equal(GitRunCompletion.Blocked, Assert.IsType<GitRunFinished>(run.State).Completion);
             Assert.Equal(nameof(GitLifecycleApprovalStale), Assert.Single(run.Diagnostics).Code);
-            Assert.Null(Assert.Single((await Secrets.Find(_ => true).SingleAsync()).Bindings).DeclarationName);
+            Assert.Null(Assert.Single((await Secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Bindings).DeclarationName);
             Assert.Equal(0, await Inventory.CountDocumentsAsync(item => item.SourceId == adopter.Id));
             return;
         }
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);
-        var adopted = await Secrets.Find(_ => true).SingleAsync();
+        var adopted = await Secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         var named = Assert.Single(adopted.Bindings);
         Assert.Equal(binding.Id, named.Id);
         Assert.Equal("adopted-binding", named.DeclarationName);
@@ -101,43 +102,5 @@ public sealed partial class DeclarativePipelineTests
         var owned = await Inventory.Find(item => item.SourceId == adopter.Id).SingleAsync();
         Assert.Equal(binding.Id, owned.ResourceId);
         Assert.Equal("SecretBinding", owned.Kind);
-    }
-
-    private async Task RetainAsManualAsync()
-    {
-        var sources = Services.GetRequiredService<GitRepositorySources>();
-        var owner = (await sources.LoadAsync(TestData.TenantId, source, default))!;
-        var previews = Services.GetRequiredService<GitLifecyclePreviews>();
-        var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(
-            new(new(owner.TenantId, owner.Id), owner.Revision, new GitPreviewDetachSource()), default)).Value);
-        Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
-        await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(owner.TenantId, owner.Id), default);
-        Assert.Equal(GitSourceActivity.Detached,
-            (await sources.LoadAsync(owner.TenantId, owner.Id, default))!.Activity);
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(item => item.SourceId == owner.Id));
-    }
-
-    private async Task<RepositorySource> AdoptionSourceAsync(ManifestFile[] files)
-    {
-        var repositoryId = Id();
-        repository.Publish(repositoryId, files);
-        return Assert.IsType<RepositorySource>((await Services.GetRequiredService<GitRepositorySources>().CreateAsync(
-            new(TestData.TenantId, Id(), new(repository.Provider, TestRepositorySnapshots.ConnectionId,
-                    repositoryId, "main", ""), new(TimeSpan.FromMinutes(5)),
-                new(TestData.UserId, DateTime.UtcNow), TestRepositorySnapshots.DisplayUrl), default)).Value);
-    }
-
-    private ManifestFile AdoptionManifest(string kind, ManifestFile[] files)
-    {
-        var declaration = Services.GetRequiredService<ManifestCompiler>().Compile(files).Declarations
-            .Single(item => item.Address.Kind == kind);
-        return new("adopt.yaml", JsonSerializer.Serialize(new
-        {
-            apiVersion = ManifestCompiler.ApiVersion,
-            kind,
-            metadata = new { name = declaration.Address.Name },
-            spec = declaration.Spec
-        }, DeclarationJson.Options));
     }
 }

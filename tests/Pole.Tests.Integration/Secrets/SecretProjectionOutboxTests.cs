@@ -24,6 +24,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.secrets/v1/secret-projection-changed";
@@ -52,7 +53,8 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             TenantId = ObjectId.GenerateNewId().ToString()
         });
 
-        var envelopes = await DbContext.OutboxMessages.Find(row => row.EventType == EventName).ToListAsync();
+        var envelopes = await DbContext.OutboxMessages
+            .Find(row => row.TenantId == desired.TenantId && row.EventType == EventName).ToListAsync();
         Assert.Equal(2, envelopes.Count);
         var messages = envelopes.Select(row => JsonSerializer.Deserialize<SecretProjectionChangedEvent>(
             row.PayloadJson,
@@ -93,7 +95,7 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         await Complete(current.Applied());
         await Complete(old.Failed("stale"));
         Assert.Null(await Claim(desired, "older", now.AddMinutes(4)));
-        Assert.Equal(3, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(3, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
         var stored = await Projections.Find(row => row.Id == desired.Id).SingleAsync();
         Assert.Equal(2, stored.AppliedVersion);
         Assert.IsType<ReadySecretProjection>(stored.State);
@@ -109,7 +111,7 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             await Task.WhenAll(Enumerable.Range(0, 8).Select(index => Claim(desired, $"worker-{index}", now)));
         Assert.Single(results, result => result is not null);
         Assert.Equal(1, await Projections.CountDocumentsAsync(row => row.Id == desired.Id));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     [Theory]
@@ -141,7 +143,7 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
                 default));
         var after = await Projections.Find(row => row.Id == desired.Id).SingleOrDefaultAsync();
         Assert.Equal(before, after);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     private Task<SecretProjection?> Claim(SecretProjection desired, string owner, DateTime now) =>
@@ -164,10 +166,10 @@ public sealed class SecretProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         return services.BuildServiceProvider();
     }
 
-    private static SecretProjection Desired()
+    private SecretProjection Desired()
     {
         var secret = SecretFactory.Create(ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString(),
+            Data.TenantId,
             "group",
             "scope",
             "name",

@@ -17,8 +17,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Global)]
 public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private static readonly ResourceTypeId ResourceType = ResourceTypeId.Create("pole/web-service");
     private IMongoCollection<ComputeProfile> Profiles =>
@@ -41,7 +42,7 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await NamedCatalogTestData.SeedAsync(Fixture);
+        await Fixture.PrepareNamedCatalogAsync();
         await Targets.ReplaceOneAsync(item => item.Id == TestData.DefaultDeploymentTargetId,
             TestData.SeedDeploymentTarget().AttestForTests());
     }
@@ -51,9 +52,9 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
     {
         using var session = await Fixture.Client.StartSessionAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await GroupRead(new(TestData.TenantId, Id()), session, default));
+            await GroupRead(new(Data.TenantId, Id()), session, default));
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await PlacementRead(new(TestData.TenantId, ResourceType, Id()), session, default));
+            await PlacementRead(new(Data.TenantId, ResourceType, Id()), session, default));
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await ComputeRead(ComputeRequest(), session, default));
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -71,9 +72,9 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
         await InTransaction(async session =>
         {
             var groupSnapshot = Assert.IsType<ResourceGroupPlanningSnapshot>((await GroupRead(
-                new(TestData.TenantId, group.Id), session, default)).Value);
+                new(Data.TenantId, group.Id), session, default)).Value);
             var placements = Assert.IsType<ResourceDeploymentPlanningSnapshot>((await PlacementRead(
-                new(TestData.TenantId, ResourceType, placement.ResourceId), session, default)).Value);
+                new(Data.TenantId, ResourceType, placement.ResourceId), session, default)).Value);
             var compute = Assert.IsType<ComputeProfilePlanningSnapshot>((await ComputeRead(
                 ComputeRequest(), session, default)).Value);
             var targetSnapshot = Assert.IsType<DeploymentTargetPlanningSnapshot>((await TargetRead(
@@ -119,9 +120,9 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
     [InlineData(true)]
     public async Task GroupGuard_RejectsChangedGroupOrDefaultScopeVersion(bool changeScope)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var snapshot = await InTransaction(async session => Assert.IsType<ResourceGroupPlanningSnapshot>(
-            (await GroupRead(new(TestData.TenantId, group.Id), session, default)).Value));
+            (await GroupRead(new(Data.TenantId, group.Id), session, default)).Value));
         if (changeScope)
             await DbContext.IsolationScopes.UpdateOneAsync(item => item.Id == group.DefaultIsolationScopeId,
                 Builders<IsolationScope>.Update.Inc(item => item.Revision, 1));
@@ -181,7 +182,7 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
         var profile = await Profiles.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
         await Profiles.ReplaceOneAsync(item => item.Id == profile.Id, profile with
         {
-            TenantAccess = SelectedTenantsComputeProfileAccess.Create([TestData.TenantId]),
+            TenantAccess = SelectedTenantsComputeProfileAccess.Create([Data.TenantId]),
             Revision = 2
         });
         var request = changed switch
@@ -238,7 +239,7 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
         var (_, deployment, registration) = await SeedPlacementAsync();
         var snapshot = await ReadPlacements(deployment.ResourceId);
         if (insertPlacement)
-            await DbContext.ResourceDeployments.InsertOneAsync(deployment with { Id = Id() });
+            await DbContext.ResourceDeployments.InsertOneAsync(GitOpsPlacementTestData.AdditionalPlacement(deployment));
         else
             await DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == deployment.Id,
                 Builders<ResourceDeployment>.Update.Inc(item => item.Revision, 1));
@@ -259,13 +260,13 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
         using var reader = await Fixture.Client.StartSessionAsync();
         reader.StartTransaction(new TransactionOptions(readConcern: ReadConcern.Snapshot));
         var snapshot = Assert.IsType<ResourceDeploymentPlanningSnapshot>((await PlacementRead(
-            new(TestData.TenantId, ResourceType, deployment.ResourceId), reader, default)).Value);
+            new(Data.TenantId, ResourceType, deployment.ResourceId), reader, default)).Value);
 
         await InTransaction(async writer =>
         {
             Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
-                new(TestData.TenantId, ResourceType, deployment.ResourceId), writer, default));
-            await DbContext.ResourceDeployments.InsertOneAsync(writer, deployment with { Id = Id() });
+                new(Data.TenantId, ResourceType, deployment.ResourceId), writer, default));
+            await DbContext.ResourceDeployments.InsertOneAsync(writer, GitOpsPlacementTestData.AdditionalPlacement(deployment));
             return true;
         });
 
@@ -282,9 +283,9 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var groupSnapshot = Assert.IsType<ResourceGroupPlanningSnapshot>((await GroupRead(
-            new(TestData.TenantId, group.Id), session, default)).Value);
+            new(Data.TenantId, group.Id), session, default)).Value);
         var placements = Assert.IsType<ResourceDeploymentPlanningSnapshot>((await PlacementRead(
-            new(TestData.TenantId, ResourceType, deployment.ResourceId), session, default)).Value);
+            new(Data.TenantId, ResourceType, deployment.ResourceId), session, default)).Value);
         var stale = placements with { Items = [placements.Items[0] with { Revision = 100 }] };
         Assert.IsType<ResourceGroupPlanningFenced>((await GroupFence(groupSnapshot, session, default)).Value);
         Assert.IsType<ResourceDeploymentPlanningFenceRejected>((await PlacementFence(stale, session, default)).Value);
@@ -313,16 +314,16 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
 
     private static string Id() => ObjectId.GenerateNewId().ToString();
 
-    private static ComputeProfilePlanningRequest ComputeRequest() =>
-        new(TestData.TenantId, ResourceType, TestData.DefaultComputeProfileId, TestData.DefaultDeploymentTargetId, 1);
+    private ComputeProfilePlanningRequest ComputeRequest() =>
+        new(Data.TenantId, ResourceType, TestData.DefaultComputeProfileId, TestData.DefaultDeploymentTargetId, 1);
 
-    private static DeploymentTargetAdmissionRequest TargetRequest() =>
-        new(TestData.TenantId, ResourceType, null, TestData.DefaultDeploymentTargetId,
+    private DeploymentTargetAdmissionRequest TargetRequest() =>
+        new(Data.TenantId, ResourceType, null, TestData.DefaultDeploymentTargetId,
             DeploymentTargetRequiredCapabilities.None);
 
     private Task<ResourceDeploymentPlanningSnapshot> ReadPlacements(string resourceId) =>
         InTransaction(async session => Assert.IsType<ResourceDeploymentPlanningSnapshot>((await PlacementRead(
-            new(TestData.TenantId, ResourceType, resourceId), session, default)).Value));
+            new(Data.TenantId, ResourceType, resourceId), session, default)).Value));
 
     private async Task<T> InTransaction<T>(Func<IClientSessionHandle, Task<T>> action)
     {
@@ -338,16 +339,16 @@ public sealed class PlanningDependencyGuardsTests(MongoReplicaSetFixture fixture
 
     private async Task<(ResourceGroup, ResourceDeployment, ResourceRegistration)> SeedPlacementAsync()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var resourceId = Id();
-        var registration = ResourceRegistrationFactory.Create(TestData.TenantId, group.Id, ResourceType,
+        var registration = ResourceRegistrationFactory.Create(Data.TenantId, group.Id, ResourceType,
             resourceId, "api", null, new(Id(), DateTime.UtcNow));
         await Registrations.InsertOneAsync(registration);
-        var placement = ResourceDeploymentFactory.Create(TestData.TenantId, ResourceType, resourceId, group.Id,
+        var placement = ResourceDeploymentFactory.Create(Data.TenantId, ResourceType, resourceId, group.Id,
             group.DefaultIsolationScopeId,
             ResolvedResourcePlacement.Create(Id(), TestData.DefaultDeploymentTargetId, "planning-guards", 1, 1,
                 null, null, ResourceDeploymentTestData.Compute(), DateTime.UtcNow),
-            ResourcePlacementCapability.SingleTarget, runtimeCellReady: true,
+            ResourcePlacementCapability.MultiTarget, runtimeCellReady: true,
             ResourceDeploymentFactory.DefaultOptions with { FixedReplicas = 3, DeferredActivation = true });
         await DbContext.ResourceDeployments.InsertOneAsync(placement);
         return (group, placement, registration);

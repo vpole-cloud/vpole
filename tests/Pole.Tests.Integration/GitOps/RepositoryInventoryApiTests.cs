@@ -16,7 +16,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class RepositorySourceApiTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Inventory_pages_return_stable_metadata_and_the_source_inventory_stamp()
@@ -128,16 +129,16 @@ public sealed partial class RepositorySourceApiTests
     {
         var source = await Create(files: [GroupManifest("private")]);
         await Run(source.Id);
-        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == TestData.TenantId).SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(item => item.Id == tenant.Id, tenant with
         {
-            Members = [TenantFactory.CreateMember(tenant.Id, TestData.UserId, TestData.UserEmail, TenantRole.Viewer)]
+            Members = [TenantFactory.CreateMember(tenant.Id, Data.UserId, Data.UserEmail, TenantRole.Viewer)]
         });
         Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync($"{Root}/{source.Id}/resources")).StatusCode);
         var foreign = TenantFactory.Create("Foreign", ObjectId.GenerateNewId().ToString());
         foreign = foreign with
         {
-            Members = [TenantFactory.CreateMember(foreign.Id, TestData.UserId, TestData.UserEmail, TenantRole.Owner)]
+            Members = [TenantFactory.CreateMember(foreign.Id, Data.UserId, Data.UserEmail, TenantRole.Owner)]
         };
         await Fixture.DbContext.Tenants.InsertOneAsync(foreign);
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);

@@ -21,11 +21,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task BurstWhileNativeReadIsBlockedProducesOneTrailingSnapshotWithoutOverlappingReads()
@@ -251,24 +252,24 @@ public sealed class StorageObservationOwnerTests(MongoReplicaSetFixture fixture)
     }
 
     private MongoStorageObservationStore Store() => new(
-            fixture.Database.GetCollection<StorageObservationControlDocument>(
+            Fixture.Database.GetCollection<StorageObservationControlDocument>(
                 MongoStorageObservationStore.ControlsCollection),
-            fixture.Database.GetCollection<StorageObservationDemandDocument>(
+            Fixture.Database.GetCollection<StorageObservationDemandDocument>(
                 MongoStorageObservationStore.DemandsCollection),
-            fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+            Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
                 MongoStorageObservationStore.SnapshotsCollection),
-            new MongoRunTransaction(fixture.Client),
+            new MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>
-                new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
+                new MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets).InvokeAsync(request,
                     session,
                     ct),
-            fixture.StoreOutboxWrites,
+            Fixture.StoreOutboxWrites,
             new());
 
     private async Task<StorageObservationContext> SeedAsync()
     {
         var id = TestData.DefaultDeploymentTargetId;
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         var context = new StorageObservationContext(id, 1);
         await Store().PutDemandAsync(new(new(id, "subscription", "connection", "session"),
                 DateTimeOffset.UtcNow.AddMinutes(20)),

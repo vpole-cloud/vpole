@@ -14,7 +14,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global)]
+public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task AwaitingArtifactHostnameAddAndDeleteKeepPlacementPreparedWithoutRelease()
@@ -90,8 +91,8 @@ public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : ApiI
             });
         Assert.Equal(HttpStatusCode.Created, reserve.StatusCode);
         var zone = (await reserve.Content.ReadFromJsonAsync<TenantDomainZoneSnapshot>())!;
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("hostnames"));
-        var body = TestData.CreateWebServiceRequest(group.Id).Body;
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("hostnames"));
+        var body = Data.CreateWebServiceRequest(group.Id).Body;
         body = body with
         {
             CreationMode = mode,
@@ -124,7 +125,7 @@ public sealed class HostnameEndpointValidationTests
     public void ValidatesTechnicalIdentityAndRelativeDns(string name, string relative, bool valid)
     {
         var id = ObjectId.GenerateNewId().ToString();
-        var request = new AddWebServiceDeploymentHostnameRequest(id, id, new(id, relative, name), TestData.TenantId);
+        var request = new AddWebServiceDeploymentHostnameRequest(id, id, new(id, relative, name), id);
         Assert.Equal(valid, new AddWebServiceDeploymentHostnameValidator().Validate(request).IsValid);
     }
 }

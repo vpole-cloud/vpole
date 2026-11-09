@@ -35,7 +35,7 @@ public sealed partial class GitPrunePlanningTests
         Assert.Equal(GitLifecycleAction.Apply,
             Assert.Single(preview.Operations, item => item.Resource.Name == "next").Action);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await Services.GetRequiredService<GitLifecyclePreviews>()
-            .ConfirmAsync(new(new(source.TenantId, source.Id), preview.Id, preview.Revision, TestData.UserId), default))
+            .ConfirmAsync(new(new(source.TenantId, source.Id), preview.Id, preview.Revision, Data.UserId), default))
             .Value);
         await Worker.ProcessAsync(new(source.TenantId, source.Id), default);
         var completed = (await Sources.RunAsync(source.TenantId, source.Id, scheduled.RunId, default))!;
@@ -76,7 +76,7 @@ public sealed partial class GitPrunePlanningTests
         await widgets.Documents.UpdateOneAsync(_ => true,
             Builders<MongoDB.Bson.BsonDocument>.Update.Inc("Revision", 1));
         Assert.IsType<GitPreviewStale>((await previews.ConfirmAsync(new(new(source.TenantId, source.Id),
-            preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            preview.Id, preview.Revision, Data.UserId), default)).Value);
         Assert.Equal(0, widgets.ApplyCalls);
         Assert.Equal(1, await widgets.Documents.CountDocumentsAsync(_ => true));
     }

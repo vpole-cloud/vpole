@@ -11,9 +11,11 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SecretLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
-    private readonly ReviewedAuthority authorization = new();
+    private ReviewedAuthority? _authorization;
+    private ReviewedAuthority authorization => _authorization ??= new(Data.TenantId);
     private IMongoCollection<Secret> Secrets => Services.GetRequiredService<IMongoCollection<Secret>>();
     private IDeclarativeResourceLifecycleProvider Provider(string kind) => Services
         .GetServices<IDeclarativeResourceLifecycleProvider>().Single(item => item.Kind == kind);
@@ -55,7 +57,7 @@ public sealed class SecretLifecycleTests(MongoReplicaSetFixture fixture) : Media
         Assert.Equal(1, await Secrets.CountDocumentsAsync(item => item.Id == secret.Id));
         Assert.Equal(1, await DbContext.ResourceRegistrations.CountDocumentsAsync(
             item => item.ResourceId == secret.Id));
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
         session.StartTransaction();
         Assert.IsType<GitLifecycleResourceRemoved>(
             (await Provider("Secret").RemoveAsync(request, session, default)).Value);
@@ -63,7 +65,7 @@ public sealed class SecretLifecycleTests(MongoReplicaSetFixture fixture) : Media
         Assert.Equal(0, await Secrets.CountDocumentsAsync(item => item.Id == secret.Id));
         Assert.Equal(0, await DbContext.ResourceRegistrations.CountDocumentsAsync(
             item => item.ResourceId == secret.Id));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
@@ -174,7 +176,7 @@ public sealed class SecretLifecycleTests(MongoReplicaSetFixture fixture) : Media
 
     private async Task<Secret> Seed()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = SecretFactory.CreateMetadata(Id(), group.TenantId, group.Id, group.DefaultIsolationScopeId,
             "lifecycle-secret", "test", ["password"], DateTime.UtcNow);
         await Secrets.InsertOneAsync(secret);
@@ -191,9 +193,9 @@ public sealed class SecretLifecycleTests(MongoReplicaSetFixture fixture) : Media
     private static GitLifecycleResourceReference Reference(Secret secret) => new(new("Secret", secret.Name), secret.Id);
 
     // Isolate the owning feature's transaction boundary; the GitOps suite exercises real admission.
-    private sealed class ReviewedAuthority : IGitOpsMutations
+    private sealed class ReviewedAuthority(string tenantId) : IGitOpsMutations
     {
-        public GitLifecycleAuthority Authority { get; } = new(TestData.TenantId, "source", "run", 1, 1, 1,
+        public GitLifecycleAuthority Authority { get; } = new(tenantId, "source", "run", 1, 1, 1,
             "worker", 1, "preview", "reviewed");
         public GitLifecycleAuthority? Observed { get; private set; }
 

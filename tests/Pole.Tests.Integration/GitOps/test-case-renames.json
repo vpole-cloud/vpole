@@ -1,0 +1,1862 @@
+{
+  "baselineCommit": "826eb079ec92184624661d86b6eb693ebf1e8d63",
+  "renamedMethods": 180,
+  "renamedCases": 323,
+  "tests": [
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ConnectionCleanupProofTests",
+      "method": "Connection_cleanup_status_proves_its_own_revision_but_never_an_external_gap",
+      "source": "ConnectionCleanupProofTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "false",
+        "true"
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ConnectionCleanupProofTests",
+      "method": "Retained_workload_apply_advances_own_group_fences_but_rejects_external_changes",
+      "source": "ConnectionCleanupProofTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "false",
+        "true"
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ConnectionLifecycleGraphTests",
+      "method": "Connection_environment_removal_has_a_confirmable_real_provider_cleanup_graph",
+      "source": "ConnectionLifecycleGraphTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ConnectionLifecycleGraphTests",
+      "method": "Manual_or_foreign_connection_blocks_parent_preview_even_when_already_deleting",
+      "source": "ConnectionLifecycleGraphTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "false, false",
+        "false, true",
+        "true, false",
+        "true, true"
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ConnectionLifecycleGraphTests",
+      "method": "A_connection_added_after_confirmation_is_never_cascaded_by_the_reviewed_parent",
+      "source": "ConnectionLifecycleGraphTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Retained_keys_are_released_only_with_complete_current_fenced_rollout_proof",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"current\", true",
+        "\"stale-generation\", false",
+        "\"stale-revision\", false",
+        "\"stale-reference-fence\", false",
+        "\"stale-secret-revision\", false",
+        "\"wrong-tenant\", false",
+        "\"missing-placement\", false",
+        "\"duplicate-placement\", false",
+        "\"second-placement-unconfirmed\", false",
+        "\"both-placements-confirmed\", true"
+      ],
+      "caseCount": 10
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Retired_keys_remain_pinned_until_the_replacement_rollout_is_confirmed",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"pending\"",
+        "\"failed\"",
+        "\"applied-without-rollout-proof\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Missing_values_never_launch_then_first_empty_value_resumes_same_commit_and_replay_is_noop",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Image_update_keeps_identity_and_blocked_new_configuration_preserves_last_working_release",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "In_use_projected_alias_is_preserved_even_when_replacement_configuration_is_blocked",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"identity-to-alias\", false",
+        "\"alias-to-alias\", false",
+        "\"alias-to-identity\", false",
+        "\"identity-to-alias\", true",
+        "\"alias-to-alias\", true",
+        "\"alias-to-identity\", true"
+      ],
+      "caseCount": 6
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Equivalent_projected_aliases_and_unused_key_remapping_remain_available",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Invalid_entire_snapshot_has_no_writes",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"malformed\"",
+        "\"duplicate\"",
+        "\"secret-values\"",
+        "\"whitespace-tag\"",
+        "\"duplicate-binding\""
+      ],
+      "caseCount": 5
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Stale_execution_and_other_source_cannot_change_accepted_owned_configuration",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Concurrent_resumes_and_restart_replay_preserve_prepared_ids_and_single_release",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Manual_updates_and_centrally_persisted_image_changes_are_rejected_with_no_outbox_or_release",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Legacy_id_placement_fields_are_rejected_before_any_snapshot_writes",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Source_build_without_authority_and_image_token_paths_cannot_change_Git_image_or_create_release",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Provider_transaction_aborts_resource_ownership_receipt_and_outbox_then_recovers_allocated_identity",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Same_name_manual_resource_is_not_adopted_and_remains_manually_usable",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "In_snapshot_scope_and_key_contradictions_reject_before_source_acceptance",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Cross_source_references_preserve_ownership_and_ready_cell_cannot_launch_missing_values",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "false",
+        "true"
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Removed_declarations_remain_owned_pending_removal_without_pruning",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Prepared_placements_remain_inspectable_without_retry_or_private_access",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "A_late_blocked_attempt_cannot_overwrite_a_newer_successful_resume",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "GitOps_release_records_server_provenance_without_a_fabricated_user",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Kubernetes_shape_errors_are_rejected_before_snapshot_acceptance",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"long-port\"",
+        "\"trailing-dash-port\"",
+        "\"startup-success\"",
+        "\"liveness-success\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Completed_execution_cannot_bypass_manual_configuration_guards",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreTests",
+      "method": "Unsupported_stored_schema_is_visible_and_does_not_loop_or_mutate_resources",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreGlobalTests",
+      "method": "Pinned_profile_replay_preserves_snapshot_and_explicit_revision_adopts_history",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreGlobalTests",
+      "method": "Missing_profile_name_resumes_after_named_creation_without_a_new_commit",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DeclarativePipelineCoreGlobalTests",
+      "method": "Recreated_profile_name_never_retargets_an_existing_declaration_binding",
+      "source": "DeclarativePipelineTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DomainZoneGitOpsGlobalTests",
+      "method": "DomainZoneCreatesThenNoOpsWithOwnershipAndNoBusinessEffects",
+      "source": "DomainZoneGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DomainZoneGitOpsGlobalTests",
+      "method": "DomainZoneImmutableAndMissingCreatedIdentitiesAreBlocked",
+      "source": "DomainZoneGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DomainZoneGitOpsGlobalTests",
+      "method": "DomainZoneUnavailableOrReusedTargetDoesNotRebindAcceptedReference",
+      "source": "DomainZoneGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "DomainZoneGitOpsGlobalTests",
+      "method": "DomainZoneForeignDnsReservationDoesNotCreateResourceOrAppliedOwnership",
+      "source": "DomainZoneGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionSameShaRepairsManagedFieldsThenNoOpsWithoutNewRevisionOrTriggerIdentity",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionMissingSecretKeepsPreparedInertThenResumesAndRotationIsNoOp",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionImmutableIdentityChangesBlockWithoutNewRevisions",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"route\"",
+        "\"scope\""
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionMissingCreatedIdentityAndMissingLatestRevisionAreNeverRecreated",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionNoOpReplansWhenManagedConfigurationChangesAfterPlanning",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionInvalidSchemaRejectsWholeSnapshotBeforeMutations",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"unknown-root\"",
+        "\"trigger-identity\"",
+        "\"invalid-resources\"",
+        "\"reserved-route\"",
+        "\"reserved-environment\"",
+        "\"missing-exposure\""
+      ],
+      "caseCount": 6
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionDriftTests",
+      "method": "FunctionConfigureRollsBackRevisionPlacementOwnershipAndEventsThenRecovers",
+      "source": "FunctionDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionLifecycleRuntimeProgressTests",
+      "method": "Function_removal_accepts_active_runtime_progress_after_confirmation",
+      "source": "FunctionLifecycleRuntimeProgressTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"complete\"",
+        "\"fail\"",
+        "\"reference-only\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "FunctionLifecycleRuntimeProgressTests",
+      "method": "Function_runtime_progress_does_not_authorize_configuration_or_dependency_changes",
+      "source": "FunctionLifecycleRuntimeProgressTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"root-configuration\"",
+        "\"root-revision\"",
+        "\"planning-fence\"",
+        "\"route-fence\"",
+        "\"revision-configuration\"",
+        "\"revision-fence\"",
+        "\"placement-configuration\"",
+        "\"generation\"",
+        "\"resource-revision\"",
+        "\"reference\"",
+        "\"ownership\"",
+        "\"source\""
+      ],
+      "caseCount": 12
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "HostnameBindingGitOpsGlobalTests",
+      "method": "HostnameBindingAttachesAcrossSourcesRepairsIngressThenNoOpsWithoutAdoptingWorkload",
+      "source": "HostnameBindingGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "HostnameBindingGitOpsGlobalTests",
+      "method": "HostnameBindingMissingCreatedAndImmutableAddressesAreBlockedWithoutRecreation",
+      "source": "HostnameBindingGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "HostnameBindingGitOpsGlobalTests",
+      "method": "HostnameBindingSameSnapshotCreatesAfterPublicWorkloadConfiguration",
+      "source": "HostnameBindingGitOpsTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "IsolationScopePlanningTests",
+      "method": "IsolationScopeCreatesAfterGroupThenNoOpsAndRejectsManualDeletion",
+      "source": "IsolationScopePlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "IsolationScopePlanningTests",
+      "method": "IsolationScopeIsNotRecreatedOrReboundAfterNameReuse",
+      "source": "IsolationScopePlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "IsolationScopePlanningTests",
+      "method": "IsolationScopeOwnershipCannotBeBypassedByParentDeletion",
+      "source": "IsolationScopePlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "IsolationScopePlanningTests",
+      "method": "IsolationScopeCannotMoveToAnotherGroup",
+      "source": "IsolationScopePlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "LifecycleAdoptionPreviewTests",
+      "method": "WebService_adoption_preview_rejects_immutable_group_change_before_confirmation",
+      "source": "LifecycleAdoptionPreviewTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "LifecycleAdoptionPreviewTests",
+      "method": "Unnamed_manual_binding_adoption_uses_fresh_own_reads_and_rejects_external_changes",
+      "source": "LifecycleAdoptionPreviewTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "false",
+        "true"
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ManagedIdentityDriftTests",
+      "method": "RenamingAcceptedResourceBlocksInsteadOfSilentlyChangingItsAddress",
+      "source": "ManagedIdentityDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"ResourceGroup\"",
+        "\"Secret\"",
+        "\"SecretBinding\"",
+        "\"WebService\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ManagedIdentityDriftTests",
+      "method": "PreviouslyCreatedProviderResourceIsNeverRecreatedWhenMissing",
+      "source": "ManagedIdentityDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"Secret\"",
+        "\"SecretBinding\"",
+        "\"WebService\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ManagedRegistrationLifecycleTests",
+      "method": "Managed_credential_registration_follows_its_owner_and_proves_both_cleanup_fences",
+      "source": "ManagedRegistrationLifecycleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"own\"",
+        "\"rollback\"",
+        "\"external\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ManagedRegistrationLifecycleTests",
+      "method": "Managed_registration_does_not_hide_unreviewed_or_unavailable_owner_children",
+      "source": "ManagedRegistrationLifecycleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"manual\"",
+        "\"foreign\"",
+        "\"missing\"",
+        "\"foreign-tenant\"",
+        "\"other-group\"",
+        "\"unknown\"",
+        "\"extra-binding\"",
+        "\"user-secret\""
+      ],
+      "caseCount": 8
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ManagedRegistrationLifecycleTests",
+      "method": "Managed_registration_preview_rejects_changed_metadata_and_complete_registration_sets",
+      "source": "ManagedRegistrationLifecycleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"metadata\"",
+        "\"registration\"",
+        "\"phantom\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ManagedRegistrationLifecycleTests",
+      "method": "Registration_ownership_is_tenant_scoped_and_uses_real_metadata_fences",
+      "source": "ManagedRegistrationLifecycleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresBootstrapSameCommitRepairsCapacityPolicyThenNoOpPreservesBusinessState",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresConfiguredMissingCredentialBlocksWithoutRecopyOrRecreation",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresSourceRotationDoesNotRecopyRotatedOwnerCredential",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresManualConfigurationAndDeletionAreFencedByGitOwnership",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresMissingCreatedIdentityIsNotRecreatedOrRebound",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresNoOpReplansWhenPlacementChangesAfterPlanning",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresPrepareRollsBackRootPlacementRegistrationAndEventsOnPlacementFailure",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresPreparedConfigureAcceptsLatestCapacityOnceAndOperatorSupportsGrowth",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresStatefulSetRejectsUnsupportedConfiguredCapacityChanges",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "2, 4",
+        "1, 5"
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresRequiresBootstrapGrantBeforeAnyMutation",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftTests",
+      "method": "PostgresConfigureRollsBackCredentialActivationRootAndOutboxOnPlacementFailure",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresDriftGlobalTests",
+      "method": "PostgresImmutableChangesBlockWithoutTouchingCredentials",
+      "source": "PostgresDriftTests.cs",
+      "collection": "Global",
+      "theoryRows": [
+        "\"version\"",
+        "\"username\"",
+        "\"storageRevision\"",
+        "\"scope\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresLifecycleRuntimeProgressTests",
+      "method": "Postgres_removal_accepts_active_runtime_progress_after_its_grant_receipt",
+      "source": "PostgresLifecycleRuntimeProgressTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"complete\"",
+        "\"fail\"",
+        "\"reference-only\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "PostgresLifecycleRuntimeProgressTests",
+      "method": "Postgres_runtime_progress_does_not_authorize_configuration_or_dependency_changes",
+      "source": "PostgresLifecycleRuntimeProgressTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"root-configuration\"",
+        "\"root-revision\"",
+        "\"planning-fence\"",
+        "\"placement-configuration\"",
+        "\"generation\"",
+        "\"resource-revision\"",
+        "\"reference\"",
+        "\"ownership\"",
+        "\"source\""
+      ],
+      "caseCount": 9
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisAdoptionExecutionTests",
+      "method": "Redis_adoption_refreshes_receipt_versions_for_external_group_and_scope_without_rebinding",
+      "source": "RedisAdoptionExecutionTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisDriftTests",
+      "method": "RedisSameCommitRepairsTagsAndComputeThenNoOpPreservesBusinessState",
+      "source": "RedisDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisDriftTests",
+      "method": "RedisMissingCreatedIdentityIsNotRecreatedOrRebound",
+      "source": "RedisDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisDriftTests",
+      "method": "RedisNoOpReplansWhenResourceChangesAfterPlanning",
+      "source": "RedisDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisDriftTests",
+      "method": "RedisPrepareRollsBackRootPlacementRegistrationQuotaAndEventsOnPlacementFailure",
+      "source": "RedisDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisDriftGlobalTests",
+      "method": "RedisImmutablePlacementChangesAreBlocked",
+      "source": "RedisDriftTests.cs",
+      "collection": "Global",
+      "theoryRows": [
+        "\"size\"",
+        "\"scope\"",
+        "\"storageRevision\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisDriftGlobalTests",
+      "method": "RedisPinnedHistoricalStorageUsesCurrentPolicyAndDoesNotMigrateClass",
+      "source": "RedisDriftTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisLifecycleRuntimeProgressTests",
+      "method": "Redis_removal_accepts_active_runtime_progress_after_confirmation",
+      "source": "RedisLifecycleRuntimeProgressTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"complete\"",
+        "\"fail\"",
+        "\"reference-only\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RedisLifecycleRuntimeProgressTests",
+      "method": "Redis_runtime_progress_does_not_authorize_configuration_or_dependency_changes",
+      "source": "RedisLifecycleRuntimeProgressTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"root-configuration\"",
+        "\"root-revision\"",
+        "\"planning-fence\"",
+        "\"placement-configuration\"",
+        "\"generation\"",
+        "\"resource-revision\"",
+        "\"reference\"",
+        "\"ownership\"",
+        "\"source\""
+      ],
+      "caseCount": 9
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositoryExampleTests",
+      "method": "Canonical_repository_examples_compile_with_current_owner_schemas",
+      "source": "RepositoryExampleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [
+        "\"minimal\", 2, 3",
+        "\"full\", 15, 19",
+        "\"lifecycle/before\", 3, 4",
+        "\"lifecycle/after-rename\", 3, 4",
+        "\"lifecycle/after-removal\", 1, 1",
+        "\"lifecycle/empty\", 0, 0"
+      ],
+      "caseCount": 6
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositoryExampleTests",
+      "method": "Canonical_example_loader_supports_a_repository_root_snapshot",
+      "source": "RepositoryExampleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositoryExampleTests",
+      "method": "Full_repository_example_covers_all_kinds_and_preserves_dependency_phase_order",
+      "source": "RepositoryExampleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositoryExampleTests",
+      "method": "Canonical_secret_example_cannot_accept_values_in_the_manifest",
+      "source": "RepositoryExampleTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositoryMutationAuthorityTests",
+      "method": "EveryMutationAuthorityComponentAndAcceptedOperationIsCheckedInsideItsTransaction",
+      "source": "RepositoryMutationAuthorityTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositorySchedulingGlobalTests",
+      "method": "SchedulingLookupRejectsSourceIdentityFromAnotherTenant",
+      "source": "RepositorySchedulingTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositorySchedulingGlobalTests",
+      "method": "RepositorySignalsCoalesceAndDuplicateDeliveryDoesNotCreateAnotherGeneration",
+      "source": "RepositorySchedulingTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositorySchedulingGlobalTests",
+      "method": "RepositorySignalsMustMatchEveryIdentityComponent",
+      "source": "RepositorySchedulingTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositorySchedulingGlobalTests",
+      "method": "DependencyWakeRetainsAcceptedInputAndDoesNotSupersedeNewerSync",
+      "source": "RepositorySchedulingTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositorySchedulingGlobalTests",
+      "method": "PollingRecoversMissedPushAndSameCommitDoesNotRepeatMutations",
+      "source": "RepositorySchedulingTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "RepositorySchedulingGlobalTests",
+      "method": "ScannerRecoversAfterEnqueueFailureWithoutLosingPendingWork",
+      "source": "RepositorySchedulingTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceConnectionPlanningTests",
+      "method": "ConnectionCreatesInPipelineThenNoOpsWithoutBusinessEventsAndBlocksManualDeletion",
+      "source": "ResourceConnectionPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceConnectionPlanningTests",
+      "method": "ConnectionMissingCreatedIdentityIsNotRecreatedOrRebound",
+      "source": "ResourceConnectionPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceConnectionPlanningTests",
+      "method": "ConnectionRuntimeObservationDoesNotBecomeConfigurationDrift",
+      "source": "ResourceConnectionPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceConnectionPlanningTests",
+      "method": "ConnectionUnavailableEndpointDoesNotWriteOwnershipCreationReceiptOrEvent",
+      "source": "ResourceConnectionPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceGroupDriftTests",
+      "method": "ResourceGroupSameCommitRepairsManagedDriftThenPerformsVerifiedNoOp",
+      "source": "ResourceGroupDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceGroupDriftTests",
+      "method": "PreviouslyCreatedResourceGroupIsBlockedWhenMissingAndIsNeverRecreated",
+      "source": "ResourceGroupDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ResourceGroupPlanningTests",
+      "method": "Resource_group_planning_reads_normalized_current_fields_without_mutating",
+      "source": "ResourceGroupPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ScopedSecretPlanningTests",
+      "method": "Secret_uses_accepted_named_scope_and_next_run_is_no_op",
+      "source": "ScopedSecretPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "ScopedSecretPlanningTests",
+      "method": "Secret_cannot_move_from_default_to_named_scope",
+      "source": "ScopedSecretPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SecretBindingDriftTests",
+      "method": "BindingSameCommitRepairsMappingWithoutChangingPinsOrCreatingRelease",
+      "source": "SecretBindingDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SecretBindingPlanningTests",
+      "method": "Binding_planning_tracks_mapping_and_parent_revision_but_excludes_rollout_pins",
+      "source": "SecretBindingPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SecretDriftTests",
+      "method": "SecretSameCommitRepairsMetadataAndRotationRemainsNoOpWithoutValueDisclosure",
+      "source": "SecretDriftTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SecretPlanningTests",
+      "method": "Secret_planning_ignores_value_rotation_and_reports_metadata_drift",
+      "source": "SecretPlanningTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SourceBuildConfigurationGitOpsTests",
+      "method": "BuildRecipeDriftRepairsWithoutSchedulingBuildAndThenNoOps",
+      "source": "SourceBuildConfigurationGitOpsTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SourceBuildConfigurationGitOpsTests",
+      "method": "DeclaredRecipeUpdateChangesOnlyConfigurationRevisionWithoutStartingBuild",
+      "source": "SourceBuildConfigurationGitOpsTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "SourceBuildConfigurationGitOpsTests",
+      "method": "MissingCreatedBuildConfigurationIsBlockedWithoutRecreation",
+      "source": "SourceBuildConfigurationGitOpsTests.cs",
+      "collection": "Tenant2",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceConnectionDeclarationTests",
+      "method": "WebConnectionReferencesCreateInDependencyOrderRepairThenNoOp",
+      "source": "WebServiceConnectionDeclarationTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceConnectionDeclarationTests",
+      "method": "WebConnectionDependencyCycleFailsBeforeAnyMutation",
+      "source": "WebServiceConnectionDeclarationTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceConnectionDeclarationTests",
+      "method": "WebConnectionUnsupportedFieldIsRejectedWithoutAcceptingConfiguration",
+      "source": "WebServiceConnectionDeclarationTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"missing\"",
+        "\"Configuration\""
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceDerivedWriteGuardTests",
+      "method": "ArtifactCapabilityRejectsChangesOutsideItsDerivedConfiguration",
+      "source": "WebServiceDerivedWriteGuardTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"name\"",
+        "\"group\"",
+        "\"scope\"",
+        "\"fence\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceDriftTests",
+      "method": "WebServiceSameCommitRepairsFullManagedConfigurationAndKeepsServerCredentials",
+      "source": "WebServiceDriftTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceDriftTests",
+      "method": "NoOpReplansWhenSecretReferenceFenceChangesBeforeApplyWithoutCreatingRelease",
+      "source": "WebServiceDriftTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceHostnameExposureGlobalTests",
+      "method": "CustomHostnamesBlockManualExposureDowngradeAndRollBackPlacementChanges",
+      "source": "WebServiceHostnameExposureTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceLifecycleRuntimeProgressTests",
+      "method": "Hostname_removal_receipt_survives_its_active_ingress_runtime_progress",
+      "source": "WebServiceLifecycleRuntimeProgressTests.cs",
+      "collection": "Global",
+      "theoryRows": [
+        "\"complete\"",
+        "\"fail\"",
+        "\"observation-fence\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceLifecycleRuntimeProgressTests",
+      "method": "Runtime_progress_does_not_authorize_new_configuration_references_or_ownership",
+      "source": "WebServiceLifecycleRuntimeProgressTests.cs",
+      "collection": "Global",
+      "theoryRows": [
+        "\"root-configuration\"",
+        "\"root-revision\"",
+        "\"placement-configuration\"",
+        "\"generation\"",
+        "\"resource-revision\"",
+        "\"reference\"",
+        "\"ownership\"",
+        "\"source\""
+      ],
+      "caseCount": 8
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServicePlanningTests",
+      "method": "Web_service_planning_tracks_preparation_configuration_and_deployment_versions",
+      "source": "WebServicePlanningTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServicePlanningTests",
+      "method": "Web_service_plan_blocks_a_missing_revision_of_the_pinned_profile",
+      "source": "WebServicePlanningTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServicePreconditionTests",
+      "method": "ExpectedWebServiceRevisionConflictReplansInsteadOfBecomingBusinessBlocker",
+      "source": "WebServicePreconditionTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceSourceDeliveryTests",
+      "method": "BuildOwnedWebServiceAcceptsConfigurationWithoutArtifactAndThenNoOps",
+      "source": "WebServiceSourceDeliveryTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceSourceDeliveryTests",
+      "method": "ArtifactPromotionIsAtomicAndIdempotentAndGitOpsPreservesDeliveredImage",
+      "source": "WebServiceSourceDeliveryTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceSourceDeliveryTests",
+      "method": "ImageAuthorityRejectsMixedOrInvalidDeclarationsBeforeMutation",
+      "source": "WebServiceSourceDeliveryTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"{\\\"sourceBuildConfiguration\\\":\\\"application-build\\\",\\\"tag\\\":\\\"fake\\\"}\"",
+        "\"{\\\"sourceBuildConfiguration\\\":\\\"Invalid Name\\\"}\"",
+        "\"{\\\"server\\\":\\\"registry.test\\\",\\\"name\\\":\\\"application\\\",\\\"tag\\\":\\\"1\\\",\\\"extra\\\":true}\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveTests",
+      "method": "WebService_named_scope_admits_secret_binding_and_next_run_is_no_op",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveTests",
+      "method": "WebService_named_scope_is_immutable_after_creation",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveTests",
+      "method": "WebService_public_exposure_requires_current_target_ingress_capability",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveTests",
+      "method": "WebService_autoscaling_repairs_managed_policy_without_reacting_to_runtime_observations",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveTests",
+      "method": "WebService_invalid_stage_five_configuration_rejects_entire_snapshot",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"replicas-and-autoscaling\"",
+        "\"invalid-autoscaling\"",
+        "\"fixedReplicas\"",
+        "\"public-udp\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveGlobalTests",
+      "method": "WebService_public_exposure_creates_generated_ingress_and_repairs_then_no_ops",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "DeclarativePipelineTests",
+      "newClass": "WebServiceStageFiveGlobalTests",
+      "method": "WebService_public_retry_rolls_back_generated_domain_side_effects",
+      "source": "WebServiceStageFiveTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_search_resolves_manual_identity_and_reports_deleting_or_owned_resources",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_search_does_not_turn_a_paused_sources_resource_into_a_manual_candidate",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_search_keeps_unnamed_binding_metadata_and_never_returns_secret_configuration",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_binding_search_does_not_rebind_an_old_consumer_after_technical_name_reuse",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_search_omits_provider_managed_credentials_and_system_default_scopes",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_search_rejects_unknown_or_mixed_filters_and_unbounded_pages",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"kind=Unknown&name=manual\"",
+        "\"kind=ResourceGroup\"",
+        "\"kind=ResourceGroup&name=bad_name\"",
+        "\"kind=ResourceGroup&name=manual&pageSize=101\"",
+        "\"kind=ResourceGroup&relatedKind=Secret&relatedName=auth&consumerKind=WebService&consumerName=app\"",
+        "\"kind=SecretBinding&relatedKind=Secret&relatedName=auth\"",
+        "\"kind=SecretBinding&name=both&relatedKind=Secret&relatedName=auth&\" + \"consumerKind=WebService&consumerName=app\""
+      ],
+      "caseCount": 7
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_search_allows_viewers_and_isolates_both_source_and_related_resource_tenants",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryAdoptionCandidateApiTests",
+      "method": "Candidate_unsupported_search_returns_the_stable_typed_problem",
+      "source": "RepositoryAdoptionCandidateApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"kind=Unknown&name=manual\"",
+        "\"kind=ResourceGroup&relatedKind=Secret&relatedName=auth&consumerKind=WebService&consumerName=app\""
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryInventoryApiTests",
+      "method": "Inventory_pages_return_stable_metadata_and_the_source_inventory_stamp",
+      "source": "RepositoryInventoryApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryInventoryApiTests",
+      "method": "Resource_group_view_metadata_does_not_make_it_a_registered_child_resource",
+      "source": "RepositoryInventoryApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryInventoryApiTests",
+      "method": "Inventory_keeps_reserved_and_pending_identity_metadata_without_assuming_resource_existence",
+      "source": "RepositoryInventoryApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryInventoryApiTests",
+      "method": "Inventory_revision_changes_are_visible_between_pages_after_an_identity_release",
+      "source": "RepositoryInventoryApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryInventoryApiTests",
+      "method": "Inventory_rejects_unbounded_or_invalid_paging",
+      "source": "RepositoryInventoryApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"page=0\"",
+        "\"pageSize=0\"",
+        "\"pageSize=101\"",
+        "\"page=1000001\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryInventoryApiTests",
+      "method": "Inventory_allows_viewers_but_never_returns_another_tenants_source_or_rows",
+      "source": "RepositoryInventoryApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryPreviewConfirmationApiTests",
+      "method": "Preview_confirmation_rejects_an_advanced_commit_as_stale_without_consuming_approval",
+      "source": "RepositoryPreviewConfirmationApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryPreviewConfirmationApiTests",
+      "method": "Preview_confirmation_keeps_unavailable_access_distinct_from_stale_approval",
+      "source": "RepositoryPreviewConfirmationApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"Denied\"",
+        "\"Missing\"",
+        "\"Temporary\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryPreviewConfirmationApiTests",
+      "method": "Preview_confirmation_keeps_unavailable_resolution_distinct_from_stale_approval",
+      "source": "RepositoryPreviewConfirmationApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"Denied\"",
+        "\"Missing\"",
+        "\"RefMissing\"",
+        "\"Temporary\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryPreviewMetadataApiTests",
+      "method": "Preview_summary_covers_warnings_beyond_the_requested_action_page",
+      "source": "RepositoryPreviewMetadataApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryPreviewMetadataApiTests",
+      "method": "Inventory_preview_has_typed_offline_input_and_zero_repository_fields",
+      "source": "RepositoryPreviewMetadataApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryPreviewMetadataApiTests",
+      "method": "Relocation_preview_reads_expose_its_stored_destination_after_reopening",
+      "source": "RepositoryPreviewMetadataApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryRetainPreviewApiTests",
+      "method": "Resource_changes_show_the_server_stored_removal_choice",
+      "source": "RepositoryRetainPreviewApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"Retain\", GitPreviewRemovalDisposition.Retain, GitLifecycleAction.Retain",
+        "\"Remove\", GitPreviewRemovalDisposition.Remove, GitLifecycleAction.Remove",
+        "null, GitPreviewRemovalDisposition.Remove, GitLifecycleAction.Remove"
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryRetainPreviewApiTests",
+      "method": "Retain_preview_requires_source_policy_change_and_invalidates_old_approval",
+      "source": "RepositoryRetainPreviewApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryRetainPreviewApiTests",
+      "method": "Resource_changes_reject_non_string_or_unknown_removal_choices",
+      "source": "RepositoryRetainPreviewApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"0\"",
+        "\"99\"",
+        "\"\\\"Unknown\\\"\""
+      ],
+      "caseCount": 3
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositoryRetainPreviewApiTests",
+      "method": "Resource_changes_validator_rejects_unknown_typed_removal_choices",
+      "source": "RepositoryRetainPreviewApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Preview_and_confirmation_are_bounded_sanitized_and_idempotent",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Preview_rejects_client_authored_actions_and_confirmation_overrides",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"Detach\"",
+        "\"ResourceChanges\""
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Preview_rejects_null_selectors",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"{\\\"intent\\\":\\\"Adoption\\\",\\\"expectedRevision\\\":1,\\\"resources\\\":[null]}\", HttpStatusCode.BadRequest",
+        "\"{\\\"intent\\\":\\\"Removal\\\",\\\"expectedRevision\\\":1,\\\"resources\\\":[null]}\", HttpStatusCode.BadRequest"
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Adoption_rejects_two_ids_for_the_same_desired_address",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Preview_intent_may_follow_ordinary_json_fields",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "ObjectIdsAreCanonicalAcrossCreateReplayReadsAndCommands",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "SourceDetailIncludesSanitizedLatestRunAndBlockers",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Create_worker_ResourceGroup_and_status_form_one_durable_slice",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Concurrent_creation_is_idempotent_and_different_input_conflicts",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Missing_source_and_run_use_standard_tenant_scoped_not_found",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"get\"",
+        "\"sync\"",
+        "\"retry\"",
+        "\"runs\"",
+        "\"operations\""
+      ],
+      "caseCount": 5
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Policy_update_requires_revision_and_rejects_location_or_forged_authority",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Pause_resume_and_prune_policy_are_server_owned_and_resume_reads_current_branch",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Delete_source_requires_detach_and_deleted_creation_key_cannot_resurrect_source",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Invalid_directory_is_rejected_before_source_creation",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"../secret\"",
+        "\"/root\"",
+        "\"a//b\"",
+        "\"a/../b\""
+      ],
+      "caseCount": 4
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Manual_snapshot_routes_are_removed_and_queries_are_bounded",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Retry_preserves_accepted_commit_while_Sync_reads_the_changed_branch",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Invalid_snapshot_records_a_failed_run_without_acceptance_or_resource_writes",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Sources_runs_and_operations_enforce_authentication_roles_and_tenant_isolation",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Ownership_conflicts_are_visible_on_the_requesting_run_without_claiming_inventory",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Accepted_snapshot_with_escaped_content_resumes_without_reapplying_the_external_byte_limit",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Prepared_service_manual_deployment_mutations_return_conflict_without_writes",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [
+        "\"retry\"",
+        "\"update\""
+      ],
+      "caseCount": 2
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Manual_duplicate_names_return_conflict_and_roll_back_placement_and_outbox",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreTests",
+      "method": "Concurrent_manual_group_creation_returns_one_created_and_one_typed_conflict",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Tenant1",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RepositorySourceApiTests",
+      "newClass": "RepositorySourceApiCoreGlobalTests",
+      "method": "Newly_created_catalog_entries_are_immediately_resolvable_by_name_with_profile_revision_one",
+      "source": "RepositorySourceApiTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "CatalogTechnicalNameApiTests",
+      "newClass": "CatalogTestClientGuardTests",
+      "method": "Isolated_api_fixture_rejects_every_external_client_lookup",
+      "source": "CatalogTechnicalNameApiTests.cs",
+      "collection": null,
+      "theoryRows": [],
+      "caseCount": 1
+    }
+  ],
+  "preservedGitOpsCases": 447,
+  "addedResumptionCases": 9
+}

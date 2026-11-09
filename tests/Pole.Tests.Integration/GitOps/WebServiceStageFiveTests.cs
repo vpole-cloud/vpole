@@ -14,7 +14,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task WebService_named_scope_admits_secret_binding_and_next_run_is_no_op()
@@ -23,7 +24,7 @@ public sealed partial class DeclarativePipelineTests
         var initial = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.Blocked, initial.Status);
         var service = await Service();
-        var scope = await DbContext.IsolationScopes.Find(item => item.Name == "application-scope").SingleAsync();
+        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "application-scope").SingleAsync();
         Assert.Equal(scope.Id, service.IsolationScopeId);
         Assert.IsType<PreparedWebServiceLifecycle>(service.Lifecycle);
         await Supply();
@@ -51,57 +52,11 @@ public sealed partial class DeclarativePipelineTests
     }
 
     [Fact]
-    public async Task WebService_public_exposure_creates_generated_ingress_and_repairs_then_no_ops()
-    {
-        await EnablePublicWebTargetAsync();
-        var files = StageFiveWebSnapshot(spec => spec["exposure"] = "Public");
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
-        var service = await Service();
-        Assert.Equal(WebServiceExposureMode.Public, service.Exposure.Mode);
-        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id).SingleAsync();
-        Assert.NotNull(placement.ResolvedPlacement.Ingress);
-        Assert.Single(placement.ResolvedPlacement.Ingress.Hostnames);
-        Assert.EndsWith(".apps.test.local", placement.ResolvedPlacement.Ingress.Hostnames.Single());
-        var releases = await Releases();
-        var events = await BusinessEvents();
-        await Apply(files);
-        Assert.Equal(releases, await Releases());
-        Assert.Equal(events, await BusinessEvents());
-        await WebServices.ReplaceOneAsync(item => item.Id == service.Id, service with
-        {
-            Exposure = service.Exposure with { Mode = WebServiceExposureMode.Private },
-            Revision = service.Revision + 1
-        });
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
-        Assert.Equal(WebServiceExposureMode.Public, (await Service()).Exposure.Mode);
-        Assert.Equal(releases + 1, await Releases());
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
-            (await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Private"))).Status);
-        var privatePlacement = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
-        Assert.Null(privatePlacement.ResolvedPlacement.Ingress);
-    }
-
-    [Fact]
-    public async Task WebService_public_retry_rolls_back_generated_domain_side_effects()
-    {
-        await EnablePublicWebTargetAsync();
-        rejectNextWebServiceRevision = true;
-        var result = await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Public"));
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
-        Assert.Equal(1, await Releases());
-        Assert.Equal(1, await Fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("TenantDomainZones")
-            .CountDocumentsAsync(Builders<MongoDB.Bson.BsonDocument>.Filter.Empty));
-        Assert.Equal(1, await Fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("HostnameBindings")
-            .CountDocumentsAsync(Builders<MongoDB.Bson.BsonDocument>.Filter.Empty));
-        Assert.False(rejectNextWebServiceRevision);
-    }
-
-    [Fact]
     public async Task WebService_public_exposure_requires_current_target_ingress_capability()
     {
         var result = await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Public"));
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
+        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0, await Releases());
     }
 
@@ -163,48 +118,57 @@ public sealed partial class DeclarativePipelineTests
             }
         });
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, (await Apply(files)).Status);
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+    }
+}
+
+
+[Collection(IntegrationTestCollection.Global)]
+public sealed class WebServiceStageFiveGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+{
+    [Fact]
+    public async Task WebService_public_exposure_creates_generated_ingress_and_repairs_then_no_ops()
+    {
+        await EnablePublicWebTargetAsync();
+        var files = StageFiveWebSnapshot(spec => spec["exposure"] = "Public");
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
+        var service = await Service();
+        Assert.Equal(WebServiceExposureMode.Public, service.Exposure.Mode);
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id).SingleAsync();
+        Assert.NotNull(placement.ResolvedPlacement.Ingress);
+        Assert.Single(placement.ResolvedPlacement.Ingress.Hostnames);
+        Assert.EndsWith("." + Data.Hostname("apps"), placement.ResolvedPlacement.Ingress.Hostnames.Single());
+        var releases = await Releases();
+        var events = await BusinessEvents();
+        await Apply(files);
+        Assert.Equal(releases, await Releases());
+        Assert.Equal(events, await BusinessEvents());
+        await WebServices.ReplaceOneAsync(item => item.Id == service.Id, service with
+        {
+            Exposure = service.Exposure with { Mode = WebServiceExposureMode.Private },
+            Revision = service.Revision + 1
+        });
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
+        Assert.Equal(WebServiceExposureMode.Public, (await Service()).Exposure.Mode);
+        Assert.Equal(releases + 1, await Releases());
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
+            (await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Private"))).Status);
+        var privatePlacement = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
+        Assert.Null(privatePlacement.ResolvedPlacement.Ingress);
     }
 
-    private async Task EnablePublicWebTargetAsync()
+    [Fact]
+    public async Task WebService_public_retry_rolls_back_generated_domain_side_effects()
     {
-        var targets = Fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets");
-        var target = await targets.Find(item => item.Id == TestData.DefaultDeploymentTargetId).SingleAsync();
-        target = (target with
-        {
-            WorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
-                DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt-prod", "apps.test.local"),
-                new(ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("public-ingress",
-                    DeploymentTargetCidrNetworkSource.Create("192.0.2.0/24")))),
-            Revision = target.Revision + 1
-        }).AttestForTests();
-        await targets.ReplaceOneAsync(item => item.Id == target.Id, target);
-    }
-
-    private static ManifestFile[] StageFiveWebSnapshot(Action<JsonNode> configure, bool withSecrets = false,
-        string? scope = null)
-    {
-        var documents = Snapshot()[0].Content.Split("\n---\n").Select(item => JsonNode.Parse(item)!).ToList();
-        var service = documents.Single(item => item["kind"]!.GetValue<string>() == "WebService")["spec"]!;
-        if (!withSecrets)
-        {
-            documents.RemoveAll(item => item["kind"]!.GetValue<string>() is "Secret" or "SecretBinding");
-            service["secretEnvironment"] = new JsonObject();
-        }
-        if (scope is not null)
-        {
-            service["placement"]!["isolationScope"] = scope;
-            foreach (var secret in documents.Where(item => item["kind"]!.GetValue<string>() == "Secret"))
-                secret["spec"]!["isolationScope"] = scope;
-            documents.Add(new JsonObject
-            {
-                ["apiVersion"] = "pole.io/v1alpha1",
-                ["kind"] = "IsolationScope",
-                ["metadata"] = new JsonObject { ["name"] = scope },
-                ["spec"] = new JsonObject { ["resourceGroup"] = "demo" }
-            });
-        }
-        configure(service);
-        return [new("stage-five.yaml", string.Join("\n---\n", documents.Select(item => item.ToJsonString())))];
+        await EnablePublicWebTargetAsync();
+        rejectNextWebServiceRevision = true;
+        var result = await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Public"));
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
+        Assert.Equal(1, await Releases());
+        Assert.Equal(1, await Fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("TenantDomainZones")
+            .CountDocumentsAsync(Builders<MongoDB.Bson.BsonDocument>.Filter.Empty));
+        Assert.Equal(1, await Fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("HostnameBindings")
+            .CountDocumentsAsync(Builders<MongoDB.Bson.BsonDocument>.Filter.Empty));
+        Assert.False(rejectNextWebServiceRevision);
     }
 }

@@ -6,11 +6,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class NativeMongoTypeFilterTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global)]
+public sealed class NativeMongoTypeFilterTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Theory]
     [InlineData(false)]
@@ -19,7 +20,7 @@ public sealed class NativeMongoTypeFilterTests(MongoReplicaSetFixture fixture) :
         bool scalarDiscriminator)
     {
         const string collectionName = "NativeTypeFilterTests";
-        var raw = fixture.Database.GetCollection<BsonDocument>(collectionName);
+        var raw = Fixture.Database.GetCollection<BsonDocument>(collectionName);
         var documents = new[]
         {
             new MappedDocument("ready", new(new ReadyState("available"))).ToBsonDocument(),
@@ -33,7 +34,7 @@ public sealed class NativeMongoTypeFilterTests(MongoReplicaSetFixture fixture) :
             }
         await raw.InsertManyAsync(documents);
 
-        var typed = fixture.Database.GetCollection<MappedDocument>(collectionName);
+        var typed = Fixture.Database.GetCollection<MappedDocument>(collectionName);
         var filter = Builders<MappedDocument>.Filter.OfType<FilterState, ReadyState>(
             document => document.Envelope.State);
         var matches = await typed.Find(filter).ToListAsync();

@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using System.Net;
 using Pole.Tests.Integration.Http;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
@@ -5,7 +6,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class RepositorySourceApiTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class RepositoryPreviewMetadataApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Preview_summary_covers_warnings_beyond_the_requested_action_page()

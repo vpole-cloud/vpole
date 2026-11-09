@@ -12,6 +12,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceDeploymentSetApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
@@ -19,17 +20,17 @@ public sealed class ResourceDeploymentSetApiTests(MongoReplicaSetFixture fixture
     {
         var resourceId = ObjectId.GenerateNewId().ToString();
         var type = ResourceTypeId.Create("pole/test-discovery");
-        var matching = Create(TestData.TenantId, type, resourceId);
+        var matching = Create(Data.TenantId, type, resourceId);
         await Fixture.DbContext.ResourceDeployments.InsertManyAsync([
             matching,
             Create(ObjectId.GenerateNewId().ToString(), type, resourceId),
-            Create(TestData.TenantId, ResourceTypeId.Create("pole/other"), resourceId),
-            Create(TestData.TenantId, type, ObjectId.GenerateNewId().ToString())
+            Create(Data.TenantId, ResourceTypeId.Create("pole/other"), resourceId),
+            Create(Data.TenantId, type, ObjectId.GenerateNewId().ToString())
         ]);
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with
         {
-            Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer))
+            Members = ImmutableList.Create(TenantFactory.CreateMember(Data.TenantId, Data.UserId, Data.UserEmail, TenantRole.Viewer))
         });
         var uri = $"/api/v1/resource-deployments/?resourceType=pole%2Ftest-discovery&resourceId={resourceId.ToUpperInvariant()}";
         var deployments = await Client.GetFromJsonAsync<PlacementSummaryDto[]>(uri);

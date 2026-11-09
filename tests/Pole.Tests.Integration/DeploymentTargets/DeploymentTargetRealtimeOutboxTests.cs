@@ -23,13 +23,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private const string EventType = "pole.deployment-targets/v1/deployment-target-catalog-changed";
     private static readonly DateTime Now = new(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Theory]
     [InlineData(false)]
@@ -40,7 +41,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         Assert.IsType<DeploymentTarget>((await CreatePersistence().InvokeAsync(target)).Value);
         var replacement = MetadataReplacement(target, changingPublicDomain);
         Assert.IsType<DeploymentTarget>((await UpdatePersistence().InvokeAsync(target, replacement)).Value);
-        var messages = await fixture.DbContext.OutboxMessages.Find(message => message.EventType == EventType)
+        var messages = await Fixture.DbContext.OutboxMessages.Find(message => message.EventType == EventType)
             .ToListAsync();
         Assert.Equal(2, messages.Count);
         foreach (var message in messages)
@@ -77,9 +78,9 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         if (operation == "delete")
             target = target.RequestDeletion(Now.AddSeconds(1));
         if (!creating)
-            await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+            await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var before = creating ? null : await ReadAsync(target.Id);
-        var realStore = new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"));
+        var realStore = new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"));
         StoreOutboxWrites failingStore = async (session, writes, ct) =>
         {
             await realStore.InvokeAsync(session, writes, ct);
@@ -121,7 +122,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
                 break;
         }
 
-        var after = await fixture.DbContext.DeploymentTargets.Find(candidate => candidate.Id == target.Id)
+        var after = await Fixture.DbContext.DeploymentTargets.Find(candidate => candidate.Id == target.Id)
             .SingleOrDefaultAsync();
         if (before is null)
             Assert.Null(after);
@@ -139,10 +140,10 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
             Assert.Equal(before.WorkloadConfiguration.ToBsonDocument(), after.WorkloadConfiguration.ToBsonDocument());
         }
 
-        Assert.Equal(0, await fixture.DbContext.DeploymentTargetSettings.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await Fixture.DbContext.DeploymentTargetSettings.CountDocumentsAsync(_ => true));
         Assert.Equal(0, await CountEventsAsync());
         Assert.Equal(0,
-            await fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+            await Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName).CountDocumentsAsync(_ => true));
     }
 
@@ -150,7 +151,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     public async Task ConcurrentAndRepeatedValidationEmitOneMeaningfulTransitionAndKeepFreshCheckTime()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var validation = ValidationPersistence();
         var results = await Task.WhenAll(validation.InvokeAsync(target, Observed(target, 1)),
             validation.InvokeAsync(target, Observed(target, 2)));
@@ -172,7 +173,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     public async Task ValidationAndRotationRejectStaleConfigurationWithoutEvents(bool rotating)
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target.UpdateMetadata("Changed before result",
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target.UpdateMetadata("Changed before result",
             Now.AddSeconds(1)));
         if (rotating)
             Assert.IsType<DeploymentTargetRevisionConflict>(
@@ -188,8 +189,8 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     public async Task RotationPreservesConcurrentReferenceFenceAndAppendsItsCommittedHint()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        await fixture.DbContext.DeploymentTargets.UpdateOneAsync(candidate => candidate.Id == target.Id,
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.UpdateOneAsync(candidate => candidate.Id == target.Id,
             Builders<DeploymentTarget>.Update.Set(candidate => candidate.ReferenceFence, 99));
         var persisted =
             Assert.IsType<DeploymentTarget>((await RotatePersistence().InvokeAsync(target, Rotated(target))).Value);
@@ -203,7 +204,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     public async Task DeleteCommitsAdmissionFenceOnceAndThenFinalDeletionAfterReferencesClear()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         EnsureNoDeploymentTargetReferences blocked = (id, _) =>
             Task.FromResult<EnsureDeploymentTargetUnreferencedOutcome>(
                 new DeploymentTargetHasDurableReferences(id));
@@ -217,7 +218,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         Assert.IsType<DeleteDeploymentTargetError>((await deleting.InvokeAsync(target.Id)).Value);
         Assert.Equal(1, await CountEventsAsync());
         Assert.IsType<DeploymentTargetDeleted>((await DeletePersistence().InvokeAsync(target.Id)).Value);
-        Assert.False(await fixture.DbContext.DeploymentTargets.Find(candidate => candidate.Id == target.Id).AnyAsync());
+        Assert.False(await Fixture.DbContext.DeploymentTargets.Find(candidate => candidate.Id == target.Id).AnyAsync());
         Assert.Equal(2, await CountEventsAsync());
     }
 
@@ -228,7 +229,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     {
         var target = CreateTarget();
         if (bindingExisting)
-            await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+            await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         EnsureBootstrapDefaultDeploymentTargetRequest request = bindingExisting
             ? new BindExistingDeploymentTargetAsDefault(target.Id)
             : new CreateFirstDeploymentTargetAsDefault(target);
@@ -237,14 +238,14 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         Assert.IsType<BootstrapDefaultDeploymentTargetEnsured>((await bootstrap.InvokeAsync(request)).Value);
         Assert.Equal(1, await CountEventsAsync());
         Assert.Equal(target.Id,
-            (await fixture.DbContext.DeploymentTargetSettings.Find(_ => true).SingleAsync()).DefaultDeploymentTargetId);
+            (await Fixture.DbContext.DeploymentTargetSettings.Find(_ => true).SingleAsync()).DefaultDeploymentTargetId);
     }
 
     [Fact]
     public async Task IdenticalPersistIsQuietButActualMetadataChangeWithUnchangedRevisionStillNotifies()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         Assert.IsType<DeploymentTarget>((await UpdatePersistence().InvokeAsync(target, target)).Value);
         Assert.Equal(0, await CountEventsAsync());
         var changed = target with
@@ -288,7 +289,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     [InlineData("public-domain")]
     public async Task Create_classifies_its_indexes_using_the_injected_collection_name(string conflict)
     {
-        var targets = fixture.Database.GetCollection<DeploymentTarget>("RenamedDeploymentTargets");
+        var targets = Fixture.Database.GetCollection<DeploymentTarget>("RenamedDeploymentTargets");
         var original = CreateTarget();
         var candidate = CreateTarget();
         var index = conflict switch
@@ -351,7 +352,7 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
     public async Task Duplicate_indexes_in_another_transaction_collection_are_not_target_conflicts(string index)
     {
         var target = CreateTarget();
-        var other = fixture.Database.GetCollection<BsonDocument>("OtherTransactionWrites");
+        var other = Fixture.Database.GetCollection<BsonDocument>("OtherTransactionWrites");
         if (index != "_id_")
             await other.Indexes.CreateOneAsync(
                 new CreateIndexModel<BsonDocument>(
@@ -366,40 +367,40 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
         await Assert.ThrowsAsync<MongoWriteException>(() =>
             CreatePersistence(failInOtherCollection).InvokeAsync(target));
 
-        Assert.Null(await fixture.DbContext.DeploymentTargets
+        Assert.Null(await Fixture.DbContext.DeploymentTargets
             .Find(item => item.Id == target.Id).SingleOrDefaultAsync());
         Assert.Equal(0, await CountEventsAsync());
     }
 
     private MongoPersistCreatedDeploymentTarget CreatePersistence(StoreOutboxWrites? store = null) => new(
-        fixture.DbContext.DeploymentTargets,
+        Fixture.DbContext.DeploymentTargets,
         NoOverlap(),
         Run().InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
         store ?? Store());
 
     private MongoPersistUpdatedDeploymentTarget UpdatePersistence(StoreOutboxWrites? store = null) => new(
-        fixture.DbContext.DeploymentTargets,
-        new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(fixture.DbContext.DeploymentTargetReferences)
+        Fixture.DbContext.DeploymentTargets,
+        new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(Fixture.DbContext.DeploymentTargetReferences)
             .InvokeAsync,
         NoOverlap(),
         Run().InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
         store ?? Store());
 
     private MongoPersistRotatedDeploymentTargetConnection RotatePersistence(StoreOutboxWrites? store = null) => new(
-        fixture.DbContext.DeploymentTargets,
+        Fixture.DbContext.DeploymentTargets,
         Run().InvokeOutcomeAsync<PersistRotatedDeploymentTargetConnectionOutcome>,
         store ?? Store());
 
     private MongoPersistDeploymentTargetValidation ValidationPersistence(StoreOutboxWrites? store = null) => new(
-        fixture.DbContext.DeploymentTargets,
+        Fixture.DbContext.DeploymentTargets,
         Run().InvokeOutcomeAsync<PersistDeploymentTargetValidationOutcome>,
         store ?? Store());
 
     private MongoDeleteDeploymentTarget DeletePersistence(StoreOutboxWrites? store = null,
         EnsureNoDeploymentTargetReferences? references = null) =>
-        new(fixture.DbContext.DeploymentTargets,
-            fixture.DbContext.DeploymentTargetSettings,
-            references ?? new MongoEnsureNoDeploymentTargetReferences(fixture.DbContext.DeploymentTargetReferences)
+        new(Fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargetSettings,
+            references ?? new MongoEnsureNoDeploymentTargetReferences(Fixture.DbContext.DeploymentTargetReferences)
                 .InvokeAsync,
             Run().InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
             TimeProvider.System,
@@ -407,8 +408,8 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
             store ?? Store());
 
     private MongoEnsureBootstrapDefaultDeploymentTarget BootstrapPersistence(StoreOutboxWrites? store = null) => new(
-        fixture.DbContext.DeploymentTargets,
-        fixture.DbContext.DeploymentTargetSettings,
+        Fixture.DbContext.DeploymentTargets,
+        Fixture.DbContext.DeploymentTargetSettings,
         NoOverlap(),
         Run().InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
         TimeProvider.System,
@@ -416,17 +417,17 @@ public sealed class DeploymentTargetRealtimeOutboxTests(MongoReplicaSetFixture f
 
     private EnsureNoOverlappingDeploymentTargetPublicBaseDomain NoOverlap() =>
         new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
-            fixture.DbContext.DeploymentTargets,
-            fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+            Fixture.DbContext.DeploymentTargets,
+            Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
 
-    private MongoRunTransaction Run() => new(fixture.Client);
-    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+    private MongoRunTransaction Run() => new(Fixture.Client);
+    private StoreOutboxWrites Store() => new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
         "OutboxMessages")).InvokeAsync;
-    private Task<long> CountEventsAsync() => fixture.DbContext.CountOutboxMessagesAsync(EventType);
+    private Task<long> CountEventsAsync() => Fixture.DbContext.CountAllOutboxMessagesAsync(EventType);
 
     private Task<DeploymentTarget> ReadAsync(string id) =>
-        fixture.DbContext.DeploymentTargets.Find(target => target.Id == id).SingleAsync();
+        Fixture.DbContext.DeploymentTargets.Find(target => target.Id == id).SingleAsync();
 
     private static DeploymentTarget CreateTarget()
     {

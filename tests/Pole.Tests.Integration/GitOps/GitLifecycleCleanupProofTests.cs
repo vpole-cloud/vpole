@@ -26,7 +26,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private IMongoCollection<GitLifecycleCleanupProof> Proofs =>
         Services.GetRequiredService<IMongoCollection<GitLifecycleCleanupProof>>();
@@ -46,8 +47,7 @@ public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await NamedCatalogTestData.SeedAsync(Fixture);
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
+        await Fixture.PrepareNamedCatalogAsync();
         var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
         var compute = await profiles.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
         compute = compute with { AllowedResourceTypes = compute.AllowedResourceTypes.Add("pole/function-app") };
@@ -202,7 +202,7 @@ public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture
     {
         var context = await StartRemoval(1);
         await Services.GetRequiredService<GitSourceLifecycleStore>().PauseAsync(new(
-            context.Source.TenantId, context.Source.Id, context.Source.Revision, TestData.UserId), default);
+            context.Source.TenantId, context.Source.Id, context.Source.Revision, Data.UserId), default);
         var state = await Sources.StateAsync(context.Source.TenantId, context.Source.Id, default);
         await FinalizeChild(context.Children[0]);
         Assert.Equal(context.RunId, (await Proofs.Find(_ => true).SingleAsync()).RunId);
@@ -239,10 +239,10 @@ public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture
 
     private async Task<RemovalContext> StartRemoval(int count, bool defaultScope = false)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = defaultScope
             ? await Scopes.Find(item => item.Id == group.DefaultIsolationScopeId).SingleAsync()
-            : IsolationScopeFactory.CreateAdditional(TestData.TenantId, group.Id, "reviewed-scope",
+            : IsolationScopeFactory.CreateAdditional(Data.TenantId, group.Id, "reviewed-scope",
                 IsolationScopeFactory.DefaultOptions);
         if (!defaultScope)
             await Scopes.InsertOneAsync(scope);
@@ -256,19 +256,19 @@ public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture
                         ImmutableDictionary<string, FunctionSecretReference>.Empty),
                     new(new(100, 128), new(500, 512)), new(0, 1, 1, 2, 60, 30),
                     [new("http", 1, new HttpFunctionTriggerRequest("hello", ["GET"], FunctionExposure.Internal))]), [],
-                Placement: new(TestData.DefaultDeploymentTargetId, scope.Id)), TestData.TenantId))).RequireSuccess();
+                Placement: new(TestData.DefaultDeploymentTargetId, scope.Id)), Data.TenantId))).RequireSuccess();
             children.Add(await DbContext.FunctionApps.Find(item => item.Id == response.FunctionAppId).SingleAsync());
         }
         if (defaultScope)
         {
             var retainedTarget = TestData.SeedDeploymentTarget(ObjectId.GenerateNewId().ToString());
             await Fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets").InsertOneAsync(retainedTarget);
-            await DbContext.RuntimeCells.InsertOneAsync(RuntimeCellFactory.Create(TestData.TenantId, group.Id,
+            await DbContext.RuntimeCells.InsertOneAsync(RuntimeCellFactory.Create(Data.TenantId, group.Id,
                 scope.Id, retainedTarget.Id, "retained-empty-cell", RuntimeCellFactory.DefaultOptions));
         }
-        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(TestData.TenantId,
+        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId,
             Guid.NewGuid().ToString("D"), new("Example", "connection", "repository", "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow), "https://example.test/repository"),
+            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow), "https://example.test/repository"),
             default)).Value);
         GitResourceIdentity[] resources =
         [
@@ -289,7 +289,7 @@ public sealed class GitLifecycleCleanupProofTests(MongoReplicaSetFixture fixture
             source.Revision, new GitPreviewRemoval(resources.ToImmutableArray()));
         var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(request, default)).Value);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(new(source.TenantId,
-            source.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            source.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(source.TenantId, source.Id), default);
         var run = await Runs.Find(item => item.Id == scheduled.RunId).SingleAsync();
         Assert.IsType<GitRunWaitingCleanup>(run.State);

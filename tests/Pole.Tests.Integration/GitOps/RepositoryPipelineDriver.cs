@@ -26,7 +26,8 @@ internal sealed record RepositoryPipelineResult(
 // exercise admission and source creation separately. This is not a production YAML/manual compatibility path.
 internal sealed class RepositoryPipelineDriver(
     IServiceProvider services,
-    MongoReplicaSetFixture fixture,
+    TestDatabaseScope fixture,
+    IntegrationTestData Data,
     TestRepositorySnapshots repository,
     DeclarativeProviderRegistry? customProviders = null,
     IGitOpsMutations? customMutations = null)
@@ -47,7 +48,7 @@ internal sealed class RepositoryPipelineDriver(
             source = RepositorySourceFactory.Create(identity,
                 new(repository.Provider, TestRepositorySnapshots.ConnectionId, identity.SourceId, "main", ""),
                 new(TimeSpan.FromMinutes(5)),
-                new(TestData.UserId, DateTime.UtcNow),
+                new(Data.UserId, DateTime.UtcNow),
                 Guid.NewGuid().ToString("D"),
                 "fixture",
                 TestRepositorySnapshots.DisplayUrl);
@@ -61,7 +62,7 @@ internal sealed class RepositoryPipelineDriver(
                 identity.SourceId,
                 source.Revision,
                 Guid.NewGuid().ToString("D"),
-                new(GitRunTrigger.Manual, TestData.UserId)),
+                new(GitRunTrigger.Manual, Data.UserId)),
             default)).Value);
         return await RecoverAsync(identity);
     }
@@ -79,7 +80,7 @@ internal sealed class RepositoryPipelineDriver(
                         context.SourceId,
                         context.Authority.ConfigurationRevision,
                         Guid.NewGuid().ToString("D"),
-                        new(GitRunTrigger.Manual, TestData.UserId)),
+                        new(GitRunTrigger.Manual, Data.UserId)),
                     context.RunId),
                 default);
             if (retry is not GitSourceScheduled)
@@ -147,8 +148,8 @@ internal sealed class RepositoryPipelineDriver(
 
     public async Task<GitReconciliationRun> LatestAsync(string source)
     {
-        var state = await Sources.StateAsync(TestData.TenantId, source, default);
-        return (await Sources.RunAsync(TestData.TenantId, source, state.LatestRunId!, default))!;
+        var state = await Sources.StateAsync(Data.TenantId, source, default);
+        return (await Sources.RunAsync(Data.TenantId, source, state.LatestRunId!, default))!;
     }
 
     public async Task MakeRecoveryDueAsync(string source)

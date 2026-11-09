@@ -9,8 +9,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class MigrationRunnerTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task DifferentFeaturesMayUseTheSameMigrationId_AndEachRunsOnce()

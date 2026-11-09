@@ -32,13 +32,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Projection_status_is_tenant_scoped_reference_only_and_canonicalizes_ids()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var response = await Client.PostAsJsonAsync("/api/v1/secrets/", new
         {
             resourceGroupId = group.Id,
@@ -69,7 +70,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task WriteOnlyApiReturnsMetadata_ValidatesInput_AndPaginates()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         object Body(string name) => new
         {
             resourceGroupId = group.Id,
@@ -137,8 +138,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task DuplicateNameInAnotherResourceGroupReturnsConflict()
     {
-        var first = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
-        var second = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
+        var first = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
+        var second = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
         object Body(ResourceGroup group, string name) => new
         {
             resourceGroupId = group.Id,
@@ -157,7 +158,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task TenantAndRoleAuthorizationRejectMissingSelectionForeignTenantAndViewerWrites()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         object body = new
         {
             resourceGroupId = group.Id,
@@ -171,14 +172,14 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         };
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync("/api/v1/secrets/")).StatusCode);
-        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, Data.TenantId);
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
         var viewer = tenant with
         {
             Members = ImmutableList.Create(TenantFactory.CreateMember(
-                TestData.TenantId,
-                TestData.UserId,
-                TestData.UserEmail,
+                Data.TenantId,
+                Data.UserId,
+                Data.UserEmail,
                 TenantRole.Viewer))
         };
         await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, viewer);
@@ -194,7 +195,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task UppercaseObjectIdsUseCanonicalOwnershipAndScopeUniqueness()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(
             group.TenantId,
             group.Id,
@@ -264,7 +265,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task PaddedResourceTypeAndUppercaseIdsBindCanonicallyAndCleanupOnUnregister()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var create = await Client.PostAsJsonAsync(
             "/api/v1/secrets/",
             new
@@ -282,7 +283,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(secret);
         var createdConsumer = await Client.PostAsJsonAsync(
             "/api/v1/web-services/",
-            TestData.CreateWebServiceRequest(group.Id).Body);
+            Data.CreateWebServiceRequest(group.Id).Body);
         Assert.Equal(HttpStatusCode.Accepted, createdConsumer.StatusCode);
         var consumer = await createdConsumer.Content.ReadFromJsonAsync<CreateWebServiceResponse>();
         Assert.NotNull(consumer);

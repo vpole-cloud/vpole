@@ -23,6 +23,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -34,8 +35,8 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
     [Fact]
     public async Task QueueAndClaim_CommitImmutableHints_AndOnlyOneClaimSucceeds()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(group.Id))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(Data, group.Id))).AssertSuccess();
         var job = Job() with
         {
             WebServiceId = service.WebServiceId
@@ -46,9 +47,9 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
             job.SourceRepositoryId,
             job.WebServiceId,
             job.Recipe,
-            new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+            new ManualSourceBuildConfigurationOrigin(Data.UserId),
             new(job.ConfigurationId, job.CreatedAtUtc));
-        await SourceBuildTestData.SeedRepositoryAsync(DbContext, configuration);
+        await SourceBuildTestData.SeedRepositoryAsync(DbContext, configuration, Data.UserId);
         Assert.IsType<SourceBuildConfiguration>((await Services.GetRequiredService<CreateSourceBuildConfiguration>()(
             new(configuration, 1))).Value);
         var requested = new SourceBuildRequestedEvent(job.Id) { EventCore = EventCore.Create(job.TenantId) };
@@ -58,7 +59,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
             claim(new(job.Id, Guid.NewGuid().ToString("N"))));
         Assert.Single(results, result => result is not null);
         Assert.Null(await claim(new(job.Id, "second")));
-        var envelopes = await DbContext.OutboxMessages.Find(x => x.EventType == EventName).ToListAsync();
+        var envelopes = await DbContext.OutboxMessages.Find(x => x.TenantId == Data.TenantId && x.EventType == EventName).ToListAsync();
         Assert.Equal(2, envelopes.Count);
         Assert.Equal(["Cloning", "Queued"],
             envelopes.Select(envelope => JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(
@@ -79,7 +80,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
                 new(job.Id, "worker")));
         Assert.IsType<QueuedSourceBuild>(
             (await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync()).State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.EventType == EventName));
+        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == Data.TenantId && x.EventType == EventName));
     }
 
     [Theory]
@@ -104,7 +105,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
             .State);
         await complete(completion);
         await complete(completion);
-        var envelope = await DbContext.OutboxMessages.Find(x => x.EventType == EventName).SingleAsync();
+        var envelope = await DbContext.OutboxMessages.Find(x => x.TenantId == Data.TenantId && x.EventType == EventName).SingleAsync();
         Assert.Equal(state,
             JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(envelope.PayloadJson,
                 EventExtensions.SerializerOptions)!.State);
@@ -124,7 +125,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
                 new(job.TenantId, "release-pilot", "Succeeded", null, job.UpdatedAtUtc.AddSeconds(1))));
         Assert.IsType<DeployingSourceBuild>((await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync())
             .State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.EventType == EventName));
+        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == Data.TenantId && x.EventType == EventName));
     }
 
     [Fact]
@@ -153,7 +154,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
 
         Assert.IsType<AnalyzingSourceBuild>(
             (await DbContext.SourceBuildJobs.Find(x => x.Id == current.Id).SingleAsync()).State);
-        var envelope = await DbContext.OutboxMessages.Find(x => x.EventType == EventName).SingleAsync();
+        var envelope = await DbContext.OutboxMessages.Find(x => x.TenantId == Data.TenantId && x.EventType == EventName).SingleAsync();
         Assert.Equal(current.TenantId, envelope.TenantId);
         Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", envelope.TraceId);
         Assert.Equal("correlation-pilot", envelope.CorrelationId);
@@ -194,7 +195,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
 
         Assert.IsType<CloningSourceBuild>((await DbContext.SourceBuildJobs.Find(x => x.Id == current.Id).SingleAsync())
             .State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.EventType == EventName));
+        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == Data.TenantId && x.EventType == EventName));
     }
 
     private ServiceProvider FailingOutboxProvider()
@@ -210,8 +211,8 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         return registrations.BuildServiceProvider();
     }
 
-    private static SourceBuildJob Job() => SourceBuildJobFactory.CreateManual(
-        TestData.TenantId,
+    private SourceBuildJob Job() => SourceBuildJobFactory.CreateManual(
+        Data.TenantId,
         ObjectId.GenerateNewId().ToString(),
         ObjectId.GenerateNewId().ToString(),
         ObjectId.GenerateNewId().ToString(),
@@ -219,11 +220,11 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         "abc123",
         new SourceBuildInputVersion(1, 1, 1),
         new SourceBuildRecipe("FROM scratch"),
-        TestData.UserId,
+        Data.UserId,
         null,
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow.AddMinutes(-2)));
 
-    private static SourceBuildJob DeployingJob()
+    private SourceBuildJob DeployingJob()
     {
         var job = Job();
         var now = job.UpdatedAtUtc;

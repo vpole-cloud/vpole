@@ -14,7 +14,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
-public sealed class GitProviderIdentityTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class GitProviderIdentityTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task NamesAreTenantScopedImmutableAndResolvedWithoutCredentials()
@@ -41,9 +42,8 @@ public sealed class GitProviderIdentityTests(MongoReplicaSetFixture fixture) : M
             (await finder(new(foreignTenant, attempt.TechnicalName))).Value);
         Assert.IsType<LinkedGitProviderConnection>((await persistence.UpsertConnectionAsync(
             attempt with { TenantId = foreignTenant }, Installation("44"), DateTime.UnixEpoch, default)).Value);
-        Assert.Equal(2, await DbContext.GitProviderConnections.CountDocumentsAsync(_ => true));
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(
-            "pole.git-providers/v1/git-provider-connection-changed"));
+        Assert.Equal(2, await DbContext.GitProviderConnections.CountDocumentsAsync(FilterDefinition<GitProviderConnection>.Empty));
+        Assert.Equal(2, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/git-provider-connection-changed"));
     }
 
     [Theory]
@@ -57,9 +57,8 @@ public sealed class GitProviderIdentityTests(MongoReplicaSetFixture fixture) : M
             Persistence().UpsertConnectionAsync(attempt,
                 Installation(sameInstallation ? "42" : (42 + index).ToString()), DateTime.UnixEpoch, default)));
 
-        Assert.Equal(1, await DbContext.GitProviderConnections.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(
-            "pole.git-providers/v1/git-provider-connection-changed"));
+        Assert.Equal(1, await DbContext.GitProviderConnections.CountDocumentsAsync(FilterDefinition<GitProviderConnection>.Empty));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/git-provider-connection-changed"));
         Assert.Equal(sameInstallation ? 4 : 1, outcomes.Count(item => item.Value is LinkedGitProviderConnection));
         Assert.All(outcomes.Where(item => item.Value is not LinkedGitProviderConnection),
             item => Assert.IsType<GitProviderConnectionNameConflict>(item.Value));
@@ -82,8 +81,8 @@ public sealed class GitProviderIdentityTests(MongoReplicaSetFixture fixture) : M
             new CreateIndexOptions { Unique = true, Name = GitProviderConnectionIndexes.Installation })
     ]);
 
-    private static GitHubSetupAttempt Attempt(string name) => GitHubSetupAttemptFactory.Create(
-        TestData.TenantId, TestData.UserId, name, "state", GitHubSetupAttemptFactory.DefaultOptions);
+    private GitHubSetupAttempt Attempt(string name) => GitHubSetupAttemptFactory.Create(
+        Data.TenantId, Data.UserId, name, "state", GitHubSetupAttemptFactory.DefaultOptions);
 
     private static GitHubInstallationMetadata Installation(string id) =>
         new(id, "account", "display", GitProviderAccountType.Organization, GitProviderRepositorySelection.All);

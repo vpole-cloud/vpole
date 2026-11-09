@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceHostnameBindingReadTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -18,18 +19,18 @@ public sealed class ResourceHostnameBindingReadTests(MongoReplicaSetFixture fixt
     {
         var resourceId = ObjectId.GenerateNewId().ToString();
         var type = ResourceTypeId.Create("pole/web-service");
-        var first = Binding(TestData.TenantId, type, resourceId, "first");
-        var orphan = Binding(TestData.TenantId, type, resourceId, "orphan");
+        var first = Binding(Data.TenantId, type, resourceId, "first");
+        var orphan = Binding(Data.TenantId, type, resourceId, "orphan");
         var foreign = Binding(ObjectId.GenerateNewId().ToString(), type, resourceId, "foreign");
-        var otherType = Binding(TestData.TenantId, ResourceTypeId.Create("other/kind"), resourceId, "other");
+        var otherType = Binding(Data.TenantId, ResourceTypeId.Create("other/kind"), resourceId, "other");
         var bindings = Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings");
         await bindings.InsertManyAsync([first, orphan, foreign, otherType]);
         var read = Services.GetRequiredService<LoadHostnameBindingsForResourceInTransaction>();
         using var session = await Fixture.Client.StartSessionAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => read(new(TestData.TenantId, type, resourceId),
+        await Assert.ThrowsAsync<InvalidOperationException>(() => read(new(Data.TenantId, type, resourceId),
             session, default));
         session.StartTransaction();
-        var found = await read(new(TestData.TenantId, type, resourceId), session, default);
+        var found = await read(new(Data.TenantId, type, resourceId), session, default);
         await session.AbortTransactionAsync();
         Assert.Equal(new[] { first.Id, orphan.Id }.Order(StringComparer.Ordinal),
             found.Select(item => item.Id).Order(StringComparer.Ordinal));

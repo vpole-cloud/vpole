@@ -19,13 +19,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class GitPrunePlanningTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global)]
+public sealed partial class GitPrunePlanningTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private readonly Repository repository = new();
-    private readonly WidgetProvider widgets =
-        new("Widget", fixture.Database.GetCollection<BsonDocument>("PruneWidgets"));
-    private readonly WidgetProvider gadgets =
-        new("Gadget", fixture.Database.GetCollection<BsonDocument>("PruneGadgets"));
+    private WidgetProvider widgets = null!;
+    private WidgetProvider gadgets = null!;
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
     private IMongoCollection<ManagedDeclaration> Inventory =>
         Services.GetRequiredService<IMongoCollection<ManagedDeclaration>>();
@@ -35,6 +34,8 @@ public sealed partial class GitPrunePlanningTests(MongoReplicaSetFixture fixture
 
     protected override void ConfigureServices(IServiceCollection services)
     {
+        widgets = new("Widget", Fixture.Database.GetCollection<BsonDocument>("PruneWidgets"));
+        gadgets = new("Gadget", Fixture.Database.GetCollection<BsonDocument>("PruneGadgets"));
         services.AddSingleton<IRepositorySnapshotProvider>(repository);
         services.AddSingleton<IDeclarativeResourceProvider>(widgets);
         services.AddSingleton<IDeclarativeResourceProvider>(gadgets);
@@ -153,9 +154,9 @@ public sealed partial class GitPrunePlanningTests(MongoReplicaSetFixture fixture
         var id = Assert.IsType<GitInputAwaitingApproval>(run.Input).PreviewId;
         await widgets.Documents.UpdateOneAsync(_ => true, Builders<BsonDocument>.Update.Inc("Revision", 1));
         Assert.IsType<GitPreviewStale>((await Services.GetRequiredService<GitLifecyclePreviews>().ConfirmAsync(
-            new(new(source.TenantId, source.Id), id, 1, TestData.UserId), default)).Value);
+            new(new(source.TenantId, source.Id), id, 1, Data.UserId), default)).Value);
         Assert.IsType<GitRetryNotAvailable>((await Sources.RetryAsync(new(new(source.TenantId, source.Id,
-            source.Revision, "retry", new(GitRunTrigger.Manual, TestData.UserId)), run.Id), default)).Value);
+            source.Revision, "retry", new(GitRunTrigger.Manual, Data.UserId)), run.Id), default)).Value);
         Assert.Equal(1, await widgets.Documents.CountDocumentsAsync(_ => true));
     }
 
@@ -172,7 +173,7 @@ public sealed partial class GitPrunePlanningTests(MongoReplicaSetFixture fixture
             new(new(source.TenantId, source.Id), source.Revision, relocation), default)).Value);
         Assert.Equal(GitLifecycleAction.Retain, Assert.Single(preview.Operations).Action);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(
-            new(source.TenantId, source.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(source.TenantId, source.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         await Worker.ProcessAsync(new(source.TenantId, source.Id), default);
         var run = (await Sources.RunAsync(source.TenantId, source.Id, scheduled.RunId, default))!;
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);
@@ -247,9 +248,9 @@ public sealed partial class GitPrunePlanningTests(MongoReplicaSetFixture fixture
     private async Task<RepositorySource> Create(GitPrunePolicy prune = GitPrunePolicy.Prune)
     {
         widgets.Git = gadgets.Git = () => Services.GetRequiredService<IGitOpsMutations>();
-        return Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(TestData.TenantId,
+        return Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId,
             Guid.NewGuid().ToString("D"), new(repository.Provider, "connection", "repository", "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow), "https://example.test/repo", prune),
+            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow), "https://example.test/repo", prune),
             default)).Value);
     }
 

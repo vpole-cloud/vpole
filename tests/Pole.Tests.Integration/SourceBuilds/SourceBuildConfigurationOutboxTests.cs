@@ -20,6 +20,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -50,7 +51,7 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
         Assert.IsType<SourceBuildConfigurationRemovalRecorded>((await delete(configuration.TenantId, configuration.Id))
             .Value);
         Assert.IsType<SourceBuildConfigurationNotFound>((await delete(configuration.TenantId, configuration.Id)).Value);
-        var rows = await DbContext.OutboxMessages.Find(row => row.EventType == EventName).ToListAsync();
+        var rows = await DbContext.OutboxMessages.Find(row => row.TenantId == Data.TenantId && row.EventType == EventName).ToListAsync();
         Assert.Equal(3, rows.Count);
         Assert.All(rows,
             row =>
@@ -83,18 +84,21 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
             "commit",
             new SourceBuildInputVersion(1, 1, 1),
             configuration.Recipe,
-            TestData.UserId,
+            Data.UserId,
             null,
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         await DbContext.SourceBuildJobs.InsertOneAsync(job);
         var cleanup = Services.GetRequiredService<CleanupSourceBuildConfigurations>();
         await cleanup(configuration.TenantId, configuration.WebServiceId);
         await cleanup(configuration.TenantId, configuration.WebServiceId);
+        Assert.False(await DbContext.SourceBuildConfigurations
+            .Find(item => item.TenantId == configuration.TenantId && item.Id == configuration.Id).AnyAsync());
         Assert.Equal(foreign.Id,
-            (await DbContext.SourceBuildConfigurations.Find(FilterDefinition<SourceBuildConfiguration>.Empty)
+            (await DbContext.SourceBuildConfigurations
+                .Find(item => item.TenantId == foreign.TenantId && item.Id == foreign.Id)
                 .SingleAsync()).Id);
         Assert.Equal(1, await DbContext.SourceBuildJobs.CountDocumentsAsync(row => row.Id == job.Id));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     [Theory]
@@ -132,7 +136,7 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
         Assert.Equal(before?.UpdatedAtUtc, after?.UpdatedAtUtc);
         Assert.Equal(before?.Recipe.Dockerfile, after?.Recipe.Dockerfile);
         Assert.Equal(before?.Id, after?.Id);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     private ServiceProvider Provider(bool fail = false)
@@ -166,12 +170,12 @@ public sealed class SourceBuildConfigurationOutboxTests(MongoReplicaSetFixture f
         return services.BuildServiceProvider();
     }
 
-    private static SourceBuildConfiguration Configuration() => SourceBuildConfigurationFactory.Create(
-        TestData.TenantId,
+    private SourceBuildConfiguration Configuration() => SourceBuildConfigurationFactory.Create(
+        Data.TenantId,
         "application-build",
         ObjectId.GenerateNewId().ToString(),
         ObjectId.GenerateNewId().ToString(),
         new("FROM scratch"),
-        new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+        new ManualSourceBuildConfigurationOrigin(Data.UserId),
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
 }

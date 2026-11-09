@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class FunctionDeclarationCompositionTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {

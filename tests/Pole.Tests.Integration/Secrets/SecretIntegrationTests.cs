@@ -44,13 +44,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Binding_submodels_round_trip_current_mongo_documents_without_migration()
     {
-        var secret = SecretFactory.Create(Id(), TestData.TenantId, Id(), Id(), "current-bindings", "test",
+        var secret = SecretFactory.Create(Id(), Data.TenantId, Id(), Id(), "current-bindings", "test",
                 ["password", "user"], DateTime.UtcNow)
             .Bind(SecretBinding.Create(Id(), "pole/web-service", Id(), new AllSecretDeployments(), [])
                 .RequireKeysThroughRollout(["password"]).RequireKeysThroughRollout(["user"]), DateTime.UtcNow);
@@ -72,12 +73,12 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     public async Task Consumer_references_reject_unauthorized_keys_incomplete_coverage_foreign_scope_or_tenant(
         string scenario, ConsumerSecretReferenceError reason)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "authority-refs", "tests", new() { ["password"] = "synthetic", ["other"] = "synthetic" }, default));
         var consumer = await Consumer(group);
         var binding = SecretBinding.Create(Id(), "pole/web-service", consumer.ResourceId, new SelectedSecretDeployments([consumer.Id]), new Dictionary<string, string> { ["password"] = "APP_PASSWORD" });
         Metadata(await BindAsync(group.TenantId, secret.Id, binding, default));
-        if (scenario == "coverage") await DbContext.ResourceDeployments.InsertOneAsync(consumer with { Id = Id() });
+        if (scenario == "coverage") await DbContext.ResourceDeployments.InsertOneAsync(AdditionalDeployment(consumer));
         using var session = await Fixture.Client.StartSessionAsync(); session.StartTransaction();
         var result = await Services.GetRequiredService<AdmitConsumerSecretReferences>()(
             new AdmitConsumerSecretReferencesRequest(
@@ -101,7 +102,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Consumer_references_pin_keys_without_changing_version_and_removal_releases_only_that_consumers_pins()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "logical-refs", "tests", Values(), default));
         var first = await Consumer(group);
         var second = await Consumer(group);
@@ -157,7 +158,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         PreviousSecretReferenceRetention retention,
         bool retainsOldKey)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId, "retention",
             "tests",
             new() { ["password"] = "synthetic", ["other"] = "synthetic" }, default));
@@ -215,7 +216,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         session.StartTransaction();
         var result = await Services.GetRequiredService<AdmitConsumerSecretReferences>()(
             new AdmitConsumerSecretReferencesRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 ResourceGroupId: Id(),
                 IsolationScopeId: Id(),
                 ConsumerType: ResourceTypeId.Create("pole/web-service"),
@@ -242,7 +243,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new SecretIndexesMigration().Up(Fixture.Database);
+
     }
 
     [Fact]
@@ -269,9 +270,9 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task NamesAreUniqueAcrossGroupsAndScopesButIndependentAcrossTenantsAndResourceTypes()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
-        var otherGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
-        var foreignGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("foreign", Id()));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
+        var otherGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
+        var foreignGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("foreign", Id()));
         var scope = IsolationScopeFactory.CreateAdditional(
             group.TenantId, group.Id, "additional", IsolationScopeFactory.DefaultOptions);
         await DbContext.IsolationScopes.InsertOneAsync(scope);
@@ -296,15 +297,18 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             session: session);
         Assert.IsType<RegisteredResource>(registration.Value);
         await session.CommitTransactionAsync();
-        Assert.Equal(2, await Versions.CountDocumentsAsync(Builders<SecretVersion>.Filter.Empty));
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(2, await Versions.CountDocumentsAsync(version =>
+            version.TenantId == group.TenantId || version.TenantId == foreignGroup.TenantId));
+        Assert.Equal(2,
+            await DbContext.CountOutboxMessagesAsync(group.TenantId, "pole.secrets/v1/secret-changed") +
+            await DbContext.CountOutboxMessagesAsync(foreignGroup.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
     public async Task ConcurrentCreatesInDifferentGroupsReserveExactlyOneTenantName()
     {
-        var first = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
-        var second = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
+        var first = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
+        var second = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
         var outcomes = await Task.WhenAll(
             CreateAsync(first.TenantId, first.Id, first.DefaultIsolationScopeId,
                 "shared-name", "tests", Values(), default),
@@ -312,14 +316,14 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
                 " SHARED-NAME ", "tests", Values(), default));
         Assert.Single(outcomes, outcome => outcome is Secret);
         Assert.Single(outcomes, outcome => outcome is SecretNameAlreadyExists);
-        Assert.Equal(1, await Versions.CountDocumentsAsync(Builders<SecretVersion>.Filter.Empty));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(1, await Versions.CountDocumentsAsync(Builders<SecretVersion>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
     public async Task DeletedNameCanBeReusedWithANewIdentityAndNoOldVersions()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var first = Metadata(await CreateAsync(group.TenantId, group.Id, group.DefaultIsolationScopeId,
             "reusable", "tests", Values(), default));
         await DeleteAsync(group.TenantId, first.Id, default);
@@ -334,7 +338,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task CreateRotate_ReadsOnlyMetadata_StoresEncryptedImmutableVersions_AndFencesTenants()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var created = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -370,7 +374,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             "tests",
             Values(),
             default));
-        var outbox = await DbContext.OutboxMessages.Find(Builders<OutboxMessage>.Filter.Empty).ToListAsync();
+        var outbox = await DbContext.OutboxMessages.Find(Builders<OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId)).ToListAsync();
         Assert.DoesNotContain("synthetic-password", outbox.ToJson());
         Assert.DoesNotContain("rotated-password", outbox.ToJson());
         Assert.DoesNotContain("Ciphertext", outbox.ToJson());
@@ -388,7 +392,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task BindingsShareOnlyWithinScope_RejectForeignDeployments_AndCleanupOnlyDeletedConsumer()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -432,7 +436,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
                 Consumer = binding2.Consumer with { ResourceId = third.ResourceId }
             },
             default));
-        var otherGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("other"));
+        var otherGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("other"));
         var foreign = await Consumer(otherGroup);
         AssertError<SecretReferenceRejected>(await BindAsync(
             group.TenantId,
@@ -486,7 +490,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task RetainedSecretPreventsGroupAndScopeDeletion()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(
             group.TenantId,
             group.Id,
@@ -510,7 +514,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task ConcurrentRotationsCommitExactlyOneVersionAndEvent()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -525,13 +529,13 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         Assert.Single(results, x => x is Secret);
         Assert.Single(results, x => x is SecretVersionConflict);
         Assert.Equal(2, await Versions.CountDocumentsAsync(x => x.SecretId == secret.Id));
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
     public async Task MutationAndOutboxAreAtomic_WhenOutboxWriteFails()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var registrations = new ServiceCollection();
         registrations.AddSingleton(Fixture.Database);
         registrations.AddSingleton(Services.GetRequiredService<MongoRunTransaction>());
@@ -554,17 +558,17 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
             Values(),
             default));
         Assert.Empty((await Services.GetRequiredService<LoadSecretPage>()(group.TenantId, null, 50, default)).Items);
-        Assert.Equal(0, await Versions.CountDocumentsAsync(Builders<SecretVersion>.Filter.Empty));
+        Assert.Equal(0, await Versions.CountDocumentsAsync(Builders<SecretVersion>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.False(await DbContext.ResourceRegistrations
-            .Find(x => x.ResourceTypeId == "pole/secret")
+            .Find(x => x.TenantId == group.TenantId && x.ResourceTypeId == "pole/secret")
             .AnyAsync());
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
     public async Task RotationVersusBindingCannotRemoveABoundKey()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -599,7 +603,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task DeletionVersusBindingCannotLeaveAnOrphanBinding()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -627,7 +631,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task AllDeploymentsTracksLaterPlacements_WhileExplicitSelectionStaysLimited()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var dynamicSecret = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -665,11 +669,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
                 new SelectedSecretDeployments([consumer.Id]),
                 new Dictionary<string, string>()),
             default));
-        var later = consumer with
-        {
-            Id = Id(),
-            PlacementKey = Id()
-        };
+        var later = AdditionalDeployment(consumer);
         await DbContext.ResourceDeployments.InsertOneAsync(later);
         var dynamicUsage = await UsageAsync(
             (await Services.GetRequiredService<LoadSecretById>()(group.TenantId, dynamicSecret.Id, default))!,
@@ -684,7 +684,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task UnregisterPublishesDurableCleanupEvent_AndRejectsNewBindings()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var secret = Metadata(await CreateAsync(
             group.TenantId,
             group.Id,
@@ -714,7 +714,7 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
                 ResourceId: consumer.ResourceId),
             session: session);
         await session.CommitTransactionAsync();
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-unregistered"));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/resource-unregistered"));
         var cleanup = new RemoveSecretBindingsOnResourceUnregistered(Services.GetRequiredService<RemoveConsumerSecretBindings>());
         await cleanup.Handle(new ResourceUnregisteredEvent(group.Id, "pole/web-service", consumer.ResourceId)
         {
@@ -776,6 +776,22 @@ public sealed class SecretIntegrationTests(MongoReplicaSetFixture fixture)
         await DbContext.ResourceDeployments.InsertOneAsync(deployment);
         return deployment;
     }
+
+    private static ResourceDeployment AdditionalDeployment(ResourceDeployment consumer) =>
+        ResourceDeploymentFactory.Create(
+            consumer.TenantId,
+            ResourceTypeId.Create(consumer.ResourceType),
+            consumer.ResourceId,
+            consumer.ResourceGroupId,
+            consumer.IsolationScopeId,
+            consumer.ResolvedPlacement with { RuntimeCellId = Id() },
+            consumer.PlacementCapability,
+            runtimeCellReady: true,
+            ResourceDeploymentFactory.DefaultOptions with
+            {
+                Id = Id(),
+                CreatedAtUtc = consumer.CreatedAtUtc
+            });
 
     private static SecretMetadata Metadata(object? outcome) =>
         SecretMetadata.From(Assert.IsType<Secret>(outcome));

@@ -16,7 +16,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class RepositorySourceApiTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class RepositoryRetainPreviewApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
 {
     [Theory]
     [InlineData("Retain", GitPreviewRemovalDisposition.Retain, GitLifecycleAction.Retain)]
@@ -38,7 +39,7 @@ public sealed partial class RepositorySourceApiTests
             Assert.Single(view.Actions.Items, item => item.Resource.Name == "next").Action);
         using var scope = ApiServices.CreateScope();
         var preview = (await scope.ServiceProvider.GetRequiredService<GitLifecyclePreviews>()
-            .LoadAsync(new(TestData.TenantId, source.Id), view.Id, default))!;
+            .LoadAsync(new(Data.TenantId, source.Id), view.Id, default))!;
         Assert.Equal(expected, Assert.IsType<GitPreviewResourceChanges>(preview.Intent).Removal);
 
         using var confirmed = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews/{view.Id}/confirm",
@@ -49,9 +50,9 @@ public sealed partial class RepositorySourceApiTests
         Assert.Equal(RepositoryRunStatus.ConfigurationApplied, current.Status);
         var groups = scope.ServiceProvider.GetRequiredService<IMongoCollection<ResourceGroup>>();
         Assert.Equal(expected == GitPreviewRemovalDisposition.Retain ? 1 : 0,
-            await groups.CountDocumentsAsync(item => item.TenantId == TestData.TenantId && item.Name == "old"));
+            await groups.CountDocumentsAsync(item => item.TenantId == Data.TenantId && item.Name == "old"));
         Assert.Equal(1, await groups.CountDocumentsAsync(item =>
-            item.TenantId == TestData.TenantId && item.Name == "next"));
+            item.TenantId == Data.TenantId && item.Name == "next"));
         var inventory = scope.ServiceProvider.GetRequiredService<IMongoCollection<ManagedDeclaration>>();
         if (expected == GitPreviewRemovalDisposition.Retain)
         {
@@ -83,7 +84,7 @@ public sealed partial class RepositorySourceApiTests
         Assert.Equal(reads, repository.ReadCommits.Count);
         using var scope = ApiServices.CreateScope();
         var previews = scope.ServiceProvider.GetRequiredService<IMongoCollection<GitOperationPreview>>();
-        Assert.Equal(1, await previews.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await previews.CountDocumentsAsync(item => item.Source.Source.TenantId == Data.TenantId));
 
         using var restored = await Client.PutAsJsonAsync($"{Root}/{source.Id}",
             new UpdateRepositorySourceBody(pruned.Revision, 300, GitPrunePolicy.Retain));
@@ -117,15 +118,8 @@ public sealed partial class RepositorySourceApiTests
     public void Resource_changes_validator_rejects_unknown_typed_removal_choices()
     {
         var result = new CreateLifecyclePreviewValidator().Validate(new CreateLifecyclePreviewRequest(
-            TestData.TenantId, new ResourceChangesPreviewBody(1, (GitPreviewRemovalDisposition)99), TestData.TenantId));
+            Data.TenantId, new ResourceChangesPreviewBody(1, (GitPreviewRemovalDisposition)99), Data.TenantId));
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, error => error.PropertyName == "removal");
     }
-
-    private static ManifestFile GroupManifest(string name) => new($"{name}.yaml", $$"""
-        apiVersion: pole.io/v1alpha1
-        kind: ResourceGroup
-        metadata: {name: {{name}}}
-        spec: {}
-        """);
 }

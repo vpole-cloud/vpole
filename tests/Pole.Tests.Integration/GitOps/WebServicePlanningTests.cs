@@ -16,7 +16,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class WebServicePlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Web_service_planning_tracks_preparation_configuration_and_deployment_versions()
@@ -29,7 +30,7 @@ public sealed partial class DeclarativePipelineTests
         Task<ResourceDeclarationPlan> PlanAsync(PlanDeclarationRequest input) =>
             transactions.InvokeOutcomeAsync<ResourceDeclarationPlan>(async (tx, ct) =>
                 tx.Commit(await planner.PlanAsync(input, tx.Session, ct)), default);
-        var request = new PlanDeclarationRequest(new(TestData.TenantId, source, null), declaration);
+        var request = new PlanDeclarationRequest(new(Data.TenantId, source, null), declaration);
         Assert.IsType<UpdateDeclarationPlan>(await PlanAsync(request));
         await Supply("never-in-web-plan");
         await Pipeline.ResumeAsync(initial.Context!);
@@ -38,7 +39,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.DoesNotContain("never-in-web-plan", current.Current.Projection.Configuration.GetRawText());
         var service = await Service();
         var releases = await Releases();
-        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty)
+        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId))
             .SingleAsync();
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id, deployment with
         {
@@ -61,6 +62,7 @@ public sealed partial class DeclarativePipelineTests
         await WebServices.DeleteOneAsync(item => item.Id == service.Id);
         Assert.IsType<CreateDeclarationPlan>(await PlanAsync(request));
     }
+
     [Fact]
     public async Task Web_service_plan_blocks_a_missing_revision_of_the_pinned_profile()
     {
@@ -73,7 +75,7 @@ public sealed partial class DeclarativePipelineTests
         var planner = Services.GetRequiredService<DeclarativeResourcePlanner>();
         var result = Assert.IsType<BlockedDeclarationPlan>(await Services.GetRequiredService<MongoRunTransaction>()
             .InvokeOutcomeAsync<ResourceDeclarationPlan>(async (tx, ct) => tx.Commit(await planner.PlanAsync(
-                new(new(TestData.TenantId, source, null), declaration), tx.Session, ct)), default));
+                new(new(Data.TenantId, source, null), declaration), tx.Session, ct)), default));
         Assert.Equal(WebServiceDeclarationError.ComputeProfileRevisionUnavailable,
             Assert.IsType<WebServiceDeclarationRejected>(result.Failure).Reason);
     }

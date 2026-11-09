@@ -9,10 +9,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
+[Collection(IntegrationTestCollection.Global)]
 public sealed class SourceRepositoryLifecycleTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
-    private readonly ReviewedLifecycleAuthority authorization = new(fixture.Client);
+    private ReviewedLifecycleAuthority? _authorization;
+    private ReviewedLifecycleAuthority authorization => _authorization ??= new(Fixture.Client, Data.TenantId);
     protected override void ConfigureServices(IServiceCollection services) =>
         services.AddSingleton<IGitOpsMutations>(authorization);
     private IMongoCollection<SourceRepository> Repositories => Fixture.Database
@@ -34,12 +36,12 @@ public sealed class SourceRepositoryLifecycleTests(MongoReplicaSetFixture fixtur
         Assert.IsType<GitLifecycleResourceRemoved>((await Provider.RemoveAsync(request, session, default)).Value);
         await session.AbortTransactionAsync();
         Assert.Equal(1, await Repositories.CountDocumentsAsync(_ => true));
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
+        Assert.Equal(0, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
         session.StartTransaction();
         Assert.IsType<GitLifecycleResourceRemoved>((await Provider.RemoveAsync(request, session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(0, await Repositories.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
     }
 
     [Fact]
@@ -49,7 +51,7 @@ public sealed class SourceRepositoryLifecycleTests(MongoReplicaSetFixture fixtur
         await Repositories.InsertOneAsync(repository);
         var configuration = SourceBuildConfigurationFactory.Create(repository.TenantId, "build", repository.Id,
             ObjectId.GenerateNewId().ToString(), SourceBuildRecipe.Create("FROM scratch"),
-            new ManualSourceBuildConfigurationOrigin(TestData.UserId), SourceBuildConfigurationFactory.DefaultOptions);
+            new ManualSourceBuildConfigurationOrigin(Data.UserId), SourceBuildConfigurationFactory.DefaultOptions);
         await Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
             .InsertOneAsync(configuration);
         using var session = await Fixture.Client.StartSessionAsync();
@@ -66,9 +68,9 @@ public sealed class SourceRepositoryLifecycleTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task Pinned_connection_adoption_preview_preserves_ids_and_does_not_write()
     {
-        var connection = GitProviderConnectionFactory.Create(TestData.TenantId, "github-app", GitProviderKind.GitHub,
+        var connection = GitProviderConnectionFactory.Create(Data.TenantId, "github-app", GitProviderKind.GitHub,
             "installation", "account", "login", GitProviderAccountType.User, GitProviderRepositorySelection.All,
-            TestData.UserId, GitProviderConnectionFactory.DefaultOptions);
+            Data.UserId, GitProviderConnectionFactory.DefaultOptions);
         await Fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
             .InsertOneAsync(connection);
         var repository = Repository() with { ConnectionId = connection.Id };
@@ -78,7 +80,7 @@ public sealed class SourceRepositoryLifecycleTests(MongoReplicaSetFixture fixtur
             "hash", [], "repository.yaml", 1);
         using var session = await Fixture.Client.StartSessionAsync();
         var preview = Assert.IsType<GitLifecycleAdoptionPreview>((await ((IDeclarativeAdoptionPreviewProvider)Provider)
-            .PreviewAdoptionAsync(new(TestData.TenantId, declaration, repository.Id,
+            .PreviewAdoptionAsync(new(Data.TenantId, declaration, repository.Id,
                 [new(new("GitProviderConnection", connection.TechnicalName), connection.Id)]),
                 session, default)).Value);
         Assert.Equal(repository.Id, preview.Current.ResourceId);
@@ -86,14 +88,14 @@ public sealed class SourceRepositoryLifecycleTests(MongoReplicaSetFixture fixtur
             preview.Desired.Identity));
         Assert.Equal(connection.Id, Assert.Single(preview.ResolvedReferences).ResourceId);
         Assert.Equal(0, (await Repositories.Find(_ => true).SingleAsync()).ReferenceFence);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
-        var rejected = await ((IDeclarativeAdoptionPreviewProvider)Provider).PreviewAdoptionAsync(new(TestData.TenantId,
+        Assert.Equal(0, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
+        var rejected = await ((IDeclarativeAdoptionPreviewProvider)Provider).PreviewAdoptionAsync(new(Data.TenantId,
             declaration, repository.Id, [new(new("GitProviderConnection", connection.TechnicalName),
                 ObjectId.GenerateNewId().ToString())]), session, default);
         Assert.IsType<DeclarationReadBlocked>(rejected.Value);
     }
 
-    private static SourceRepository Repository() => SourceRepositoryFactory.Create(TestData.TenantId,
+    private SourceRepository Repository() => SourceRepositoryFactory.Create(Data.TenantId,
         "app-repository", ObjectId.GenerateNewId().ToString(), "42", "owner/application",
         "https://example.test/owner/application", true, "main", SourceRepositoryFactory.DefaultOptions);
     private static ReadLifecycleResourceRequest Read(SourceRepository item) => new(item.TenantId,

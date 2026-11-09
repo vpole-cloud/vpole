@@ -7,18 +7,18 @@ namespace Pole.Tests.Integration.SourceBuilds;
 
 internal static class SourceBuildTestData
 {
-    public static async Task SeedRepositoryAsync(MongoTestStore store, SourceBuildConfiguration configuration)
+    public static async Task SeedRepositoryAsync(MongoTestStore store, SourceBuildConfiguration configuration, string actorUserId)
     {
         var connection = GitProviderConnectionFactory.Create(configuration.TenantId, "application-github",
-            GitProviderKind.GitHub, "installation", "account", "owner", GitProviderAccountType.User,
-            GitProviderRepositorySelection.All, TestData.UserId, GitProviderConnectionFactory.DefaultOptions);
+            GitProviderKind.GitHub, "installation-" + configuration.Id, "account", "owner", GitProviderAccountType.User,
+            GitProviderRepositorySelection.All, actorUserId, GitProviderConnectionFactory.DefaultOptions);
         await store.GitProviderConnections.InsertOneAsync(connection);
         await store.SourceRepositories.InsertOneAsync(Repository(configuration, connection.Id));
     }
 
-    public static CreateWebServiceRequest CreateTargetRequest(string groupId)
+    public static CreateWebServiceRequest CreateTargetRequest(IntegrationTestData data, string groupId)
     {
-        var request = TestData.CreateWebServiceRequest(groupId);
+        var request = data.CreateWebServiceRequest(groupId);
         return request with
         {
             Body = request.Body with

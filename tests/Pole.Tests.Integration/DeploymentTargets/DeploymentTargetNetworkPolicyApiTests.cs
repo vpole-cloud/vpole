@@ -13,9 +13,10 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class DeploymentTargetNetworkPolicyApiTests(
     MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.DeploymentTargets)
 {
     [Fact]
     public async Task AttestationRequiresPlatformAdmin_AndUnknownTargetIsNotEligible()

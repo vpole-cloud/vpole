@@ -9,11 +9,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class FunctionRevisionStatusMigrationTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class FunctionRevisionStatusMigrationTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Legacy_enum_documents_and_indexes_migrate_to_polymorphic_statuses()
@@ -23,7 +24,7 @@ public sealed class FunctionRevisionStatusMigrationTests(MongoReplicaSetFixture 
         var active = provisioning.MarkReady(readyAtUtc).Activate();
         var failed = (provisioning with { Id = ObjectId.GenerateNewId().ToString() })
             .Fail(new FunctionRevisionFailure("startup", "failed"));
-        var revisions = fixture.Database.GetCollection<BsonDocument>("FunctionRevisions");
+        var revisions = Fixture.Database.GetCollection<BsonDocument>("FunctionRevisions");
         await revisions.InsertManyAsync(
         [
             ToLegacy(active, state: 2),
@@ -47,9 +48,9 @@ public sealed class FunctionRevisionStatusMigrationTests(MongoReplicaSetFixture 
                 new CreateIndexOptions { Name = "IX_FunctionRevisions_State_Tenant_App" })
         ]);
 
-        await new FunctionRevisionStatusMigration().Up(fixture.Database);
+        await new FunctionRevisionStatusMigration().Up(Fixture.Database);
 
-        var typed = await fixture.Database.GetCollection<FunctionRevision>("FunctionRevisions")
+        var typed = await Fixture.Database.GetCollection<FunctionRevision>("FunctionRevisions")
             .Find(Builders<FunctionRevision>.Filter.Empty)
             .ToListAsync();
         Assert.Equal(readyAtUtc, Assert.IsType<ActiveFunctionRevisionStatus>(
@@ -80,7 +81,7 @@ public sealed class FunctionRevisionStatusMigrationTests(MongoReplicaSetFixture 
             RevisionNumber = active.RevisionNumber + 1
         };
         await Assert.ThrowsAsync<MongoWriteException>(() =>
-            fixture.Database.GetCollection<FunctionRevision>("FunctionRevisions")
+            Fixture.Database.GetCollection<FunctionRevision>("FunctionRevisions")
                 .InsertOneAsync(duplicateActive));
     }
 

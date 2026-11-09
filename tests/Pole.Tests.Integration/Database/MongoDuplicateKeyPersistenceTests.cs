@@ -6,16 +6,17 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class MongoDuplicateKeyPersistenceTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class MongoDuplicateKeyPersistenceTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private const string NameIndex = "UX_Classifier_Name";
     private IMongoCollection<BsonDocument> Documents =>
-        fixture.Database.GetCollection<BsonDocument>("DuplicateKeyClassifierTests");
+        Fixture.Database.GetCollection<BsonDocument>("DuplicateKeyClassifierTests");
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
+        await base.InitializeAsync();
         await Documents.Indexes.CreateManyAsync([
             new(Builders<BsonDocument>.IndexKeys.Ascending("Name"), new CreateIndexOptions { Unique = true,
                 Name = NameIndex, Collation = new Collation("en", strength: CollationStrength.Secondary) }),
@@ -24,7 +25,7 @@ public sealed class MongoDuplicateKeyPersistenceTests(MongoReplicaSetFixture fix
         await Documents.InsertOneAsync(Document("original", "name", "other"));
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Driver_write_errors_distinguish_name_other_and_identity_indexes()
