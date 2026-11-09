@@ -159,7 +159,7 @@ public sealed class AutomaticPhaseEvidenceTests
         var resources = new TestResourceScope("owned resources");
         await resources.RunAsync(() => Task.CompletedTask);
         await resources.DisposeAsync();
-        Assert.Equal(new[] { "Started", "Cleanup", "Completed" }, Phases(journal));
+        Assert.Equal(new[] { "Started", "BodyCompleted", "Cleanup", "Completed" }, Phases(journal));
     }
 
     [Fact]
