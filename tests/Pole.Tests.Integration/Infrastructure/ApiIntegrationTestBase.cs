@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Domain;
+using Pole.Testing;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
@@ -16,9 +17,11 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
     protected ApiIntegrationTestBase(MongoReplicaSetFixture fixture)
     {
         Fixture = fixture;
+        Timings = new TestTimings(GetType());
     }
 
     protected MongoReplicaSetFixture Fixture { get; }
+    protected TestTimings Timings { get; }
     protected HttpClient Client => _application!.Client;
     protected IServiceProvider ApiServices => _application!.Services;
     protected virtual bool PrivateAccessEnabled => false;
@@ -51,17 +54,22 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
 
     public virtual async Task InitializeAsync()
     {
-        await Fixture.ResetDatabaseAsync();
-        await SeedDefaultTenantAsync();
-        await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
-        _application = await TestApiApplication.StartAsync(Fixture, PrivateAccessEnabled, ConfigureTestServices);
+        using (Timings.Measure("database.reset"))
+            await Fixture.ResetDatabaseAsync();
+        using (Timings.Measure("seed.base"))
+        {
+            await SeedDefaultTenantAsync();
+            await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
+        }
+        _application = await TestApiApplication.StartAsync(Fixture, PrivateAccessEnabled, ConfigureTestServices, Timings);
     }
 
     public virtual async Task DisposeAsync()
     {
         if (_application is not null)
         {
-            await _application.DisposeAsync();
+            using (Timings.Measure("api.host.dispose"))
+                await _application.DisposeAsync();
         }
     }
 

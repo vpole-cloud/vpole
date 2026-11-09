@@ -76,8 +76,10 @@ public static class TestServiceProviderFactory
 
     public static ServiceProvider Create(
         MongoReplicaSetFixture fixture,
-        Action<IServiceCollection>? configure = null)
+        Action<IServiceCollection>? configure = null,
+        Pole.Testing.TestTimings? timings = null)
     {
+        using var registration = timings?.Measure("mediator.services.register");
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -176,6 +178,8 @@ public static class TestServiceProviderFactory
         services.ReplaceTenantAuthorizationWithFake();
 
         configure?.Invoke(services);
+        registration?.Dispose();
+        using var build = timings?.Measure("mediator.services.build");
         return services.BuildServiceProvider(validateScopes: true);
     }
 
