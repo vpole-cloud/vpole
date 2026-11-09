@@ -526,12 +526,29 @@ public sealed class BrowserSmokeE2ETests(
 
     private async Task<string> CreateJourneyTenantAsync(CancellationToken ct)
     {
-        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Post, "/api/v1/tenants", fixture.Alpha);
+        // Tenant creation is a platform-admin API. The actual journey still uses Alpha.
+        using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Post, "/api/v1/tenants");
         request.Content = JsonContent.Create(new { name = $"image-e2e-{Guid.NewGuid():N}"[..20] });
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var tenant = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
-        return tenant.GetProperty("id").GetString()!;
+        Assert.Equal("Owner", tenant.GetProperty("role").GetString());
+        var tenantId = tenant.GetProperty("id").GetString()!;
+        using var membership = fixture.CreatePlatformAdminRequest(HttpMethod.Post,
+            $"/api/v1/tenants/{tenantId}/members");
+        membership.Content = JsonContent.Create(new
+        {
+            userId = fixture.Alpha.KeycloakUserId,
+            email = fixture.Alpha.Email,
+            role = "Owner"
+        });
+        using var granted = await fixture.Api.SendAsync(membership, ct);
+        Assert.Equal(HttpStatusCode.Created, granted.StatusCode);
+        var owner = await granted.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(tenantId, owner.GetProperty("tenantId").GetString());
+        Assert.Equal(fixture.Alpha.KeycloakUserId, owner.GetProperty("userId").GetString());
+        Assert.Equal("Owner", owner.GetProperty("role").GetString());
+        return tenantId;
     }
 
     private async Task<JsonElement> ReadQuotaUsageAsync(string tenantId, CancellationToken ct)

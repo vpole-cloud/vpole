@@ -84,8 +84,10 @@ The following scenarios retain independent test boundaries:
 | RuntimeLogs, MultiCluster and TenantWorkspace | Exact runtime stream/container/UID and independent transport failure; real two-cluster isolated retry with healthy target unchanged; Viewer/Owner tenant switching, stream cancellation and late-response fencing.                                                                        |
 | Storage CRUD and helper tests                 | Admin profile revision/mapping UI and screenshots; every existing isolated helper assertion and frozen Theory row.                                                                                                                                                                        |
 
-The image-service lifecycle creates an owned tenant through `POST /api/v1/tenants`; every UI
-selection, HTTP helper and namespace discovery receives that tenant explicitly. Its tenant document
+The image-service lifecycle creates an owned tenant through the platform-admin
+`POST /api/v1/tenants` API, then grants Alpha Owner membership through the public member API.
+Every functional UI action, HTTP helper and namespace discovery uses Alpha and that tenant
+explicitly; tenant creation does not broaden Alpha's platform role. Its tenant document
 lives until disposable fixture database teardown. After both original viewport branches finish,
 `e2e.image.quota-and-recreation` verifies committed service count and settled reservations through
 `GET /api/v1/tenant-quotas/usage`. It deletes the mobile resource through UI, observes API404/native
