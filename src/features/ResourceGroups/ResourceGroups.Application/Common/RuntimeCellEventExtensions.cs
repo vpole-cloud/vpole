@@ -42,7 +42,7 @@ internal static class RuntimeCellEventExtensions
     public static RuntimeCellDeletionRequestedEvent ToDeletionRequestedEvent(this RuntimeCell cell)
     {
         var state = RequiredState<DeletingRuntimeCellState>(cell);
-        return new RuntimeCellDeletionRequestedEvent(cell.Id, state.Generation)
+        return new RuntimeCellDeletionRequestedEvent(cell.Id, state.Generation, state.NextCheckAtUtc, state.CheckSequence)
         {
             EventCore = EventCore.Create(cell.TenantId)
         };

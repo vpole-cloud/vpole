@@ -98,10 +98,11 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         await DbContext.RuntimeCells.ReplaceOneAsync(cell => cell.Id == provisioning.Id, deleting);
         var admission = new RecordingReferenceAdmission();
         var manager = new RecordingNamespaceManager(Unit.Value, Unit.Value);
-        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
+        var consumer = new RuntimeCellDeletionProgress(
             CreateLifecyclePersistence(InitialTime.AddMinutes(2), admission.ApplyChangesOutcomeAsync),
             manager.DeleteAsync,
-            CreateDeletionFinalizer(InitialTime.AddMinutes(2)));
+            CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
+            new FixedTimeProvider(InitialTime.AddMinutes(2)));
 
         await consumer.HandleAsync(DeletionEvent(deleting));
         await consumer.HandleAsync(DeletionEvent(deleting));
@@ -115,7 +116,7 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
     }
 
     [Fact]
-    public async Task DeletionPending_KeepsTargetReferenceAndPersistsRetryableFailure()
+    public async Task DeletionPending_KeepsTargetReferenceAndSchedulesProgressWithoutFailure()
     {
         var provisioning = await InsertCellAsync();
         var deleting = provisioning.RequestDeletion(InitialTime.AddMinutes(1));
@@ -124,16 +125,19 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
         var manager = new RecordingNamespaceManager(
             Unit.Value,
             new RuntimeCellNamespaceDeletionPending("pole-runtime-cell"));
-        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
+        var consumer = new RuntimeCellDeletionProgress(
             CreateLifecyclePersistence(InitialTime.AddMinutes(2), admission.ApplyChangesOutcomeAsync),
             manager.DeleteAsync,
-            CreateDeletionFinalizer(InitialTime.AddMinutes(2)));
+            CreateDeletionFinalizer(InitialTime.AddMinutes(2)),
+            new FixedTimeProvider(InitialTime.AddMinutes(2)));
 
         await consumer.HandleAsync(DeletionEvent(deleting));
 
         var saved = await DbContext.RuntimeCells.Find(item => item.Id == deleting.Id).SingleAsync();
-        var failed = Assert.IsType<FailedRuntimeCellState>(saved.State);
-        Assert.Equal(RuntimeCellOperation.Deletion, failed.Operation);
+        var pending = Assert.IsType<DeletingRuntimeCellState>(saved.State);
+        Assert.Equal(deleting.DesiredGeneration, saved.DesiredGeneration);
+        Assert.Equal(1, pending.CheckSequence);
+        Assert.Equal(InitialTime.AddMinutes(2).AddSeconds(5), pending.NextCheckAtUtc);
         Assert.Equal(0, admission.UnregisterCallCount);
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/runtime-cell-deleted"));
     }
@@ -162,12 +166,13 @@ public sealed class RuntimeCellLifecycleIntegrationTests(MongoReplicaSetFixture 
             .RequestDeletion(requestedAt.AddMinutes(1));
         await DbContext.RuntimeCells.InsertOneAsync(cell);
         var completedAt = requestedAt.AddMinutes(2);
-        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
+        var consumer = new RuntimeCellDeletionProgress(
             CreateLifecyclePersistence(
                 completedAt,
                 new RecordingReferenceAdmission().ApplyChangesOutcomeAsync),
             new RecordingNamespaceManager(Unit.Value, Unit.Value).DeleteAsync,
-            CreateDeletionFinalizer(completedAt));
+            CreateDeletionFinalizer(completedAt),
+            new FixedTimeProvider(completedAt));
 
         await consumer.HandleAsync(DeletionEvent(cell));
 
