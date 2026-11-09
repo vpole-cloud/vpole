@@ -1,0 +1,31 @@
+{
+  "baselineCommit": "826eb079",
+  "renamedMethods": 3,
+  "renamedCases": 3,
+  "tests": [
+    {
+      "oldClass": "IsolationScopeIntegrationTests",
+      "newClass": "IsolationScopeMigrationTests",
+      "method": "Migration_CreatesExpectedIndexes",
+      "source": "ResourceGroups/IsolationScopeIntegrationTests.cs",
+      "caseCount": 1,
+      "theoryRows": []
+    },
+    {
+      "oldClass": "ResourceRegistrationIntegrationTests",
+      "newClass": "ResourceRegistrationMigrationTests",
+      "method": "Migration_CreatesUniqueStableIdentityIndex",
+      "source": "ResourceGroups/ResourceRegistrationIntegrationTests.cs",
+      "caseCount": 1,
+      "theoryRows": []
+    },
+    {
+      "oldClass": "SearchIntegrationTests",
+      "newClass": "SearchSchemaMigrationTests",
+      "method": "InitialMigration_CreatesIndexesForExtensibleSchemaOnCleanDatabase",
+      "source": "Search/SearchIntegrationTests.cs",
+      "caseCount": 1,
+      "theoryRows": []
+    }
+  ]
+}

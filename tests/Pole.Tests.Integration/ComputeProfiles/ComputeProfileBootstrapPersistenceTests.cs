@@ -16,27 +16,27 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ComputeProfiles;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Bootstrap_before_attestation_persists_one_profile_without_admitting_workloads()
     {
-        await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new DeploymentTargetReferenceMigration().Up(fixture.Database);
+        await new ComputeProfileIndexesMigration().Up(Fixture.Database);
+        await new DeploymentTargetReferenceMigration().Up(Fixture.Database);
         var target = DeploymentTargetNetworkPolicyTests.Target();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         LoadDefaultDeploymentTargetId loadDefaultId = _ => Task.FromResult<string?>(target.Id);
         LoadDeploymentTargetById loadTarget = new MongoLoadDeploymentTargetById(
-            fixture.DbContext.DeploymentTargets).InvokeAsync;
+            Fixture.DbContext.DeploymentTargets).InvokeAsync;
         var admission = new MongoAdmitDefaultDeploymentTargetForNewWorkload(loadDefaultId, loadTarget);
         var lookup = new MongoLookupDefaultDeploymentTarget(loadDefaultId, loadTarget);
-        using var persistence = new ComputeProfilePersistenceTestHost(fixture);
+        using var persistence = new ComputeProfilePersistenceTestHost(Fixture);
         var services = new ServiceCollection();
         services.AddSingleton(persistence.GetRequiredService<LoadDefaultComputeProfile>());
         services.AddSingleton(persistence.GetRequiredService<PersistCreatedComputeProfile>());
@@ -54,7 +54,7 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         var profile = await persistence.GetRequiredService<LoadDefaultComputeProfile>()();
         Assert.NotNull(profile);
         Assert.Equal(target.Id, Assert.Single(profile.TargetMappings).DeploymentTargetId);
-        var reference = Assert.Single(await fixture.DbContext.DeploymentTargetReferences
+        var reference = Assert.Single(await Fixture.DbContext.DeploymentTargetReferences
             .Find(Builders<DeploymentTargetReference>.Filter.Empty).ToListAsync());
         Assert.Equal(profile.Id, reference.OwnerId);
         Assert.Equal(target.Id, reference.DeploymentTargetId);
@@ -74,16 +74,16 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         bool acceptsWorkloads,
         bool deleting)
     {
-        await new DeploymentTargetReferenceMigration().Up(fixture.Database);
+        await new DeploymentTargetReferenceMigration().Up(Fixture.Database);
         var target = DeploymentTargetNetworkPolicyTests.Target() with
         {
             Enabled = enabled,
             AcceptsWorkloads = acceptsWorkloads,
             DeletionRequestedAtUtc = deleting ? DateTime.UtcNow : null
         };
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        using var persistence = new ComputeProfilePersistenceTestHost(fixture);
-        using var session = await fixture.Client.StartSessionAsync();
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        using var persistence = new ComputeProfilePersistenceTestHost(Fixture);
+        using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
 
         var result = await persistence.GetRequiredService<ApplyDeploymentTargetReferenceChanges>()(
@@ -95,7 +95,7 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
 
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(0, await fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
+        Assert.Equal(0, await Fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
             Builders<DeploymentTargetReference>.Filter.Empty));
     }
 

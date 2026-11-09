@@ -19,17 +19,18 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private ServiceProvider services = null!;
     private IServiceScope scope = null!;
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
+        await base.InitializeAsync();
         var collection = new ServiceCollection();
-        collection.AddSingleton(fixture.Database);
+        collection.AddSingleton(Fixture.Database);
         collection.AddRedisServicesFeature();
         collection.AddWebServicesFeature();
         collection.AddPostgresFeature(new ConfigurationBuilder().Build());
@@ -37,18 +38,19 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
         scope = services.CreateScope();
     }
 
-    public async Task DisposeAsync()
+    public override async Task DisposeAsync()
     {
         scope.Dispose();
         await services.DisposeAsync();
+        await base.DisposeAsync();
     }
 
     [Fact]
     public async Task WebCatalog_ReadsDesiredPortsInCallerTransaction_AndExcludesUnsafeEndpoints()
     {
-        var web = TestData.SeedWebService(Id()) with
+        var web = Data.SeedWebService(Id()) with
         {
-            Spec = TestData.SeedWebService(Id()).Spec with
+            Spec = Data.SeedWebService(Id()).Spec with
             {
                 Config = new WebServiceConfig()
                 {
@@ -62,9 +64,9 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
                 }
             }
         };
-        using var session = await fixture.Client.StartSessionAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        await fixture.Database.GetCollection<WebService>("WebServices").InsertOneAsync(session, web);
+        await Fixture.Database.GetCollection<WebService>("WebServices").InsertOneAsync(session, web);
         var lookup = Destination("pole/web-service");
 
         var result = await lookup.LoadAsync(
@@ -88,19 +90,19 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
                 ResourceId: web.Id),
             session: session)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(0, await fixture.Database.GetCollection<WebService>("WebServices")
+        Assert.Equal(0, await Fixture.Database.GetCollection<WebService>("WebServices")
             .CountDocumentsAsync(item => item.Id == web.Id));
     }
 
     [Fact]
     public async Task RedisCatalog_IsTenantScoped_AndReportsDeletionWithoutPublishingCredentials()
     {
-        var redis = RedisFactory.Create(TestData.TenantId, "cache", Id(),
+        var redis = RedisFactory.Create(Data.TenantId, "cache", Id(),
             new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions);
-        var collection = fixture.Database.GetCollection<Redis>("RedisServices");
+        var collection = Fixture.Database.GetCollection<Redis>("RedisServices");
         await collection.InsertOneAsync(redis);
         var lookup = Destination("pole/redis");
-        using var session = await fixture.Client.StartSessionAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(
             new LoadResourceConnectionDestinationRequest(
@@ -133,12 +135,12 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
     [InlineData(PostgresDeploymentMode.StatefulSet)]
     public async Task PostgresCatalog_PublishesOnlyReadWriteEndpoint_ForBothProviders(PostgresDeploymentMode mode)
     {
-        var postgres = PostgresCluster.Create(TestData.TenantId, "database", Id(), 17, mode, Id(),
+        var postgres = PostgresCluster.Create(Data.TenantId, "database", Id(), 17, mode, Id(),
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 5));
-        var collection = fixture.Database.GetCollection<PostgresCluster>("Postgres");
+        var collection = Fixture.Database.GetCollection<PostgresCluster>("Postgres");
         await collection.InsertOneAsync(postgres);
         var lookup = Destination("pole/postgresql");
-        using var session = await fixture.Client.StartSessionAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var found = Assert.IsType<ResourceConnectionEndpointsFound>((await lookup.LoadAsync(
             new LoadResourceConnectionDestinationRequest(
@@ -169,24 +171,24 @@ public sealed class ProviderConnectionEndpointTests(MongoReplicaSetFixture fixtu
     [Fact]
     public async Task AdvisoryCatalog_BatchesOnlyAvailableResourcesFromRequestedTenant()
     {
-        var available = RedisFactory.Create(TestData.TenantId, "available", Id(),
+        var available = RedisFactory.Create(Data.TenantId, "available", Id(),
             new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions);
-        var deleting = RedisFactory.Create(TestData.TenantId, "deleting", Id(),
+        var deleting = RedisFactory.Create(Data.TenantId, "deleting", Id(),
             new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions)
             .BeginDeletion(DateTime.UtcNow);
         var otherTenant = RedisFactory.Create(Id(), "other", Id(),
             new RedisSpec(new Storage(1, Id())), RedisFactory.DefaultCreateOptions);
-        await fixture.Database.GetCollection<Redis>("RedisServices")
+        await Fixture.Database.GetCollection<Redis>("RedisServices")
             .InsertManyAsync([available, deleting, otherTenant]);
         var lookup = Destination("pole/redis");
 
-        var found = await lookup.LoadAvailableAsync(TestData.TenantId,
+        var found = await lookup.LoadAvailableAsync(Data.TenantId,
             [available.Id, deleting.Id, otherTenant.Id, Id()]);
 
         var endpoint = Assert.Single(Assert.Single(found).Value.Endpoints);
         Assert.Equal(available.Id, Assert.Single(found).Key);
         Assert.Equal("available-svc", endpoint.ServiceName);
-        Assert.Empty(await lookup.LoadAvailableAsync(TestData.TenantId, []));
+        Assert.Empty(await lookup.LoadAvailableAsync(Data.TenantId, []));
     }
 
     private IResourceConnectionDestinationCapability Destination(string resourceType) =>

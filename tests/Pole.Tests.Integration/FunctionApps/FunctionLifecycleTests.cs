@@ -27,9 +27,11 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
-public sealed class FunctionLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class FunctionLifecycleTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
-    private readonly LifecycleOwnerAuthority authority = new();
+    private LifecycleOwnerAuthority? _authority;
+    private LifecycleOwnerAuthority authority => _authority ??= new(Data.TenantId);
     private IMongoCollection<FunctionApp> Apps => Fixture.Database.GetCollection<FunctionApp>("FunctionApps");
     private IDeclarativeResourceLifecycleProvider Provider =>
         Services.GetServices<IDeclarativeResourceLifecycleProvider>()
@@ -45,7 +47,7 @@ public sealed class FunctionLifecycleTests(MongoReplicaSetFixture fixture) : Med
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await NamedCatalogTestData.SeedAsync(Fixture);
+        await Fixture.PrepareNamedCatalogAsync();
         var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
         var compute = await profiles.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
         compute = compute with { AllowedResourceTypes = compute.AllowedResourceTypes.Add("pole/function-app") };
@@ -317,10 +319,10 @@ public sealed class FunctionLifecycleTests(MongoReplicaSetFixture fixture) : Med
 
     private async Task<FunctionApp> CreateApp()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var result = (await Mediator.Send(new CreateFunctionAppRequest(
             new("reviewed-functions", "reviewed-functions", group.Id, Revision(), [],
-                Placement: new(TestData.DefaultDeploymentTargetId, null)), TestData.TenantId))).RequireSuccess();
+                Placement: new(TestData.DefaultDeploymentTargetId, null)), Data.TenantId))).RequireSuccess();
         return await Load(result.FunctionAppId);
     }
 

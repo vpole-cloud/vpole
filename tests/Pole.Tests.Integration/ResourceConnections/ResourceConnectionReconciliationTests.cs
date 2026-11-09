@@ -25,29 +25,29 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global)]
 public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
     private ServiceProvider services = null!;
     private IServiceScope scope = null!;
     private readonly FakePolicyTarget policy = new();
-    private IMongoCollection<ResourceConnection> Connections => fixture.Database
+    private IMongoCollection<ResourceConnection> Connections => Fixture.Database
         .GetCollection<ResourceConnection>("ResourceConnections");
-    private IMongoCollection<ResourceConnectionCleanupTombstone> Tombstones => fixture.Database
+    private IMongoCollection<ResourceConnectionCleanupTombstone> Tombstones => Fixture.Database
         .GetCollection<ResourceConnectionCleanupTombstone>(
             "ResourceConnectionCleanupTombstones");
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
+        await base.InitializeAsync();
         var collection = new ServiceCollection();
         collection.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
-        collection.AddSingleton(fixture.Client);
-        collection.AddSingleton(fixture.Database);
+        collection.AddSingleton(Fixture.Client);
+        collection.AddSingleton(Fixture.Database);
         collection.AddSingleton(TimeProvider.System);
         collection.AddSingleton<MongoRunTransaction>();
-        collection.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
+        collection.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         collection.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         collection.AddGitOpsFeature();
         collection.AddResourceConnectionsFeature();
@@ -60,10 +60,11 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         scope = services.CreateScope();
     }
 
-    public async Task DisposeAsync()
+    public override async Task DisposeAsync()
     {
         scope.Dispose();
         await services.DisposeAsync();
+        await base.DisposeAsync();
     }
 
     [Fact]

@@ -19,14 +19,13 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class ResourceDeploymentIsolationProjectionTests(
-    MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task ReadsObserveTargetChanges_AndNeverResolveOtherTenantsPlacements()
@@ -39,7 +38,7 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
         var tenant = ObjectId.GenerateNewId().ToString();
         var resource = ObjectId.GenerateNewId().ToString();
         var type = ResourceTypeId.Create("pole/web-service");
-        var collection = fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments");
+        var collection = Fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments");
         await collection.InsertManyAsync(
         [
             Deployment(tenant, resource, first.Id),
@@ -97,7 +96,7 @@ public sealed class ResourceDeploymentIsolationProjectionTests(
             DeploymentTargetNetworkPolicyTests.Target(), NetworkPolicyEnforcement.Supported, false).ToLookupDto();
         var tenant = ObjectId.GenerateNewId().ToString();
         var resource = ObjectId.GenerateNewId().ToString();
-        var collection = fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments");
+        var collection = Fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments");
         await collection.InsertManyAsync([
             Deployment(tenant, resource, target.Id),
             Deployment(tenant, resource, target.Id),

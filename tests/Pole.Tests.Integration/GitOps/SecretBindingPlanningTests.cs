@@ -10,7 +10,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class SecretBindingPlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Binding_planning_tracks_mapping_and_parent_revision_but_excludes_rollout_pins()
@@ -20,9 +21,9 @@ public sealed partial class DeclarativePipelineTests
             .Single(item => item.Address.Kind == "SecretBinding");
         using var session = await Fixture.Database.Client.StartSessionAsync();
         var planner = Services.GetRequiredService<DeclarativeResourcePlanner>();
-        var request = new PlanDeclarationRequest(new(TestData.TenantId, source, null), declaration);
+        var request = new PlanDeclarationRequest(new(Data.TenantId, source, null), declaration);
         var before = Assert.IsType<NoOpDeclarationPlan>(await planner.PlanAsync(request, session, default));
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
         Assert.Equal(2, before.Current.Version.Documents.Count);
         Assert.Contains(new DeclarationDocumentVersion($"Secret/{secret.Id}", secret.Revision),

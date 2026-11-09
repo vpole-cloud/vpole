@@ -20,8 +20,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class DeploymentTargetApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.DeploymentTargets)
 {
     private const string FirstToken = "eyJhbGciOiJSUzI1NiJ9.first-deployment-target-token";
     private const string RotatedToken = "eyJhbGciOiJSUzI1NiJ9.rotated-deployment-target-token";

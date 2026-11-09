@@ -10,7 +10,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Outbox;
 
-public sealed class UnavailableEventContractStartupTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class UnavailableEventContractStartupTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task MissingEventContract_FailsStartupWithoutChangingPendingMessages_AndRestoringItsVersionedContractUnblocksStartup()

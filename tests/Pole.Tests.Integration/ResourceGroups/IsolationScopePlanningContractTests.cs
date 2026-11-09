@@ -9,13 +9,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class IsolationScopePlanningContractTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task NamedAndPinnedScopeReadsRespectTenantGroupAndRealFence()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(group.TenantId, group.Id, "isolated",
             IsolationScopeFactory.DefaultOptions);
         await DbContext.IsolationScopes.InsertOneAsync(scope);
@@ -52,18 +53,18 @@ public sealed class IsolationScopePlanningContractTests(MongoReplicaSetFixture f
     [Fact]
     public async Task AdditionalNamesAreTenantWideWhileDefaultScopesRemainPerGroup()
     {
-        await new ResourceGroupPlacementMigration().Up(Fixture.Database);
-        var first = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
-        var second = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
+
+        var first = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
+        var second = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
         var outcomes = await Task.WhenAll(
             Mediator.Send(new CreateIsolationScopeRequest(first.Id, new("shared-name"), first.TenantId)),
             Mediator.Send(new CreateIsolationScopeRequest(second.Id, new("shared-name"), second.TenantId)));
         Assert.Single(outcomes, result => result.AssertHandlerOutcome().Value is
             Pole.Features.ResourceGroups.Application.Common.IsolationScopeDto);
         Assert.Single(outcomes, result => result.AssertHandlerOutcome().Value is CreateIsolationScopeError);
-        Assert.Equal(2, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.IsDefault));
-        Assert.Equal(1, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.Name == "shared-name"));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
+        Assert.Equal(2, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.TenantId == Data.TenantId && item.IsDefault));
+        Assert.Equal(1, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.TenantId == Data.TenantId && item.Name == "shared-name"));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/isolation-scope-created"));
         var revisions = await DbContext.ResourceGroups.Find(item => item.Id == first.Id || item.Id == second.Id)
             .Project(item => item.Revision).ToListAsync();
         Assert.Equal<long>([1, 2], revisions.Order().ToArray());

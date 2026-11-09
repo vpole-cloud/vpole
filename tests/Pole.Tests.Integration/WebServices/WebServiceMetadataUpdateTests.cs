@@ -17,6 +17,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
+[Collection(IntegrationTestCollection.Tenant1)]
 public sealed class WebServiceMetadataUpdateTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -32,7 +33,7 @@ public sealed class WebServiceMetadataUpdateTests(MongoReplicaSetFixture fixture
         var initial = await LoadDeploymentAsync(service.Id);
         var pending = initial.MarkRuntimeCellReady(initial.UpdatedAtUtc);
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == pending.Id, pending);
-        var requestedBefore = await DbContext.CountOutboxMessagesAsync(ApplyRequested);
+        var requestedBefore = await DbContext.CountOutboxMessagesAsync(Data.TenantId, ApplyRequested);
         var load = Services.GetRequiredService<LoadResourceDeploymentSet>();
         ResourceDeployment? claimed = null;
         LoadResourceDeploymentSet interleavedLoad = async (request, ct) =>
@@ -84,8 +85,8 @@ public sealed class WebServiceMetadataUpdateTests(MongoReplicaSetFixture fixture
         Assert.Equal(activeClaim.State, saved.State);
         Assert.IsType<ReconcilingResourceDeploymentState>(saved.State);
         Assert.Equal(configurationChanged ? service.ActiveRevision : service.ActiveRevision + 1, saved.ResourceRevision);
-        Assert.Equal(requestedBefore, await DbContext.CountOutboxMessagesAsync(ApplyRequested));
-        Assert.Equal(configurationChanged ? 0 : 1, await DbContext.CountOutboxMessagesAsync(Updated));
+        Assert.Equal(requestedBefore, await DbContext.CountOutboxMessagesAsync(Data.TenantId, ApplyRequested));
+        Assert.Equal(configurationChanged ? 0 : 1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, Updated));
         var stored = await Fixture.Database.WebServices()
             .Find(item => item.Id == service.Id).SingleAsync();
         Assert.Equal(saved.ResourceRevision, stored.ActiveRevision);
@@ -103,8 +104,8 @@ public sealed class WebServiceMetadataUpdateTests(MongoReplicaSetFixture fixture
 
     private async Task<WebService> CreatePrivateServiceAsync()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var request = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var request = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(request with
         {
             Body = request.Body with { Exposure = WebServiceExposureMode.Private }

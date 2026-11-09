@@ -13,16 +13,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ComputeProfiles;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global)]
 public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
     private static readonly ResourceTypeId WebServiceType =
         ResourceTypeId.Create("pole/web-service");
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Resolve_default_returns_exact_target_snapshot_and_enforces_availability()
@@ -30,8 +30,8 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         await PrepareDatabaseAsync();
         var target = ComputeProfileTestData.CreateTarget();
         var otherTarget = ComputeProfileTestData.CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([target, otherTarget]);
-        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([target, otherTarget]);
+        using var host = new ComputeProfilePersistenceTestHost(Fixture);
         var profileOutcome = await host.GetRequiredService<PersistCreatedComputeProfile>()(
             ComputeProfileTestData.CreateProfile(
                 target.Id,
@@ -86,8 +86,8 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         await PrepareDatabaseAsync();
         var firstTarget = ComputeProfileTestData.CreateTarget();
         var secondTarget = ComputeProfileTestData.CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
-        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
+        using var host = new ComputeProfilePersistenceTestHost(Fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var defaultProfileOutcome = await create(ComputeProfileTestData.CreateProfile(
             firstTarget.Id,
@@ -127,8 +127,8 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
     {
         await PrepareDatabaseAsync();
         var target = ComputeProfileTestData.CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
-        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        using var host = new ComputeProfilePersistenceTestHost(Fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolve = host.GetRequiredService<ResolveComputeProfile>();
@@ -186,8 +186,8 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         await PrepareDatabaseAsync();
         var firstTarget = ComputeProfileTestData.CreateTarget();
         var secondTarget = ComputeProfileTestData.CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
-        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
+        using var host = new ComputeProfilePersistenceTestHost(Fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var update = host.GetRequiredService<PersistUpdatedComputeProfile>();
         var resolveMany = host.GetRequiredService<ResolveComputeProfiles>();
@@ -237,8 +237,8 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
         await PrepareDatabaseAsync();
         var target = ComputeProfileTestData.CreateTarget();
         var otherTarget = ComputeProfileTestData.CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([target, otherTarget]);
-        using var host = new ComputeProfilePersistenceTestHost(fixture);
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([target, otherTarget]);
+        using var host = new ComputeProfilePersistenceTestHost(Fixture);
         var create = host.GetRequiredService<PersistCreatedComputeProfile>();
         var availableProfileOutcome = await create(ComputeProfileTestData.CreateProfile(
             target.Id,
@@ -270,13 +270,13 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
 
     private async Task PrepareDatabaseAsync()
     {
-        await new DeploymentTargetReferenceMigration().Up(fixture.Database);
-        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
-        await new ComputeProfileIndexesMigration().Up(fixture.Database);
+        await new DeploymentTargetReferenceMigration().Up(Fixture.Database);
+        await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
+        await new ComputeProfileIndexesMigration().Up(Fixture.Database);
     }
 
     private async Task<ComputeProfile> LoadAsync(string id) =>
-        await fixture.Database
+        await Fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .Find(ComputeProfileById(id))
             .SingleAsync();
@@ -289,7 +289,7 @@ public sealed class ComputeProfileResolutionTests(MongoReplicaSetFixture fixture
             FenceResolvedComputeProfiles fence,
             IReadOnlyList<ComputeProfileResolutionFenceRequest> requests)
     {
-        using var session = await fixture.DbContext.Client.StartSessionAsync();
+        using var session = await Fixture.DbContext.Client.StartSessionAsync();
         session.StartTransaction();
         try
         {

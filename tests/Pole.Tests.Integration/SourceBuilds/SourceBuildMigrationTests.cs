@@ -7,8 +7,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Global)]
 public sealed class SourceBuildMigrationTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Migrations_CreateTenantRegistryConfigurationAndBuildIndexes()

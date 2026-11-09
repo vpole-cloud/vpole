@@ -18,17 +18,18 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Tenants;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public void FeatureRegistration_ResolvesTheTenantCapabilityGraph()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
-        services.AddSingleton<IMongoClient>(fixture.Client);
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
+        services.AddSingleton<IMongoClient>(Fixture.Client);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
+        services.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
 
         Assert.DoesNotContain(services,
@@ -78,7 +79,7 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
     public async Task TenantExistenceContract_RejectsMalformedObjectIds()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -92,9 +93,9 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
     {
         var tenant = TenantFactory.Create("Contract lookup");
         var missingTenantId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-        await fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(tenant);
+        await Fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(tenant);
         var services = new ServiceCollection();
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();

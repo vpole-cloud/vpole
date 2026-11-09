@@ -24,7 +24,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Connection_environment_removal_has_a_confirmable_real_provider_cleanup_graph()
@@ -32,7 +33,7 @@ public sealed partial class DeclarativePipelineTests
         var files = WebConnectionSnapshot();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
         var owner = (await Services.GetRequiredService<GitRepositorySources>()
-            .LoadAsync(TestData.TenantId, source, default))!;
+            .LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(owner.Repository.ExternalRepositoryId, [AdoptionManifest("ResourceGroup", files)], "remove");
         var outcome = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(
             new(new(owner.TenantId, owner.Id), owner.Revision,
@@ -42,20 +43,20 @@ public sealed partial class DeclarativePipelineTests
         var preview = Assert.IsType<GitOperationPreview>(outcome.Value);
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(owner.TenantId, owner.Id), default);
         var pending = (await Services.GetRequiredService<GitRepositorySources>()
             .RunAsync(owner.TenantId, owner.Id, scheduled.RunId, default))!;
         Assert.True(pending.State is GitRunWaitingCleanup,
             string.Join(",", pending.Diagnostics.Select(item => item.Code)));
-        Assert.All(await WebServices.Find(_ => true).ToListAsync(), item =>
+        Assert.All(await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync(), item =>
             Assert.IsType<DeletingWebServiceLifecycle>(item.Lifecycle));
-        var connection = await Connections.Find(_ => true).SingleAsync();
+        var connection = await Connections.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         foreach (var target in Assert.IsType<DeletingResourceConnection>(connection.Lifecycle).Targets)
             await Services.GetRequiredService<RecordResourceConnectionCleanup>()(connection.TenantId, connection.Id,
                 target.Snapshot.PolicyLocation, connection.Generation, null);
-        Assert.Equal(0, await Connections.CountDocumentsAsync(_ => true));
-        foreach (var web in await WebServices.Find(_ => true).ToListAsync())
+        Assert.Equal(0, await Connections.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        foreach (var web in await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync())
         {
             var deployments = await DbContext.ResourceDeployments.Find(item => item.ResourceId == web.Id).ToListAsync();
             foreach (var deployment in deployments)
@@ -83,7 +84,7 @@ public sealed partial class DeclarativePipelineTests
             .RunAsync(owner.TenantId, owner.Id, scheduled.RunId, default))!;
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(complete.State).Completion);
         Assert.Equal(0, complete.ConsecutiveFailures);
-        Assert.Equal("ResourceGroup", (await Inventory.Find(_ => true).SingleAsync()).Kind);
+        Assert.Equal("ResourceGroup", (await Inventory.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Kind);
         var receipts = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
             .Find(item => item.RunId == complete.Id).ToListAsync();
         Assert.Equal(3, receipts.Count(item => item.Lifecycle?.Step == GitLifecycleStep.BeginRemoval));
@@ -103,7 +104,7 @@ public sealed partial class DeclarativePipelineTests
     {
         var files = WebConnectionSnapshot();
         await Apply(files);
-        var connection = await Connections.Find(_ => true).SingleAsync();
+        var connection = await Connections.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         if (foreign)
             await Inventory.UpdateOneAsync(item => item.ResourceId == connection.Id,
                 Builders<ManagedDeclaration>.Update.Set(item => item.SourceId, Id()));
@@ -113,7 +114,7 @@ public sealed partial class DeclarativePipelineTests
             await Connections.ReplaceOneAsync(item => item.Id == connection.Id,
                 connection.BeginDeletion(DateTime.UtcNow));
         var owner = (await Services.GetRequiredService<GitRepositorySources>()
-            .LoadAsync(TestData.TenantId, source, default))!;
+            .LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(owner.Repository.ExternalRepositoryId, [AdoptionManifest("ResourceGroup", files)], "remove");
         var result = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(
             new(new(owner.TenantId, owner.Id), owner.Revision,
@@ -122,22 +123,23 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(connection.Revision + (deleting ? 1 : 0),
             (await Connections.Find(item => item.Id == connection.Id).SingleAsync()).Revision);
     }
+
     [Fact]
     public async Task A_connection_added_after_confirmation_is_never_cascaded_by_the_reviewed_parent()
     {
         var files = WebConnectionSnapshot();
         await Apply(files);
         var sources = Services.GetRequiredService<GitRepositorySources>();
-        var owner = (await sources.LoadAsync(TestData.TenantId, source, default))!;
+        var owner = (await sources.LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(owner.Repository.ExternalRepositoryId, [AdoptionManifest("ResourceGroup", files)], "remove");
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
         var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(
             new(new(owner.TenantId, owner.Id), owner.Revision,
                 new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)), default)).Value);
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
-        var web = await WebServices.Find(item => item.Name == "demo-api").SingleAsync();
-        var backend = await WebServices.Find(item => item.Name == "backend").SingleAsync();
+            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
+        var web = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "demo-api").SingleAsync();
+        var backend = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "backend").SingleAsync();
         var added = Assert.IsType<ResourceConnection>((await
             Services.GetRequiredService<PersistResourceConnectionCreation>()(
             new(owner.TenantId, "unreviewed", ResourceTypeId.Create("pole/web-service"), web.Id,
@@ -148,17 +150,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Contains(run.Diagnostics, item => item.Code == nameof(GitLifecycleApprovalStale));
         Assert.IsType<ActiveResourceConnection>((await Connections.Find(item => item.Id == added.Id).SingleAsync())
             .Lifecycle);
-        Assert.All(await WebServices.Find(_ => true).ToListAsync(), item =>
+        Assert.All(await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync(), item =>
             Assert.IsNotType<DeletingWebServiceLifecycle>(item.Lifecycle));
     }
-
-    private async Task ResumeConnectionLifecycleAsync(GitReconciliationRun run)
-    {
-        var waiting = Assert.IsType<GitRunWaitingCleanup>(run.State);
-        await Services.GetRequiredService<IMongoCollection<GitReconciliationRun>>().ReplaceOneAsync(
-            item => item.Id == run.Id, run with
-            { State = new GitRunWaitingCleanup(waiting.LastAttempt, DateTime.UtcNow.AddMinutes(-1)) });
-        await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(run.Stamp.Source, default);
-    }
-
 }

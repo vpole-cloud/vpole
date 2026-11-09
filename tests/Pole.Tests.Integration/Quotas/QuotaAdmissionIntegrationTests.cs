@@ -13,6 +13,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -23,7 +24,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task ConcurrentReservations_CannotOverCommitTenantQuota()
     {
-        await SeedPolicyAsync(TestData.TenantId, [new(CpuQuota.QuotaKey, 1)]);
+        await SeedPolicyAsync(Data.TenantId, [new(CpuQuota.QuotaKey, 1)]);
 
         using var firstScope = Services.CreateScope();
         using var secondScope = Services.CreateScope();
@@ -35,11 +36,11 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
 
         var outcomes = await Task.WhenAll(
             firstReservation(
-                TestData.TenantId,
+                Data.TenantId,
                 requested,
                 QuotaResourceKey.Create("test", "race-1")),
             secondReservation(
-                TestData.TenantId,
+                Data.TenantId,
                 requested,
                 QuotaResourceKey.Create("test", "race-2")));
 
@@ -51,7 +52,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Single(outcomes, outcome => outcome is QuotaExceeded);
 
         var activeReservations = await QuotaReservations
-            .Find(reservation => reservation.TenantId == TestData.TenantId)
+            .Find(reservation => reservation.TenantId == Data.TenantId)
             .ToListAsync();
         Assert.Single(activeReservations, reservation => reservation.State is ActiveQuotaReservationState);
 
@@ -63,20 +64,20 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
     public async Task ReservationReturnsStructuredQuotaExceededError()
     {
         await SeedPolicyAsync(
-            TestData.TenantId,
+            Data.TenantId,
             [new(CpuQuota.QuotaKey, 1)]);
         var reserve = Services.GetRequiredService<ReserveQuotaReservation>();
         var requested = QuotaDelta.From(
             CpuQuota.QuotaKey,
             1);
         var first = await reserve(
-            TestData.TenantId,
+            Data.TenantId,
             requested,
             QuotaResourceKey.Create("test", "first"));
         var lease = Assert.IsType<QuotaReservationLease>(first.Value);
 
         var second = await reserve(
-            TestData.TenantId,
+            Data.TenantId,
             requested,
             QuotaResourceKey.Create("test", "second"));
 
@@ -111,7 +112,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var reserve = Services.GetRequiredService<ReserveQuotaReservation>();
         var commit = Services.GetRequiredService<CommitQuotaReservation>();
         var reserved = await reserve(
-            TestData.TenantId,
+            Data.TenantId,
             QuotaDelta.From(CpuQuota.QuotaKey, 2),
             QuotaResourceKey.Create("test", "idempotent-commit"));
         var lease = Assert.IsType<QuotaReservationLease>(reserved.Value);
@@ -125,7 +126,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
             await session.CommitTransactionAsync();
         }
 
-        var usage = await GetUsageAsync(TestData.TenantId);
+        var usage = await GetUsageAsync(Data.TenantId);
         Assert.Equal(2, QuotaValues.GetValue(usage.Values, CpuQuota.QuotaKey));
         var persisted = await QuotaReservations.Find(item => item.Id == lease.ReservationId).SingleAsync();
         Assert.IsType<CommittedQuotaReservationState>(persisted.State);
@@ -142,7 +143,7 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         var now = DateTimeOffset.FromUnixTimeMilliseconds(
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).UtcDateTime;
         var reservation = QuotaDomainFactory.CreateReservation(
-            TestData.TenantId,
+            Data.TenantId,
             QuotaDelta.From(CpuQuota.QuotaKey, 2),
             QuotaResourceKey.Create("test", "rejected-commit"),
             now.AddHours(-2),
@@ -158,10 +159,10 @@ public sealed class QuotaAdmissionIntegrationTests(MongoReplicaSetFixture fixtur
         session.StartTransaction();
         var result = await commit(reservation.Id, session);
         Assert.IsType(expectedError, result.Value);
-        Assert.False(await QuotaUsages.Find(session, usage => usage.TenantId == TestData.TenantId).AnyAsync());
+        Assert.False(await QuotaUsages.Find(session, usage => usage.TenantId == Data.TenantId).AnyAsync());
         await session.AbortTransactionAsync();
 
-        Assert.False(await QuotaUsages.Find(usage => usage.TenantId == TestData.TenantId).AnyAsync());
+        Assert.False(await QuotaUsages.Find(usage => usage.TenantId == Data.TenantId).AnyAsync());
         if (state != "missing")
         {
             var persisted = await QuotaReservations.Find(item => item.Id == reservation.Id).SingleAsync();

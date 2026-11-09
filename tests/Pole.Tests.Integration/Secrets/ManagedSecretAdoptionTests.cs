@@ -28,7 +28,7 @@ public sealed partial class ManagedSecretIntegrationTests
     [Fact]
     public async Task Unnamed_binding_preview_uses_selected_id_and_preserves_pins_without_writes()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -61,13 +61,13 @@ public sealed partial class ManagedSecretIntegrationTests
         await session.AbortTransactionAsync();
         Assert.Equal(secret.ToBsonDocument(), (await secrets.Find(item => item.Id == secret.Id).SingleAsync())
             .ToBsonDocument());
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
     public async Task Adoption_checks_identity_inside_Secrets_and_returns_only_fenced_metadata()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new(group.TenantId, Id(), owner, "adoption-credentials", 1,
@@ -105,7 +105,7 @@ public sealed partial class ManagedSecretIntegrationTests
     [Fact]
     public async Task Adoption_fence_rejects_rotation_since_preview()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new(group.TenantId, Id(), owner, "adoption-rotation", 1,

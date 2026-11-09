@@ -8,16 +8,17 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class MongoServerTimeFilterTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class MongoServerTimeFilterTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Renamed_nested_dates_are_compared_against_the_database_clock()
     {
-        var documents = fixture.Database.GetCollection<MappedDocument>("ServerTimeFilterTests");
+        var documents = Fixture.Database.GetCollection<MappedDocument>("ServerTimeFilterTests");
         var cases = new[] { (Id: "past", Offset: -86_400_000L), (Id: "server-now", Offset: 0L),
             (Id: "future", Offset: 86_400_000L) };
         await documents.InsertManyAsync(cases.Select(item =>

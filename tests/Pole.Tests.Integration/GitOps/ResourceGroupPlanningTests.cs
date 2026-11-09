@@ -8,7 +8,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ResourceGroupPlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Resource_group_planning_reads_normalized_current_fields_without_mutating()
@@ -18,11 +19,11 @@ public sealed partial class DeclarativePipelineTests
             "hash", [], "test.yaml", 1);
         using var session = await Fixture.Database.Client.StartSessionAsync();
         var planner = Services.GetRequiredService<DeclarativeResourcePlanner>();
-        var request = new PlanDeclarationRequest(new(TestData.TenantId, source, null), declaration);
+        var request = new PlanDeclarationRequest(new(Data.TenantId, source, null), declaration);
         Assert.IsType<CreateDeclarationPlan>(await planner.PlanAsync(request, session, default));
         await Apply();
         var groups = Fixture.Database.GetCollection<ResourceGroup>("ResourceGroups");
-        var group = await groups.Find(item => item.TenantId == TestData.TenantId && item.Name == "demo").SingleAsync();
+        var group = await groups.Find(item => item.TenantId == Data.TenantId && item.Name == "demo").SingleAsync();
         var update = Assert.IsType<UpdateDeclarationPlan>(await planner.PlanAsync(request, session, default));
         Assert.Equal(group.Revision, Assert.Single(update.Current.Version.Documents).Revision);
         Assert.Equal(group.Revision, (await groups.Find(item => item.Id == group.Id).SingleAsync()).Revision);
@@ -40,7 +41,7 @@ public sealed partial class DeclarativePipelineTests
         }, session, default));
         Assert.IsType<BlockedDeclarationPlan>(await planner.PlanAsync(request with
         {
-            Scope = new(TestData.TenantId, source, "different-resource")
+            Scope = new(Data.TenantId, source, "different-resource")
         }, session, default));
     }
 }

@@ -11,15 +11,15 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class WebServiceHostnameExposureGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task CustomHostnamesBlockManualExposureDowngradeAndRollBackPlacementChanges()
     {
         await EnablePublicWebTargetAsync();
-        await new DomainIndexesMigration().Up(Fixture.Database);
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var creation = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "demo-api")))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var creation = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "demo-api")))
             .AssertHandlerOutcome();
         if (creation is CreateWebServiceError creationError)
             Assert.Fail($"{creationError.Value.GetType().Name}: " +

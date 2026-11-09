@@ -10,23 +10,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
 {
-    private GitRepositorySources SourceStore => Services.GetRequiredService<GitRepositorySources>();
-    private GitSourceScheduling Scheduler => Services.GetRequiredService<GitSourceScheduling>();
-
-    private IMongoCollection<GitSynchronizationState> Synchronization =>
-        Services.GetRequiredService<IMongoCollection<GitSynchronizationState>>();
-
-    private Task<GitSynchronizationState> State() => SourceStore.StateAsync(TestData.TenantId, source, default);
-
-    private RepositorySyncSignal Push(string id) => new(TestData.TenantId,
-        repository.Provider,
-        TestRepositorySnapshots.ConnectionId,
-        source,
-        "main",
-        id);
-
     [Fact]
     public async Task SchedulingLookupRejectsSourceIdentityFromAnotherTenant()
     {
@@ -55,7 +41,7 @@ public sealed partial class DeclarativePipelineTests
         await Scheduler.RequestRepositorySyncAsync(Push("delivery-3"), default);
         Assert.Equal(4, (await State()).RequestedGeneration);
 
-        await Pipeline.RecoverAsync(new(TestData.TenantId, source));
+        await Pipeline.RecoverAsync(new(Data.TenantId, source));
         state = await State();
         Assert.Equal(4, state.CompletedGeneration);
         Assert.Equal(2,
@@ -85,7 +71,7 @@ public sealed partial class DeclarativePipelineTests
         var initial = await Apply();
         var original = await Pipeline.LatestAsync(source);
         var secret = await Secrets.Find(Builders<Pole.Features.Secrets.Domain.Secret>.Filter.Empty).SingleAsync();
-        var signal = new GitDependencyWakeSignal(TestData.TenantId,
+        var signal = new GitDependencyWakeSignal(Data.TenantId,
             new("Secret", secret.Name),
             secret.Id,
             "values-1");
@@ -99,19 +85,19 @@ public sealed partial class DeclarativePipelineTests
         Assert.IsType<GitRunWaiting>(reserved.State);
         Assert.Equal(2, (await State()).RequestedGeneration);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
-            (await Pipeline.RecoverAsync(new(TestData.TenantId, source))).Status);
+            (await Pipeline.RecoverAsync(new(Data.TenantId, source))).Status);
 
         repository.Publish(source, Snapshot("2"), "new-head");
-        await SourceStore.RequestSyncAsync(new(TestData.TenantId,
+        await SourceStore.RequestSyncAsync(new(Data.TenantId,
                 source,
                 1,
                 Guid.NewGuid().ToString(),
-                new(GitRunTrigger.Manual, TestData.UserId)),
+                new(GitRunTrigger.Manual, Data.UserId)),
             default);
         var ignored = signal with { SignalId = "values-2" };
         await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => Scheduler.WakeDependencyAsync(ignored, default)));
         Assert.Equal(3, (await State()).RequestedGeneration);
-        await Pipeline.RecoverAsync(new(TestData.TenantId, source));
+        await Pipeline.RecoverAsync(new(Data.TenantId, source));
         await Scheduler.WakeDependencyAsync(ignored, default);
         Assert.Equal(3, (await State()).RequestedGeneration);
         Assert.NotEqual(initial.Context!.Authority.Commit, (await Pipeline.LatestAsync(source)).Commit);
@@ -126,9 +112,9 @@ public sealed partial class DeclarativePipelineTests
         var releases = await Releases();
         await Synchronization.UpdateOneAsync(item => item.Source.SourceId == source,
             Builders<GitSynchronizationState>.Update.Set(item => item.NextPollAtUtc, DateTime.UtcNow.AddMinutes(-1)));
-        Assert.Contains(new GitSourceIdentity(TestData.TenantId, source),
+        Assert.Contains(new GitSourceIdentity(Data.TenantId, source),
             await Scheduler.RecoverableSourcesAsync(default));
-        await Pipeline.RecoverAsync(new(TestData.TenantId, source));
+        await Pipeline.RecoverAsync(new(Data.TenantId, source));
         Assert.Equal(GitRunCompletion.AlreadyCurrent,
             Assert.IsType<GitRunFinished>((await Pipeline.LatestAsync(source)).State).Completion);
         Assert.Equal(releases, await Releases());
@@ -136,9 +122,9 @@ public sealed partial class DeclarativePipelineTests
         repository.Publish(source, Snapshot("2"), "missed-webhook");
         await Synchronization.UpdateOneAsync(item => item.Source.SourceId == source,
             Builders<GitSynchronizationState>.Update.Set(item => item.NextPollAtUtc, DateTime.UtcNow.AddMinutes(-1)));
-        Assert.Contains(new GitSourceIdentity(TestData.TenantId, source),
+        Assert.Contains(new GitSourceIdentity(Data.TenantId, source),
             await Scheduler.RecoverableSourcesAsync(default));
-        await Pipeline.RecoverAsync(new(TestData.TenantId, source));
+        await Pipeline.RecoverAsync(new(Data.TenantId, source));
         Assert.Equal(releases + 1, await Releases());
         Assert.Equal(GitRunTrigger.Poll, (await Pipeline.LatestAsync(source)).Initiator.Trigger);
     }
@@ -158,8 +144,8 @@ public sealed partial class DeclarativePipelineTests
         await new GitSourceRecoveryScanner(Scheduler,
             dispatched.Add,
             NullLogger<GitSourceRecoveryScanner>.Instance).ScanAsync(default);
-        Assert.Contains(new(TestData.TenantId, source), dispatched);
-        await Pipeline.RecoverAsync(new(TestData.TenantId, source));
+        Assert.Contains(new(Data.TenantId, source), dispatched);
+        await Pipeline.RecoverAsync(new(Data.TenantId, source));
         Assert.Equal(2, (await State()).CompletedGeneration);
     }
 }

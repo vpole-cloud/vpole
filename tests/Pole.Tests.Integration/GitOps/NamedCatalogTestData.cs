@@ -1,4 +1,5 @@
 using k8s;
+using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
@@ -11,6 +12,8 @@ using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.DeploymentTargets.Migrations;
+using Pole.Features.Functions.Application.Common;
+using Pole.Features.StorageProfiles.Domain;
 using Pole.Tests.Integration.ComputeProfiles;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
@@ -22,6 +25,8 @@ internal static class NamedCatalogTestData
 {
     public const string TargetName = "lab";
     public const string ProfileName = "small";
+    public const string RedisStorageProfileId = "507f1f77bcf86cd799439096";
+    public const string PostgresStorageProfileId = "507f1f77bcf86cd799439095";
 
     public static void ConfigureIsolatedApi(IServiceCollection services)
     {
@@ -60,24 +65,48 @@ internal static class NamedCatalogTestData
         public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) => Rejected();
     }
 
-    public static Task SeedAsync(MongoReplicaSetFixture fixture) => SeedAsync(fixture.Database);
-
-    public static Task SeedAsync(TestDatabaseScope fixture) => SeedAsync(fixture.Database);
-
-    private static async Task SeedAsync(IMongoDatabase database)
+    public static async Task SeedAsync(TestDatabaseScope fixture)
     {
-        await new ComputeProfileIndexesMigration().Up(database);
-        await new DeploymentTargetMigration().Up(database);
-        var profile = await database.GetCollection<ComputeProfile>("ComputeProfiles")
+        var profiles = fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
+        var profile = await profiles
             .Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
         Assert.Equal(ProfileName, profile.TechnicalName);
-        await database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
+        profile = profile with
+        {
+            AllowedResourceTypes = profile.AllowedResourceTypes
+                .Add("pole/redis").Add("pole/postgresql").Add("pole/function-app")
+        };
+        await profiles.ReplaceOneAsync(item => item.Id == profile.Id, profile);
+        await fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
             item => item.Id == $"{profile.Id}/{profile.Revision}",
             ComputeProfileRevisionFactory.Create(profile),
             new ReplaceOptions { IsUpsert = true });
-        await database.GetCollection<DeploymentTarget>("DeploymentTargets").ReplaceOneAsync(
+        var target = TestData.SeedDeploymentTarget() with
+        {
+            TechnicalName = TargetName,
+            WorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(null,
+                new(ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
+                    FunctionResourceDeployment.GatewaySourceName,
+                    DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32"))))
+        };
+        await fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets").ReplaceOneAsync(
             item => item.Id == TestData.DefaultDeploymentTargetId,
-            TestData.SeedDeploymentTarget().AttestForTests() with { TechnicalName = TargetName },
+            target.AttestForTests(),
             new ReplaceOptions { IsUpsert = true });
+        foreach (var (id, name, resourceType) in new[]
+                 {
+                     (RedisStorageProfileId, "redis-storage", "pole/redis"),
+                     (PostgresStorageProfileId, "postgres-storage", "pole/postgresql")
+                 })
+        {
+            var storage = TestData.SeedStorageProfile(id, isDefault: false) with
+            {
+                TechnicalName = name,
+                AllowedResourceTypes = [resourceType]
+            };
+            await fixture.DbContext.StorageProfiles.InsertOneAsync(storage);
+            await fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
+                .InsertOneAsync(StorageProfileRevisionFactory.Create(storage));
+        }
     }
 }

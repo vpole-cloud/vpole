@@ -21,34 +21,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ResourceConnectionPlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private IMongoCollection<ResourceConnection> Connections =>
-        Fixture.Database.GetCollection<ResourceConnection>("ResourceConnections");
-
-    private static ManifestFile[] ConnectionSnapshot(string endpoint = "http") =>
-    [
-        .. StageFiveWebSnapshot(_ => { }),
-        new("connection.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceConnection
-            metadata:
-              name: api-loopback
-            spec:
-              source: { kind: WebService, name: demo-api }
-              destination: { kind: WebService, name: demo-api }
-              endpoint: {{endpoint}}
-            """)
-    ];
-
     [Fact]
     public async Task ConnectionCreatesInPipelineThenNoOpsWithoutBusinessEventsAndBlocksManualDeletion()
     {
-        await new ResourceConnectionIndexesMigration().Up(Fixture.Database);
         var files = ConnectionSnapshot();
         var created = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, created.Status);
-        var connection = await Connections.Find(Builders<ResourceConnection>.Filter.Empty).SingleAsync();
+        var connection = await Connections.Find(Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var service = await Service();
         Assert.Equal(service.Id, connection.SourceResourceId);
         Assert.Equal(service.Id, connection.DestinationResourceId);
@@ -65,7 +47,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(releases, await Releases());
         var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            TestData.TenantId, source, unchanged.Context!.RunId, 1, 30, default))!.Items;
+            Data.TenantId, source, unchanged.Context!.RunId, 1, 30, default))!.Items;
         Assert.Equal(GitPlannedAction.NoOp, operations.Single(item => item.Kind == "ResourceConnection").Plan!.Action);
 
         var deletion = await Services.GetRequiredService<BeginResourceConnectionDeletion>()(
@@ -81,10 +63,10 @@ public sealed partial class DeclarativePipelineTests
     {
         var files = ConnectionSnapshot();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
-        var original = await Connections.Find(Builders<ResourceConnection>.Filter.Empty).SingleAsync();
+        var original = await Connections.Find(Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await Connections.DeleteOneAsync(item => item.Id == original.Id);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(files)).Status);
-        Assert.Equal(0, await Connections.CountDocumentsAsync(Builders<ResourceConnection>.Filter.Empty));
+        Assert.Equal(0, await Connections.CountDocumentsAsync(Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await Connections.InsertOneAsync(original with { Id = Id() });
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(files)).Status);
         Assert.Equal(0, await Connections.CountDocumentsAsync(item => item.Id == original.Id));
@@ -95,7 +77,7 @@ public sealed partial class DeclarativePipelineTests
     {
         var files = ConnectionSnapshot();
         await Apply(files);
-        var original = await Connections.Find(Builders<ResourceConnection>.Filter.Empty).SingleAsync();
+        var original = await Connections.Find(Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var target = Assert.IsType<ActiveResourceConnection>(original.Lifecycle).Targets.Single();
         var recorded = Assert.IsType<ConnectionApplyRecorded>(original.RecordApplied(target.Snapshot.TargetId,
             original.Generation, DateTime.UtcNow).Value).Connection;
@@ -115,8 +97,8 @@ public sealed partial class DeclarativePipelineTests
     {
         var result = await Apply(ConnectionSnapshot("missing-endpoint"));
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await Connections.CountDocumentsAsync(Builders<ResourceConnection>.Filter.Empty));
-        var owned = await Inventory.Find(item => item.Kind == "ResourceConnection").SingleAsync();
+        Assert.Equal(0, await Connections.CountDocumentsAsync(Builders<ResourceConnection>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "ResourceConnection").SingleAsync();
         Assert.Equal(GitResourceMaterialization.Allocated, owned.Materialization);
         Assert.Null(owned.Projections.Applied);
         var receipt = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
@@ -124,6 +106,6 @@ public sealed partial class DeclarativePipelineTests
         Assert.False(receipt.Changed);
         Assert.Equal(nameof(ConnectionDeclarationEndpointUnavailable), receipt.Blocker);
         Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(item =>
-            item.EventType == "pole.resource-connections/v1/resource-connection-created"));
+            item.TenantId == Data.TenantId && item.EventType == "pole.resource-connections/v1/resource-connection-created"));
     }
 }

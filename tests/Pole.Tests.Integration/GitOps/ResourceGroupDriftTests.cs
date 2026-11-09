@@ -15,24 +15,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ResourceGroupDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private static ManifestFile[] GroupSnapshot() =>
-    [
-        new("group.yaml", """
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceGroup
-            metadata:
-              name: drift-group
-            spec:
-              description: managed description
-              tags: [production, api]
-            """)
-    ];
-
-    private Task<long> BusinessEvents() => DbContext.OutboxMessages.CountDocumentsAsync(
-        Builders<OutboxMessage>.Filter.Ne(item => item.EventType, "pole.gitops/v1/source-work-requested"));
-
     [Fact]
     public async Task ResourceGroupSameCommitRepairsManagedDriftThenPerformsVerifiedNoOp()
     {
@@ -40,7 +25,7 @@ public sealed partial class DeclarativePipelineTests
         var first = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, first.Status);
         var groups = Fixture.Database.GetCollection<ResourceGroup>("ResourceGroups");
-        var original = await groups.Find(item => item.Name == "drift-group").SingleAsync();
+        var original = await groups.Find(item => item.TenantId == Data.TenantId && item.Name == "drift-group").SingleAsync();
         var downloads = repository.ReadCommits.Count;
         await groups.UpdateOneAsync(item => item.Id == original.Id,
             Builders<ResourceGroup>.Update.Set(item => item.Description, "private drift value")
@@ -53,7 +38,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(original.Description, current.Description);
         Assert.Equal(original.Revision + 2, current.Revision);
         var queries = Services.GetRequiredService<GitRepositoryQueries>();
-        var changed = (await queries.OperationsAsync(TestData.TenantId, source, repaired.Context.RunId, 1, 20,
+        var changed = (await queries.OperationsAsync(Data.TenantId, source, repaired.Context.RunId, 1, 20,
             default))!.Items.Single();
         Assert.Equal(GitPlannedAction.Update, changed.Plan!.Action);
         Assert.Equal<string>(["configuration.description"], changed.Plan.ChangedFields);
@@ -66,7 +51,7 @@ public sealed partial class DeclarativePipelineTests
             .ToBsonDocument());
         Assert.True(after.RegistrationFence > current.RegistrationFence);
         Assert.Equal(beforeEvents, await BusinessEvents());
-        var view = await queries.RunAsync(TestData.TenantId, source, unchanged.Context!.RunId, default);
+        var view = await queries.RunAsync(Data.TenantId, source, unchanged.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 1, 0, 0, null), view.Operations);
         var inventory = await Inventory.Find(item => item.ResourceId == original.Id).SingleAsync();
@@ -94,7 +79,7 @@ public sealed partial class DeclarativePipelineTests
             .Find(item => item.RunId == result.Context!.RunId).SingleAsync();
         Assert.Equal("DeclarationManagedResourceMissing", receipt.Blocker);
         Assert.Equal(first.Context!.Authority.Commit, (await State()).Commits.FullyApplied);
-        var query = await Services.GetRequiredService<GitRepositoryQueries>().SourceAsync(TestData.TenantId, source,
+        var query = await Services.GetRequiredService<GitRepositoryQueries>().SourceAsync(Data.TenantId, source,
             default);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 0, 1, 0, null), query!.LatestRun!.Operations);
     }

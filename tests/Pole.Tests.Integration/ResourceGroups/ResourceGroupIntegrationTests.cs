@@ -21,6 +21,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -29,7 +30,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     [Fact]
     public async Task Create_PersistsResourceGroup_AndWritesOutboxMessage()
     {
-        var request = TestData.CreateResourceGroupRequest();
+        var request = Data.CreateResourceGroupRequest();
 
         var result = await Mediator.Send(request);
 
@@ -50,9 +51,9 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
         Assert.True(defaultScope.IsDefault);
         Assert.Equal(IsolationScopeFactory.DefaultScopeName, defaultScope.Name);
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-created");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/resource-group-created");
         Assert.Equal(1L, outboxCount);
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/isolation-scope-created"));
     }
 
     [Fact]
@@ -60,23 +61,23 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     {
         Services.GetRequiredService<TestDeploymentTargetLookup>().RejectNewWorkloads = true;
 
-        var created = (await Mediator.Send(TestData.CreateResourceGroupRequest("logical-only")))
+        var created = (await Mediator.Send(Data.CreateResourceGroupRequest("logical-only")))
             .AssertSuccess();
 
         Assert.Equal("logical-only", created.Name);
         Assert.Equal(0L, await DbContext.RuntimeCells.CountDocumentsAsync(
-            Builders<RuntimeCell>.Filter.Empty));
+            Builders<RuntimeCell>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
     public async Task Get_ReturnsSeededGroups_AndSupportsSearch()
     {
-        await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("alpha"));
-        await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("beta"));
+        await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("alpha"));
+        await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("beta"));
 
         var result = await Mediator.Send(new GetResourceGroupsRequest
         {
-            TenantId = TestData.TenantId,
+            TenantId = Data.TenantId,
             Search = "alp",
             PageNumber = 1,
             PageSize = 10
@@ -93,7 +94,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     [Fact]
     public async Task Delete_RemovesResourceGroup_AndWritesDeleteEvent()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
 
         var result = await Mediator.Send(new DeleteResourceGroupRequest(
             resourceGroup.Id,
@@ -107,14 +108,14 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(scope => scope.ResourceGroupId == resourceGroup.Id)
             .AnyAsync());
 
-        var outboxCount = await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted");
+        var outboxCount = await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/resource-group-deleted");
         Assert.Equal(1L, outboxCount);
     }
 
     [Fact]
     public async Task Delete_ReturnsConflict_WhenResourcesAreRegistered()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         await DbContext.ResourceRegistrations.InsertOneAsync(ResourceRegistrationFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -144,7 +145,7 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
     [Fact]
     public async Task Delete_RetriesAndReturnsConflict_WhenRegistrationCommitsAfterEmptyRead()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var guard = new OneShotPausingDeploymentGuard();
         var beginDeletion = new MongoBeginResourceGroupDeletion(
             DbContext.ResourceGroups,
@@ -195,16 +196,16 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(group => group.Id == resourceGroup.Id)
             .AnyAsync());
         Assert.True(await DbContext.ResourceRegistrations
-            .Find(registration => registration.ResourceId == "racing-resource")
+            .Find(registration => registration.TenantId == Data.TenantId && registration.ResourceId == "racing-resource")
             .AnyAsync());
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/resource-group-deleted"));
     }
 
     [Fact]
     public async Task Delete_WithRuntimeCell_RequestsAggregateDeletion()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var cell = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -232,16 +233,16 @@ public sealed class ResourceGroupIntegrationTests(MongoReplicaSetFixture fixture
             .Find(item => item.Id == cell.Id)
             .SingleAsync();
         Assert.IsType<DeletingRuntimeCellState>(savedCell.State);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-deletion-requested"));
-        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/resource-group-deleted"));
     }
 
     [Fact]
     public async Task OwnershipLookup_RejectsDeletingResourceGroup()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         await DbContext.ResourceGroups.ReplaceOneAsync(
             group => group.Id == resourceGroup.Id,
             resourceGroup.RequestDeletion(resourceGroup.UpdatedAtUtc.AddMinutes(1)));

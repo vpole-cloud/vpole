@@ -22,10 +22,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class ResourceDeploymentRecoveryJobTests(
-    MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
     private ServiceProvider? serviceProvider;
     private IServiceScope? serviceScope;
@@ -40,18 +39,18 @@ public sealed class ResourceDeploymentRecoveryJobTests(
     private static readonly ResourceTypeId TestResourceType =
         ResourceTypeId.Create("pole/test-resource");
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        serviceProvider = TestServiceProviderFactory.Create(fixture);
+        await base.InitializeAsync();
+        serviceProvider = TestServiceProviderFactory.Create(Fixture);
         serviceScope = serviceProvider.CreateScope();
     }
 
-    public Task DisposeAsync()
+    public override Task DisposeAsync()
     {
         serviceScope?.Dispose();
         serviceProvider?.Dispose();
-        return Task.CompletedTask;
+        return base.DisposeAsync();
     }
 
     [Fact]
@@ -98,8 +97,8 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                 ClaimId,
                 startedAtUtc: now.AddMinutes(-1),
                 leaseExpiresAtUtc: now.AddSeconds(-30));
-        await fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
-        await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        await Fixture.DbContext.RuntimeCells.InsertOneAsync(runtimeCell);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
 
         var measurements = new List<long>();
         using var listener = new MeterListener();
@@ -117,14 +116,14 @@ public sealed class ResourceDeploymentRecoveryJobTests(
 
         using var metrics = new ResourceDeploymentMetrics();
         var loadCandidates = new LoadResourceDeploymentRecoveryCandidatesOperation(
-            fixture.DbContext.ResourceDeployments);
+            Fixture.DbContext.ResourceDeployments);
         var recover = new RecoverResourceDeploymentOperation(
-            fixture.DbContext.ResourceDeployments,
-            (operation, cancellationToken) => fixture.DbContext
+            Fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => Fixture.DbContext
                 .RunOutcomeInTransactionAsync(
                     operation,
                     cancellationToken: cancellationToken),
-            (session, writes, cancellationToken) => fixture.StoreOutboxWrites(
+            (session, writes, cancellationToken) => Fixture.StoreOutboxWrites(
                 session,
                 writes,
                 cancellationToken),
@@ -138,14 +137,14 @@ public sealed class ResourceDeploymentRecoveryJobTests(
 
         await job.RecoverAsync();
 
-        var saved = await fixture.DbContext.ResourceDeployments
+        var saved = await Fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == DeploymentId)
             .SingleAsync();
         var pending = Assert.IsType<PendingResourceDeploymentState>(saved.State);
         Assert.Equal(1, pending.AttemptCount);
         Assert.Equal(
             1L,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 message =>
                     message.PendingKey ==
                     ResourceDeploymentPendingKey.Apply(DeploymentId, 1)));
@@ -159,20 +158,20 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         var oldest = CreateApplied(ObjectId.GenerateNewId().ToString(), now.AddMinutes(-20));
         var next = CreateApplied(ObjectId.GenerateNewId().ToString(), now.AddMinutes(-10));
         var recent = CreateApplied(ObjectId.GenerateNewId().ToString(), now.AddMinutes(-1));
-        await fixture.DbContext.ResourceDeployments.InsertManyAsync([oldest, next, recent]);
-        var candidates = new LoadResourceDeploymentRecoveryCandidatesOperation(fixture.DbContext.ResourceDeployments);
+        await Fixture.DbContext.ResourceDeployments.InsertManyAsync([oldest, next, recent]);
+        var candidates = new LoadResourceDeploymentRecoveryCandidatesOperation(Fixture.DbContext.ResourceDeployments);
         var recover = new RecoverResourceDeploymentOperation(
-            fixture.DbContext.ResourceDeployments,
-            (operation, cancellationToken) => fixture.DbContext.RunOutcomeInTransactionAsync(
+            Fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => Fixture.DbContext.RunOutcomeInTransactionAsync(
                 operation, cancellationToken: cancellationToken),
-            fixture.StoreOutboxWrites,
+            Fixture.StoreOutboxWrites,
             Services.GetRequiredService<LoadResourcePlacementInTransaction>());
 
         Assert.Equal([oldest.Id], await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
         await recover.InvokeAsync(oldest.Id, now);
         await recover.InvokeAsync(oldest.Id, now);
 
-        var queued = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == oldest.Id).SingleAsync();
+        var queued = await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == oldest.Id).SingleAsync();
         Assert.IsType<PendingResourceDeploymentState>(queued.State);
         Assert.Equal(oldest.DesiredGeneration, queued.DesiredGeneration);
         Assert.Equal(oldest.ResourceRevision, queued.ResourceRevision);
@@ -180,7 +179,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         Assert.Equal(oldest.ResolvedPlacement.TargetWorkloadConfigurationRevision,
             queued.ResolvedPlacement.TargetWorkloadConfigurationRevision);
         Assert.Equal(oldest.Revision + 1, queued.Revision);
-        Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+        Assert.Equal(1, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             message => message.PendingKey == ResourceDeploymentPendingKey.Apply(oldest.Id, oldest.DesiredGeneration)));
         Assert.Equal([next.Id], await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
         await recover.InvokeAsync(next.Id, now);
@@ -192,21 +191,21 @@ public sealed class ResourceDeploymentRecoveryJobTests(
     {
         var now = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
         var deleting = CreateApplied(DeploymentId, now.AddMinutes(-20)).RequestDeletion(now.AddSeconds(-1));
-        await fixture.DbContext.ResourceDeployments.InsertOneAsync(deleting);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deleting);
         var recover = new RecoverResourceDeploymentOperation(
-            fixture.DbContext.ResourceDeployments,
-            (operation, cancellationToken) => fixture.DbContext.RunOutcomeInTransactionAsync(
+            Fixture.DbContext.ResourceDeployments,
+            (operation, cancellationToken) => Fixture.DbContext.RunOutcomeInTransactionAsync(
                 operation, cancellationToken: cancellationToken),
-            fixture.StoreOutboxWrites,
+            Fixture.StoreOutboxWrites,
             Services.GetRequiredService<LoadResourcePlacementInTransaction>());
 
         await recover.InvokeAsync(deleting.Id, now);
 
-        var saved = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == deleting.Id).SingleAsync();
+        var saved = await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == deleting.Id).SingleAsync();
         Assert.Equal(ResourceDeploymentOperation.Delete, saved.DesiredOperation);
         Assert.Equal(deleting.DesiredGeneration, saved.DesiredGeneration);
         Assert.Throws<InvalidOperationException>(() => saved.RequestVerification(now));
-        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             message => message.PendingKey == ResourceDeploymentPendingKey.Apply(saved.Id, saved.DesiredGeneration)));
     }
 

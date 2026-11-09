@@ -27,27 +27,28 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Tenants;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global)]
+public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private ServiceProvider? _services;
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
+        await base.InitializeAsync();
         var services = new ServiceCollection();
-        services.AddSingleton(fixture.Database);
-        services.AddSingleton<IMongoClient>(fixture.Client);
+        services.AddSingleton(Fixture.Database);
+        services.AddSingleton<IMongoClient>(Fixture.Client);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
+        services.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
         _services = services.BuildServiceProvider(validateScopes: true);
     }
 
-    public Task DisposeAsync()
+    public override Task DisposeAsync()
     {
         _services?.Dispose();
-        return Task.CompletedTask;
+        return base.DisposeAsync();
     }
 
     [Fact]
@@ -69,7 +70,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         };
         Assert.Equal(TenantRole.Owner, tenantDto.Role);
 
-        var tenant = await fixture.DbContext.Tenants.Find(t => t.Id == tenantDto.Id).FirstAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(t => t.Id == tenantDto.Id).FirstAsync();
         var member = Assert.Single(tenant.Members);
         Assert.Equal("user-1", member.UserId);
         Assert.Equal("user@example.com", member.Email);
@@ -102,7 +103,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             Members = [TenantFactory.CreateMember(hiddenTenant.Id, "user-2", "other@example.com", TenantRole.Owner)]
         };
 
-        await fixture.DbContext.Tenants.InsertManyAsync([defaultTenant, otherTenant, hiddenTenant]);
+        await Fixture.DbContext.Tenants.InsertManyAsync([defaultTenant, otherTenant, hiddenTenant]);
         using var scope = Services.CreateScope();
         var handler = new GetTenantsHandler(
             scope.ServiceProvider.GetRequiredService<LoadTenantsForUser>());
@@ -323,7 +324,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         {
             Members = tenant.Members.Add(owner)
         };
-        await fixture.DbContext.Tenants.ReplaceOneAsync(
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(
             stored => stored.Id == tenant.Id,
             tenant);
         var request = new DeleteTenantMemberRequest(tenant.Id, owner.Id);
@@ -400,7 +401,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         {
             Members = tenant.Members.Add(secondOwner)
         };
-        await fixture.DbContext.Tenants.ReplaceOneAsync(
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(
             stored => stored.Id == tenant.Id,
             tenant);
 
@@ -413,7 +414,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             new UpdateTenantMemberRequestBody(TenantRole.Admin)));
 
         Assert.True(result is TenantMemberDto { Role: TenantRole.Admin });
-        var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        var stored = await Fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
         Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
     }
 
@@ -448,7 +449,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         {
             Members = tenant.Members.Add(secondOwner)
         };
-        await fixture.DbContext.Tenants.ReplaceOneAsync(
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(
             stored => stored.Id == tenant.Id,
             tenant);
 
@@ -460,7 +461,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
             firstOwner.Id));
 
         Assert.True(result is TenantMemberRemoved removed && removed.MemberId == firstOwner.Id);
-        var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        var stored = await Fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
         Assert.DoesNotContain(stored.Members, member => member.Id == firstOwner.Id);
         Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
     }
@@ -483,7 +484,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         {
             Members = tenant.Members.Add(second)
         };
-        await fixture.DbContext.Tenants.ReplaceOneAsync(stored => stored.Id == tenant.Id, tenant);
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(stored => stored.Id == tenant.Id, tenant);
         using var scope = Services.CreateScope();
         var update = scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>();
         var remove = scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>();
@@ -491,7 +492,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
         var successes = await Task.WhenAll(Mutate(first.Id, removeFirst), Mutate(second.Id, removeSecond));
 
         Assert.Single(successes, succeeded => succeeded);
-        var stored = await fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
+        var stored = await Fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
         Assert.Single(stored.Members, member => member.Role == TenantRole.Owner);
 
         async Task<bool> Mutate(string memberId, bool delete)
@@ -538,7 +539,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
                 .ToImmutableList()
         };
 
-        await fixture.DbContext.Tenants.InsertOneAsync(tenant);
+        await Fixture.DbContext.Tenants.InsertOneAsync(tenant);
         return tenant;
     }
 
@@ -577,7 +578,7 @@ public sealed class TenantUserControlPlaneTests(MongoReplicaSetFixture fixture) 
     private async Task<Tenant?> LoadTenantAsync(
         string tenantId,
         CancellationToken cancellationToken) =>
-        await fixture.DbContext.Tenants
+        await Fixture.DbContext.Tenants
             .Find(tenant => tenant.Id == tenantId)
             .FirstOrDefaultAsync(cancellationToken);
 

@@ -20,16 +20,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class StorageProfileProductionDiTests(MongoReplicaSetFixture fixture)
+public sealed class StorageProfileProductionDiTests
 {
+    private readonly IMongoDatabase database = new MongoClient("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=100").GetDatabase("di-only");
     [Fact]
     public void FeatureRegistration_ResolvesTheStorageProfileCapabilityGraph()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IMongoClient>(fixture.Client);
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoClient>(database.Client);
+        services.AddSingleton<IMongoDatabase>(database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IKubernetesClientProvider>(

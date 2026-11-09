@@ -17,18 +17,18 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global)]
 public sealed class ManagedDomainZoneReservationCapabilityTests(
-    MongoReplicaSetFixture fixture) : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new DomainIndexesMigration().Up(fixture.Database);
+        await base.InitializeAsync();
+        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
+        await new DomainIndexesMigration().Up(Fixture.Database);
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task TypedOutcome_CommitsCreatedReservation()
@@ -40,11 +40,11 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         Assert.Equal("api.apps.example.test", zone.Domain);
         Assert.Equal(
             1L,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
         Assert.Equal(1, coordinator.RegistrationCalls);
-        Assert.Equal(1, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(1, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
     }
 
     [Fact]
@@ -59,11 +59,11 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var duplicate = await CreateReservationAsync(coordinator, tenantId, targetId);
 
         var conflict = Assert.IsType<ManagedDomainZoneAlreadyReserved>(duplicate.Value);
-        Assert.Equal(1, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(1, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal("api.apps.example.test", conflict.Domain);
         Assert.Equal(
             1L,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
     }
@@ -76,10 +76,10 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var result = await CreateReservationAsync(coordinator);
 
         Assert.IsType<ManagedDomainZoneReferenceRejected>(result.Value);
-        Assert.Equal(0, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(
             0L,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
         Assert.Equal(1, coordinator.RegistrationCalls);
@@ -93,10 +93,10 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         var result = await CreateReservationAsync(coordinator);
 
         Assert.IsType<ManagedDomainZoneDeploymentTargetChanged>(result.Value);
-        Assert.Equal(0, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(
             0L,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
         Assert.Equal(0, coordinator.RegistrationCalls);
@@ -118,12 +118,12 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             string label = "api")
     {
         var reservation = new MongoCreateManagedDomainZoneReservation(
-            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
             TimeProvider.System,
-            fixture.StoreOutboxWrites);
-        var transaction = new MongoRunTransaction(fixture.Client);
+            Fixture.StoreOutboxWrites);
+        var transaction = new MongoRunTransaction(Fixture.Client);
         tenantId ??= ObjectId.GenerateNewId().ToString();
         targetId ??= ObjectId.GenerateNewId().ToString();
 

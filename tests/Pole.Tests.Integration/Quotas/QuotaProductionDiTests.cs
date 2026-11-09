@@ -14,16 +14,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class QuotaProductionDiTests(MongoReplicaSetFixture fixture)
+public sealed class QuotaProductionDiTests
 {
+    private readonly IMongoDatabase database = new MongoClient("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=100").GetDatabase("di-only");
     [Fact]
     public void FeatureRegistration_ResolvesTheQuotaCapabilityGraph()
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IMongoClient>(fixture.Client);
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoClient>(database.Client);
+        services.AddSingleton<IMongoDatabase>(database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton(TimeProvider.System);
         var configuration = new ConfigurationBuilder().Build();

@@ -15,15 +15,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceDeploymentCreationContractTests(
     MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
-    private const string TenantId = "507f1f77bcf86cd799439011";
-    private const string ResourceId = "507f1f77bcf86cd799439013";
-    private const string ResourceGroupId = "507f1f77bcf86cd799439014";
-    private const string DeploymentId = "507f1f77bcf86cd799439018";
-    private const string TargetId = "507f1f77bcf86cd799439017";
+    private string TenantId => Data.TenantId;
+    private readonly string ResourceId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string ResourceGroupId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string DeploymentId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+    private readonly string TargetId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
     private static readonly ResourceTypeId TestResourceType =
         ResourceTypeId.Create("pole/test-resource");
 
@@ -119,7 +120,7 @@ public sealed class ResourceDeploymentCreationContractTests(
         }
     }
 
-    private static CreateResourceDeploymentRequest CreateRequest() =>
+    private CreateResourceDeploymentRequest CreateRequest() =>
         new(
             DeploymentId,
             TenantId,

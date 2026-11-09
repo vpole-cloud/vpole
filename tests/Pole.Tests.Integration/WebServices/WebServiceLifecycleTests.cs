@@ -40,9 +40,11 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
-public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
-    private readonly LifecycleOwnerAuthority authority = new();
+    private LifecycleOwnerAuthority? _authority;
+    private LifecycleOwnerAuthority authority => _authority ??= new(Data.TenantId);
     private IMongoCollection<WebService> WebServices => Fixture.Database.GetCollection<WebService>("WebServices");
     private IDeclarativeResourceLifecycleProvider Provider =>
         Services.GetServices<IDeclarativeResourceLifecycleProvider>()
@@ -64,7 +66,7 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : M
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await NamedCatalogTestData.SeedAsync(Fixture);
+        await Fixture.PrepareNamedCatalogAsync();
         var targets = Fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets");
         var target = await targets.Find(item => item.Id == TestData.DefaultDeploymentTargetId).SingleAsync();
         var configuration = target.WorkloadConfiguration.Reconfigure(
@@ -329,7 +331,7 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : M
         var current = await CreateService();
         var configuration = SourceBuildConfigurationFactory.Create(current.TenantId, "reviewed-build",
             ObjectId.GenerateNewId().ToString(), current.Id, SourceBuildRecipe.Create("FROM scratch"),
-            new ManualSourceBuildConfigurationOrigin(TestData.UserId), SourceBuildConfigurationFactory.DefaultOptions);
+            new ManualSourceBuildConfigurationOrigin(Data.UserId), SourceBuildConfigurationFactory.DefaultOptions);
         await Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
             .InsertOneAsync(configuration);
         var image = awaitingArtifact
@@ -440,8 +442,8 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : M
 
     private async Task<WebService> CreateService()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var outcome = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "reviewed")))
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var outcome = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "reviewed")))
             .AssertSuccess<CreateWebServiceOutcome>();
         if (outcome is CreateWebServiceError error)
         {

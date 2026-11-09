@@ -15,7 +15,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private const string WorkRequestedEvent = "pole.gitops/v1/source-work-requested";
     private bool _rejectResumptionOutbox;
@@ -182,9 +183,9 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Medi
 
     private async Task<GitWorkClaim> ClaimNewSource()
     {
-        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(TestData.TenantId,
+        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId,
             Guid.NewGuid().ToString("D"), new("Example", "connection", "repository", "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow), "https://example.test/repository"),
+            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow), "https://example.test/repository"),
             default)).Value);
         return Assert.IsType<GitWorkClaim>((await Store.ClaimAsync(new(source.TenantId, source.Id),
             "original", default)).Value);

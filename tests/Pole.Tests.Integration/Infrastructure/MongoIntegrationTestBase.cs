@@ -1,24 +1,28 @@
 using MongoDB.Driver;
+using Pole.Testing;
 using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
-[Collection(IntegrationTestCollection.Name)]
-public abstract class MongoIntegrationTestBase(MongoReplicaSetFixture fixture) : IAsyncLifetime
+public abstract class MongoIntegrationTestBase : IAsyncLifetime, IIsolatedIntegrationTest
 {
-    protected IMongoDatabase Database { get; private set; } = null!;
-    protected MongoTestStore DbContext { get; private set; } = null!;
-
-    public virtual Task InitializeAsync()
+    protected MongoIntegrationTestBase(MongoReplicaSetFixture fixture)
     {
-        Database = fixture.Client.GetDatabase("pole-mongo-test-" + Guid.NewGuid().ToString("N"));
-        DbContext = new MongoTestStore(fixture.Client, Database);
-        return Task.CompletedTask;
+        Fixture = fixture.CreateDatabase();
+        Timings = new TestTimings(GetType());
+        TestScope = IntegrationTestScope.Create(Fixture);
+        Data = new IntegrationTestData(TestScope);
     }
 
+    protected TestDatabaseScope Fixture { get; }
+    protected TestTimings Timings { get; }
+    protected IntegrationTestScope TestScope { get; }
+    protected IntegrationTestData Data { get; }
+    protected IMongoDatabase Database => Fixture.Database;
+    protected MongoTestStore DbContext => Fixture.DbContext;
+    public virtual Task InitializeAsync() => Task.CompletedTask;
     public virtual async Task DisposeAsync()
     {
-        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await Database.Client.DropDatabaseAsync(Database.DatabaseNamespace.DatabaseName, cleanup.Token);
+        using (Timings.Measure("database.dispose")) await Fixture.DisposeAsync();
     }
 }

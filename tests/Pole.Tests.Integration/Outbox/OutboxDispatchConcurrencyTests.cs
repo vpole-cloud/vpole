@@ -19,17 +19,17 @@ using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Tests.Integration.Outbox;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class OutboxDispatchConcurrencyTests(
-    MongoReplicaSetFixture fixture) : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        await new OutboxMessageMigration().Up(fixture.Database);
+        await base.InitializeAsync();
+        await new OutboxMessageMigration().Up(Fixture.Database);
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Replicas_ShareTheProcessingLockAndReleaseItAfterAsyncPublish()
@@ -55,7 +55,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         var firstTrigger = firstServices.GetRequiredService<IOutboxProcessingTrigger>();
         var secondTrigger = secondServices.GetRequiredService<IOutboxProcessingTrigger>();
         var firstMessage = CreateMessage();
-        await fixture.DbContext.OutboxMessages.InsertOneAsync(firstMessage);
+        await Fixture.DbContext.OutboxMessages.InsertOneAsync(firstMessage);
 
         var firstDispatch = firstTrigger.TriggerAsync(CancellationToken.None);
         try
@@ -73,7 +73,7 @@ public sealed class OutboxDispatchConcurrencyTests(
 
         await AssertLockAvailableFromNewWorkerAsync(secondStorage);
         var secondMessage = CreateMessage();
-        await fixture.DbContext.OutboxMessages.InsertOneAsync(secondMessage);
+        await Fixture.DbContext.OutboxMessages.InsertOneAsync(secondMessage);
         await secondTrigger.TriggerAsync(CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -113,7 +113,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         await using var services = CreateServices(directStorage, publisher);
         var trigger = services.GetRequiredService<IOutboxProcessingTrigger>();
         var message = CreateMessage();
-        await fixture.DbContext.OutboxMessages.InsertOneAsync(message);
+        await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
 
         try
         {
@@ -152,7 +152,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         await using var secondServices = CreateServices(secondStorage, publisher);
         using var cancellation = new CancellationTokenSource();
         var message = CreateMessage();
-        await fixture.DbContext.OutboxMessages.InsertOneAsync(message);
+        await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
         var dispatch = firstServices.GetRequiredService<IOutboxProcessingTrigger>()
             .TriggerAsync(cancellation.Token);
 
@@ -200,8 +200,8 @@ public sealed class OutboxDispatchConcurrencyTests(
             TaskScheduler.Default).WaitAsync(TimeSpan.FromSeconds(5));
 
     private MongoStorage CreateStorage() =>
-        new(fixture.Client,
-            fixture.Database.DatabaseNamespace.DatabaseName,
+        new(Fixture.Client,
+            Fixture.Database.DatabaseNamespace.DatabaseName,
             new MongoStorageOptions
             {
                 Prefix = "outbox-dispatch-tests",
@@ -217,7 +217,7 @@ public sealed class OutboxDispatchConcurrencyTests(
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton(fixture.Database);
+        services.AddSingleton(Fixture.Database);
         services.AddSingleton(storage);
         services.AddSingleton(publisher);
         services.AddSingleton(TimeProvider.System);
@@ -228,18 +228,18 @@ public sealed class OutboxDispatchConcurrencyTests(
     }
 
     private Task<OutboxMessage> LoadAsync(string id) =>
-        fixture.DbContext.OutboxMessages.Find(message => message.Id == id).SingleAsync();
+        Fixture.DbContext.OutboxMessages.Find(message => message.Id == id).SingleAsync();
 
-    private static OutboxMessage CreateMessage()
+    private OutboxMessage CreateMessage()
     {
         var now = DateTime.UtcNow.AddSeconds(-1);
         var @event = new RuntimeCellReconciliationRequestedEvent(ObjectId.GenerateNewId().ToString(), 1)
         {
-            EventCore = new EventCore { TenantId = TestData.TenantId, OccurredOn = now }
+            EventCore = new EventCore { TenantId = Data.TenantId, OccurredOn = now }
         };
         return OutboxMessage.Create(
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested",
-            TestData.TenantId,
+            Data.TenantId,
             JsonSerializer.Serialize(@event, EventExtensions.SerializerOptions),
             @event.EventCore.TraceId,
             @event.EventCore.CorrelationId,

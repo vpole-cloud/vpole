@@ -16,6 +16,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceConnectionAdoptionPreviewTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -120,12 +121,12 @@ public sealed class ResourceConnectionAdoptionPreviewTests(MongoReplicaSetFixtur
 
     private async Task<ResourceConnection> CreateConnection()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var source = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "caller"))).AssertSuccess();
-        var destination = (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "receiver"))).AssertSuccess();
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var source = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "caller"))).AssertSuccess();
+        var destination = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "receiver"))).AssertSuccess();
         var creation = Services.GetRequiredService<PersistResourceConnectionCreation>();
         return Assert.IsType<ResourceConnection>((await creation(
-            new(TestData.TenantId, "caller-to-receiver", WebServiceResourceDeployment.ResourceType,
+            new(Data.TenantId, "caller-to-receiver", WebServiceResourceDeployment.ResourceType,
                 source.WebServiceId, WebServiceResourceDeployment.ResourceType,
                 destination.WebServiceId, "http"))).Value);
     }

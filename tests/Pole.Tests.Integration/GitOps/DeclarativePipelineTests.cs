@@ -58,162 +58,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class DeclarativePipelineCoreTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private readonly string source = ObjectId.GenerateNewId().ToString();
-    private readonly TestRepositorySnapshots repository = new();
-    private bool rejectNextWebServiceRevision;
-    private RepositoryPipelineDriver Pipeline => new(Services, Fixture, repository);
-
-    protected override void ConfigureServices(IServiceCollection services)
-    {
-        services.AddSingleton<IRepositorySnapshotProvider>(repository);
-        ConfigureSourceDeliveryServices(services);
-        var originalPersistence = services.Last(item =>
-            item.ServiceType == typeof(PersistUpdatedWebServiceOutcome)).ImplementationFactory!;
-        services.AddScoped<PersistUpdatedWebServiceOutcome>(provider =>
-        {
-            var persist = (PersistUpdatedWebServiceOutcome)originalPersistence(provider);
-            return async (session, current, next, changed, ct, mutation) =>
-            {
-                if (rejectNextWebServiceRevision)
-                {
-                    rejectNextWebServiceRevision = false;
-                    return new WebServiceUpdateConflict(current.Id);
-                }
-
-                return await persist(session, current, next, changed, ct, mutation);
-            };
-        });
-        foreach (var descriptor in services.Where(item =>
-                     (item.ServiceType == typeof(Pole.Features.DeploymentTargets.Contracts
-                          .FenceDeploymentTargetWorkloadConfigurations) ||
-                      item.ServiceType == typeof(Pole.Features.DeploymentTargets.Contracts
-                          .ListEligiblePublicIngressDeploymentTargetsForNewWorkload)) &&
-                     item.Lifetime == ServiceLifetime.Singleton).ToArray())
-            services.Remove(descriptor);
-    }
-
-    private IMongoCollection<WebService> WebServices => Fixture.Database.GetCollection<WebService>("WebServices");
-    private IMongoCollection<Secret> Secrets => Fixture.Database.GetCollection<Secret>("Secrets");
-
-    private IMongoCollection<ManagedDeclaration> Inventory =>
-        Fixture.Database.GetCollection<ManagedDeclaration>("ManagedDeclarations");
-
-    private static string Id() => ObjectId.GenerateNewId().ToString();
-
-    public override async Task InitializeAsync()
-    {
-        await base.InitializeAsync();
-        using (Timings.Measure("gitops.migration.SecretIndexesMigration"))
-            await new SecretIndexesMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceSchemaValidationMigration"))
-            await new WebServiceSchemaValidationMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceDependencyReferencesSchemaMigration"))
-            await new WebServiceDependencyReferencesSchemaMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.PreparedWebServiceSchemaMigration"))
-            await new PreparedWebServiceSchemaMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceReleaseHistoryMigration"))
-            await new WebServiceReleaseHistoryMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.GitOpsIndexesMigration"))
-            await new GitOpsIndexesMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.Pole.Features.WebServices.Migrations.TechnicalIdentityMigration"))
-            await new Pole.Features.WebServices.Migrations.TechnicalIdentityMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration"))
-            await new Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.ComputeProfileSchemaValidationMigration"))
-            await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.ComputeProfileHistoryMigration"))
-            await new ComputeProfileHistoryMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceDeclaredPlacementSchemaMigration"))
-            await new WebServiceDeclaredPlacementSchemaMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.seed.catalog"))
-            await NamedCatalogTestData.SeedAsync(Fixture);
-    }
-
-    internal static ManifestFile[] Snapshot(string tag = "1", string[]? keys = null, long profileRevision = 1)
-    {
-        static string Document(string kind, string name, object spec) => JsonSerializer.Serialize(
-            new { apiVersion = "pole.io/v1alpha1", kind, metadata = new { name }, spec },
-            DeclarationJson.Options);
-
-        // Deliberately unordered multi-document input, including the binding/service preparation cycle.
-        return
-        [
-            new("demo.yaml",
-                string.Join("\n---\n",
-                    new[]
-                    {
-                        Document("SecretBinding",
-                            "demo-api-credentials-access",
-                            new
-                            {
-                                secret = "demo-api-credentials",
-                                consumer = new { kind = "WebService", name = "demo-api" }
-                            }),
-                        Document("WebService",
-                            "demo-api",
-                            new
-                            {
-                                resourceGroup = "demo", image = new { server = "docker.io", name = "nginx", tag },
-                                placement = new
-                                {
-                                    deploymentTarget = NamedCatalogTestData.TargetName,
-                                    computeProfile = new
-                                        { name = NamedCatalogTestData.ProfileName, revision = profileRevision }
-                                },
-                                ports = new[]
-                                    { new { servicePort = 80, targetPort = "8080", protocol = "TCP", name = "http" } },
-                                probes = new
-                                {
-                                    startup = TestData.ValidProbe(), readiness = TestData.ValidProbe(),
-                                    liveness = TestData.ValidProbe()
-                                },
-                                secretEnvironment = new Dictionary<string, object>
-                                {
-                                    ["API_TOKEN"] = new
-                                        { secret = "demo-api-credentials", key = keys?.Last() ?? "API_TOKEN" }
-                                }
-                            }),
-                        Document("Secret",
-                            "demo-api-credentials",
-                            new { resourceGroup = "demo", keys = keys ?? ["API_TOKEN"] }),
-                        Document("ResourceGroup", "demo", new { description = "Git acceptance" })
-                    }))
-        ];
-    }
-
-    private Task<RepositoryPipelineResult> Apply(
-        ManifestFile[]? files = null,
-        string? sourceId = null,
-        string commit = "snapshot") =>
-        Pipeline.SubmitAsync(new(TestData.TenantId, sourceId ?? source), files ?? Snapshot(), commit);
-
-    private async Task AssertNoAcceptedSnapshotAsync()
-    {
-        var runs = await Fixture.Database.GetCollection<GitReconciliationRun>("GitReconciliationRuns")
-            .Find(item => item.Stamp.Source.SourceId == source).ToListAsync();
-        Assert.NotEmpty(runs);
-        Assert.All(runs, run => Assert.IsNotType<GitInputAccepted>(run.Input));
-    }
-
-    private async Task Supply(string value = "")
-    {
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
-        var result = await Services.GetRequiredService<PersistRotatedSecret>()(secret.TenantId,
-            secret.Id,
-            secret.CurrentVersion,
-            secret.KeyNames.ToDictionary(key => key, _ => value),
-            default);
-        Assert.IsType<Secret>(result.Value);
-    }
-
-    private Task<long> Releases() => Fixture.Database.GetCollection<WebServiceRelease>("WebServiceReleases")
-        .CountDocumentsAsync(Builders<WebServiceRelease>.Filter.Empty);
-
-    private Task<WebService> Service() => WebServices.Find(Builders<WebService>.Filter.Empty).SingleAsync();
-
     [Theory]
     [InlineData("current", true)]
     [InlineData("stale-generation", false)]
@@ -232,10 +79,10 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
         await Apply(Snapshot(keys: ["API_TOKEN", "NEXT_TOKEN"]));
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var binding = Assert.Single(secret.Bindings);
         Assert.Equal(["API_TOKEN"], binding.Pins.Retained.ToArray());
-        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty)
+        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId))
             .SingleAsync();
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id,
             deployment with
@@ -256,12 +103,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             proofs = [proofs[0], proofs[0]];
         if (scenario is "second-placement-unconfirmed" or "both-placements-confirmed")
         {
-            var second = deployment with
-            {
-                Id = Id(),
-                RuntimeCellId = Id(),
-                ResolvedPlacement = deployment.ResolvedPlacement with { DeploymentTargetId = Id() }
-            };
+            var second = GitOpsPlacementTestData.AdditionalPlacement(deployment);
             await DbContext.ResourceDeployments.InsertOneAsync(second);
             if (scenario == "both-placements-confirmed")
                 proofs = [.. proofs, new(second.Id, second.Revision, second.DesiredGeneration)];
@@ -307,7 +149,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var initial = await Apply(files: Snapshot(keys: ["NEXT_TOKEN", "API_TOKEN"]));
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
-        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty)
+        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId))
             .SingleAsync();
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id,
             deployment with
@@ -317,7 +159,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             });
         var moved = await Apply(Snapshot(keys: ["API_TOKEN", "NEXT_TOKEN"]), commit: "move-reference");
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, moved.Status);
-        deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty).SingleAsync();
+        deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         if (state == "failed")
             deployment = deployment with
             {
@@ -344,7 +186,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             {
                 Reason: SecretDeclarationError.SecretKeysInUse
             });
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         Assert.Contains("API_TOKEN", secret.KeyNames);
     }
 
@@ -366,7 +208,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(0, await Releases());
         Assert.Equal(0,
             await Fixture.Database.GetCollection<SecretVersion>("SecretVersions")
-                .CountDocumentsAsync(Builders<SecretVersion>.Filter.Empty));
+                .CountDocumentsAsync(Builders<SecretVersion>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await Services.GetRequiredService<WakeResourceDeploymentsForRuntimeCell>()(service.TenantId,
             placement.RuntimeCellId,
             10,
@@ -382,11 +224,11 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(service.Id, active.Id);
         Assert.IsType<ActiveWebServiceLifecycle>(active.Lifecycle);
         Assert.Equal(1, await Releases());
-        var version = (await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync()).CurrentVersion;
+        var version = (await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync()).CurrentVersion;
         Assert.Equal(1, version);
         var before = await DbContext.ResourceDeployments.Find(item => item.ResourceId == active.Id).SingleAsync();
         var outbox = await DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                 item => item.EventType,
                 "pole.gitops/v1/source-work-requested"));
         var replay = await Apply();
@@ -397,7 +239,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             (await DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync()).DesiredGeneration);
         Assert.Equal(outbox,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                     item => item.EventType,
                     "pole.gitops/v1/source-work-requested")));
     }
@@ -425,7 +267,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal("2", (await Service()).Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(updated.ActiveRevision, (await Service()).ActiveRevision);
         var state = await Services.GetRequiredService<GitRepositorySources>()
-            .StateAsync(TestData.TenantId, source, default);
+            .StateAsync(Data.TenantId, source, default);
         Assert.Equal(blocked.Context!.Authority.Commit, state.Commits.Observed);
         Assert.Equal(blocked.Context.Authority.Commit, state.Commits.Attempted);
         Assert.Equal(imageUpdate.Context!.Authority.Commit, state.Commits.FullyApplied);
@@ -457,11 +299,11 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
             (await Pipeline.ResumeAsync(initial.Context!)).Status);
         var before = await Service();
-        var beforeSecret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var beforeSecret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var previousBinding = Assert.Single(beforeSecret.Bindings);
         Assert.Equal(["API_TOKEN"], previousBinding.Pins.Required.ToArray());
         var bindingEvents = await DbContext.OutboxMessages.CountDocumentsAsync(item =>
-            item.EventType == "pole.secrets/v1/secret-changed" && item.PayloadJson.Contains("binding-added"));
+            item.TenantId == Data.TenantId && item.EventType == "pole.secrets/v1/secret-changed" && item.PayloadJson.Contains("binding-added"));
         Assert.True(bindingEvents > 0);
 
         var blocked = await Apply(SnapshotWithAliases(nextAlias, missingReplacementValue), commit: "alias-change");
@@ -472,7 +314,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 Reason: SecretBindingDeclarationError.SecretKeysInUse
             });
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Pipeline.ResumeAsync(blocked.Context!)).Status);
-        var retained = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var retained = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var binding = Assert.Single(retained.Bindings);
         Assert.Equal(previousBinding.KeyMappings.OrderBy(pair => pair.Key).ToArray(),
             binding.KeyMappings.OrderBy(pair => pair.Key).ToArray());
@@ -487,7 +329,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(1, await Releases());
         Assert.Equal(bindingEvents,
             await DbContext.OutboxMessages.CountDocumentsAsync(item =>
-                item.EventType == "pole.secrets/v1/secret-changed" && item.PayloadJson.Contains("binding-added")));
+                item.TenantId == Data.TenantId && item.EventType == "pole.secrets/v1/secret-changed" && item.PayloadJson.Contains("binding-added")));
     }
 
     [Fact]
@@ -511,7 +353,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 }))
         }).ToArray();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
-        Assert.Empty(Assert.Single((await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync()).Bindings).Pins
+        Assert.Empty(Assert.Single((await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync()).Bindings).Pins
             .Required);
         files = files.Select(file => file with
         {
@@ -519,8 +361,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         }).ToArray();
         var premature = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.Blocked, premature.Status);
-        var retainedSecret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
-        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty)
+        var retainedSecret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
+        var deployment = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId))
             .SingleAsync();
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id,
             deployment with
@@ -538,31 +380,9 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
             (await Pipeline.ResumeAsync(premature.Context!)).Status);
         Assert.Equal("NEW",
-            Assert.Single((await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync()).Bindings)
+            Assert.Single((await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync()).Bindings)
                 .KeyMappings["API_TOKEN"]);
     }
-
-    private static ManifestFile[] SnapshotWithAliases(string alias,
-        bool missingReplacementValue = false,
-        bool explicitIdentity = false) =>
-        Snapshot(keys: missingReplacementValue ? ["API_TOKEN", "SECOND_TOKEN"] : null).Select(file => file with
-        {
-            Content = string.Join("\n---\n",
-                file.Content.Split("\n---\n").Select(document =>
-                {
-                    var node = JsonNode.Parse(document)!;
-                    if (node["kind"]!.GetValue<string>() == "SecretBinding" &&
-                        (alias != "API_TOKEN" || explicitIdentity))
-                    {
-                        var mappings = new JsonObject { ["API_TOKEN"] = alias };
-                        if (missingReplacementValue)
-                            mappings["SECOND_TOKEN"] = "SECOND_TOKEN";
-                        node["spec"]!["keyMappings"] = mappings;
-                    }
-
-                    return node.ToJsonString();
-                }))
-        }).ToArray();
 
     [Theory]
     [InlineData("malformed")]
@@ -589,8 +409,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
         Assert.Equal(0,
             await DbContext.ResourceGroups.CountDocumentsAsync(
-                Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Empty));
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+                Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await AssertNoAcceptedSnapshotAsync();
     }
 
@@ -609,7 +429,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var receipts = await Fixture.Database.GetCollection<GitOperationReceipt>("GitOperationReceipts")
             .Find(item => item.SourceId == otherSource).ToListAsync();
         Assert.Contains(receipts, item => item.Blocker == "OwnershipConflict");
-        Assert.All(await Inventory.Find(item => item.Kind == "WebService").ToListAsync(),
+        Assert.All(await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "WebService").ToListAsync(),
             item => Assert.Equal(source, item.SourceId));
         Assert.Equal("2", (await Service()).Spec.Image.ResolvedImage!.Tag);
     }
@@ -627,14 +447,14 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 item => item.Failure is GitDeclarationOwnershipConflict));
         using var restarted = TestServiceProviderFactory.Create(Fixture, ConfigureServices);
         using var scope = restarted.CreateScope();
-        var resumed = await new RepositoryPipelineDriver(scope.ServiceProvider, Fixture, repository)
-            .RecoverAsync(new(TestData.TenantId, source));
+        var resumed = await new RepositoryPipelineDriver(scope.ServiceProvider, Fixture, Data, repository)
+            .RecoverAsync(new(Data.TenantId, source));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, resumed.Status);
-        Assert.Equal(1, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
+        Assert.Equal(1, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(1, await Releases());
         Assert.Equal(10,
             await Fixture.Database.GetCollection<GitOperationReceipt>("GitOperationReceipts")
-                .CountDocumentsAsync(Builders<GitOperationReceipt>.Filter.Empty));
+                .CountDocumentsAsync(Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -645,7 +465,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         await Pipeline.ResumeAsync(initial.Context!);
         var current = await Service();
         var outbox = await DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                 item => item.EventType,
                 "pole.gitops/v1/source-work-requested"));
         var result = await Mediator.Send(new UpdateWebServiceRequest(current.Id,
@@ -667,10 +487,10 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(1, await Releases());
         Assert.Equal(outbox,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                     item => item.EventType,
                     "pole.gitops/v1/source-work-requested")));
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         Assert.IsType<SecretGitOwned>(
             (await Services.GetRequiredService<DeleteStoredSecret>()(current.TenantId, secret.Id, default)).Value);
         Assert.IsType<SecretGitOwned>(
@@ -678,48 +498,6 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 secret.Id,
                 secret.Bindings.Single().Id,
                 default)).Value);
-    }
-
-    [Fact]
-    public async Task Pinned_profile_replay_preserves_snapshot_and_explicit_revision_adopts_history()
-    {
-        var initial = await Apply();
-        await Supply();
-        await Pipeline.ResumeAsync(initial.Context!);
-        var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
-        var current = await profiles.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
-        var replacement = current with
-        {
-            Revision = current.Revision + 1,
-            Resources = ComputeProfileResourceRequirements.Create(
-                ComputeProfileResourceQuantity.Create(500, 512),
-                ComputeProfileResourceQuantity.Create(1000, 1024))
-        };
-        Assert.IsType<ComputeProfile>(
-            (await Services.GetRequiredService<PersistUpdatedComputeProfile>()(current, replacement)).Value);
-        var replay = await Apply();
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, replay.Status);
-        Assert.Equal(1, await Releases());
-        var placement = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty)
-            .SingleAsync();
-        Assert.Equal(1, placement.ResolvedPlacement.Compute.ComputeProfileRevision);
-        Assert.Equal(250, placement.ResolvedPlacement.Compute.Requests.CpuMillis);
-        var changed = await Apply(Snapshot(profileRevision: 2));
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, changed.Status);
-        Assert.Equal(500,
-            (await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty).SingleAsync())
-            .ResolvedPlacement.Compute.Requests.CpuMillis);
-        var historical = await Apply(Snapshot(profileRevision: 1));
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, historical.Status);
-        Assert.Equal(250,
-            (await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty).SingleAsync())
-            .ResolvedPlacement.Compute.Requests.CpuMillis);
-        var missing = await Apply(Snapshot(profileRevision: 99));
-        Assert.Contains(missing.Operations,
-            item => item.Failure is WebServiceDeclarationRejected
-            {
-                Reason: WebServiceDeclarationError.ComputeProfileRevisionUnavailable
-            });
     }
 
     [Fact]
@@ -734,72 +512,9 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         }).ToArray();
         var result = await Apply(files: files);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await AssertNoAcceptedSnapshotAsync();
-        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
-    }
-
-    [Fact]
-    public async Task Missing_profile_name_resumes_after_named_creation_without_a_new_commit()
-    {
-        var files = Snapshot().Select(file => file with
-        {
-            Content = file.Content
-                .Replace("\"name\":\"small\"", "\"name\":\"later\"")
-        }).ToArray();
-        var blocked = await Apply(files: files);
-        Assert.Contains(blocked.Operations,
-            item => item.Failure is WebServiceDeclarationRejected
-            {
-                Reason: WebServiceDeclarationError.PinnedComputeProfileUnavailable
-            });
-        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
-        var profile = TestData.SeedComputeProfile(Id(), isDefault: false, technicalName: "later");
-        Assert.IsType<ComputeProfile>(
-            (await Services.GetRequiredService<PersistCreatedComputeProfile>()(profile)).Value);
-        var prepared = await Pipeline.ResumeAsync(blocked.Context!);
-        Assert.Contains(prepared.Operations,
-            item => item.Failure is WebServiceSecretReferenceRejected
-            {
-                Error.Reason: ConsumerSecretReferenceError.SecretValuesMissing
-            });
-        Assert.Equal(profile.Id, (await Service()).DeclaredPlacement!.ComputeProfileId);
-        await Supply();
-        var applied = await Pipeline.ResumeAsync(prepared.Context!);
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, applied.Status);
-        Assert.NotEqual(blocked.Context!.RunId, applied.Context!.RunId);
-        Assert.Equal(blocked.Context.Authority.Commit, applied.Context.Authority.Commit);
-        Assert.Equal(1, await Releases());
-    }
-
-    [Fact]
-    public async Task Recreated_profile_name_never_retargets_an_existing_declaration_binding()
-    {
-        var initial = await Apply();
-        await Supply();
-        await Pipeline.ResumeAsync(initial.Context!);
-        var before = await Service();
-        var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
-        await profiles.DeleteOneAsync(
-            Builders<ComputeProfile>.Filter.Eq(item => item.Id, TestData.DefaultComputeProfileId));
-        var recreated = TestData.SeedComputeProfile(Id(), isDefault: false) with
-        {
-            TechnicalName = NamedCatalogTestData.ProfileName,
-            Revision = 99
-        };
-        await profiles.InsertOneAsync(recreated);
-        var result = await Apply(Snapshot(tag: "2", profileRevision: 99));
-        Assert.Contains(result.Operations,
-            item => item.Failure is WebServiceDeclarationRejected
-            {
-                Reason: WebServiceDeclarationError.PinnedComputeProfileUnavailable
-            });
-        var retained = await Service();
-        Assert.Equal(before.Id, retained.Id);
-        Assert.Equal(before.Revision, retained.Revision);
-        Assert.Equal(TestData.DefaultComputeProfileId, retained.DeclaredPlacement!.ComputeProfileId);
-        Assert.NotEqual(recreated.Id, retained.DeclaredPlacement.ComputeProfileId);
-        Assert.Equal(1, await Releases());
+        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -811,7 +526,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var current = await Service();
         var before = await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).SingleAsync();
         var outboxCount = await DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                 item => item.EventType,
                 "pole.gitops/v1/source-work-requested"));
         var build = await Services.GetRequiredService<DeploySourceBuildWebService>()(new(current.TenantId,
@@ -820,8 +535,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             Id(),
             new string('a', 40),
             new(Id(), 1, 1, "unclaimed", 1),
-            TestData.UserId,
-            TestData.UserEmail,
+            Data.UserId,
+            Data.UserEmail,
             new("docker.io", "nginx", "build", "sha256:" + new string('d', 64), "synthetic-pull")));
         var buildError = Assert.IsType<SourceBuildWebServiceDeploymentError>(build.Value);
         Assert.Equal(SourceBuildWebServiceUpdateConflictReason.SupersededBuild,
@@ -829,8 +544,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var issued = WebServiceDeploymentTokenFactory.Issue(current.TenantId,
             current.Id,
             "synthetic-test",
-            TestData.UserId,
-            TestData.UserEmail,
+            Data.UserId,
+            Data.UserEmail,
             WebServiceDeploymentTokenFactory.DefaultOptions);
         await Services.GetRequiredService<PersistIssuedWebServiceDeploymentToken>()(issued.Token);
         var handler =
@@ -850,7 +565,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             (await DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync()).DesiredGeneration);
         Assert.Equal(outboxCount,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                     item => item.EventType,
                     "pole.gitops/v1/source-work-requested")));
     }
@@ -866,37 +581,37 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
                 throw new InjectedOutboxFailure();
             }));
         var registry = new DeclarativeProviderRegistry([failingProvider]);
-        var failing = new RepositoryPipelineDriver(Services, Fixture, repository, registry);
-        await Assert.ThrowsAsync<InjectedOutboxFailure>(() => failing.SubmitAsync(new(TestData.TenantId, source),
+        var failing = new RepositoryPipelineDriver(Services, Fixture, Data, repository, registry);
+        await Assert.ThrowsAsync<InjectedOutboxFailure>(() => failing.SubmitAsync(new(Data.TenantId, source),
         [
             new("group.yaml", "apiVersion: pole.io/v1alpha1\nkind: ResourceGroup\nmetadata: {name: demo}\nspec: {}")
         ]));
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0,
             await DbContext.ResourceGroups.CountDocumentsAsync(
-                Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Empty));
+                Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0,
             await DbContext.OutboxMessages.CountDocumentsAsync(
-                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
+                Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId) & Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Ne(
                     item => item.EventType,
                     "pole.gitops/v1/source-work-requested")));
         Assert.Equal(0,
             await Fixture.Database.GetCollection<GitOperationReceipt>("GitOperationReceipts")
-                .CountDocumentsAsync(Builders<GitOperationReceipt>.Filter.Empty));
+                .CountDocumentsAsync(Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         var run = await Pipeline.LatestAsync(source);
         var allocated = Assert.IsType<GitInputAccepted>(run.Input).Snapshot.Resources.Single().ResourceId;
         await Pipeline.MakeRecoveryDueAsync(source);
-        var recovered = await Pipeline.RecoverAsync(new(TestData.TenantId, source));
+        var recovered = await Pipeline.RecoverAsync(new(Data.TenantId, source));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, recovered.Status);
         Assert.Equal(allocated,
             (await DbContext.ResourceGroups
-                .Find(Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Empty).SingleAsync()).Id);
+                .Find(Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync()).Id);
     }
 
     [Fact]
     public async Task Same_name_manual_resource_is_not_adopted_and_remains_manually_usable()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("demo"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("demo"));
         var result = await Apply();
         Assert.Contains(result.Operations,
             item => item.Failure is DeclarationAdoptionRequired);
@@ -933,7 +648,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var invalidGrant = await Apply(files: [deniedKeys]);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, invalidGrant.Status);
         Assert.Contains(invalidGrant.Snapshot.Diagnostics, diagnostic => diagnostic.Code == "ContradictoryAccessKeys");
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Theory]
@@ -946,7 +661,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
         var cell = await DbContext.RuntimeCells
-            .Find(Builders<Pole.Features.ResourceGroups.Domain.RuntimeCell>.Filter.Empty).SingleAsync();
+            .Find(Builders<Pole.Features.ResourceGroups.Domain.RuntimeCell>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await DbContext.RuntimeCells.ReplaceOneAsync(item => item.Id == cell.Id,
             cell.MarkReady(cell.DesiredGeneration, DateTime.UtcNow));
         var declarations = Snapshot()[0].Content.Split("\n---\n")
@@ -975,7 +690,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var applied = await Apply(files: [new("second.yaml", string.Join("\n---\n", second))], sourceId: secondSource);
         Assert.Equal(missingValues ? RepositoryPipelineStatus.Blocked : RepositoryPipelineStatus.ConfigurationApplied,
             applied.Status);
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var status = await Services.GetRequiredService<IGitOpsMutations>().StatusAsync(
             new LoadGitResourceStatusRequest(
                 TenantId: secret.TenantId,
@@ -984,8 +699,8 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             ct: default);
         Assert.Equal(source, status!.SourceId);
         Assert.Equal(2, secret.Bindings.Length);
-        var secondService = await WebServices.Find(item => item.Name == "second-api").SingleAsync();
-        Assert.NotEqual((await WebServices.Find(item => item.Name == "demo-api").SingleAsync()).Id, secondService.Id);
+        var secondService = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "second-api").SingleAsync();
+        Assert.NotEqual((await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "demo-api").SingleAsync()).Id, secondService.Id);
         Assert.Equal(missingValues ? 1 : 2, await Releases());
         if (missingValues)
         {
@@ -1003,10 +718,10 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var initial = await Apply();
         var removed = await Apply([]);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, removed.Status);
-        var retained = await Inventory.Find(Builders<ManagedDeclaration>.Filter.Empty).ToListAsync();
+        var retained = await Inventory.Find(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)).ToListAsync();
         Assert.Equal(4, retained.Count);
         Assert.All(retained, item => Assert.True(item.PendingRemoval));
-        Assert.Single(await WebServices.Find(Builders<WebService>.Filter.Empty).ToListAsync());
+        Assert.Single(await WebServices.Find(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)).ToListAsync());
         Assert.Equal(RepositoryPipelineStatus.StaleExecution, (await Pipeline.ResumeAsync(initial.Context!)).Status);
     }
 
@@ -1072,7 +787,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
     {
         var initial = await Apply();
         var paused = new PauseAfterBlockedConfigure(Services.GetRequiredService<IGitOpsMutations>());
-        var pipeline = new RepositoryPipelineDriver(Services, Fixture, repository, customMutations: paused);
+        var pipeline = new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: paused);
         var oldAttempt = pipeline.ResumeAsync(initial.Context!);
         await paused.Reached.Task.WaitAsync(TimeSpan.FromSeconds(15));
         try
@@ -1080,7 +795,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
             await Supply();
             await Pipeline.MakeRecoveryDueAsync(source);
             Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
-                (await Pipeline.RecoverAsync(new(TestData.TenantId, source))).Status);
+                (await Pipeline.RecoverAsync(new(Data.TenantId, source))).Status);
         }
         finally
         {
@@ -1090,7 +805,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Equal(RepositoryPipelineStatus.StaleExecution, (await oldAttempt).Status);
         var run = await Pipeline.LatestAsync(source);
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);
-        var owner = await Inventory.Find(item => item.Kind == "WebService").SingleAsync();
+        var owner = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "WebService").SingleAsync();
         Assert.Null(owner.Blocker);
         Assert.Equal(owner.DesiredHash, owner.AppliedHash);
         Assert.Equal(1, await Releases());
@@ -1103,7 +818,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         await Supply();
         var applied = await Pipeline.ResumeAsync(initial.Context!);
         var release = await Fixture.Database.GetCollection<WebServiceRelease>("WebServiceReleases")
-            .Find(Builders<WebServiceRelease>.Filter.Empty).SingleAsync();
+            .Find(Builders<WebServiceRelease>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         Assert.Null(release.ActorUserId);
         Assert.Null(release.ActorEmail);
         var provenance = Assert.IsType<GitOpsReleaseProvenance>(release.Provenance);
@@ -1133,7 +848,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         var result = await Apply(files:
             [new("invalid.yaml", string.Join("\n---\n", documents.Select(item => item.ToJsonString())))]);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await AssertNoAcceptedSnapshotAsync();
     }
 
@@ -1142,7 +857,7 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
     {
         var initial = await Apply();
         var service = await Service();
-        Assert.Equal(TestData.TenantId, initial.Context!.TenantId);
+        Assert.Equal(Data.TenantId, initial.Context!.TenantId);
         await Supply();
         var resumed = await Pipeline.ResumeAsync(initial.Context);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, resumed.Status);
@@ -1176,26 +891,114 @@ public sealed partial class DeclarativePipelineTests(MongoReplicaSetFixture fixt
         Assert.Contains(stored.Diagnostics, item => item.Code == "StoredSnapshotInvalid");
         Assert.Equal(before, (await Service()).Revision);
     }
+}
 
-    private sealed class PauseAfterBlockedConfigure(IGitOpsMutations inner) : DelegatingGitOpsMutations(inner)
+
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class DeclarativePipelineCoreGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+{
+    [Fact]
+    public async Task Pinned_profile_replay_preserves_snapshot_and_explicit_revision_adopts_history()
     {
-        public TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public override async Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct)
+        var initial = await Apply();
+        await Supply();
+        await Pipeline.ResumeAsync(initial.Context!);
+        var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
+        var current = await profiles.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
+        var replacement = current with
         {
-            var result = await base.ExecuteAsync(operation, mutation, ct);
-            if (operation.Phase == DeclarationPhase.Configure && result.Failure is WebServiceSecretReferenceRejected
-                { Error.Reason: ConsumerSecretReferenceError.SecretValuesMissing })
+            Revision = current.Revision + 1,
+            Resources = ComputeProfileResourceRequirements.Create(
+                ComputeProfileResourceQuantity.Create(500, 512),
+                ComputeProfileResourceQuantity.Create(1000, 1024))
+        };
+        Assert.IsType<ComputeProfile>(
+            (await Services.GetRequiredService<PersistUpdatedComputeProfile>()(current, replacement)).Value);
+        var replay = await Apply();
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, replay.Status);
+        Assert.Equal(1, await Releases());
+        var placement = await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty)
+            .SingleAsync();
+        Assert.Equal(1, placement.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(250, placement.ResolvedPlacement.Compute.Requests.CpuMillis);
+        var changed = await Apply(Snapshot(profileRevision: 2));
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, changed.Status);
+        Assert.Equal(500,
+            (await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty).SingleAsync())
+            .ResolvedPlacement.Compute.Requests.CpuMillis);
+        var historical = await Apply(Snapshot(profileRevision: 1));
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, historical.Status);
+        Assert.Equal(250,
+            (await DbContext.ResourceDeployments.Find(Builders<ResourceDeployment>.Filter.Empty).SingleAsync())
+            .ResolvedPlacement.Compute.Requests.CpuMillis);
+        var missing = await Apply(Snapshot(profileRevision: 99));
+        Assert.Contains(missing.Operations,
+            item => item.Failure is WebServiceDeclarationRejected
             {
-                Reached.TrySetResult();
-                await Release.Task.WaitAsync(ct);
-            }
-
-            return result;
-        }
+                Reason: WebServiceDeclarationError.ComputeProfileRevisionUnavailable
+            });
     }
 
-    private sealed class InjectedOutboxFailure : Exception;
+    [Fact]
+    public async Task Missing_profile_name_resumes_after_named_creation_without_a_new_commit()
+    {
+        var files = Snapshot().Select(file => file with
+        {
+            Content = file.Content
+                .Replace("\"name\":\"small\"", "\"name\":\"later\"")
+        }).ToArray();
+        var blocked = await Apply(files: files);
+        Assert.Contains(blocked.Operations,
+            item => item.Failure is WebServiceDeclarationRejected
+            {
+                Reason: WebServiceDeclarationError.PinnedComputeProfileUnavailable
+            });
+        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Empty));
+        var profile = TestData.SeedComputeProfile(Id(), isDefault: false, technicalName: "later");
+        Assert.IsType<ComputeProfile>(
+            (await Services.GetRequiredService<PersistCreatedComputeProfile>()(profile)).Value);
+        var prepared = await Pipeline.ResumeAsync(blocked.Context!);
+        Assert.Contains(prepared.Operations,
+            item => item.Failure is WebServiceSecretReferenceRejected
+            {
+                Error.Reason: ConsumerSecretReferenceError.SecretValuesMissing
+            });
+        Assert.Equal(profile.Id, (await Service()).DeclaredPlacement!.ComputeProfileId);
+        await Supply();
+        var applied = await Pipeline.ResumeAsync(prepared.Context!);
+        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, applied.Status);
+        Assert.NotEqual(blocked.Context!.RunId, applied.Context!.RunId);
+        Assert.Equal(blocked.Context.Authority.Commit, applied.Context.Authority.Commit);
+        Assert.Equal(1, await Releases());
+    }
+
+    [Fact]
+    public async Task Recreated_profile_name_never_retargets_an_existing_declaration_binding()
+    {
+        var initial = await Apply();
+        await Supply();
+        await Pipeline.ResumeAsync(initial.Context!);
+        var before = await Service();
+        var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
+        await profiles.DeleteOneAsync(
+            Builders<ComputeProfile>.Filter.Eq(item => item.Id, TestData.DefaultComputeProfileId));
+        var recreated = TestData.SeedComputeProfile(Id(), isDefault: false) with
+        {
+            TechnicalName = NamedCatalogTestData.ProfileName,
+            Revision = 99
+        };
+        await profiles.InsertOneAsync(recreated);
+        var result = await Apply(Snapshot(tag: "2", profileRevision: 99));
+        Assert.Contains(result.Operations,
+            item => item.Failure is WebServiceDeclarationRejected
+            {
+                Reason: WebServiceDeclarationError.PinnedComputeProfileUnavailable
+            });
+        var retained = await Service();
+        Assert.Equal(before.Id, retained.Id);
+        Assert.Equal(before.Revision, retained.Revision);
+        Assert.Equal(TestData.DefaultComputeProfileId, retained.DeclaredPlacement!.ComputeProfileId);
+        Assert.NotEqual(recreated.Id, retained.DeclaredPlacement.ComputeProfileId);
+        Assert.Equal(1, await Releases());
+    }
 }

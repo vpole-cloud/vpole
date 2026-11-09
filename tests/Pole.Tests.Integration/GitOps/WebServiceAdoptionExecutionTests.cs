@@ -20,8 +20,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class WebServiceAdoptionExecutionTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private readonly TestRepositorySnapshots repository = new();
     private IMongoCollection<WebService> WebServices => Fixture.Database.GetCollection<WebService>("WebServices");
@@ -37,8 +38,7 @@ public sealed class WebServiceAdoptionExecutionTests(MongoReplicaSetFixture fixt
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await NamedCatalogTestData.SeedAsync(Fixture);
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
+        await Fixture.PrepareNamedCatalogAsync();
     }
 
     [Theory]
@@ -47,8 +47,8 @@ public sealed class WebServiceAdoptionExecutionTests(MongoReplicaSetFixture fixt
     [InlineData("compute-policy")]
     public async Task Manual_web_adoption_validates_the_full_preview_vector_and_preserves_owner_data(string? change)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("demo"));
-        var request = TestData.CreateWebServiceRequest(group.Id, "manual-web");
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("demo"));
+        var request = Data.CreateWebServiceRequest(group.Id, "manual-web");
         var created = (await Mediator.Send(request with
         {
             Body = request.Body with { Exposure = WebServiceExposureMode.Private }
@@ -95,7 +95,7 @@ public sealed class WebServiceAdoptionExecutionTests(MongoReplicaSetFixture fixt
         Assert.Contains(webAction.Expected.Versions, item => item.DocumentId ==
             $"ComputeProfile/{TestData.DefaultComputeProfileId}/Policy");
         var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(
-            new(source.TenantId, source.Id), preview.Id, preview.Revision, TestData.UserId), default)).Value);
+            new(source.TenantId, source.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
         if (change == "web-fence")
             await WebServices.UpdateOneAsync(item => item.Id == id,
                 Builders<WebService>.Update.Inc(item => item.PlanningFence, 1));
@@ -145,9 +145,9 @@ public sealed class WebServiceAdoptionExecutionTests(MongoReplicaSetFixture fixt
         var repositoryId = ObjectId.GenerateNewId().ToString();
         repository.Publish(repositoryId, files);
         return Assert.IsType<RepositorySource>((await Services.GetRequiredService<GitRepositorySources>().CreateAsync(
-            new(TestData.TenantId, Guid.NewGuid().ToString("D"),
+            new(Data.TenantId, Guid.NewGuid().ToString("D"),
                 new(repository.Provider, TestRepositorySnapshots.ConnectionId, repositoryId, "main", ""),
-                new(TimeSpan.FromMinutes(5)), new(TestData.UserId, DateTime.UtcNow),
+                new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow),
                 TestRepositorySnapshots.DisplayUrl), default)).Value);
     }
 

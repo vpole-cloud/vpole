@@ -15,8 +15,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class SourceRepositoryReferenceTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task NamedReadsAreTenantScopedAndFencesDoNotChangeBusinessMetadata()
@@ -74,7 +75,7 @@ public sealed class SourceRepositoryReferenceTests(MongoReplicaSetFixture fixtur
             new(repository.TenantId, repository.Id, repository.Revision), admission, default)).Value);
         var configuration = SourceBuildConfigurationFactory.Create(repository.TenantId, "application-build",
             repository.Id, ObjectId.GenerateNewId().ToString(), SourceBuildRecipe.Create("FROM scratch"),
-            new ManualSourceBuildConfigurationOrigin(TestData.UserId), SourceBuildConfigurationFactory.DefaultOptions);
+            new ManualSourceBuildConfigurationOrigin(Data.UserId), SourceBuildConfigurationFactory.DefaultOptions);
         await DbContext.SourceBuildConfigurations.InsertOneAsync(admission, configuration);
         await admission.CommitTransactionAsync();
         var before = await DbContext.SourceRepositories.Find(item => item.Id == repository.Id).SingleAsync();
@@ -82,7 +83,7 @@ public sealed class SourceRepositoryReferenceTests(MongoReplicaSetFixture fixtur
         Assert.IsType<SourceRepositoryHasBuildConfiguration>(
             (await Delete().InvokeAsync(repository.TenantId, repository.Id)).Value);
         Assert.Equal(before, await DbContext.SourceRepositories.Find(item => item.Id == repository.Id).SingleAsync());
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
+        Assert.Equal(0, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
     }
 
     [Theory]
@@ -102,7 +103,7 @@ public sealed class SourceRepositoryReferenceTests(MongoReplicaSetFixture fixtur
         await session.AbortTransactionAsync();
         var unchanged = await DbContext.SourceRepositories.Find(item => item.Id == repository.Id).SingleAsync();
         Assert.Equal(repository, unchanged);
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
+        Assert.Equal(0, await DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/source-repository-changed"));
     }
 
     [Theory]
@@ -136,7 +137,7 @@ public sealed class SourceRepositoryReferenceTests(MongoReplicaSetFixture fixtur
     {
         await DbContext.GitProviderConnections.InsertOneAsync(GitProviderConnectionFactory.Create(
             repository.TenantId, "production-git", GitProviderKind.GitHub, "installation", "account", "organization",
-            GitProviderAccountType.Organization, GitProviderRepositorySelection.All, TestData.UserId,
+            GitProviderAccountType.Organization, GitProviderRepositorySelection.All, Data.UserId,
             GitProviderConnectionFactory.DefaultOptions with { Id = repository.ConnectionId }));
         await DbContext.SourceRepositories.InsertOneAsync(repository);
         // Compare mutations with the stored BSON baseline, including its millisecond timestamp precision.
@@ -151,7 +152,7 @@ public sealed class SourceRepositoryReferenceTests(MongoReplicaSetFixture fixtur
         Services.GetRequiredService<EnsureNoSourceRepositoryBuildConfiguration>(),
         Services.GetRequiredService<IGitOpsMutations>());
 
-    private static SourceRepository Repository() => SourceRepositoryFactory.Create(
-        TestData.TenantId, "application", ObjectId.GenerateNewId().ToString(), "42", "organization/application",
+    private SourceRepository Repository() => SourceRepositoryFactory.Create(
+        Data.TenantId, "application", ObjectId.GenerateNewId().ToString(), "42", "organization/application",
         "https://github.test/organization/application", true, "main", SourceRepositoryFactory.DefaultOptions);
 }

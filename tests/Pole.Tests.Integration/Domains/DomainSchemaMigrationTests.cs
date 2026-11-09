@@ -9,22 +9,23 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Migrations_create_strict_collections_and_required_indexes()
     {
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
-        await new DomainIndexesMigration().Up(fixture.Database);
+        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(Fixture.Database);
+        await new DomainIndexesMigration().Up(Fixture.Database);
 
-        await new MongoDocumentContractTester<BsonDocument>(fixture.Database, "TenantDomainZones")
+        await new MongoDocumentContractTester<BsonDocument>(Fixture.Database, "TenantDomainZones")
             .AssertStrictErrorValidationAsync();
-        await new MongoDocumentContractTester<BsonDocument>(fixture.Database, "HostnameBindings")
+        await new MongoDocumentContractTester<BsonDocument>(Fixture.Database, "HostnameBindings")
             .AssertStrictErrorValidationAsync();
 
         var now = DateTime.UtcNow;
@@ -48,16 +49,16 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
             DnsName.Create(zone.Domain),
             "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
-        await new MongoDocumentContractTester<TenantDomainZone>(fixture.Database, "TenantDomainZones")
+        await new MongoDocumentContractTester<TenantDomainZone>(Fixture.Database, "TenantDomainZones")
             .AssertRejectsAsync(zone, document => document["Unexpected"] = true);
-        await new MongoDocumentContractTester<HostnameBinding>(fixture.Database, "HostnameBindings")
+        await new MongoDocumentContractTester<HostnameBinding>(Fixture.Database, "HostnameBindings")
             .AssertRejectsAsync(binding, document => document["Unexpected"] = true);
 
-        var zoneIndexes = (await fixture.Database.GetCollection<BsonDocument>("TenantDomainZones")
+        var zoneIndexes = (await Fixture.Database.GetCollection<BsonDocument>("TenantDomainZones")
                 .Indexes.List().ToListAsync())
             .Select(index => index["name"].AsString)
             .ToHashSet(StringComparer.Ordinal);
-        var bindingIndexes = (await fixture.Database.GetCollection<BsonDocument>("HostnameBindings")
+        var bindingIndexes = (await Fixture.Database.GetCollection<BsonDocument>("HostnameBindings")
                 .Indexes.List().ToListAsync())
             .Select(index => index["name"].AsString)
             .ToHashSet(StringComparer.Ordinal);
@@ -72,9 +73,9 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
     [Fact]
     public async Task Indexes_freeze_scalar_identity_discriminators_and_compound_key_order()
     {
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
-        await new DomainIndexesMigration().Up(fixture.Database);
+        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(Fixture.Database);
+        await new DomainIndexesMigration().Up(Fixture.Database);
 
         foreach (var (collection, generatedIndex, parentField) in new[]
                  {
@@ -82,7 +83,7 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
                      ("HostnameBindings", "UX_HostnameBindings_Tenant_Deployment_Generated", "ResourceDeploymentId")
                  })
         {
-            var indexes = await fixture.Database.GetCollection<BsonDocument>(collection).Indexes.List().ToListAsync();
+            var indexes = await Fixture.Database.GetCollection<BsonDocument>(collection).Indexes.List().ToListAsync();
             var generated = Assert.Single(indexes, index => index["name"] == generatedIndex);
             Assert.Equal(new BsonDocument { ["TenantId"] = 1, [parentField] = 1, ["Identity._t"] = 1 },
                 generated["key"]);
@@ -98,15 +99,15 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture) :
     [Fact]
     public async Task Schema_migrations_upgrade_existing_collections_with_collmod()
     {
-        await fixture.Database.CreateCollectionAsync("TenantDomainZones");
-        await fixture.Database.CreateCollectionAsync("HostnameBindings");
+        await Fixture.Database.CreateCollectionAsync("TenantDomainZones");
+        await Fixture.Database.CreateCollectionAsync("HostnameBindings");
 
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
+        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(Fixture.Database);
 
-        await new MongoDocumentContractTester<BsonDocument>(fixture.Database, "TenantDomainZones")
+        await new MongoDocumentContractTester<BsonDocument>(Fixture.Database, "TenantDomainZones")
             .AssertStrictErrorValidationAsync();
-        await new MongoDocumentContractTester<BsonDocument>(fixture.Database, "HostnameBindings")
+        await new MongoDocumentContractTester<BsonDocument>(Fixture.Database, "HostnameBindings")
             .AssertStrictErrorValidationAsync();
     }
 }

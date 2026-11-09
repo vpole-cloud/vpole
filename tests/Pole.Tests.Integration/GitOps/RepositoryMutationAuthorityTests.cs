@@ -11,7 +11,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class RepositoryMutationAuthorityTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task EveryMutationAuthorityComponentAndAcceptedOperationIsCheckedInsideItsTransaction()
@@ -28,15 +29,15 @@ public sealed partial class DeclarativePipelineTests
         ]);
         var original = await Pipeline.LatestAsync(source);
         var snapshot = Assert.IsType<GitInputAccepted>(original.Input).Snapshot;
-        await SourceStore.RequestSyncAsync(new(TestData.TenantId,
+        await SourceStore.RequestSyncAsync(new(Data.TenantId,
                 source,
                 1,
                 Guid.NewGuid().ToString(),
-                new(GitRunTrigger.Manual, TestData.UserId)),
+                new(GitRunTrigger.Manual, Data.UserId)),
             default);
         var store = Services.GetRequiredService<GitRunStore>();
         var claim = Assert.IsType<GitWorkClaim>((await store.ClaimAsync(
-            new(TestData.TenantId, source),
+            new(Data.TenantId, source),
             "worker",
             default)).Value);
         Assert.True(await store.PinAsync(claim.Handle, snapshot.Commit, default));
@@ -47,7 +48,7 @@ public sealed partial class DeclarativePipelineTests
             claim.Handle.Identity.WorkerId,
             claim.Handle.Identity.Attempt,
             snapshot.Commit);
-        var context = new GitMutationContext(TestData.TenantId,
+        var context = new GitMutationContext(Data.TenantId,
             source,
             claim.Run.Id,
             stamp.Fence,

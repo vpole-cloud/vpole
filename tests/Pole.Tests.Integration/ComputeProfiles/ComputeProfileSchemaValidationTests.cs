@@ -8,20 +8,20 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ComputeProfiles;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
     private const string CollectionName = "ComputeProfiles";
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Migration_creates_strict_collection_that_accepts_current_domain_shape()
     {
-        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
+        await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
         var target = ComputeProfileTestData.CreateTarget();
         var contract = CreateContract();
 
@@ -41,8 +41,8 @@ public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture f
     [Fact]
     public async Task Migration_updates_existing_collection_and_rejects_missing_access_state()
     {
-        await fixture.Database.CreateCollectionAsync(CollectionName);
-        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
+        await Fixture.Database.CreateCollectionAsync(CollectionName);
+        await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
         var profile = ComputeProfileTestData.CreateProfile(
             ComputeProfileTestData.CreateTarget().Id);
         var contract = CreateContract();
@@ -56,7 +56,7 @@ public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture f
     [Fact]
     public async Task Validator_rejects_invalid_selected_tenant_access_shape()
     {
-        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
+        await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
         var profile = ComputeProfileTestData.CreateProfile(
             ComputeProfileTestData.CreateTarget().Id,
             tenantAccess: SelectedTenantsComputeProfileAccess.Create(
@@ -72,11 +72,11 @@ public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture f
     [Fact]
     public async Task Index_migrations_create_default_availability_and_reference_indexes()
     {
-        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
-        await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
+        await new ComputeProfileSchemaValidationMigration().Up(Fixture.Database);
+        await new ComputeProfileIndexesMigration().Up(Fixture.Database);
+        await new ResourceDeploymentComputeProfileIndexMigration().Up(Fixture.Database);
 
-        var profileIndexNames = (await fixture.Database
+        var profileIndexNames = (await Fixture.Database
                 .GetCollection<BsonDocument>(CollectionName)
                 .Indexes.List()
                 .ToListAsync())
@@ -86,7 +86,7 @@ public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture f
         Assert.Contains("IX_ComputeProfiles_List", profileIndexNames);
         Assert.Contains("IX_ComputeProfiles_Target_Availability", profileIndexNames);
 
-        var deploymentIndexNames = (await fixture.Database
+        var deploymentIndexNames = (await Fixture.Database
                 .GetCollection<BsonDocument>("ResourceDeployments")
                 .Indexes.List()
                 .ToListAsync())
@@ -96,5 +96,5 @@ public sealed class ComputeProfileSchemaValidationTests(MongoReplicaSetFixture f
     }
 
     private MongoDocumentContractTester<ComputeProfile> CreateContract() =>
-        new(fixture.Database, CollectionName);
+        new(Fixture.Database, CollectionName);
 }

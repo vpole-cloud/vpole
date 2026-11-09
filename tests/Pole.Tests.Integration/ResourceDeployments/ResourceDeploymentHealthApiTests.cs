@@ -22,13 +22,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Viewer_operations_preserve_partial_states_and_exact_scope_without_native_messages()
     {
-        var ready = Create(TestData.TenantId);
-        var failed = Create(TestData.TenantId) with
+        var ready = Create(Data.TenantId);
+        var failed = Create(Data.TenantId) with
         {
             ResourceGroupId = ready.ResourceGroupId,
             State = new FailedResourceDeploymentState(1,
@@ -45,13 +46,13 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
             ResourceGroupId = ready.ResourceGroupId
         };
         await Fixture.DbContext.ResourceDeployments.InsertManyAsync([ready, failed, foreign]);
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id,
             tenant with
             {
-                Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId,
-                    TestData.UserId,
-                    TestData.UserEmail,
+                Members = ImmutableList.Create(TenantFactory.CreateMember(Data.TenantId,
+                    Data.UserId,
+                    Data.UserEmail,
                     TenantRole.Viewer))
             });
         var uri =
@@ -96,16 +97,16 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
     [Fact]
     public async Task Viewer_diagnostics_are_tenant_scoped_and_unsupported_is_explicit_without_native_placement()
     {
-        var owned = Create(TestData.TenantId);
+        var owned = Create(Data.TenantId);
         var foreign = Create(ObjectId.GenerateNewId().ToString());
         await Fixture.DbContext.ResourceDeployments.InsertManyAsync([owned, foreign]);
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id,
             tenant with
             {
-                Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId,
-                    TestData.UserId,
-                    TestData.UserEmail,
+                Members = ImmutableList.Create(TenantFactory.CreateMember(Data.TenantId,
+                    Data.UserId,
+                    Data.UserEmail,
                     TenantRole.Viewer))
             });
         var uri = $"/api/v1/resource-deployments/{owned.Id.ToUpperInvariant()}/diagnostics";
@@ -124,7 +125,7 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
     [Fact]
     public async Task Observation_discards_native_evidence_when_persisted_revision_changes_during_read()
     {
-        var deployment = Create(TestData.TenantId);
+        var deployment = Create(Data.TenantId);
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         var fake = new TestObserver(async snapshot =>
         {
@@ -167,7 +168,7 @@ public sealed class ResourceDeploymentHealthApiTests(MongoReplicaSetFixture fixt
     public async Task
         Disabled_shared_reads_pin_retained_version_before_native_read_and_never_forward_label_old_evidence()
     {
-        var deployment = Create(TestData.TenantId);
+        var deployment = Create(Data.TenantId);
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         var store = new ObservationTestStore { Version = 7 };
         var fake = new TestObserver(_ =>

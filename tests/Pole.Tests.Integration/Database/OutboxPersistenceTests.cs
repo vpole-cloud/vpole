@@ -12,19 +12,19 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
     private const int ConcurrentWriterCount = 12;
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        await new OutboxMessageMigration().Up(fixture.Database);
+        await base.InitializeAsync();
+        await new OutboxMessageMigration().Up(Fixture.Database);
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task KeyedWrite_AlreadyPending_IsSuccessfulNoOp()
@@ -35,7 +35,7 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         await EnqueueAsync(runtimeCellId, pendingKey);
         await EnqueueAsync(runtimeCellId, pendingKey);
 
-        var messages = await fixture.DbContext.OutboxMessages
+        var messages = await Fixture.DbContext.OutboxMessages
             .Find(message => message.PendingKey == pendingKey)
             .ToListAsync();
         var message = Assert.Single(messages);
@@ -45,18 +45,18 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task OutcomeTransaction_AbortRollsBackMutationAndOutboxTogether()
     {
-        var documents = fixture.Database.GetCollection<BsonDocument>(
+        var documents = Fixture.Database.GetCollection<BsonDocument>(
             "transaction-outcome-outbox-tests");
         var runtimeCellId = ObjectId.GenerateNewId().ToString();
 
-        var outcome = await fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+        var outcome = await Fixture.DbContext.RunOutcomeInTransactionAsync<string>(
             async (transaction, cancellationToken) =>
             {
                 await documents.InsertOneAsync(
                     transaction.Session,
                     new BsonDocument("name", "must-not-commit"),
                     cancellationToken: cancellationToken);
-                await fixture.StoreOutboxWrites(
+                await Fixture.StoreOutboxWrites(
                     transaction.Session,
                     [CreateWrite(runtimeCellId, pendingKey: null)],
                     cancellationToken);
@@ -71,7 +71,7 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
                 FilterDefinition<BsonDocument>.Empty));
         Assert.Equal(
             0L,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 Builders<OutboxMessage>.Filter.Empty));
     }
 
@@ -85,10 +85,10 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         var writes = Enumerable.Range(0, ConcurrentWriterCount)
-            .Select(_writerIndex => fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
+            .Select(_writerIndex => Fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
                 async (transaction, cancellationToken) =>
                 {
-                    _ = await fixture.DbContext.OutboxMessages
+                    _ = await Fixture.DbContext.OutboxMessages
                         .Find(transaction.Session, Builders<OutboxMessage>.Filter.Empty)
                         .Limit(1)
                         .FirstOrDefaultAsync(cancellationToken);
@@ -99,7 +99,7 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
                     }
 
                     await releaseCallbacks.Task.WaitAsync(cancellationToken);
-                    await fixture.StoreOutboxWrites(
+                    await Fixture.StoreOutboxWrites(
                         transaction.Session,
                         [CreateWrite(runtimeCellId, pendingKey)],
                         cancellationToken);
@@ -112,7 +112,7 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         Assert.All(results, result => Assert.Equal(Unit.Value, result));
         Assert.Equal(
             1L,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 message => message.PendingKey == pendingKey));
     }
 
@@ -123,10 +123,10 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         var pendingKey = RuntimeCellPendingKey.Reconciliation(runtimeCellId, 1);
         await EnqueueAsync(runtimeCellId, pendingKey);
 
-        var pending = await fixture.DbContext.OutboxMessages
+        var pending = await Fixture.DbContext.OutboxMessages
             .Find(message => message.PendingKey == pendingKey)
             .SingleAsync();
-        await fixture.DbContext.OutboxMessages.ReplaceOneAsync(
+        await Fixture.DbContext.OutboxMessages.ReplaceOneAsync(
             message => message.Id == pending.Id,
             pending.MarkPublished(DateTime.UtcNow.AddSeconds(1)));
 
@@ -134,20 +134,20 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
 
         Assert.Equal(
             2L,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 Builders<OutboxMessage>.Filter.Empty));
         Assert.Equal(
             1L,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
                 message => message.PendingKey == pendingKey));
     }
 
     [Fact]
     public async Task Migration_CreatesDeliveryAndDeduplicationIndexes()
     {
-        await new OutboxMessageMigration().Up(fixture.Database);
+        await new OutboxMessageMigration().Up(Fixture.Database);
 
-        var indexes = await (await fixture.DbContext.OutboxMessages.Indexes.ListAsync())
+        var indexes = await (await Fixture.DbContext.OutboxMessages.Indexes.ListAsync())
             .ToListAsync();
 
         Assert.Contains(indexes, index =>
@@ -166,10 +166,10 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         string runtimeCellId,
         string pendingKey)
     {
-        var result = await fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
+        var result = await Fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
             async (transaction, cancellationToken) =>
             {
-                await fixture.StoreOutboxWrites(
+                await Fixture.StoreOutboxWrites(
                     transaction.Session,
                     [CreateWrite(runtimeCellId, pendingKey)],
                     cancellationToken);
@@ -178,13 +178,13 @@ public sealed class OutboxPersistenceTests(MongoReplicaSetFixture fixture)
         Assert.Equal(Unit.Value, result);
     }
 
-    private static OutboxWrite CreateWrite(
+    private OutboxWrite CreateWrite(
         string runtimeCellId,
         string? pendingKey) =>
         OutboxWrite.Create(
             new RuntimeCellReconciliationRequestedEvent(runtimeCellId, 1)
             {
-                EventCore = EventCore.Create(TestData.TenantId)
+                EventCore = EventCore.Create(Data.TenantId)
             },
             pendingKey);
 }

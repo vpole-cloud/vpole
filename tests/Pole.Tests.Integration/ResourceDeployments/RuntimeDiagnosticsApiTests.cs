@@ -17,6 +17,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     private readonly TestProvider provider = new();
@@ -29,7 +30,7 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
     private async Task<ResourceDeployment> SeedAsync(string? tenant = null)
     {
         var now = DateTime.UtcNow;
-        var deployment = ResourceDeploymentFactory.Create(tenant ?? TestData.TenantId, ResourceTypeId.Create("pole/runtime-test"), ObjectId.GenerateNewId().ToString(),
+        var deployment = ResourceDeploymentFactory.Create(tenant ?? Data.TenantId, ResourceTypeId.Create("pole/runtime-test"), ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
             ResolvedResourcePlacement.Create(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "private-namespace-canary", 1, 1, null, null, ResourceDeploymentTestData.Compute(), now),
             ResourcePlacementCapability.SingleTarget, true, ResourceDeploymentFactory.DefaultOptions with
@@ -49,8 +50,8 @@ public sealed class RuntimeDiagnosticsApiTests(MongoReplicaSetFixture fixture) :
     public async Task Viewer_can_read_owned_recent_output_and_foreign_stale_or_invalid_selection_never_opens()
     {
         var owned = await SeedAsync(); var foreign = await SeedAsync(ObjectId.GenerateNewId().ToString());
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
-        await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with { Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer)) });
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with { Members = ImmutableList.Create(TenantFactory.CreateMember(Data.TenantId, Data.UserId, Data.UserEmail, TenantRole.Viewer)) });
         Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync(Url(foreign))).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync(Url(owned, tail: 501))).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await Client.GetAsync(Url(owned, revision: owned.Revision + 1))).StatusCode);

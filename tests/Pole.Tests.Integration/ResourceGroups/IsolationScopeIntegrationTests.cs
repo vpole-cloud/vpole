@@ -13,20 +13,19 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new ResourceGroupPlacementMigration().Up(Fixture.Database);
-        await new RuntimeCellLookupMigration().Up(Fixture.Database);
     }
 
     [Fact]
     public async Task CreateListAndGet_UseResourceGroupAndTenantOwnership()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var createResult = await Mediator.Send(new CreateIsolationScopeRequest(
             resourceGroup.Id,
             new CreateIsolationScopeRequestBody("production"),
@@ -55,13 +54,13 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(created.IsDefault, found.IsDefault);
         Assert.Equal(created.Lifecycle, found.Lifecycle);
         Assert.Equal(created.Revision, found.Revision);
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/isolation-scope-created"));
     }
 
     [Fact]
     public async Task Create_ReturnsConflict_ForDuplicateNormalizedName()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var first = await Mediator.Send(new CreateIsolationScopeRequest(
             resourceGroup.Id,
             new CreateIsolationScopeRequestBody("production"),
@@ -80,14 +79,14 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.True(failure is IsolationScopeNameConflict);
         Assert.Equal(2L, await DbContext.IsolationScopes.CountDocumentsAsync(
             scope => scope.ResourceGroupId == resourceGroup.Id));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/isolation-scope-created"));
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/isolation-scope-created"));
     }
 
     [Fact]
     public async Task Get_ReturnsSafeNotFound_ForDifferentResourceGroupOrTenant()
     {
-        var firstGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("first"));
-        var secondGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("second"));
+        var firstGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
+        var secondGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
         var scope = IsolationScopeFactory.CreateAdditional(
             firstGroup.TenantId,
             firstGroup.Id,
@@ -111,7 +110,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task PlatformAdminReads_UseExplicitTenantFromRequest()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -155,7 +154,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task Delete_EmptyAdditionalScope_RemovesItImmediately()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -172,14 +171,14 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.False(await DbContext.IsolationScopes
             .Find(item => item.Id == scope.Id)
             .AnyAsync());
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/isolation-scope-deletion-requested"));
     }
 
     [Fact]
     public async Task Delete_DefaultScope_ReturnsConflict()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
 
         var result = await Mediator.Send(new DeleteIsolationScopeRequest(
             resourceGroup.Id,
@@ -200,7 +199,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
     [Fact]
     public async Task Delete_ScopeWithRuntimeCells_RequestsAsynchronousDeletion()
     {
-        var resourceGroup = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var scope = IsolationScopeFactory.CreateAdditional(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -242,13 +241,13 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         Assert.Equal(2, savedCells.Count);
         Assert.All(savedCells, cell =>
             Assert.IsType<DeletingRuntimeCellState>(cell.State));
-        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/isolation-scope-deletion-requested"));
-        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(
+        Assert.Equal(2L, await DbContext.CountOutboxMessagesAsync(Data.TenantId,
             "pole.resource-groups/v1/runtime-cell-deletion-requested"));
         var deletionRequests = await DbContext.OutboxMessages
             .Find(message =>
-                message.EventType == "pole.resource-groups/v1/runtime-cell-deletion-requested")
+                message.TenantId == Data.TenantId && message.EventType == "pole.resource-groups/v1/runtime-cell-deletion-requested")
             .ToListAsync();
         Assert.All(deletionRequests, request =>
         {
@@ -260,32 +259,7 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         });
     }
 
-    [Fact]
-    public async Task Migration_CreatesExpectedIndexes()
-    {
-        var scopeIndexes = await (await DbContext.IsolationScopes.Indexes.ListAsync())
-            .ToListAsync();
-        var cellIndexes = await (await DbContext.RuntimeCells.Indexes.ListAsync())
-            .ToListAsync();
 
-        Assert.Contains(scopeIndexes, index =>
-            index["name"] == "UX_IsolationScopes_ResourceGroup_Default" &&
-            index["unique"].AsBoolean);
-        Assert.Contains(scopeIndexes, index =>
-            index["name"] == "UX_IsolationScopes_Tenant_Name" &&
-            index["unique"].AsBoolean);
-        Assert.Contains(scopeIndexes, index =>
-            index["name"] == "IX_IsolationScopes_Lifecycle_UpdatedAt");
-        Assert.Contains(cellIndexes, index =>
-            index["name"] == "UX_RuntimeCells_Scope_Target" &&
-            index["unique"].AsBoolean);
-        Assert.Contains(cellIndexes, index =>
-            index["name"] == "IX_RuntimeCells_State_Retry");
-        Assert.Contains(cellIndexes, index =>
-            index["name"] == "IX_RuntimeCells_State_UpdatedAt");
-        Assert.Contains(cellIndexes, index =>
-            index["name"] == "IX_RuntimeCells_Tenant_Id");
-    }
 
     private static IsolationScopeDto AssertCreated(CreateIsolationScopeOutcome outcome) => outcome switch
     {
@@ -327,4 +301,41 @@ public sealed class IsolationScopeIntegrationTests(MongoReplicaSetFixture fixtur
         RuntimeCellNotFound error => throw new Xunit.Sdk.XunitException(
             $"Expected runtime cell '{error.RuntimeCellId}' to exist.")
     };
+}
+
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class IsolationScopeMigrationTests(MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+{
+    public override async Task InitializeAsync()
+    {
+        await new ResourceGroupPlacementMigration().Up(Fixture.Database);
+        await new RuntimeCellLookupMigration().Up(Fixture.Database);
+    }
+
+    [Fact]
+    public async Task Migration_CreatesExpectedIndexes()
+    {
+        var scopeIndexes = await (await DbContext.IsolationScopes.Indexes.ListAsync())
+            .ToListAsync();
+        var cellIndexes = await (await DbContext.RuntimeCells.Indexes.ListAsync())
+            .ToListAsync();
+
+        Assert.Contains(scopeIndexes, index =>
+            index["name"] == "UX_IsolationScopes_ResourceGroup_Default" &&
+            index["unique"].AsBoolean);
+        Assert.Contains(scopeIndexes, index =>
+            index["name"] == "UX_IsolationScopes_Tenant_Name" &&
+            index["unique"].AsBoolean);
+        Assert.Contains(scopeIndexes, index =>
+            index["name"] == "IX_IsolationScopes_Lifecycle_UpdatedAt");
+        Assert.Contains(cellIndexes, index =>
+            index["name"] == "UX_RuntimeCells_Scope_Target" &&
+            index["unique"].AsBoolean);
+        Assert.Contains(cellIndexes, index =>
+            index["name"] == "IX_RuntimeCells_State_Retry");
+        Assert.Contains(cellIndexes, index =>
+            index["name"] == "IX_RuntimeCells_State_UpdatedAt");
+        Assert.Contains(cellIndexes, index =>
+            index["name"] == "IX_RuntimeCells_Tenant_Id");
+    }
 }

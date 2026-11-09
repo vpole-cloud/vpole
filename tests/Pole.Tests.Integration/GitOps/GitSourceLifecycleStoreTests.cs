@@ -14,7 +14,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed class GitSourceLifecycleStoreTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class GitSourceLifecycleStoreTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
     private GitSourceLifecycleStore Lifecycle => Services.GetRequiredService<GitSourceLifecycleStore>();
@@ -77,7 +78,7 @@ public sealed class GitSourceLifecycleStoreTests(MongoReplicaSetFixture fixture)
         Assert.Equal(2, state.RequestedGeneration);
         Assert.Equal(1, state.CompletedGeneration);
         Assert.Null(state.Pending.RetryOfRunId);
-        Assert.Equal(new GitRunInitiator(GitRunTrigger.Manual, TestData.UserId), state.Pending.Initiator);
+        Assert.Equal(new GitRunInitiator(GitRunTrigger.Manual, Data.UserId), state.Pending.Initiator);
         var claim = Assert.IsType<GitWorkClaim>((await Runs.ClaimAsync(new(source.TenantId, source.Id),
             "resumed-worker", default)).Value);
         Assert.IsType<GitInputUnresolved>(claim.Run.Input);
@@ -229,7 +230,7 @@ public sealed class GitSourceLifecycleStoreTests(MongoReplicaSetFixture fixture)
             new(new(source.TenantId, source.Id), source.Revision, 0,
                 new GitPreviewRepositoryInput(source.Repository, snapshot)),
             new GitPreviewRelocateSource(source.Repository with { ManifestDirectory = "next" }), [], now);
-        preview = preview.Confirm(new(preview.Id, preview.Revision, preview.Source, [], TestData.UserId,
+        preview = preview.Confirm(new(preview.Id, preview.Revision, preview.Source, [], Data.UserId,
             now, claim.Run.Id));
         var finished = claim.Run with
         {
@@ -270,18 +271,18 @@ public sealed class GitSourceLifecycleStoreTests(MongoReplicaSetFixture fixture)
     private async Task<RepositorySource> Create() =>
         Assert.IsType<RepositorySource>((await Sources.CreateAsync(Creation(), default)).Value);
 
-    private static CreateGitRepositorySource Creation() => new(TestData.TenantId, Guid.NewGuid().ToString("D"),
+    private CreateGitRepositorySource Creation() => new(Data.TenantId, Guid.NewGuid().ToString("D"),
         new("Example", "connection", "repository", "main", ""), new(TimeSpan.FromMinutes(5)),
-        new(TestData.UserId, DateTime.UtcNow), "https://example.test/repository");
+        new(Data.UserId, DateTime.UtcNow), "https://example.test/repository");
 
-    private static ChangeGitSourceActivity Activity(RepositorySource source) =>
-        new(source.TenantId, source.Id, source.Revision, TestData.UserId);
+    private ChangeGitSourceActivity Activity(RepositorySource source) =>
+        new(source.TenantId, source.Id, source.Revision, Data.UserId);
 
-    private static GitSourceCommand Command(RepositorySource source) =>
+    private GitSourceCommand Command(RepositorySource source) =>
         new(source.TenantId, source.Id, source.Revision, Guid.NewGuid().ToString("D"),
-            new(GitRunTrigger.Manual, TestData.UserId));
+            new(GitRunTrigger.Manual, Data.UserId));
 
-    private static ManagedDeclaration Ownership(RepositorySource source) => new("ownership", source.TenantId,
+    private static ManagedDeclaration Ownership(RepositorySource source) => new(source.Id + "/ownership", source.TenantId,
         "Widget", "demo", source.Id, source.DisplayUrl, "resource", "desired", null, null, false, "run", "Prepare", 0,
         GitResourceMaterialization.Created, GitManagedProjectionsFactory.Empty());
 

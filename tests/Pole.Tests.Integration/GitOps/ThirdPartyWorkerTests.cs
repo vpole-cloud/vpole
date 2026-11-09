@@ -13,13 +13,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class ThirdPartyWorkerTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private readonly TestRepositorySnapshots repository = new();
     private readonly WidgetBehavior behavior = new();
     private readonly string source = ObjectId.GenerateNewId().ToString();
     private IMongoCollection<TestWidget> Widgets => Fixture.Database.GetCollection<TestWidget>("TestWidgets");
-    private RepositoryPipelineDriver Pipeline => new(Services, Fixture, repository);
+    private RepositoryPipelineDriver Pipeline => new(Services, Fixture, Data, repository);
 
     protected override void ConfigureServices(IServiceCollection services)
     {
@@ -31,10 +32,9 @@ public sealed class ThirdPartyWorkerTests(MongoReplicaSetFixture fixture) : Medi
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
     }
 
-    private Task<RepositoryPipelineResult> Apply() => Pipeline.SubmitAsync(new(TestData.TenantId, source),
+    private Task<RepositoryPipelineResult> Apply() => Pipeline.SubmitAsync(new(Data.TenantId, source),
         [new("widget.yaml", """
             apiVersion: pole.io/v1alpha1
             kind: ThirdPartyWidget
@@ -48,7 +48,7 @@ public sealed class ThirdPartyWorkerTests(MongoReplicaSetFixture fixture) : Medi
     public async Task ExternalProviderCreatesRepairsAndNoOpsWithoutEngineChanges()
     {
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply()).Status);
-        var widget = await Widgets.Find(Builders<TestWidget>.Filter.Empty).SingleAsync();
+        var widget = await Widgets.Find(Builders<TestWidget>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await Widgets.UpdateOneAsync(item => item.Id == widget.Id,
             Builders<TestWidget>.Update.Set(item => item.Value, 2).Inc(item => item.Revision, 1));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply()).Status);
@@ -63,7 +63,7 @@ public sealed class ThirdPartyWorkerTests(MongoReplicaSetFixture fixture) : Medi
     public async Task ThreeImmediatePreconditionConflictsPersistBackoffAndRecoveryReplans()
     {
         await Apply();
-        var widget = await Widgets.Find(Builders<TestWidget>.Filter.Empty).SingleAsync();
+        var widget = await Widgets.Find(Builders<TestWidget>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await Widgets.UpdateOneAsync(item => item.Id == widget.Id,
             Builders<TestWidget>.Update.Set(item => item.Value, 2).Inc(item => item.Revision, 1));
         behavior.ConflictsRemaining = 3;
@@ -79,7 +79,7 @@ public sealed class ThirdPartyWorkerTests(MongoReplicaSetFixture fixture) : Medi
         Assert.Equal(3, plan.Revision);
         await Pipeline.MakeRecoveryDueAsync(source);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
-            (await Pipeline.RecoverAsync(new(TestData.TenantId, source))).Status);
+            (await Pipeline.RecoverAsync(new(Data.TenantId, source))).Status);
         Assert.Equal(1, (await Widgets.Find(item => item.Id == widget.Id).SingleAsync()).Value);
         Assert.Equal(5, behavior.ApplyCalls);
     }
@@ -90,7 +90,7 @@ public sealed class ThirdPartyWorkerTests(MongoReplicaSetFixture fixture) : Medi
         behavior.WriteIncorrectValue = true;
         var result = await Apply();
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await Widgets.CountDocumentsAsync(Builders<TestWidget>.Filter.Empty));
+        Assert.Equal(0, await Widgets.CountDocumentsAsync(Builders<TestWidget>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         var inventory = await Services.GetRequiredService<IMongoCollection<ManagedDeclaration>>()
             .Find(item => item.SourceId == source).SingleAsync();
         Assert.Equal(GitResourceMaterialization.Allocated, inventory.Materialization);

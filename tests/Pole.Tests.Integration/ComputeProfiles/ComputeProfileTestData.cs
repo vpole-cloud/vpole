@@ -109,7 +109,7 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
     private readonly IServiceScope _scope;
 
     public ComputeProfilePersistenceTestHost(
-        MongoReplicaSetFixture fixture,
+        TestDatabaseScope fixture,
         ApplyDeploymentTargetReferenceChanges? applyTargetReferenceChanges = null,
         StoreOutboxWrites? storeOutboxWrites = null,
         IMongoDatabase? database = null)

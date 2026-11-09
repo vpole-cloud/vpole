@@ -16,6 +16,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -25,7 +26,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     public async Task ManualBuild_RejectsDeletingOrDeletedTargetDuringCleanupWindow(bool physicallyDeleted)
     {
         var webService = await CreateTargetAsync();
-        var repository = await CreateSourceRepositoryAsync(TestData.TenantId);
+        var repository = await CreateSourceRepositoryAsync(Data.TenantId);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(repository);
         var response = await Client.PostAsJsonAsync(
             "/api/v1/source-build-configurations",
@@ -43,25 +44,25 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
             $"/api/v1/source-build-configurations/{configuration.Id}/builds",
             null);
         Assert.Equal(HttpStatusCode.NotFound, build.StatusCode);
-        Assert.Equal(0, await Fixture.DbContext.SourceBuildJobs.CountDocumentsAsync(x => true));
+        Assert.Equal(0, await Fixture.DbContext.SourceBuildJobs.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         Assert.Equal(
             0,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                x => x.EventType == "pole.source-builds/v1/source-build-requested"));
+                x => x.TenantId == Data.TenantId && x.EventType == "pole.source-builds/v1/source-build-requested"));
 
         await Fixture.DbContext.SourceBuildConfigurations.DeleteOneAsync(x => x.Id == configuration.Id);
         var create = await Client.PostAsJsonAsync(
             "/api/v1/source-build-configurations",
             new CreateSourceBuildConfigurationBody("api-build", repository.Id, webService.Id, new("FROM scratch")));
         Assert.Equal(HttpStatusCode.NotFound, create.StatusCode);
-        Assert.Equal(0, await Fixture.DbContext.SourceBuildConfigurations.CountDocumentsAsync(x => true));
+        Assert.Equal(0, await Fixture.DbContext.SourceBuildConfigurations.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
     public async Task ConfigurationAndManualBuild_AreTenantScopedAndStoredWithOutboxAtomically()
     {
         var webService = await CreateTargetAsync();
-        var sourceRepository = await CreateSourceRepositoryAsync(TestData.TenantId);
+        var sourceRepository = await CreateSourceRepositoryAsync(Data.TenantId);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(sourceRepository);
 
         var createResponse = await Client.PostAsJsonAsync(
@@ -90,7 +91,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
         Assert.IsType<QueuedSourceBuild>(storedBuild.State);
 
         var outbox = await Fixture.DbContext.OutboxMessages
-            .Find(item => item.TenantId == TestData.TenantId && item.EventType == "pole.source-builds/v1/source-build-requested")
+            .Find(item => item.TenantId == Data.TenantId && item.EventType == "pole.source-builds/v1/source-build-requested")
             .SingleAsync();
         Assert.Contains(build.Id, outbox.PayloadJson, StringComparison.Ordinal);
 
@@ -136,7 +137,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     public async Task Configuration_RejectsCrossTenantReferencesAndDuplicateWebServiceLinks()
     {
         var webService = await CreateTargetAsync();
-        var sourceRepository = await CreateSourceRepositoryAsync(TestData.TenantId);
+        var sourceRepository = await CreateSourceRepositoryAsync(Data.TenantId);
         var otherTenantSource = await CreateSourceRepositoryAsync("507f1f77bcf86cd799439099");
         await Fixture.DbContext.SourceRepositories.InsertManyAsync([sourceRepository, otherTenantSource]);
 
@@ -177,7 +178,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
     public async Task RecipeUpdateUsesExpectedRevisionAndDoesNotEnqueueBuild()
     {
         var webService = await CreateTargetAsync();
-        var sourceRepository = await CreateSourceRepositoryAsync(TestData.TenantId);
+        var sourceRepository = await CreateSourceRepositoryAsync(Data.TenantId);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(sourceRepository);
         var createdResponse = await Client.PostAsJsonAsync(
             "/api/v1/source-build-configurations",
@@ -203,9 +204,9 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
 
     private async Task<WebService> CreateTargetAsync()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var response = await Client.PostAsJsonAsync("/api/v1/web-services",
-            SourceBuildTestData.CreateTargetRequest(group.Id).Body);
+            SourceBuildTestData.CreateTargetRequest(Data, group.Id).Body);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>();
         return await Fixture.Database.WebServices().Find(item => item.Id == created!.WebServiceId).SingleAsync();
@@ -216,7 +217,7 @@ public sealed class SourceBuildApiTests(MongoReplicaSetFixture fixture)
         var now = DateTime.UtcNow;
         var connection = GitProviderConnectionFactory.Create(tenantId, "github-application", GitProviderKind.GitHub,
             ObjectId.GenerateNewId().ToString(), "1001", "lsbV", GitProviderAccountType.User,
-            GitProviderRepositorySelection.Selected, TestData.UserId, GitProviderConnectionFactory.DefaultOptions);
+            GitProviderRepositorySelection.Selected, Data.UserId, GitProviderConnectionFactory.DefaultOptions);
         await Fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
         GitHubClient.Snapshot = GitHubClient.Snapshot with { CommitSha = new string('a', 40) };
         return SourceRepositoryFactory.Create(

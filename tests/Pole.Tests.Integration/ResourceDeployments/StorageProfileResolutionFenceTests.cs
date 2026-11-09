@@ -8,17 +8,16 @@ using Pole.Workloads;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class StorageProfileResolutionFenceTests(
-    MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
     private const string ProfileId = "507f1f77bcf86cd799439051";
     private const string TargetId = "507f1f77bcf86cd799439052";
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Fence_WritesAgainstTheExactProfileRevisionAndTargetMapping()
@@ -40,7 +39,7 @@ public sealed class StorageProfileResolutionFenceTests(
             new StorageProfileFactory.CreateOptions(
                 ProfileId,
                 DateTime.UtcNow));
-        await fixture.DbContext.StorageProfiles.InsertOneAsync(profile);
+        await Fixture.DbContext.StorageProfiles.InsertOneAsync(profile);
         var result = await FenceAsync(new StorageProfileResolutionFenceRequest(
             ProfileId,
             profile.Revision,
@@ -48,7 +47,7 @@ public sealed class StorageProfileResolutionFenceTests(
             "fast"));
 
         Assert.IsType<StorageProfileResolutionFenced>(result.Value);
-        var saved = await fixture.DbContext.StorageProfiles
+        var saved = await Fixture.DbContext.StorageProfiles
             .Find(item => item.Id == ProfileId)
             .SingleAsync();
         Assert.Equal(1, saved.ResolutionFence);
@@ -75,7 +74,7 @@ public sealed class StorageProfileResolutionFenceTests(
             new StorageProfileFactory.CreateOptions(
                 ProfileId,
                 DateTime.UtcNow));
-        await fixture.DbContext.StorageProfiles.InsertOneAsync(profile);
+        await Fixture.DbContext.StorageProfiles.InsertOneAsync(profile);
         var result = await FenceAsync(new StorageProfileResolutionFenceRequest(
             ProfileId,
             profile.Revision + 1,
@@ -99,10 +98,10 @@ public sealed class StorageProfileResolutionFenceTests(
     private async Task<FenceStorageProfileResolutionOutcome> FenceAsync(
         StorageProfileResolutionFenceRequest request)
     {
-        using var provider = TestServiceProviderFactory.Create(fixture);
+        using var provider = TestServiceProviderFactory.Create(Fixture);
         using var scope = provider.CreateScope();
         var fence = scope.ServiceProvider.GetRequiredService<FenceStorageProfileResolution>();
-        using var session = await fixture.Client.StartSessionAsync();
+        using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         try
         {

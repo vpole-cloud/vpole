@@ -17,7 +17,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
-public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
+    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageObservation)
 {
     private readonly List<string> reads = [];
     private readonly List<IDisposable> clients = [];
@@ -139,7 +141,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
         Assert.Equal("Мій кластер", owner.ResourceName);
         Assert.Null(owner.ResourceId);
         Assert.Null(owner.TenantId);
-        Assert.Equal(TestData.TenantId.ToLowerInvariant(), owner.ResourceGroupId);
+        Assert.Equal(Data.TenantId.ToLowerInvariant(), owner.ResourceGroupId);
     }
 
     [Fact]
@@ -215,7 +217,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture) :
             [PoleStorageLabels.ResourceName] = "Мій кластер",
             [PoleStorageLabels.ResourceId] = "native-canary" + new string('x', 300),
             [PoleStorageLabels.TenantId] = "malformed\nidentity",
-            [PoleStorageLabels.ResourceGroupId] = TestData.TenantId.ToUpperInvariant(),
+            [PoleStorageLabels.ResourceGroupId] = Data.TenantId.ToUpperInvariant(),
             ["pole.io/arbitrary"] = "native-canary"
         };
         return json.ToJsonString();

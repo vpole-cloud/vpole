@@ -32,7 +32,7 @@ public sealed partial class ManagedSecretIntegrationTests
     [InlineData("pole/redis")]
     public async Task Consumer_deletion_guard_rejects_an_external_source_binding_without_writes(string kind)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var type = ResourceTypeId.Create(kind);
         var consumer = Id();
         var secret = await ConsumerSecretDeletionTestData.InsertAsync(Fixture.Database, group, type, consumer);
@@ -50,13 +50,13 @@ public sealed partial class ManagedSecretIntegrationTests
         var stored = await Services.GetRequiredService<IMongoCollection<Secret>>()
             .Find(item => item.Id == secret.Id).SingleAsync();
         Assert.Equal(secret.ToBsonDocument(), stored.ToBsonDocument());
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
     [Fact]
     public async Task Unowned_provider_credential_binding_is_allowed_and_secret_fence_is_transactional()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var type = ResourceTypeId.Create("pole/postgresql");
         var consumer = Id();
         var secret = await ConsumerSecretDeletionTestData.InsertAsync(Fixture.Database, group, type, consumer);

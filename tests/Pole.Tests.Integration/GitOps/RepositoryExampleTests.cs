@@ -1,13 +1,16 @@
+using Pole.Tests.Integration.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Primitives;
 using Pole.Testing;
 using Xunit;
+using MongoReplicaSetFixture = Pole.Tests.Integration.Infrastructure.MongoReplicaSetFixture;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class RepositoryExampleTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("minimal", 2, 3)]
@@ -90,11 +93,4 @@ public sealed partial class DeclarativePipelineTests
         Assert.False(rejected.Valid);
         Assert.Contains(rejected.Diagnostics, item => item.File == secret.Path);
     }
-
-    private CompiledSnapshot CompileExample(string example) =>
-        Services.GetRequiredService<ManifestCompiler>().Compile(ReadExample(example));
-
-    private static ManifestFile[] ReadExample(string example) => RepositoryExampleFiles.Read(
-            $"src/features/GitOps/examples/{example}/manifests")
-        .Select(file => new ManifestFile(file.Path, file.Content)).ToArray();
 }

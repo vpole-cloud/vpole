@@ -13,14 +13,15 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
-public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Create_and_update_reject_out_of_schema_specs_before_any_persisted_side_effects()
     {
         await ApplyCurrentWebServiceSchema();
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var body = TestData.CreateWebServiceRequest(group.Id).Body with { Exposure = WebServiceExposureMode.Private };
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var body = Data.CreateWebServiceRequest(group.Id).Body with { Exposure = WebServiceExposureMode.Private };
         using var createdResponse = await Client.PostAsJsonAsync("/api/v1/web-services", body);
         Assert.Equal(HttpStatusCode.Accepted, createdResponse.StatusCode);
         var created = (await createdResponse.Content.ReadFromJsonAsync<CreateWebServiceResponse>())!;
@@ -42,7 +43,7 @@ public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixt
         var current = await Fixture.Database.WebServices().Find(item => item.Id == original.Id).SingleAsync();
         Assert.Equal(original.ToBsonDocument(), current.ToBsonDocument());
         Assert.Equal(1, await Fixture.Database.WebServices().CountDocumentsAsync(item =>
-            item.TenantId == TestData.TenantId));
+            item.TenantId == Data.TenantId));
         Assert.Equal(writes,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
         Assert.Equal(releases, await Fixture.Database.WebServiceReleases().CountDocumentsAsync(item =>
@@ -53,13 +54,13 @@ public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixt
     public async Task Persisted_probe_boundaries_and_named_ports_are_accepted_on_create_and_update()
     {
         await ApplyCurrentWebServiceSchema();
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var probe = new ProbeConfigDto("/" + new string('a', 199), "http", 300, 120, 60, 10, 1);
         var spec = TestData.ValidWebServiceSpec() with
         {
             Probes = new(probe, probe, probe with { SuccessThreshold = 10 })
         };
-        var body = TestData.CreateWebServiceRequest(group.Id).Body with
+        var body = Data.CreateWebServiceRequest(group.Id).Body with
         {
             Spec = spec,
             Exposure = WebServiceExposureMode.Private

@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
@@ -10,7 +11,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ManagedIdentityDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("ResourceGroup")]
@@ -22,7 +24,7 @@ public sealed partial class DeclarativePipelineTests
         var initial = await Apply();
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
-        var owned = await Inventory.Find(item => item.Kind == kind).SingleAsync();
+        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == kind).SingleAsync();
         var groups = Fixture.Database.GetCollection<ResourceGroup>("ResourceGroups");
         if (kind == "ResourceGroup")
             await groups.UpdateOneAsync(item => item.Id == owned.ResourceId,
@@ -35,7 +37,7 @@ public sealed partial class DeclarativePipelineTests
                 Builders<WebService>.Update.Set(item => item.Name, "renamed"));
         else
         {
-            var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+            var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
             await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
             {
                 Bindings = secret.Bindings.Select(item => item with { DeclarationName = "renamed" }).ToImmutableArray()
@@ -59,14 +61,14 @@ public sealed partial class DeclarativePipelineTests
         var initial = await Apply();
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
-        var owned = await Inventory.Find(item => item.Kind == kind).SingleAsync();
+        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == kind).SingleAsync();
         if (kind == "Secret")
             await Secrets.DeleteOneAsync(item => item.Id == owned.ResourceId);
         else if (kind == "WebService")
             await WebServices.DeleteOneAsync(item => item.Id == owned.ResourceId);
         else
         {
-            var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+            var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
             await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with { Bindings = [] });
         }
         var events = await BusinessEvents();

@@ -8,6 +8,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -16,7 +17,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
     {
         using var resourceGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest().Body);
+            Data.CreateResourceGroupRequest().Body);
         var resourceGroup = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupDto>();
         Assert.NotNull(resourceGroup);
         Assert.False(string.IsNullOrWhiteSpace(resourceGroup.DefaultIsolationScopeId));
@@ -51,7 +52,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
 
         using var resourceGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest().Body);
+            Data.CreateResourceGroupRequest().Body);
         var resourceGroup = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupDto>();
         Assert.NotNull(resourceGroup);
 
@@ -74,7 +75,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
     public async Task DeleteEndpoint_ReturnsNoContentConflictAndAccepted()
     {
         var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
+            Data.SeedResourceGroup());
         var emptyScope = IsolationScopeFactory.CreateAdditional(
             resourceGroup.TenantId,
             resourceGroup.Id,

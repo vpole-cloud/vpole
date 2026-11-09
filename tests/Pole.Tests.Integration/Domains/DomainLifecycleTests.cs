@@ -17,11 +17,14 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
-    private readonly ReviewedLifecycleAuthority authorization = new(fixture.Client);
-    private readonly RemovalCapability workload = new(
-        fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"));
+    private ReviewedLifecycleAuthority? _authorization;
+    private ReviewedLifecycleAuthority authorization => _authorization ??= new(Fixture.Client, Data.TenantId);
+    private RemovalCapability? _workload;
+    private RemovalCapability workload => _workload ??= new(
+        Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"));
     protected override void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<IGitOpsMutations>(authorization);
@@ -56,12 +59,12 @@ public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : Media
             .RemoveAsync(removal, session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(0, await Zones.CountDocumentsAsync(_ => true));
-        var generated = TenantDomainZoneFactory.CreateGenerated(TestData.TenantId, zone.DeploymentTargetId,
+        var generated = TenantDomainZoneFactory.CreateGenerated(Data.TenantId, zone.DeploymentTargetId,
             "pole-generated-test", DnsName.Create("apps.example.test"),
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         await Zones.InsertOneAsync(generated);
         var blocked = Assert.IsType<DeclarationReadBlocked>((await Provider("DomainZone").ReadLifecycleAsync(
-            new(TestData.TenantId, new(new("DomainZone", "system"), generated.Id)), session, default)).Value);
+            new(Data.TenantId, new(new("DomainZone", "system"), generated.Id)), session, default)).Value);
         Assert.IsType<GitLifecycleResourceProtected>(blocked.Failure);
     }
 
@@ -210,7 +213,7 @@ public sealed class DomainLifecycleTests(MongoReplicaSetFixture fixture) : Media
         await session.AbortTransactionAsync();
     }
 
-    private static TenantDomainZone Zone() => TenantDomainZoneFactory.CreateManagedReservation(TestData.TenantId,
+    private TenantDomainZone Zone() => TenantDomainZoneFactory.CreateManagedReservation(Data.TenantId,
         ObjectId.GenerateNewId().ToString(), "company", DnsName.Create("apps.example.test"), "company-zone",
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
     private static HostnameBinding Binding(TenantDomainZone zone) => HostnameBindingFactory.CreateCustom(zone.TenantId,

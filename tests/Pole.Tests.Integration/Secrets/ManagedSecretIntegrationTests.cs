@@ -34,27 +34,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
     private static string Id() => ObjectId.GenerateNewId().ToString();
 
-    public override async Task InitializeAsync()
-    {
-        await base.InitializeAsync();
-        await new SecretIndexesMigration().Up(Fixture.Database);
-        // Exercise the same assembly-scanning composition used by Pole.Server (empty extra migrations).
-        var services = new ServiceCollection().AddPolePlatform(new ConfigurationBuilder().Build(), [], [], []);
-        using var production = services.BuildServiceProvider();
-        var projectionMigration =
-            Assert.Single(production.GetServices<IMigration>().OfType<SecretProjectionIndexesMigration>());
-        await projectionMigration.Up(Fixture.Database);
-    }
-
     [Fact]
     public async Task Staged_owner_placement_and_bound_secret_commit_atomically_and_protect_provider_mutations()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new PrepareManagedSecretRequest(
@@ -127,7 +116,7 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
     [Fact]
     public async Task Aborting_owner_creation_removes_encrypted_secret_binding_registration_and_outbox()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new PrepareManagedSecretRequest(
@@ -155,7 +144,7 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
         Assert.Equal(0,
             await Fixture.Database.GetCollection<SecretVersion>("SecretVersions")
                 .CountDocumentsAsync(x => x.SecretId == prepared.SecretId));
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.secrets/v1/secret-changed"));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
         Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(x => x.Id == deployment.Id));
     }
 
@@ -164,7 +153,7 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
     [InlineData(true)]
     public async Task Owner_release_deletes_unshared_credentials_but_retains_shared_secret_as_unmanaged(bool shared)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new PrepareManagedSecretRequest(
@@ -228,7 +217,7 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
     [Fact]
     public async Task Owner_cannot_resolve_another_consumers_projection_from_shared_secret()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new PrepareManagedSecretRequest(
@@ -336,7 +325,7 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
     [Fact]
     public async Task Managed_rotation_keeps_immutable_history_and_rejects_stale_version_and_duplicate_owner()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepare = Services.GetRequiredService<PrepareManagedSecret>();
         var first = Assert.IsType<PreparedManagedSecret>((await prepare(
@@ -439,7 +428,7 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
     [InlineData(true)]
     public async Task Managed_envelope_rejects_changed_context_or_corrupted_ciphertext(bool changeContext)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
             new PrepareManagedSecretRequest(
@@ -539,5 +528,16 @@ public sealed partial class ManagedSecretIntegrationTests(MongoReplicaSetFixture
             });
         await DbContext.ResourceDeployments.InsertOneAsync(session, deployment);
         return deployment;
+    }
+}
+
+public sealed class SecretMigrationCompositionTests
+{
+    [Fact]
+    public void PlatformCompositionRegistersTheSecretProjectionMigration()
+    {
+        var services = new ServiceCollection().AddPolePlatform(new ConfigurationBuilder().Build(), [], [], []);
+        using var production = services.BuildServiceProvider();
+        Assert.Single(production.GetServices<IMigration>().OfType<SecretProjectionIndexesMigration>());
     }
 }

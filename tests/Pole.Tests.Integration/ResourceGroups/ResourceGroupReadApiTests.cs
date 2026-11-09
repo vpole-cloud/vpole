@@ -10,14 +10,15 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceGroupReadApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task List_PaginatesInStableNameOrderAndSearchesOnlySelectedTenant()
     {
-        var zed = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup() with { Name = "Zed" });
-        var alpha = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup() with { Name = "Alpha" });
-        await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup(tenantId: ObjectId.GenerateNewId().ToString()) with { Name = "A foreign group" });
+        var zed = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup() with { Name = "Zed" });
+        var alpha = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup() with { Name = "Alpha" });
+        await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup(tenantId: ObjectId.GenerateNewId().ToString()) with { Name = "A foreign group" });
         var first = await Client.GetFromJsonAsync<PaginatedResponse<ResourceGroupDto>>("/api/v1/resource-groups?pageNumber=1&pageSize=1");
         var second = await Client.GetFromJsonAsync<PaginatedResponse<ResourceGroupDto>>("/api/v1/resource-groups?pageNumber=2&pageSize=1");
         Assert.NotNull(first);
@@ -34,7 +35,7 @@ public sealed class ResourceGroupReadApiTests(MongoReplicaSetFixture fixture) : 
     [Fact]
     public async Task Get_ReturnsGroupAndRegistrationCount()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(ResourceRegistrationFactory.Create(
             group.TenantId,
             group.Id,
@@ -55,7 +56,7 @@ public sealed class ResourceGroupReadApiTests(MongoReplicaSetFixture fixture) : 
     [Fact]
     public async Task Get_DoesNotExposeAnotherTenantsGroup()
     {
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup(
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup(
             tenantId: ObjectId.GenerateNewId().ToString()));
         using var response = await Client.GetAsync($"/api/v1/resource-groups/{group.Id}");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

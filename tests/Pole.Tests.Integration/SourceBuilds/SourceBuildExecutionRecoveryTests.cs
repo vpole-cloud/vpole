@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -17,10 +18,11 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
-public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaSetFixture fixture)
-    : IClassFixture<Pole.Testing.MongoReplicaSetFixture>
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class SourceBuildExecutionRecoveryTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    private IMongoCollection<SourceBuildJob> Jobs => fixture.Database.GetCollection<SourceBuildJob>("SourceBuildJobs");
+    private IMongoCollection<SourceBuildJob> Jobs => Fixture.Database.GetCollection<SourceBuildJob>("SourceBuildJobs");
 
     [Fact]
     public async Task ClaimKeepsWorkerAsLiteralAndUsesOneServerTimestamp()
@@ -156,10 +158,10 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
             Assert.Equal(7, replay.Revision);
             return transaction.Commit(true);
         });
-        Assert.Equal(1, await fixture.Database
+        Assert.Equal(1, await Fixture.Database
             .GetCollection<SourceBuildPromotionReceipt>("SourceBuildPromotionReceipts")
             .CountDocumentsAsync(item => item.Id == job.Id));
-        Assert.Equal(1, await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
+        Assert.Equal(1, await Fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .CountDocumentsAsync(new BsonDocument("TenantId", job.TenantId)));
     }
 
@@ -179,10 +181,10 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
                 throw new InvalidOperationException("Injected transaction failure.");
             }));
         Assert.IsType<PushingSourceBuild>((await Jobs.Find(item => item.Id == job.Id).SingleAsync()).State);
-        Assert.Equal(0, await fixture.Database
+        Assert.Equal(0, await Fixture.Database
             .GetCollection<SourceBuildPromotionReceipt>("SourceBuildPromotionReceipts")
             .CountDocumentsAsync(item => item.Id == job.Id));
-        Assert.Equal(0, await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
+        Assert.Equal(0, await Fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .CountDocumentsAsync(new BsonDocument("TenantId", job.TenantId)));
     }
 
@@ -263,7 +265,7 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
             Assert.IsType<SourceBuildPromotionSuperseded>((await begin(altered, transaction.Session, ct)).Value);
             return transaction.Abort(true);
         });
-        Assert.Equal(committed ? 1 : 0, await fixture.Database
+        Assert.Equal(committed ? 1 : 0, await Fixture.Database
             .GetCollection<SourceBuildPromotionReceipt>("SourceBuildPromotionReceipts")
             .CountDocumentsAsync(item => item.Id == job.Id));
     }
@@ -277,14 +279,14 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
         await using var services = Services();
         var job = await SeedPromotionAsync();
         if (revoked == "repository-revision")
-            await fixture.Database.GetCollection<SourceRepository>("SourceRepositories").UpdateOneAsync(
+            await Fixture.Database.GetCollection<SourceRepository>("SourceRepositories").UpdateOneAsync(
                 item => item.Id == job.SourceRepositoryId,
                 Builders<SourceRepository>.Update.Inc(item => item.Revision, 1));
         else if (revoked == "connection")
-            await fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
+            await Fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
                 .DeleteManyAsync(item => item.TenantId == job.TenantId);
         else
-            await fixture.Database.GetCollection<Tenant>("Tenants").DeleteOneAsync(item => item.Id == job.TenantId);
+            await Fixture.Database.GetCollection<Tenant>("Tenants").DeleteOneAsync(item => item.Id == job.TenantId);
 
         await services.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<bool>(async (transaction, ct) =>
         {
@@ -294,7 +296,7 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
             return transaction.Abort(true);
         });
         Assert.IsType<PushingSourceBuild>((await Jobs.Find(item => item.Id == job.Id).SingleAsync()).State);
-        Assert.Equal(0, await fixture.Database
+        Assert.Equal(0, await Fixture.Database
             .GetCollection<SourceBuildPromotionReceipt>("SourceBuildPromotionReceipts")
             .CountDocumentsAsync(item => item.Id == job.Id));
     }
@@ -313,12 +315,12 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
         {
             BuildGeneration = 1
         };
-        await fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(
+        await Fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(
             TenantFactory.Create("Build tenant", job.TenantId));
         var connection = GitProviderConnectionFactory.Create(job.TenantId, "github-application", GitProviderKind.GitHub,
             "installation", "account", "owner", GitProviderAccountType.User, GitProviderRepositorySelection.All,
             "author", GitProviderConnectionFactory.DefaultOptions);
-        await fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
+        await Fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
             .InsertOneAsync(connection);
         var repository = SourceRepositoryFactory.Create(
             job.TenantId,
@@ -330,8 +332,8 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
             true,
             "main",
             new(job.SourceRepositoryId, job.CreatedAtUtc, job.CreatedAtUtc));
-        await fixture.Database.GetCollection<SourceRepository>("SourceRepositories").InsertOneAsync(repository);
-        await fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
+        await Fixture.Database.GetCollection<SourceRepository>("SourceRepositories").InsertOneAsync(repository);
+        await Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
             .InsertOneAsync(configuration);
         await Jobs.InsertOneAsync(job);
         return job;
@@ -342,8 +344,8 @@ public sealed class SourceBuildExecutionRecoveryTests(Pole.Testing.MongoReplicaS
             new(job.SourceRepositoryId, job.CommitSha,
                 new("registry/application:attempt-one", "sha256:artifact")));
 
-    private ServiceProvider Services() => new ServiceCollection().AddLogging().AddSingleton(fixture.Client)
-        .AddSingleton(fixture.Database).AddSingleton(fixture.StoreOutboxWrites).AddSingleton<MongoRunTransaction>()
+    private ServiceProvider Services() => new ServiceCollection().AddLogging().AddSingleton(Fixture.Client)
+        .AddSingleton(Fixture.Database).AddSingleton(Fixture.StoreOutboxWrites).AddSingleton<MongoRunTransaction>()
         .AddTenantsFeature().AddGitProvidersFeature(new ConfigurationBuilder().Build())
         .AddSourceBuildsFeature(new ConfigurationBuilder().Build()).BuildServiceProvider();
 

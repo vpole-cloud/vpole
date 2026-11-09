@@ -6,7 +6,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class WebServicePreconditionTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task ExpectedWebServiceRevisionConflictReplansInsteadOfBecomingBusinessBlocker()
@@ -22,7 +23,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(releases + 1, await Releases());
         Assert.Equal("2", (await Service()).Spec.Image.ResolvedImage!.Tag);
         var operations = await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            TestData.TenantId, source, result.Context!.RunId, 1, 20, default);
+            Data.TenantId, source, result.Context!.RunId, 1, 20, default);
         var configure = Assert.Single(operations!.Items,
             item => item.Kind == "WebService" && item.Phase == DeclarationPhase.Configure);
         Assert.Equal(2, configure.Plan!.Revision);

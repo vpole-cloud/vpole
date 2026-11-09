@@ -26,17 +26,18 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Users;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private ServiceProvider? _services;
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
+        await base.InitializeAsync();
         var services = new ServiceCollection();
-        services.AddSingleton(fixture.Client);
-        services.AddSingleton(fixture.Database);
+        services.AddSingleton(Fixture.Client);
+        services.AddSingleton(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddOutboxPersistence();
         services.AddTenantsFeature();
@@ -44,18 +45,18 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         _services = services.BuildServiceProvider(validateScopes: true);
     }
 
-    public Task DisposeAsync()
+    public override Task DisposeAsync()
     {
         _services?.Dispose();
-        return Task.CompletedTask;
+        return base.DisposeAsync();
     }
 
     [Fact]
     public void FeatureRegistration_ResolvesTheUserCapabilityGraph()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(fixture.Client);
-        services.AddSingleton(fixture.Database);
+        services.AddSingleton(Fixture.Client);
+        services.AddSingleton(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddOutboxPersistence();
         services.AddUsersFeature(CreateConfiguration());
@@ -88,10 +89,10 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         };
         Assert.Equal("new.user@example.com", user.Email);
 
-        var storedUser = await fixture.DbContext.Users
+        var storedUser = await Fixture.DbContext.Users
             .Find(stored => stored.Id == "keycloak-user-1")
             .FirstAsync();
-        Assert.Equal(1L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
+        Assert.Equal(1L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.users/v1/user-created"));
 
         using var consumerScope = Services.CreateScope();
         var consumer = new CreateDefaultTenantOnUserCreatedConsumer(
@@ -106,12 +107,12 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         await consumer.Handle(userCreated);
         await consumer.Handle(userCreated);
 
-        var defaultTenant = await fixture.DbContext.Tenants
+        var defaultTenant = await Fixture.DbContext.Tenants
             .Find(tenant => tenant.Id == storedUser.DefaultTenantId)
             .FirstAsync();
         Assert.Equal(
             1,
-            await fixture.DbContext.Tenants.CountDocumentsAsync(
+            await Fixture.DbContext.Tenants.CountDocumentsAsync(
                 tenant => tenant.Id == storedUser.DefaultTenantId));
         var owner = Assert.Single(defaultTenant.Members);
         Assert.Equal("keycloak-user-1", owner.UserId);
@@ -133,15 +134,15 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
 
         Assert.True(
             result is IdentityUserCreationFailed);
-        Assert.Equal(0, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0, await fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
-        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
+        Assert.Equal(0, await Fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
+        Assert.Equal(0, await Fixture.DbContext.Tenants.CountDocumentsAsync(Builders<Tenant>.Filter.Empty));
+        Assert.Equal(0L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.users/v1/user-created"));
     }
 
     [Fact]
     public async Task CreateUser_ExistingEmailDoesNotCreateAnIdentityUser()
     {
-        await fixture.DbContext.Users.InsertOneAsync(
+        await Fixture.DbContext.Users.InsertOneAsync(
             PoleUserFactory.Create(
                 "existing-user",
                 "existing@example.com",
@@ -165,7 +166,7 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
     [Fact]
     public async Task CreateUser_MongoConflictAfterIdentityCreateAttemptsCleanup()
     {
-        await fixture.DbContext.Users.InsertOneAsync(
+        await Fixture.DbContext.Users.InsertOneAsync(
             PoleUserFactory.Create(
                 "keycloak-user-1",
                 "existing@example.com",
@@ -182,14 +183,14 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.True(
             result is UserIdentityAlreadyExists { UserId: "keycloak-user-1" });
         Assert.Equal(["keycloak-user-1"], identityProvider.DeletedUserIds);
-        Assert.Equal(1, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
+        Assert.Equal(1, await Fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
+        Assert.Equal(0L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.users/v1/user-created"));
     }
 
     [Fact]
     public async Task PersistCreatedUser_ExistingEmailAbortsWithoutWritingUserOrOutbox()
     {
-        await fixture.DbContext.Users.InsertOneAsync(PoleUserFactory.Create(
+        await Fixture.DbContext.Users.InsertOneAsync(PoleUserFactory.Create(
             "existing-user", "existing@example.com", null, null, "tenant-1", DateTime.UtcNow));
         using var scope = Services.CreateScope();
         var persist = scope.ServiceProvider.GetRequiredService<PersistCreatedUser>();
@@ -202,16 +203,16 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
         {
             Value: UserEmailAlreadyExists { Email: "existing@example.com" }
         });
-        Assert.Equal(1, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
+        Assert.Equal(1, await Fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
+        Assert.Equal(0L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.users/v1/user-created"));
     }
 
     [Fact]
     public async Task PersistCreatedUser_OutboxFailureRollsBackUserAndPropagatesException()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(fixture.Client);
-        services.AddSingleton(fixture.Database);
+        services.AddSingleton(Fixture.Client);
+        services.AddSingleton(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddUsersFeature(CreateConfiguration());
         var failure = new InvalidOperationException("Injected outbox failure.");
@@ -227,8 +228,8 @@ public sealed class UserControlPlaneTests(MongoReplicaSetFixture fixture) : IAsy
                 "personal")));
 
         Assert.Same(failure, thrown);
-        Assert.Equal(0, await fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
-        Assert.Equal(0L, await fixture.DbContext.CountOutboxMessagesAsync("pole.users/v1/user-created"));
+        Assert.Equal(0, await Fixture.DbContext.Users.CountDocumentsAsync(Builders<PoleUser>.Filter.Empty));
+        Assert.Equal(0L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.users/v1/user-created"));
     }
 
     private static CreateUserHandler CreateHandler(

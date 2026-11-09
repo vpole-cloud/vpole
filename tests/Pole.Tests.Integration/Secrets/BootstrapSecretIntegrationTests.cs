@@ -108,7 +108,7 @@ public sealed partial class ManagedSecretIntegrationTests
 
     private async Task<BootstrapSecretRequest> PrepareBootstrapAsync(SecretBindingUsage usage)
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
         string deploymentId;
         using (var session = await Fixture.Client.StartSessionAsync())

@@ -20,26 +20,27 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global)]
+public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.resource-deployments/v1/resource-deployment-observation-changed";
 
     private IMongoCollection<ObservationControlDocument> Controls =>
-        fixture.Database.GetCollection<ObservationControlDocument>(MongoResourceDeploymentObservationStore
+        Fixture.Database.GetCollection<ObservationControlDocument>(MongoResourceDeploymentObservationStore
             .ControlsCollection);
 
     private IMongoCollection<ObservationDemandDocument> Demands =>
-        fixture.Database.GetCollection<ObservationDemandDocument>(MongoResourceDeploymentObservationStore
+        Fixture.Database.GetCollection<ObservationDemandDocument>(MongoResourceDeploymentObservationStore
             .DemandsCollection);
 
     private IMongoCollection<ObservationSnapshotDocument> Snapshots =>
-        fixture.Database.GetCollection<ObservationSnapshotDocument>(MongoResourceDeploymentObservationStore
+        Fixture.Database.GetCollection<ObservationSnapshotDocument>(MongoResourceDeploymentObservationStore
             .SnapshotsCollection);
 
-    private IMongoCollection<BsonDocument> Targets => fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    private IMongoCollection<BsonDocument> Targets => Fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task DemandAndSourceDollarPrefixedValuesAreStoredAsLiterals()
@@ -97,11 +98,11 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         demand["DeploymentId"] = ObjectId.Parse(context.Deployment.Id);
         demand["OriginalExpiresAtUtc"] = now.AddMinutes(5);
         demand["ExpiresAtUtc"] = now.AddMinutes(1);
-        await fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.ControlsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.ControlsCollection)
             .InsertOneAsync(control);
-        await fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.DemandsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.DemandsCollection)
             .InsertOneAsync(demand);
-        await fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
             .InsertOneAsync(snapshot);
 
         var store = Store();
@@ -116,7 +117,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var committed = Assert.IsType<ResourceDeploymentSharedObservation>((await store.TryCommitSnapshotAsync(
             lease, context, 7, "owned-controller", Sample())).Value);
         Assert.Equal(9, committed.ObservationVersion);
-        var written = await fixture.Database
+        var written = await Fixture.Database
             .GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
             .Find(new BsonDocument("_id", ObjectId.Parse(context.Deployment.Id))).SingleAsync();
         Assert.Equal(snapshot.Names, written.Names);
@@ -152,7 +153,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var shared = await Store().LoadFreshSnapshotAsync(seeded.Context);
         Assert.Equal(snapshot.ObservationVersion, shared!.ObservationVersion);
         Assert.Equal(snapshot.CheckedAtUtc, shared.CheckedAtUtc);
-        var envelope = (await fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync())
+        var envelope = (await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync())
             .Single(item => item.CorrelationId == "observation-store");
         Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", envelope.TraceId);
         Assert.Equal("observation-store", envelope.CorrelationId);
@@ -175,12 +176,12 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
         var before = await Controls.Find(item => item.Id == seeded.Context.Deployment.Id).SingleAsync();
-        var deploymentBefore = await fixture.DbContext.ResourceDeployments
+        var deploymentBefore = await Fixture.DbContext.ResourceDeployments
             .Find(item => item.Id == seeded.Context.Deployment.Id).SingleAsync();
         var targetBefore = await Targets.Find(TargetId(seeded.Context)).SingleAsync();
         var failing = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected observation outbox failure.");
         });
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing.TryCommitSnapshotAsync(owner.Lease,
@@ -190,13 +191,13 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             Sample()));
         Assert.Equal(before, await Controls.Find(item => item.Id == before.Id).SingleAsync());
         Assert.Equal(deploymentBefore.ReferenceFence,
-            (await fixture.DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync())
+            (await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync())
             .ReferenceFence);
         Assert.Equal(targetBefore["ObservationFence"],
             (await Targets.Find(TargetId(seeded.Context)).SingleAsync())["ObservationFence"]);
         Assert.Empty(await Snapshots.Find(FilterDefinition<ObservationSnapshotDocument>.Empty).ToListAsync());
         Assert.Equal(1,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
     }
 
     [Fact]
@@ -229,7 +230,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Equal(source.SourceControlVersion, control.SourceControlVersion);
         Assert.Equal(1, control.ObservationVersion);
         Assert.Equal(1,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
     }
 
     [Theory]
@@ -249,7 +250,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         await Targets.UpdateOneAsync(TargetId(seeded.Context), Builders<BsonDocument>.Update.Set("Enabled", false));
         var failing = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected negative-transition outbox failure.");
         });
 
@@ -260,7 +261,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         await Assert.ThrowsAsync<InvalidOperationException>(() => Mutate(failing));
         Assert.Equal(before, await Controls.Find(item => item.Id == before.Id).SingleAsync());
         Assert.Equal(2,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
         await Mutate(Store());
         var after = await Controls.Find(item => item.Id == before.Id).SingleAsync();
         Assert.False(after.SourceHealthy);
@@ -276,8 +277,8 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Equal(after.ObservationVersion, repeated.ObservationVersion);
         Assert.Equal(after.Epoch, repeated.Epoch);
         Assert.Equal(3,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
-        var messages = await fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync();
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
+        var messages = await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync();
         var notice = messages.Select(item =>
                 JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(item.PayloadJson,
                     EventExtensions.SerializerOptions)!)
@@ -305,7 +306,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Null(await Store().LoadFreshSnapshotAsync(seeded.Context));
         Assert.Equal(0, await Snapshots.CountDocumentsAsync(FilterDefinition<ObservationSnapshotDocument>.Empty));
         Assert.Equal(0,
-            await fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
     }
 
     [Fact]
@@ -509,7 +510,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             "owned-controller",
             Sample());
         if (mutation == "purge")
-            await fixture.DbContext.ResourceDeployments.DeleteOneAsync(item => item.Id == owner.Lease.DeploymentId);
+            await Fixture.DbContext.ResourceDeployments.DeleteOneAsync(item => item.Id == owner.Lease.DeploymentId);
         else
         {
             var change = mutation switch
@@ -539,7 +540,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                     1),
                 _ => throw new InvalidOperationException("Unknown test mutation.")
             };
-            await fixture.DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
+            await Fixture.DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
                 change);
         }
 
@@ -608,13 +609,13 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             owner.SourceControlVersion,
             "owned-controller",
             Sample());
-        var old = await fixture.DbContext.ResourceDeployments.Find(item => item.Id == owner.Lease.DeploymentId)
+        var old = await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == owner.Lease.DeploymentId)
             .SingleAsync();
         var next = old.RequestReconciliation(old.ResolvedPlacement,
             true,
             DateTime.UtcNow,
             resourceRevision: old.ResourceRevision + 1);
-        await fixture.DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == old.Id, next);
+        await Fixture.DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == old.Id, next);
         var context = new ResourceDeploymentObservationContext(next.ToReconciliationSnapshot(), next.Revision, 1);
         await Store().PutDemandAsync(seeded.Demand, context);
         var control = await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
@@ -622,7 +623,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.True(control.Epoch > owner.Lease.Epoch);
         Assert.Equal(3, control.ObservationVersion);
         AssertRejected(ObservationStoreRejection.LeaseLost, (await Store().ReleaseLeaseAsync(owner.Lease)).Value);
-        var notices = await fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync();
+        var notices = await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync();
         var changed = notices.Select(item =>
                 JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(item.PayloadJson,
                     EventExtensions.SerializerOptions)!)
@@ -746,7 +747,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var paused = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             entered.TrySetResult();
             await resume.Task.WaitAsync(ct);
         });
@@ -786,7 +787,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                 (await ServerNowAsync()).AddSeconds(1)));
         var delayed = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             await Task.Delay(TimeSpan.FromMilliseconds(1400), ct);
         });
         AssertRejected(ObservationStoreRejection.LeaseLost,
@@ -809,7 +810,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                 (await ServerNowAsync()).AddSeconds(1)));
         var delayed = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             await Task.Delay(TimeSpan.FromMilliseconds(1400), ct);
         });
         AssertRejected(ObservationStoreRejection.NoDemand,
@@ -837,7 +838,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             await Controls.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
                 Builders<ObservationControlDocument>.Update.Set(item => item.LeaseExpiresAtUtc, expiry));
         var before = await Controls.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync();
-        var settings = fixture.Client.Settings.Clone();
+        var settings = Fixture.Client.Settings.Clone();
         var previous = settings.ClusterConfigurator;
         var updates = 0;
         var touchRequest = 0;
@@ -857,7 +858,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             });
         };
         using var client = new MongoClient(settings);
-        var database = client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName);
+        var database = client.GetDatabase(Fixture.Database.DatabaseNamespace.DatabaseName);
         var delayed = new MongoResourceDeploymentObservationStore(
             database.GetCollection<ObservationControlDocument>(
                 MongoResourceDeploymentObservationStore.ControlsCollection),
@@ -871,7 +872,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                     database.GetCollection<Pole.Features.DeploymentTargets.Domain.DeploymentTarget>(
                         "DeploymentTargets"))
                 .InvokeAsync(request, session, ct),
-            fixture.StoreOutboxWrites);
+            Fixture.StoreOutboxWrites);
         AssertRejected(demandExpires ? ObservationStoreRejection.NoDemand : ObservationStoreRejection.LeaseLost,
             (await delayed.SetSourceStateAsync(owner.Lease,
                 seeded.Context,
@@ -910,7 +911,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Single(last.Items);
         Assert.Null(last.NextCursor);
         Assert.Equal(3, first.Items.Concat(last.Items).Select(item => item.DeploymentId).Distinct().Count());
-        Assert.All(first.Items.Concat(last.Items), item => Assert.Equal(TestData.TenantId, item.TenantId));
+        Assert.All(first.Items.Concat(last.Items), item => Assert.Equal(Data.TenantId, item.TenantId));
         Assert.Null(await Store()
             .LoadControlAsync(new(ObjectId.GenerateNewId().ToString(), one.Context.Deployment.Id)));
         var foreign = one.Context with
@@ -925,39 +926,39 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     }
 
     private Task<long> EventCountAsync() =>
-        fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName);
+        Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName);
 
     private async Task<DateTime> ServerNowAsync() =>
-        (await fixture.Database.RunCommandAsync<BsonDocument>(new BsonDocument("hello", 1)))["localTime"]
+        (await Fixture.Database.RunCommandAsync<BsonDocument>(new BsonDocument("hello", 1)))["localTime"]
         .ToUniversalTime();
 
     private MongoResourceDeploymentObservationStore Store(StoreOutboxWrites? writes = null,
         FenceDeploymentTargetObservation? fence = null) =>
-        new(fixture.Database.GetCollection<ObservationControlDocument>(
+        new(Fixture.Database.GetCollection<ObservationControlDocument>(
                 MongoResourceDeploymentObservationStore.ControlsCollection),
-            fixture.Database.GetCollection<ObservationDemandDocument>(
+            Fixture.Database.GetCollection<ObservationDemandDocument>(
                 MongoResourceDeploymentObservationStore.DemandsCollection),
-            fixture.Database.GetCollection<ObservationSnapshotDocument>(
+            Fixture.Database.GetCollection<ObservationSnapshotDocument>(
                 MongoResourceDeploymentObservationStore.SnapshotsCollection),
-            fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments"),
-            new MongoRunTransaction(fixture.Client),
+            Fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments"),
+            new MongoRunTransaction(Fixture.Client),
             fence ?? FenceTargetAsync,
-            writes ?? fixture.StoreOutboxWrites);
+            writes ?? Fixture.StoreOutboxWrites);
 
     private Task<FenceDeploymentTargetObservationOutcome> FenceTargetAsync(
         DeploymentTargetObservationFenceRequest request,
         IClientSessionHandle session,
         CancellationToken ct) =>
-        new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets)
+        new MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets)
             .InvokeAsync(request, session, ct);
 
     private async Task<SeededObservation> SeedAsync()
     {
         await new Pole.Features.ResourceDeployments.Migrations.ResourceDeploymentObservationIndexMigration()
-            .Up(fixture.Database);
+            .Up(Fixture.Database);
         var now = DateTime.UtcNow.AddMinutes(-1);
         var target = ObjectId.GenerateNewId().ToString();
-        var deployment = ResourceDeploymentFactory.Create(TestData.TenantId,
+        var deployment = ResourceDeploymentFactory.Create(Data.TenantId,
             ResourceTypeId.Create("pole/web-service"),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
@@ -978,7 +979,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                 Id = ObjectId.GenerateNewId().ToString(),
                 CreatedAtUtc = now
             });
-        await fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
+        await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
         await Targets.InsertOneAsync(new BsonDocument
         {
             { "_id", ObjectId.Parse(target) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
@@ -987,7 +988,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var context =
             new ResourceDeploymentObservationContext(deployment.ToReconciliationSnapshot(), deployment.Revision, 1);
         return new(context,
-            new(new(TestData.TenantId, deployment.Id, Guid.NewGuid().ToString("N"), "connection-a", "session-a"),
+            new(new(Data.TenantId, deployment.Id, Guid.NewGuid().ToString("N"), "connection-a", "session-a"),
                 DateTimeOffset.UtcNow.AddMinutes(20)));
     }
 

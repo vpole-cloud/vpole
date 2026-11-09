@@ -14,13 +14,13 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Loaders_preserve_the_tenant_boundary_for_zone_id_and_target_queries()
@@ -32,10 +32,10 @@ public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture
         var zone = CreateZone(tenantId, deploymentTargetId, "api");
         var otherTargetZone = CreateZone(tenantId, otherDeploymentTargetId, "internal");
         var foreignZone = CreateZone(otherTenantId, deploymentTargetId, "foreign");
-        await fixture.Database
+        await Fixture.Database
             .GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones)
             .InsertManyAsync([zone, otherTargetZone, foreignZone]);
-        var zones = fixture.Database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
+        var zones = Fixture.Database.GetCollection<TenantDomainZone>(DomainCollectionNames.TenantDomainZones);
         var loadZone = new MongoLoadTenantDomainZone(zones);
         var loadZones = new MongoLoadTenantDomainZones(zones);
 

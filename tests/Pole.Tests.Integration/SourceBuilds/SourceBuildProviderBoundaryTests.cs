@@ -18,15 +18,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task SourceRepositoryBuildCapabilities_AreTenantScopedAndMapTheBuildSnapshot()
     {
         var now = DateTime.UtcNow;
         var connection = GitProviderConnectionFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             "github-test",
             GitProviderKind.GitHub,
             "installation-1",
@@ -34,13 +35,13 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "pole",
             GitProviderAccountType.Organization,
             GitProviderRepositorySelection.Selected,
-            TestData.UserId,
+            Data.UserId,
             new GitProviderConnectionFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 now,
                 now));
         var repository = SourceRepositoryFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             "application",
             connection.Id,
             "provider-repository-1",
@@ -52,16 +53,16 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
                 ObjectId.GenerateNewId().ToString(),
                 now,
                 now));
-        await fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
-        await fixture.DbContext.SourceRepositories.InsertOneAsync(repository);
+        await Fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
+        await Fixture.DbContext.SourceRepositories.InsertOneAsync(repository);
 
         var archiveDownloader = new RecordingArchiveDownloader();
         LoadSourceRepository loadRepository = async (tenantId, sourceRepositoryId, cancellationToken) =>
-            await fixture.DbContext.SourceRepositories
+            await Fixture.DbContext.SourceRepositories
                 .Find(item => item.TenantId == tenantId && item.Id == sourceRepositoryId)
                 .FirstOrDefaultAsync(cancellationToken);
         LoadGitProviderConnection loadConnection = async (tenantId, connectionId, cancellationToken) =>
-            await fixture.DbContext.GitProviderConnections
+            await Fixture.DbContext.GitProviderConnections
                 .Find(item => item.TenantId == tenantId && item.Id == connectionId)
                 .FirstOrDefaultAsync(cancellationToken);
         var finder = new SourceRepositoryBuildFinder(loadRepository);
@@ -73,7 +74,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         var crossTenant = await finder.InvokeAsync(
             ObjectId.GenerateNewId().ToString(),
             repository.Id);
-        var snapshot = await finder.InvokeAsync(TestData.TenantId, repository.Id);
+        var snapshot = await finder.InvokeAsync(Data.TenantId, repository.Id);
 
         Assert.IsType<SourceRepositoryBuildNotFound>(crossTenant.Value);
         var found = Assert.IsType<SourceRepositoryBuildSnapshot>(snapshot.Value);
@@ -95,7 +96,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
 
         var download = await archive.InvokeAsync(
             new DownloadSourceRepositoryArchiveRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 SourceRepositoryId: repository.Id,
                 CommitSha: "exact-commit",
                 Destination: destination));
@@ -111,10 +112,10 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
     {
         var now = DateTime.UtcNow;
         var project = RegistryProjectFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             ContainerRegistryProvider.Harbor,
             "persisted-project-name",
-            TestData.UserId,
+            Data.UserId,
             new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
         {
             State = new ReadyRegistryProject(
@@ -123,11 +124,11 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
                 "pull-credential",
                 now)
         };
-        await fixture.DbContext.RegistryProjects.InsertOneAsync(project);
+        await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
 
         var registryClient = new RecordingContainerRegistryClient();
         LoadTenantHarborRegistryProject loadProject = async (tenantId, cancellationToken) =>
-            await fixture.DbContext.RegistryProjects
+            await Fixture.DbContext.RegistryProjects
                 .Find(item => item.TenantId == tenantId && item.Provider == ContainerRegistryProvider.Harbor)
                 .FirstOrDefaultAsync(cancellationToken);
         var service = new TenantRegistryArtifactLookup(loadProject, registryClient);
@@ -145,7 +146,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
 
         var artifact = await service.InvokeAsync(
             new GetTenantRegistryArtifactRequest(
-                TenantId: TestData.TenantId,
+                TenantId: Data.TenantId,
                 RegistryProjectId: project.Id,
                 RepositoryName: "web-services/service-1",
                 Reference: "build-1"));
@@ -156,9 +157,9 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
         Assert.Equal(project.Name, registryClient.ProjectName);
     }
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     private sealed class RecordingArchiveDownloader
     {

@@ -15,6 +15,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Search;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.search/v1/search-projection-changed";
@@ -40,7 +41,8 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         await delete(snapshot.Identity, 2);
         await create(snapshot);
         await status(snapshot.Identity, current);
-        var envelopes = await DbContext.OutboxMessages.Find(row => row.EventType == EventName).ToListAsync();
+        var envelopes = await DbContext.OutboxMessages
+            .Find(row => row.TenantId == snapshot.Identity.TenantId && row.EventType == EventName).ToListAsync();
         Assert.Equal(3, envelopes.Count);
         var messages = envelopes.Select(row =>
             JsonSerializer.Deserialize<SearchProjectionChangedEvent>(row.PayloadJson, EventExtensions.SerializerOptions)
@@ -77,7 +79,7 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         var status = Services.GetRequiredService<UpdateSearchOperationalStatus>();
         await status(snapshot.Identity, new(2, 3, "Applied", null, DateTime.UtcNow));
         await Services.GetRequiredService<CreateSearchProjection>()(snapshot);
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     [Theory]
@@ -92,14 +94,14 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         if (mutation is not ("create" or "pending-status"))
             await Services.GetRequiredService<CreateSearchProjection>()(snapshot);
         var before = await ProjectionState();
-        var count = await DbContext.CountOutboxMessagesAsync(EventName);
+        var count = await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName);
         var services = new ServiceCollection().AddSingleton(Fixture.Client).AddSingleton(Fixture.Database)
             .AddSingleton(new SearchSourceType(Type, "Widget", 3)).AddSearchFeature();
         services.AddSingleton<StoreOutboxWrites>(async (session, writes, ct) =>
         {
             Assert.True(session.IsInTransaction);
             await Fixture.StoreOutboxWrites(session, writes, ct);
-            Assert.Equal(count, await DbContext.CountOutboxMessagesAsync(EventName));
+            Assert.Equal(count, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
             throw new InvalidOperationException("Injected outbox failure.");
         });
         await using var provider = services.BuildServiceProvider();
@@ -117,7 +119,7 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             })
         });
         Assert.Equal(before, await ProjectionState());
-        Assert.Equal(count, await DbContext.CountOutboxMessagesAsync(EventName));
+        Assert.Equal(count, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
 
     [Fact]
@@ -134,13 +136,13 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         var rows = new List<string>();
         foreach (var collection in new[] { "SearchDocuments", "SearchSourceDocuments", "SearchProjectionVersions" })
             rows.Add((await Fixture.Database.GetCollection<BsonDocument>(collection)
-                .Find(FilterDefinition<BsonDocument>.Empty)
+                .Find(Builders<BsonDocument>.Filter.Eq("TenantId", Data.TenantId))
                 .Sort(Builders<BsonDocument>.Sort.Ascending("_id")).ToListAsync()).ToJson());
         return rows.ToArray();
     }
 
-    private static SearchProjectionSnapshot Snapshot() => new(
-        new(ObjectId.GenerateNewId().ToString(), Type, ObjectId.GenerateNewId().ToString()),
+    private SearchProjectionSnapshot Snapshot() => new(
+        new(Data.TenantId, Type, ObjectId.GenerateNewId().ToString()),
         "private-search-title",
         null,
         null,

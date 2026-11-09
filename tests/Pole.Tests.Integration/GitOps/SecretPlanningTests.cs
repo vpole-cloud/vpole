@@ -10,7 +10,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class SecretPlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Secret_planning_ignores_value_rotation_and_reports_metadata_drift()
@@ -23,7 +24,7 @@ public sealed partial class DeclarativePipelineTests
         Task<ResourceDeclarationPlan> PlanAsync(PlanDeclarationRequest input) =>
             transactions.InvokeOutcomeAsync<ResourceDeclarationPlan>(async (tx, ct) =>
                 tx.Commit(await planner.PlanAsync(input, tx.Session, ct)), default);
-        var request = new PlanDeclarationRequest(new(TestData.TenantId, source, null), declaration);
+        var request = new PlanDeclarationRequest(new(Data.TenantId, source, null), declaration);
         var before = Assert.IsType<NoOpDeclarationPlan>(await PlanAsync(request));
         await Supply("must-never-appear-in-a-plan");
         var after = Assert.IsType<NoOpDeclarationPlan>(await PlanAsync(request));
@@ -31,7 +32,7 @@ public sealed partial class DeclarativePipelineTests
             after.Current.Projection.Configuration));
         Assert.DoesNotContain("must-never-appear", after.Current.Projection.Configuration.GetRawText());
         Assert.DoesNotContain("currentVersion", after.Current.Projection.Configuration.GetRawText());
-        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
         {
             Purpose = "drift",

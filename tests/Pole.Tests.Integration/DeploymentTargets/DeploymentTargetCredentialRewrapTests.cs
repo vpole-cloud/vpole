@@ -24,9 +24,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
     private const string KubeconfigToken = "rewrap-kubeconfig-token";
     private const string ServiceAccountToken = "rewrap-service-account-token";
@@ -35,9 +35,9 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
     private static readonly Lazy<string> CertificateAuthorityData =
         new(CreateCertificateAuthorityData);
 
-    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
+    public override async Task InitializeAsync() => await base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task RewrapAllAsync_RewrapsEveryCredentialKind_AndIsIdempotent()
@@ -68,7 +68,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         var inClusterTarget = CreateTarget(
             ObjectId.GenerateNewId().ToString(),
             DeploymentTargetConnectionFactory.CreateInCluster(1));
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync(
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync(
         [
             CreateTarget(kubeconfigTargetId, kubeconfigConnection),
             CreateTarget(serviceAccountTargetId, serviceAccountConnection),
@@ -76,7 +76,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         ]);
 
         var service = new MongoRewrapDeploymentTargetCredentials(
-            fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargets,
             encryption.RotatingService);
         var wrongKey = encryption.RotatingService.ActiveKey with
         {
@@ -94,7 +94,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
         Assert.Equal(2, first.Rewrapped);
         Assert.Equal(0, first.ConcurrentChanges);
 
-        var stored = await fixture.DbContext.DeploymentTargets
+        var stored = await Fixture.DbContext.DeploymentTargets
             .Find(target => target.Id == kubeconfigTargetId || target.Id == serviceAccountTargetId)
             .ToListAsync();
         var storedKubeconfig = Assert.IsType<KubeconfigDeploymentTargetConnection>(
@@ -107,7 +107,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             storedKubeconfig);
         Assert.Equal(serviceAccountConnection with { EncryptedCredential = storedServiceAccount.EncryptedCredential },
             storedServiceAccount);
-        Assert.Equal(inClusterTarget.Connection, (await fixture.DbContext.DeploymentTargets
+        Assert.Equal(inClusterTarget.Connection, (await Fixture.DbContext.DeploymentTargets
             .Find(target => target.Id == inClusterTarget.Id).SingleAsync()).Connection);
 
         var newOnlyConnectionService = CreateConnectionService(encryption.NewOnlyService);
@@ -145,9 +145,9 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
                 CertificateAuthorityData.Value,
                 ServiceAccountToken))).Value);
         var original = CreateTarget(targetId, prepared.Connection);
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(original);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(original);
         var rewrapService = new MongoRewrapDeploymentTargetCredentials(
-            fixture.DbContext.DeploymentTargets,
+            Fixture.DbContext.DeploymentTargets,
             encryption.RotatingService);
         var timeProvider = new CallbackTimeProvider(
             DateTimeOffset.UtcNow.AddMinutes(1),
@@ -163,11 +163,11 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             LoadById,
             LoadDefaultId,
             new MongoPersistUpdatedDeploymentTarget(
-                fixture.DbContext.DeploymentTargets,
+                Fixture.DbContext.DeploymentTargets,
                 CreateNoPublicBaseDomainReferences(),
                 CreateNoOverlappingPublicBaseDomain(),
-                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
-                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+                new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
+                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
                     "OutboxMessages")).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate,
             timeProvider);
@@ -188,7 +188,7 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
             _ => throw new Xunit.Sdk.XunitException("Expected a successful update outcome.")
         };
         Assert.Equal("Updated while rewrapping", response.DisplayName);
-        var stored = await fixture.DbContext.DeploymentTargets
+        var stored = await Fixture.DbContext.DeploymentTargets
             .Find(target => target.Id == targetId)
             .SingleAsync();
         var storedConnection = Assert.IsType<ServiceAccountDeploymentTargetConnection>(
@@ -303,14 +303,14 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
     private EnsureNoOverlappingDeploymentTargetPublicBaseDomain
         CreateNoOverlappingPublicBaseDomain() =>
         new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
-            fixture.DbContext.DeploymentTargets,
-            fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+            Fixture.DbContext.DeploymentTargets,
+            Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
 
     private EnsureNoDeploymentTargetPublicBaseDomainReferences
         CreateNoPublicBaseDomainReferences() =>
         new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(
-            fixture.DbContext.DeploymentTargetReferences).InvokeAsync;
+            Fixture.DbContext.DeploymentTargetReferences).InvokeAsync;
 
     private Task<DeploymentTarget?> LoadById(
         string id,
@@ -320,12 +320,12 @@ public sealed class DeploymentTargetCredentialRewrapTests(MongoReplicaSetFixture
     private async Task<DeploymentTarget?> LoadTargetAsync(
         string id,
         CancellationToken cancellationToken) =>
-        await fixture.DbContext.DeploymentTargets
+        await Fixture.DbContext.DeploymentTargets
             .Find(item => item.Id == id)
             .FirstOrDefaultAsync(cancellationToken);
 
     private async Task<string?> LoadDefaultId(CancellationToken cancellationToken) =>
-        await fixture.DbContext.DeploymentTargetSettings
+        await Fixture.DbContext.DeploymentTargetSettings
             .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
             .Project(item => item.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);

@@ -39,13 +39,13 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    : MongoIntegrationTestBase(fixture)
 {
-    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
+    public override async Task InitializeAsync() => await base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public void KubernetesConsumersDependOnProvider_NotProcessWideClient()
@@ -172,8 +172,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             Id = DeploymentTargetId
         };
         var services = new ServiceCollection();
-        services.AddSingleton<IMongoClient>(fixture.Client);
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoClient>(Fixture.Client);
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<LookupDeploymentTarget>((_, _) =>
@@ -239,8 +239,8 @@ public sealed class DeploymentTargetProductionDiTests(MongoReplicaSetFixture fix
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<IMongoClient>(fixture.Client);
-        services.AddSingleton<IMongoDatabase>(fixture.Database);
+        services.AddSingleton<IMongoClient>(Fixture.Client);
+        services.AddSingleton<IMongoDatabase>(Fixture.Database);
         services.AddSingleton<IEnvelopeEncryptionService>(TestEnvelopeEncryption.Create());
         services.AddSingleton<IHostEnvironment>(new FakeHostEnvironment());
         services.AddSingleton(TimeProvider.System);

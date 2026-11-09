@@ -14,6 +14,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -24,9 +25,9 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
     public async Task Register_IsIdempotent_AndRejectsCrossGroupIdentityReuse()
     {
         var firstGroup = await DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup("first"));
+            Data.SeedResourceGroup("first"));
         var secondGroup = await DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup("second"));
+            Data.SeedResourceGroup("second"));
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         var descriptor = new ResourceRegistrationDescriptor(
             WebServiceType,
@@ -65,13 +66,13 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         Assert.IsType<ResourceRegistrationIdentityConflict>(
             Assert.IsType<ResourceRegistrationMutationError>(conflict.Value).Value);
         Assert.Equal(1L, await DbContext.ResourceRegistrations.CountDocumentsAsync(
-            Builders<ResourceRegistration>.Filter.Empty));
+            Builders<ResourceRegistration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
     public async Task Register_RollsBackWithOwningTransaction_AndIsTenantScoped()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         using (var session = await DbContext.Client.StartSessionAsync())
         {
@@ -89,7 +90,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         }
 
         Assert.False(await DbContext.ResourceRegistrations
-            .Find(registration => registration.ResourceId == "rolled-back")
+            .Find(registration => registration.TenantId == Data.TenantId && registration.ResourceId == "rolled-back")
             .AnyAsync());
         var unchangedGroup = await DbContext.ResourceGroups
             .Find(candidate => candidate.Id == group.Id)
@@ -122,9 +123,9 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
     {
         var otherTenantId = ObjectId.GenerateNewId().ToString();
         var firstGroup = await DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup("first-tenant"));
+            Data.SeedResourceGroup("first-tenant"));
         var secondGroup = await DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup("second-tenant", otherTenantId));
+            Data.SeedResourceGroup("second-tenant", otherTenantId));
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         var descriptor = new ResourceRegistrationDescriptor(
             WebServiceType,
@@ -152,7 +153,9 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
             Assert.IsType<RegisteredResource>(first.Value).RegistrationId,
             Assert.IsType<RegisteredResource>(second.Value).RegistrationId);
         var registrations = await DbContext.ResourceRegistrations
-            .Find(registration => registration.ResourceId == descriptor.ResourceId)
+            .Find(registration =>
+                (registration.TenantId == firstGroup.TenantId || registration.TenantId == secondGroup.TenantId) &&
+                registration.ResourceId == descriptor.ResourceId)
             .ToListAsync();
         Assert.Equal(2, registrations.Count);
         Assert.Equal(
@@ -163,7 +166,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
     [Fact]
     public async Task BoundRegistrar_EnforcesPlatformAndPluginNamespacesForEveryMutation()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var platformRegistrar = Services.GetRequiredService<IResourceRegistrar>();
         var pluginRegistrar = Services.CreatePluginResourceRegistrar(" acme ");
         Assert.Throws<ArgumentException>(() =>
@@ -245,14 +248,14 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         }
 
         Assert.False(await DbContext.ResourceRegistrations
-            .Find(registration => registration.ResourceId == descriptor.ResourceId)
+            .Find(registration => registration.TenantId == Data.TenantId && registration.ResourceId == descriptor.ResourceId)
             .AnyAsync());
     }
 
     [Fact]
     public async Task UpdateAndUnregister_AreGenericTransactionalAndIdempotent()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         var descriptor = new ResourceRegistrationDescriptor(
             WebServiceType,
@@ -285,7 +288,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
             .Find(candidate => candidate.Id == group.Id)
             .SingleAsync();
         var registrationAfterFirstUpdate = await DbContext.ResourceRegistrations
-            .Find(candidate => candidate.ResourceId == descriptor.ResourceId)
+            .Find(candidate => candidate.TenantId == Data.TenantId && candidate.ResourceId == descriptor.ResourceId)
             .SingleAsync();
         using (var session = await DbContext.Client.StartSessionAsync())
         {
@@ -308,7 +311,7 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
             groupAfterFirstUpdate.RegistrationFence,
             groupAfterRepeatedUpdate.RegistrationFence);
         var registrationAfterRepeatedUpdate = await DbContext.ResourceRegistrations
-            .Find(candidate => candidate.ResourceId == descriptor.ResourceId)
+            .Find(candidate => candidate.TenantId == Data.TenantId && candidate.ResourceId == descriptor.ResourceId)
             .SingleAsync();
         Assert.Equal(
             registrationAfterFirstUpdate.UpdatedAtUtc,
@@ -329,14 +332,14 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         }
 
         Assert.False(await DbContext.ResourceRegistrations
-            .Find(registration => registration.ResourceId == descriptor.ResourceId)
+            .Find(registration => registration.TenantId == Data.TenantId && registration.ResourceId == descriptor.ResourceId)
             .AnyAsync());
     }
 
     [Fact]
     public async Task ResourceGroupReads_ReturnBatchedCount_AndPaginatedRegistrations()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var registrar = Services.GetRequiredService<IResourceRegistrar>();
         foreach (var resourceId in new[] { "resource-b", "resource-a" })
         {
@@ -375,15 +378,37 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         Assert.Equal("resource-b", Assert.Single(resources.Items).ResourceId);
     }
 
+
+
+    private async Task<ResourceRegistrationOutcome>
+        InTransactionAsync(
+            Func<IClientSessionHandle, CancellationToken,
+                Task<ResourceRegistrationOutcome>> operation,
+            bool commitOnError = true)
+    {
+        using var session = await DbContext.Client.StartSessionAsync();
+        session.StartTransaction();
+        var result = await operation(session, CancellationToken.None);
+        if (result is RegisteredResource || commitOnError)
+            await session.CommitTransactionAsync();
+        else
+            await session.AbortTransactionAsync();
+        return result;
+    }
+}
+
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class ResourceRegistrationMigrationTests(MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+{
     [Fact]
     public async Task Migration_CreatesUniqueStableIdentityIndex()
     {
         await new ResourceRegistrationMigration().Up(Fixture.Database);
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var first = ResourceRegistrationFactory.Create(
             group.TenantId,
             group.Id,
-            WebServiceType,
+            ResourceTypeId.Create("pole/web-service"),
             "duplicate",
             "First",
             null,
@@ -400,21 +425,5 @@ public sealed class ResourceRegistrationIntegrationTests(MongoReplicaSetFixture 
         var exception = await Assert.ThrowsAsync<MongoWriteException>(() =>
             DbContext.ResourceRegistrations.InsertOneAsync(duplicate));
         Assert.Equal(ServerErrorCategory.DuplicateKey, exception.WriteError?.Category);
-    }
-
-    private async Task<ResourceRegistrationOutcome>
-        InTransactionAsync(
-            Func<IClientSessionHandle, CancellationToken,
-                Task<ResourceRegistrationOutcome>> operation,
-            bool commitOnError = true)
-    {
-        using var session = await DbContext.Client.StartSessionAsync();
-        session.StartTransaction();
-        var result = await operation(session, CancellationToken.None);
-        if (result is RegisteredResource || commitOnError)
-            await session.CommitTransactionAsync();
-        else
-            await session.AbortTransactionAsync();
-        return result;
     }
 }

@@ -9,9 +9,11 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
+[Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
 {
-    private readonly ReviewedLifecycleAuthority authorization = new(fixture.Client);
+    private ReviewedLifecycleAuthority? _authorization;
+    private ReviewedLifecycleAuthority authorization => _authorization ??= new(Fixture.Client, Data.TenantId);
     protected override void ConfigureServices(IServiceCollection services) =>
         services.AddSingleton<IGitOpsMutations>(authorization);
 
@@ -21,7 +23,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
     [Fact]
     public async Task Group_removal_and_generated_scope_cleanup_join_the_callers_transaction()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var snapshot = Assert.IsType<GitLifecycleResourceSnapshot>((await Provider("ResourceGroup")
@@ -30,24 +32,24 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
         Assert.IsType<GitLifecycleResourceRemoved>((await Provider("ResourceGroup")
             .RemoveAsync(removal, session, default)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(1, await DbContext.ResourceGroups.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await DbContext.IsolationScopes.CountDocumentsAsync(_ => true));
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
+        Assert.Equal(1, await DbContext.ResourceGroups.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(1, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/resource-group-deleted"));
 
         session.StartTransaction();
         Assert.IsType<GitLifecycleResourceRemoved>((await Provider("ResourceGroup")
             .RemoveAsync(removal, session, default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(authorization.Authority, authorization.Observed);
-        Assert.Equal(0, await DbContext.ResourceGroups.CountDocumentsAsync(_ => true));
-        Assert.Equal(0, await DbContext.IsolationScopes.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync("pole.resource-groups/v1/resource-group-deleted"));
+        Assert.Equal(0, await DbContext.ResourceGroups.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(0, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/resource-group-deleted"));
     }
 
     [Fact]
     public async Task Group_removal_never_cascades_an_additional_manual_scope()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         var scope = IsolationScopeFactory.CreateAdditional(group.TenantId, group.Id, "retained",
             IsolationScopeFactory.DefaultOptions);
         await DbContext.IsolationScopes.InsertOneAsync(scope);
@@ -59,13 +61,13 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
             new(authorization.Authority, snapshot.Resource, snapshot.Version), session, default)).Value);
         Assert.IsType<GitLifecycleDependencyRetained>(blocked.Failure);
         await session.AbortTransactionAsync();
-        Assert.Equal(2, await DbContext.IsolationScopes.CountDocumentsAsync(_ => true));
+        Assert.Equal(2, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
     public async Task Scope_removal_preserves_default_scope_and_rejects_stale_parent_versions()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         var scope = IsolationScopeFactory.CreateAdditional(group.TenantId, group.Id, "isolated",
             IsolationScopeFactory.DefaultOptions);
         await DbContext.IsolationScopes.InsertOneAsync(scope);
@@ -86,7 +88,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
         Assert.IsType<GitLifecycleResourceRemoved>((await provider.RemoveAsync(
             new(authorization.Authority, resource, snapshot.Version), session, default)).Value);
         await session.CommitTransactionAsync();
-        Assert.Equal(group.DefaultIsolationScopeId, (await DbContext.IsolationScopes.Find(_ => true).SingleAsync()).Id);
+        Assert.Equal(group.DefaultIsolationScopeId, (await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Id);
         Assert.IsType<DeclarationReadBlocked>((await provider.ReadLifecycleAsync(new(group.TenantId,
             new(new("IsolationScope", "default"), group.DefaultIsolationScopeId)), session, default)).Value);
     }
@@ -94,7 +96,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
     [Fact]
     public async Task Reverse_reference_admission_invalidates_an_empty_reviewed_set()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         var provider = Services.GetServices<IDeclarativeLifecycleDependencyProvider>()
             .Single(item => item.DependencyOwner == "ResourceGroups");
         using var session = await Fixture.Client.StartSessionAsync();
@@ -110,7 +112,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
     [Fact]
     public async Task Unknown_registered_resource_type_blocks_lifecycle_instead_of_being_skipped()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         await DbContext.ResourceRegistrations.InsertOneAsync(ResourceRegistrationFactory.Create(group.TenantId,
             group.Id, Pole.Workloads.ResourceTypeId.Create("unknown/resource"), "resource", "Unmapped", "unknown",
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow)));
@@ -123,7 +125,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
     [Fact]
     public async Task Scope_adoption_uses_pinned_parent_and_does_not_change_manual_resources()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         var scope = IsolationScopeFactory.CreateAdditional(group.TenantId, group.Id, "isolated",
             IsolationScopeFactory.DefaultOptions);
         await DbContext.IsolationScopes.InsertOneAsync(scope);
@@ -138,7 +140,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
         Assert.Equal(scope.Id, preview.Current.ResourceId);
         Assert.True(System.Text.Json.JsonElement.DeepEquals(preview.Current.Projection.Identity,
             preview.Desired.Identity));
-        Assert.Equal(group.Revision, (await DbContext.ResourceGroups.Find(_ => true).SingleAsync()).Revision);
+        Assert.Equal(group.Revision, (await DbContext.ResourceGroups.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Revision);
         Assert.Equal(scope.Revision, (await DbContext.IsolationScopes.Find(item => item.Id == scope.Id)
             .SingleAsync()).Revision);
 
@@ -154,7 +156,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
     [Fact]
     public async Task Derived_scope_reservation_uses_real_existing_identity_and_new_planned_identity()
     {
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("reviewed"));
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("reviewed"));
         var provider = Assert.IsAssignableFrom<IDeclarativeDerivedIdentityProvider>(Provider("ResourceGroup"));
         using var session = await Fixture.Client.StartSessionAsync();
         var existing = Assert.Single(await provider.ReserveDerivedIdentitiesAsync(Read(group), session, default));
@@ -165,8 +167,8 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
             new(new("ResourceGroup", "replacement"), ObjectId.GenerateNewId().ToString())), session, default));
         Assert.Equal(GitPreviewReferenceState.Planned, created.State);
         Assert.NotEqual(existing.ResourceId, created.ResourceId);
-        Assert.Equal(1, await DbContext.IsolationScopes.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await DbContext.ResourceGroups.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await DbContext.IsolationScopes.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(1, await DbContext.ResourceGroups.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
@@ -177,7 +179,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
         var declaration = new CompiledDeclaration(new("ResourceGroup", "prepared"), DeclarationJson.Write(new { }),
             "hash", [new(DeclarationPhase.Prepare, [])], "group.yaml", 1);
         var authority = authorization.Authority;
-        var input = new GitOperationInput(new(TestData.TenantId, authority.SourceId, authority.RunId, 1,
+        var input = new GitOperationInput(new(Data.TenantId, authority.SourceId, authority.RunId, 1,
             "https://example.test/repository", new(1, 1, authority.WorkerId, 1, new string('a', 40))),
             declaration, DeclarationPhase.Prepare, id);
         var reserved = ObjectId.GenerateNewId().ToString();
@@ -190,7 +192,7 @@ public sealed class ResourceGroupLifecycleTests(MongoReplicaSetFixture fixture) 
         Assert.True(created.Applied);
         var group = await DbContext.ResourceGroups.Find(item => item.Id == id).SingleAsync();
         Assert.Equal(reserved, group.DefaultIsolationScopeId);
-        Assert.Equal(reserved, (await DbContext.IsolationScopes.Find(_ => true).SingleAsync()).Id);
+        Assert.Equal(reserved, (await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Id);
     }
 
     private static ReadLifecycleResourceRequest Read(ResourceGroup group) => new(group.TenantId,

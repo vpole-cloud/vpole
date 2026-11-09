@@ -12,6 +12,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -20,7 +21,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
     {
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("function-api").Body);
+            Data.CreateResourceGroupRequest("function-api").Body);
         var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
         Assert.NotNull(group);
 
@@ -28,7 +29,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
             "/api/v1/function-apps/",
             new CreateFunctionAppRequestBody(
                 "api-functions",
-                "api-functions",
+                $"api-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 ["api"]));
@@ -51,7 +52,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
     {
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("function-validation").Body);
+            Data.CreateResourceGroupRequest("function-validation").Body);
         var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
         Assert.NotNull(group);
         var spec = RevisionRequest() with
@@ -73,7 +74,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
             "/api/v1/function-apps/",
             new CreateFunctionAppRequestBody(
                 "invalid-functions",
-                "invalid-functions",
+                $"invalid-functions-{Data.TenantId}",
                 group.Id,
                 spec,
                 []));
@@ -86,7 +87,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
     {
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("function-null-validation").Body);
+            Data.CreateResourceGroupRequest("function-null-validation").Body);
         var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
         Assert.NotNull(group);
         var invalidSpec = RevisionRequest() with { Image = null! };
@@ -95,7 +96,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
             "/api/v1/function-apps/",
             new CreateFunctionAppRequestBody(
                 "null-functions",
-                "null-functions",
+                $"null-functions-{Data.TenantId}",
                 group.Id,
                 invalidSpec,
                 []));
@@ -108,7 +109,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
     {
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("function-missing").Body);
+            Data.CreateResourceGroupRequest("function-missing").Body);
         Assert.Equal(HttpStatusCode.Created, groupResponse.StatusCode);
         var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupResponse>();
         Assert.NotNull(group);
@@ -116,7 +117,7 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
             "/api/v1/function-apps/",
             new CreateFunctionAppRequestBody(
                 "missing-deployment-functions",
-                "missing-deployment-functions",
+                $"missing-deployment-functions-{Data.TenantId}",
                 group.Id,
                 RevisionRequest(),
                 []));

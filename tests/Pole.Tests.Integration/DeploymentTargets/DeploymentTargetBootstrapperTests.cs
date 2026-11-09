@@ -26,15 +26,16 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Exclusive)]
+public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
-    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
+    public override async Task InitializeAsync() => await base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task ProductionAuto_UsesInClusterConnection()
@@ -137,7 +138,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     public async Task ExistingTargetWithoutSettings_CreatesDefaultSetting()
     {
         var existing = CreateExistingTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(existing);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(existing);
         var preparer = new RecordingConnectionPreparer();
         var probe = new SuccessfulProbe();
         var bootstrapper = CreateBootstrapper(
@@ -158,7 +159,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     public async Task DanglingDefaultSetting_FailsWithoutCreatingTarget()
     {
         var missingTargetId = ObjectId.GenerateNewId().ToString();
-        await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
+        await Fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
             DeploymentTargetSettings.Create(missingTargetId, Now.UtcDateTime));
         var preparer = new RecordingConnectionPreparer();
         var bootstrapper = CreateBootstrapper(preparer, Environments.Production);
@@ -171,11 +172,11 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         Assert.Empty(preparer.Inputs);
         Assert.Equal(
             0,
-            await fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
+            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
                 Builders<DeploymentTarget>.Filter.Empty));
         Assert.Equal(
             1,
-            await fixture.DbContext.DeploymentTargetSettings.CountDocumentsAsync(
+            await Fixture.DbContext.DeploymentTargetSettings.CountDocumentsAsync(
                 Builders<DeploymentTargetSettings>.Filter.Empty));
     }
 
@@ -299,20 +300,20 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     public async Task DefaultBindingRacingDeletion_CannotLeaveDanglingSettings()
     {
         var existing = CreateExistingTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(existing);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(existing);
         var deleteClock = new BlockingTimeProvider(Now.AddMinutes(1));
         var deleteHandler = new DeleteDeploymentTargetHandler(
             new MongoDeleteDeploymentTarget(
-                fixture.DbContext.DeploymentTargets,
-                fixture.DbContext.DeploymentTargetSettings,
+                Fixture.DbContext.DeploymentTargets,
+                Fixture.DbContext.DeploymentTargetSettings,
                 new MongoEnsureNoDeploymentTargetReferences(
-                        fixture.DbContext.DeploymentTargetReferences)
+                        Fixture.DbContext.DeploymentTargetReferences)
                     .InvokeAsync,
-                new MongoRunTransaction(fixture.Client)
+                new MongoRunTransaction(Fixture.Client)
                     .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
                 deleteClock,
-                new MongoRunTransaction(fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
-                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+                new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
+                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
                     "OutboxMessages")).InvokeAsync).InvokeAsync,
             new NoOpClientCache().Invalidate);
 
@@ -349,21 +350,21 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var timeProvider = new FixedTimeProvider(Now);
         EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain =
             new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
-                fixture.DbContext.DeploymentTargets,
-                fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
+                Fixture.DbContext.DeploymentTargets,
+                Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                     DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
         return new DeploymentTargetBootstrapper(
             new MongoLoadDeploymentTargetBootstrapState(
-                fixture.DbContext.DeploymentTargets,
-                fixture.DbContext.DeploymentTargetSettings).InvokeAsync,
+                Fixture.DbContext.DeploymentTargets,
+                Fixture.DbContext.DeploymentTargetSettings).InvokeAsync,
             new MongoEnsureBootstrapDefaultDeploymentTarget(
-                fixture.DbContext.DeploymentTargets,
-                fixture.DbContext.DeploymentTargetSettings,
+                Fixture.DbContext.DeploymentTargets,
+                Fixture.DbContext.DeploymentTargetSettings,
                 ensureNoOverlappingPublicBaseDomain,
-                new MongoRunTransaction(fixture.Client)
+                new MongoRunTransaction(Fixture.Client)
                     .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
                 timeProvider,
-                new MongoStoreOutboxWrites(fixture.Database.GetCollection<OutboxMessage>(
+                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
                     "OutboxMessages")).InvokeAsync).InvokeAsync,
             preparer.InvokeAsync,
             (probe ?? new SuccessfulProbe()).InvokeAsync,
@@ -375,10 +376,10 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
     private async Task<(DeploymentTarget Target, DeploymentTargetSettings Settings)> LoadSingleStateAsync()
     {
-        var targets = await fixture.DbContext.DeploymentTargets
+        var targets = await Fixture.DbContext.DeploymentTargets
             .Find(Builders<DeploymentTarget>.Filter.Empty)
             .ToListAsync();
-        var settings = await fixture.DbContext.DeploymentTargetSettings
+        var settings = await Fixture.DbContext.DeploymentTargetSettings
             .Find(Builders<DeploymentTargetSettings>.Filter.Empty)
             .ToListAsync();
         return (Assert.Single(targets), Assert.Single(settings));

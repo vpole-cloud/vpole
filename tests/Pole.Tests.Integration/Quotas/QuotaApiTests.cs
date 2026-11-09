@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -21,17 +22,17 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
             Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, tenantHeader);
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
 
-        var response = await Client.GetAsync($"/api/v1/platform/tenants/{TestData.TenantId}/quota");
+        var response = await Client.GetAsync($"/api/v1/platform/tenants/{Data.TenantId}/quota");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(TestData.TenantId, body.RootElement.GetProperty("tenantId").GetString());
+        Assert.Equal(Data.TenantId, body.RootElement.GetProperty("tenantId").GetString());
     }
 
     [Fact]
     public async Task PolicyRequiresPlatformAdmin_AndTenantCanReadOwnUsage()
     {
-        var path = $"/api/v1/platform/tenants/{TestData.TenantId}/quota";
+        var path = $"/api/v1/platform/tenants/{Data.TenantId}/quota";
         var body = new
         {
             limits = new[]
@@ -66,7 +67,7 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
     {
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
         var response = await Client.PutAsJsonAsync(
-            $"/api/v1/platform/tenants/{TestData.TenantId}/quota",
+            $"/api/v1/platform/tenants/{Data.TenantId}/quota",
             new
             {
                 limits = new[] { new { key = "UnknownQuota", value = 1 } }

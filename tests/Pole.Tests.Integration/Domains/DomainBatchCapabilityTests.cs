@@ -19,20 +19,21 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private static readonly ResourceTypeId WebServiceType =
         ResourceTypeId.Create("pole/web-service");
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Generated_sets_preserve_order_batch_reads_and_reuse_existing_zones()
     {
         await PrepareDatabaseAsync();
-        var tenantId = ObjectId.GenerateNewId().ToString();
+        var tenantId = Data.TenantId;
         var firstTargetId = ObjectId.GenerateNewId().ToString();
         var secondTargetId = ObjectId.GenerateNewId().ToString();
         var coordinator = new RecordingTargetCoordinator();
@@ -50,7 +51,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 "first.example.com",
                 ExpectedWorkloadConfigurationRevision: 3)
         };
-        var transaction = new MongoRunTransaction(fixture.Client);
+        var transaction = new MongoRunTransaction(Fixture.Client);
 
         var created = Assert.IsAssignableFrom<IReadOnlyList<TenantDomainZoneSnapshot>>(
             (await transaction.InvokeOutcomeAsync<GetOrCreateGeneratedDomainZonesOutcome>((transactionContext,
@@ -63,7 +64,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 outcome => outcome is IReadOnlyList<TenantDomainZoneSnapshot>))).Value);
 
         Assert.Equal([secondTargetId, firstTargetId], created.Select(zone => zone.DeploymentTargetId));
-        Assert.Equal(2, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(2, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(1, coordinator.FenceBatchCalls);
         Assert.Equal([secondTargetId, firstTargetId], coordinator.Fences.Select(item => item.DeploymentTargetId));
         Assert.Equal([secondTargetId, firstTargetId], coordinator.Registrations.Select(item => item.TargetId));
@@ -79,7 +80,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 outcome => outcome is IReadOnlyList<TenantDomainZoneSnapshot>))).Value);
 
         Assert.Equal(created.Select(zone => zone.Id), reused.Select(zone => zone.Id));
-        Assert.Equal(2, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(2, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(1, coordinator.FenceBatchCalls);
         Assert.Equal(2, coordinator.Registrations.Count);
 
@@ -110,14 +111,14 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             ],
             bindings.Select(binding => binding.Hostname));
         Assert.Equal(2,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
         Assert.Equal(2,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<HostnameBinding>("HostnameBindings")
                 .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
-        var persistedZones = await fixture.Database
+        var persistedZones = await Fixture.Database
             .GetCollection<TenantDomainZone>("TenantDomainZones")
             .Find(Builders<TenantDomainZone>.Filter.Empty)
             .ToListAsync();
@@ -128,7 +129,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     public async Task Duplicate_set_inputs_fail_before_any_persistence()
     {
         await PrepareDatabaseAsync();
-        var tenantId = ObjectId.GenerateNewId().ToString();
+        var tenantId = Data.TenantId;
         var targetId = ObjectId.GenerateNewId().ToString();
         var coordinator = new RecordingTargetCoordinator();
         var capabilities = CreateCapabilities(tenantId, coordinator);
@@ -137,7 +138,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
             targetId,
             "example.com",
             ExpectedWorkloadConfigurationRevision: 1);
-        var transaction = new MongoRunTransaction(fixture.Client);
+        var transaction = new MongoRunTransaction(Fixture.Client);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             transaction.InvokeOutcomeAsync<GetOrCreateGeneratedDomainZonesOutcome>((transactionContext,
@@ -152,7 +153,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         Assert.Equal(0, coordinator.FenceBatchCalls);
         Assert.Empty(coordinator.Registrations);
         Assert.Equal(0,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
     }
@@ -161,11 +162,11 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     public async Task Generated_binding_set_rejects_cross_target_zone_without_partial_writes()
     {
         await PrepareDatabaseAsync();
-        var tenantId = ObjectId.GenerateNewId().ToString();
+        var tenantId = Data.TenantId;
         var targetId = ObjectId.GenerateNewId().ToString();
         var otherTargetId = ObjectId.GenerateNewId().ToString();
         var capabilities = CreateCapabilities(tenantId, new RecordingTargetCoordinator());
-        var transaction = new MongoRunTransaction(fixture.Client);
+        var transaction = new MongoRunTransaction(Fixture.Client);
         var zones = Assert.IsAssignableFrom<IReadOnlyList<TenantDomainZoneSnapshot>>(
             (await transaction.InvokeOutcomeAsync<GetOrCreateGeneratedDomainZonesOutcome>((transactionContext,
                 cancellationToken) => CompleteAsync(
@@ -199,7 +200,7 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         var error = Assert.IsType<GeneratedHostnameBindingError>(result.Value);
         Assert.IsType<GeneratedHostnameBindingTargetMismatch>(error.Value);
         Assert.Equal(0,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<HostnameBinding>("HostnameBindings")
                 .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
     }
@@ -208,11 +209,11 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     public async Task Finalizing_last_binding_releases_generated_zone_and_target_reference()
     {
         await PrepareDatabaseAsync();
-        var tenantId = ObjectId.GenerateNewId().ToString();
+        var tenantId = Data.TenantId;
         var targetId = ObjectId.GenerateNewId().ToString();
         var coordinator = new RecordingTargetCoordinator();
         var capabilities = CreateCapabilities(tenantId, coordinator);
-        var transaction = new MongoRunTransaction(fixture.Client);
+        var transaction = new MongoRunTransaction(Fixture.Client);
         var zone = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<TenantDomainZoneSnapshot>>(
             (await transaction.InvokeOutcomeAsync<GetOrCreateGeneratedDomainZonesOutcome>((transactionContext,
                 cancellationToken) => CompleteAsync(
@@ -249,28 +250,28 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 outcome => outcome is HostnameBindingsCleanedUp))).Value);
 
         Assert.Equal(0,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<HostnameBinding>("HostnameBindings")
                 .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
         Assert.Equal(0,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
         var unregistration = Assert.Single(coordinator.Unregistrations);
         Assert.Equal(targetId, unregistration.TargetId);
         Assert.Equal(zone.Id, unregistration.Owner.Id);
-        Assert.Equal(4, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(4, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
     }
 
     [Fact]
     public async Task Finalizing_last_binding_aborts_when_target_rejects_zone_reference_removal()
     {
         await PrepareDatabaseAsync();
-        var tenantId = ObjectId.GenerateNewId().ToString();
+        var tenantId = Data.TenantId;
         var targetId = ObjectId.GenerateNewId().ToString();
         var coordinator = new RecordingTargetCoordinator();
         var capabilities = CreateCapabilities(tenantId, coordinator);
-        var transaction = new MongoRunTransaction(fixture.Client);
+        var transaction = new MongoRunTransaction(Fixture.Client);
         var zone = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<TenantDomainZoneSnapshot>>(
             (await transaction.InvokeOutcomeAsync<GetOrCreateGeneratedDomainZonesOutcome>((transactionContext,
                 cancellationToken) => CompleteAsync(
@@ -315,13 +316,13 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
 
         var error = Assert.IsType<HostnameBindingCleanupError>(cleanup.Value).Value;
         Assert.IsType<HostnameBindingCleanupReferenceRemovalRejected>(error);
-        Assert.Equal(2, await fixture.DbContext.CountOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(2, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.domains/v1/domain-metadata-changed"));
         Assert.Equal(1,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<HostnameBinding>("HostnameBindings")
                 .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
         Assert.Equal(1,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
     }
@@ -330,11 +331,11 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
     public async Task Finalizing_one_deployment_keeps_shared_generated_zone_while_another_binding_exists()
     {
         await PrepareDatabaseAsync();
-        var tenantId = ObjectId.GenerateNewId().ToString();
+        var tenantId = Data.TenantId;
         var targetId = ObjectId.GenerateNewId().ToString();
         var coordinator = new RecordingTargetCoordinator();
         var capabilities = CreateCapabilities(tenantId, coordinator);
-        var transaction = new MongoRunTransaction(fixture.Client);
+        var transaction = new MongoRunTransaction(Fixture.Client);
         var zone = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<TenantDomainZoneSnapshot>>(
             (await transaction.InvokeOutcomeAsync<GetOrCreateGeneratedDomainZonesOutcome>((transactionContext,
                 cancellationToken) => CompleteAsync(
@@ -382,14 +383,14 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
                 outcome => outcome is HostnameBindingsCleanedUp))).Value);
 
         Assert.Equal(1,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<HostnameBinding>("HostnameBindings")
                 .CountDocumentsAsync(Builders<HostnameBinding>.Filter.Empty));
         Assert.Equal(1,
-            await fixture.Database
+            await Fixture.Database
                 .GetCollection<TenantDomainZone>("TenantDomainZones")
                 .CountDocumentsAsync(Builders<TenantDomainZone>.Filter.Empty));
-        var remainingZone = await fixture.Database
+        var remainingZone = await Fixture.Database
             .GetCollection<TenantDomainZone>("TenantDomainZones")
             .Find(item => item.Id == zone.Id)
             .SingleAsync();
@@ -402,24 +403,24 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
         RecordingTargetCoordinator coordinator)
     {
         var cleanup = new MongoHostnameBindingCleanup(
-            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
-            fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
             coordinator.ApplyChangesOutcomeAsync,
             TimeProvider.System,
-            fixture.StoreOutboxWrites);
+            Fixture.StoreOutboxWrites);
         var zones = new MongoGetOrCreateGeneratedDomainZones(
-            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
             coordinator.ApplyChangesOutcomeAsync,
             coordinator.FenceManyOutcomeAsync,
             FixedTenantIdentityLookup(tenantId),
             TimeProvider.System,
-            fixture.StoreOutboxWrites);
+            Fixture.StoreOutboxWrites);
         var bindings = new MongoCreateGeneratedHostnameBindings(
-            fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
-            fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
+            Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+            Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings"),
             cleanup,
             TimeProvider.System,
-            fixture.StoreOutboxWrites);
+            Fixture.StoreOutboxWrites);
         var deleteBindings = new MongoDeleteHostnameBindingsForDeployment(cleanup);
         return new DomainCapabilities(
             zones.InvokeAsync,
@@ -457,9 +458,9 @@ public sealed class DomainBatchCapabilityTests(MongoReplicaSetFixture fixture) :
 
     private async Task PrepareDatabaseAsync()
     {
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
-        await new DomainIndexesMigration().Up(fixture.Database);
+        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
+        await new HostnameBindingSchemaValidationMigration().Up(Fixture.Database);
+        await new DomainIndexesMigration().Up(Fixture.Database);
     }
 
     private static LoadTenantIdentity FixedTenantIdentityLookup(string tenantId) =>

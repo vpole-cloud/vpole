@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixture fixture)
     : MongoIntegrationTestBase(fixture)
 {

@@ -16,6 +16,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.PrivateAccess;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -24,12 +25,12 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
     [Fact]
     public async Task Status_RequiresPlatformAdmin_AndUsesRouteTenantWithoutActiveTenant()
     {
-        var path = Path(TestData.TenantId, TestData.DefaultDeploymentTargetId);
+        var path = Path(Data.TenantId, TestData.DefaultDeploymentTargetId);
         var unrelatedTenant = ObjectId.GenerateNewId().ToString();
         var unrelatedGrant = PrivateAccessGrantFactory.Create(
-            unrelatedTenant, TestData.UserId, "pole/redis",
+            unrelatedTenant, Data.UserId, "pole/redis",
             ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString(), "redis", TestData.UserId,
+            ObjectId.GenerateNewId().ToString(), "redis", Data.UserId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1)) with
         {
             ResourceType = "invalid-resource-type"
@@ -54,7 +55,7 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
             Path("bad-tenant", TestData.DefaultDeploymentTargetId));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         using var missingTarget = await Client.GetAsync(
-            Path(TestData.TenantId, ObjectId.GenerateNewId().ToString()));
+            Path(Data.TenantId, ObjectId.GenerateNewId().ToString()));
         Assert.Equal(HttpStatusCode.NotFound, missingTarget.StatusCode);
     }
 
@@ -62,7 +63,7 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
     public async Task Status_FollowsDesiredRegistrationAndCurrentBrokerLease_WithoutExposingCredentials()
     {
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
-        var resource = RedisFactory.Create(TestData.TenantId, "orders",
+        var resource = RedisFactory.Create(Data.TenantId, "orders",
             ObjectId.GenerateNewId().ToString(),
             new RedisSpec(new Storage(1, TestData.DefaultStorageProfileId)),
             RedisFactory.DefaultCreateOptions);
@@ -71,22 +72,22 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(
             AppliedDeployment(resource.Id, deploymentId));
         var grant = PrivateAccessGrantFactory.Create(
-            TestData.TenantId, TestData.UserId, "pole/redis", resource.Id,
-            deploymentId, "redis", TestData.UserId,
+            Data.TenantId, Data.UserId, "pole/redis", resource.Id,
+            deploymentId, "redis", Data.UserId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
         await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .InsertOneAsync(grant);
-        var path = Path(TestData.TenantId, TestData.DefaultDeploymentTargetId);
+        var path = Path(Data.TenantId, TestData.DefaultDeploymentTargetId);
 
         var provisioning = await GetStatusAsync(path);
         Assert.True(provisioning.Required);
         Assert.Equal(PrivateAccessGatewayAvailability.Provisioning, provisioning.Availability);
 
         var gatewayId = PrivateAccessGatewayIds.StableId(
-            TestData.TenantId, TestData.DefaultDeploymentTargetId);
+            Data.TenantId, TestData.DefaultDeploymentTargetId);
         var pin = new string('a', 64);
         var gateway = PrivateAccessGatewayFactory.Create(
-            gatewayId, TestData.TenantId, TestData.DefaultDeploymentTargetId,
+            gatewayId, Data.TenantId, TestData.DefaultDeploymentTargetId,
             pin, DateTime.UtcNow.AddDays(1), []);
         var gateways = Fixture.Database.GetCollection<PrivateAccessGateway>("PrivateAccessGateways");
         await gateways.InsertOneAsync(gateway);
@@ -100,7 +101,7 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
         };
         await gateways.ReplaceOneAsync(item => item.Id == gatewayId, contacted);
         var owner = PrivateAccessBrokerOwnerFactory.Create(
-            gatewayId, TestData.TenantId, TestData.DefaultDeploymentTargetId, 1, 1) with
+            gatewayId, Data.TenantId, TestData.DefaultDeploymentTargetId, 1, 1) with
         {
             Epoch = 1,
             InstanceId = "server-1",
@@ -150,7 +151,7 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
 
         await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .ReplaceOneAsync(item => item.Id == grant.Id,
-                grant.Revoke(TestData.UserId, DateTime.UtcNow));
+                grant.Revoke(Data.UserId, DateTime.UtcNow));
         var removing = await GetStatusAsync(path);
         Assert.False(removing.Required);
         Assert.Equal(PrivateAccessGatewayAvailability.Removing, removing.Availability);
@@ -173,11 +174,11 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
     private static string Path(string tenantId, string targetId) =>
         $"/api/v1/platform/private-access/gateways/{tenantId}/{targetId}";
 
-    private static ResourceDeployment AppliedDeployment(string resourceId, string deploymentId)
+    private ResourceDeployment AppliedDeployment(string resourceId, string deploymentId)
     {
         var now = DateTime.UtcNow;
         var deployment = ResourceDeploymentFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             ResourceTypeId.Create("pole/redis"),
             resourceId,
             ObjectId.GenerateNewId().ToString(),
@@ -206,6 +207,7 @@ public sealed class PrivateAccessGatewayStatusApiTests(MongoReplicaSetFixture fi
     }
 }
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class PrivateAccessGatewayDisabledApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -214,7 +216,7 @@ public sealed class PrivateAccessGatewayDisabledApiTests(MongoReplicaSetFixture 
     {
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
         using var response = await Client.GetAsync(
-            $"/api/v1/platform/private-access/gateways/{TestData.TenantId}/{TestData.DefaultDeploymentTargetId}");
+            $"/api/v1/platform/private-access/gateways/{Data.TenantId}/{TestData.DefaultDeploymentTargetId}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var status = await response.Content.ReadFromJsonAsync<PrivateAccessGatewayStatusDto>();
         Assert.Equal(PrivateAccessGatewayAvailability.FeatureDisabled,

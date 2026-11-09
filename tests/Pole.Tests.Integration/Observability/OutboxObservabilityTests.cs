@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Observability;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
@@ -17,12 +18,12 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
     {
         using var scope = TraceContext.Push(new TraceContextSnapshot(TraceId, CorrelationId));
 
-        var result = await Mediator.Send(TestData.CreateResourceGroupRequest());
+        var result = await Mediator.Send(Data.CreateResourceGroupRequest());
 
         _ = result.AssertSuccess();
 
         var outboxMessage = await DbContext.OutboxMessages
-            .Find(message => message.EventType == "pole.resource-groups/v1/resource-group-created")
+            .Find(message => message.TenantId == Data.TenantId && message.EventType == "pole.resource-groups/v1/resource-group-created")
             .SingleAsync();
 
         Assert.Equal(TraceId, outboxMessage.TraceId);

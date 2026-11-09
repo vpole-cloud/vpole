@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -13,8 +14,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
-public sealed class SourceBuildBoundConfigurationTests(Pole.Testing.MongoReplicaSetFixture fixture)
-    : IClassFixture<Pole.Testing.MongoReplicaSetFixture>
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class SourceBuildBoundConfigurationTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Theory]
     [InlineData(true)]
@@ -29,10 +31,10 @@ public sealed class SourceBuildBoundConfigurationTests(Pole.Testing.MongoReplica
             new("FROM scratch"),
             new ManualSourceBuildConfigurationOrigin("author"),
             SourceBuildConfigurationFactory.DefaultOptions);
-        var configurations = fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
+        var configurations = Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations");
         await configurations.InsertOneAsync(current);
-        await using var services = new ServiceCollection().AddLogging().AddSingleton(fixture.Client)
-            .AddSingleton(fixture.Database).AddSingleton<MongoRunTransaction>().AddSingleton(fixture.StoreOutboxWrites)
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(Fixture.Client)
+            .AddSingleton(Fixture.Database).AddSingleton<MongoRunTransaction>().AddSingleton(Fixture.StoreOutboxWrites)
             .AddSingleton<IGitOpsMutations>(new ManualAuthority())
             .AddSingleton<LoadSourceBuildTarget>((request, session, _) =>
             {
@@ -58,7 +60,7 @@ public sealed class SourceBuildBoundConfigurationTests(Pole.Testing.MongoReplica
             Assert.False(await configurations.Find(item => item.Id == current.Id).AnyAsync());
         }
 
-        Assert.Equal(bound ? 0 : 1, await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
+        Assert.Equal(bound ? 0 : 1, await Fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
             .CountDocumentsAsync(new BsonDocument("TenantId", current.TenantId)));
     }
 

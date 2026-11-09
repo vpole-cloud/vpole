@@ -9,18 +9,30 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
-[Collection(IntegrationTestCollection.Name)]
 public abstract class ApiIntegrationTestBase : IAsyncLifetime
 {
     private TestApiApplication? _application;
+    private readonly bool _isolatedDatabase;
 
-    protected ApiIntegrationTestBase(MongoReplicaSetFixture fixture)
+    protected ApiIntegrationTestBase(MongoReplicaSetFixture fixture) : this(fixture, false) { }
+
+    protected ApiIntegrationTestBase(
+        MongoReplicaSetFixture fixture,
+        bool isolatedDatabase,
+        IntegrationSchemaProfile schemaProfile = IntegrationSchemaProfile.Full)
     {
-        Fixture = fixture;
+        if (!isolatedDatabase && schemaProfile != IntegrationSchemaProfile.Full)
+            throw new ArgumentException("Shared tenant databases require the Full schema profile.", nameof(schemaProfile));
+        _isolatedDatabase = isolatedDatabase;
+        Fixture = isolatedDatabase ? fixture.CreateDatabase(schemaProfile) : fixture.SharedDatabase;
+        TestScope = IntegrationTestScope.Create(Fixture);
+        Data = new IntegrationTestData(TestScope);
         Timings = new TestTimings(GetType());
     }
 
-    protected MongoReplicaSetFixture Fixture { get; }
+    protected TestDatabaseScope Fixture { get; }
+    protected IntegrationTestScope TestScope { get; }
+    protected IntegrationTestData Data { get; }
     protected TestTimings Timings { get; }
     protected HttpClient Client => _application!.Client;
     protected IServiceProvider ApiServices => _application!.Services;
@@ -54,43 +66,32 @@ public abstract class ApiIntegrationTestBase : IAsyncLifetime
 
     public virtual async Task InitializeAsync()
     {
-        using (Timings.Measure("database.reset"))
-            await Fixture.ResetDatabaseAsync();
+        using (Timings.Measure("database.prepare"))
+            await Fixture.PrepareAsync();
         using (Timings.Measure("seed.base"))
-        {
-            await SeedDefaultTenantAsync();
-            await Fixture.DbContext.StorageProfiles.InsertOneAsync(TestData.SeedStorageProfile());
-        }
-        _application = await TestApiApplication.StartAsync(Fixture, PrivateAccessEnabled, ConfigureTestServices, Timings);
+            await TestScope.SeedAsync();
+        _application = await TestApiApplication.StartAsync(Fixture, TestScope, PrivateAccessEnabled, ConfigureTestServices, Timings);
     }
 
     public virtual async Task DisposeAsync()
     {
-        if (_application is not null)
+        try
         {
-            using (Timings.Measure("api.host.dispose"))
-                await _application.DisposeAsync();
+            if (_application is not null)
+            {
+                using (Timings.Measure("api.host.dispose"))
+                    await _application.DisposeAsync();
+            }
+        }
+        finally
+        {
+            if (_isolatedDatabase)
+                using (Timings.Measure("database.dispose")) await Fixture.DisposeAsync();
         }
     }
-
-    private async Task SeedDefaultTenantAsync()
-    {
-        var tenant = TenantFactory.Create("Test tenant", TestData.TenantId) with
-        {
-            Members = ImmutableList.Create(TenantFactory.CreateMember(
-                TestData.TenantId,
-                TestData.UserId,
-                TestData.UserEmail,
-                TenantRole.Owner))
-        };
-
-        await Fixture.DbContext.Tenants.InsertOneAsync(tenant);
-        await Fixture.DbContext.Users.InsertOneAsync(PoleUserFactory.Create(
-            TestData.UserId,
-            TestData.UserEmail,
-            null,
-            null,
-            TestData.TenantId,
-            DateTime.UtcNow));
-    }
 }
+
+public abstract class IsolatedApiIntegrationTestBase(
+    MongoReplicaSetFixture fixture,
+    IntegrationSchemaProfile schemaProfile = IntegrationSchemaProfile.Full)
+    : ApiIntegrationTestBase(fixture, true, schemaProfile), IIsolatedIntegrationTest;

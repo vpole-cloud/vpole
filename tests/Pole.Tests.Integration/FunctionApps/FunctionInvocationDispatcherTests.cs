@@ -20,8 +20,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
+[Collection(IntegrationTestCollection.Global2)]
 public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-18T12:10:30Z");
     private static readonly FunctionEndpoint FirstEndpoint = new("10.42.0.11", 8080, "pod-1");
@@ -528,7 +529,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             isPastDue: true,
             missedOccurrenceCount: 1);
 
-    private static FunctionSubject CreateSubject()
+    private FunctionSubject CreateSubject()
     {
         var spec = new FunctionRevisionSpecInput(
             new FunctionImage("registry.example", "team/functions", "v1",
@@ -556,7 +557,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                         Retry: new FunctionRetryPolicy(3, [5, 30])))
             ]);
         var created = FunctionAppFactory.Create(
-            "tenant-1",
+            Data.TenantId,
             "group-1",
             new FunctionPlacementIdentity(
                 "507f1f77bcf86cd799439091",
@@ -567,8 +568,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             spec,
             [],
             Now.AddMinutes(-5));
-        const string appId = "507f1f77bcf86cd799439021";
-        const string revisionId = "507f1f77bcf86cd799439022";
+        var appId = created.FunctionApp.Id;
+        var revisionId = created.Revision.Id;
         var app = created.FunctionApp with
         {
             Id = appId,

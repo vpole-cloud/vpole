@@ -11,10 +11,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixture fixture)
     : MediatorIntegrationTestBase(fixture)
 {
-    private readonly ReviewedLifecycleAuthority authorization = new(fixture.Client);
+    private ReviewedLifecycleAuthority? _authorization;
+    private ReviewedLifecycleAuthority authorization => _authorization ??= new(Fixture.Client, Data.TenantId);
     private SourceBuildTargetSnapshot? previewTarget;
 
     protected override void ConfigureServices(IServiceCollection services)
@@ -43,13 +45,13 @@ public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixtur
         var request = new RemoveLifecycleResourceRequest(authorization.Authority, snapshot.Resource, snapshot.Version);
         Assert.IsType<GitLifecycleResourceRemoved>((await Provider.RemoveAsync(request, session, default)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(1, await Configurations.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await Configurations.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         Assert.Equal(0, await DbContext
-            .CountOutboxMessagesAsync("pole.source-builds/v1/source-build-configuration-changed"));
+            .CountOutboxMessagesAsync(Data.TenantId, "pole.source-builds/v1/source-build-configuration-changed"));
         session.StartTransaction();
         Assert.IsType<GitLifecycleResourceRemoved>((await Provider.RemoveAsync(request, session, default)).Value);
         await session.CommitTransactionAsync();
-        Assert.Equal(0, await Configurations.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await Configurations.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
@@ -60,7 +62,7 @@ public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixtur
         var job = SourceBuildJobFactory.CreateManual(configuration.TenantId, configuration.Id,
             configuration.SourceRepositoryId,
             configuration.WebServiceId, "main", new string('a', 40), new(1, 1, 1), configuration.Recipe,
-            TestData.UserId, null, SourceBuildJobFactory.DefaultOptions);
+            Data.UserId, null, SourceBuildJobFactory.DefaultOptions);
         await Fixture.Database.GetCollection<SourceBuildJob>("SourceBuildJobs").InsertOneAsync(job);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -70,7 +72,7 @@ public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixtur
             new(authorization.Authority, snapshot.Resource, snapshot.Version), session, default)).Value);
         Assert.IsType<GitLifecycleDependencyRetained>(blocked.Failure);
         await session.AbortTransactionAsync();
-        Assert.Equal(0, (await Configurations.Find(_ => true).SingleAsync()).ReferenceFence);
+        Assert.Equal(0, (await Configurations.Find(item => item.TenantId == Data.TenantId).SingleAsync()).ReferenceFence);
     }
 
     [Fact]
@@ -92,12 +94,12 @@ public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixtur
     [Fact]
     public async Task Adoption_preview_uses_existing_ids_and_does_not_write_recipe_or_queue_jobs()
     {
-        var connection = GitProviderConnectionFactory.Create(TestData.TenantId, "github-app", GitProviderKind.GitHub,
-            "installation", "account", "login", GitProviderAccountType.User, GitProviderRepositorySelection.All,
-            TestData.UserId, GitProviderConnectionFactory.DefaultOptions);
+        var connection = GitProviderConnectionFactory.Create(Data.TenantId, "github-app", GitProviderKind.GitHub,
+            "installation-" + Data.TenantId, "account", "login", GitProviderAccountType.User, GitProviderRepositorySelection.All,
+            Data.UserId, GitProviderConnectionFactory.DefaultOptions);
         await Fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
             .InsertOneAsync(connection);
-        var repository = SourceRepositoryFactory.Create(TestData.TenantId, "repository", connection.Id, "42",
+        var repository = SourceRepositoryFactory.Create(Data.TenantId, "repository", connection.Id, "42",
             "owner/application", "https://example.test/owner/application", true, "main",
             SourceRepositoryFactory.DefaultOptions);
         await Fixture.Database.GetCollection<SourceRepository>("SourceRepositories").InsertOneAsync(repository);
@@ -130,15 +132,15 @@ public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixtur
             session, default);
         Assert.IsType<DeclarationReadBlocked>(rejected.Value);
         await session.CommitTransactionAsync();
-        var stored = await Configurations.Find(_ => true).SingleAsync();
+        var stored = await Configurations.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         Assert.Equal(configuration.Recipe, stored.Recipe);
         Assert.Equal(configuration.Revision, stored.Revision);
         Assert.Equal(configuration.ReferenceFence, stored.ReferenceFence);
         Assert.Equal(configuration.Origin, stored.Origin);
         Assert.Equal(0, await Fixture.Database.GetCollection<SourceBuildJob>("SourceBuildJobs")
-            .CountDocumentsAsync(_ => true));
+            .CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         Assert.Equal(0, await DbContext
-            .CountOutboxMessagesAsync("pole.source-builds/v1/source-build-configuration-changed"));
+            .CountOutboxMessagesAsync(Data.TenantId, "pole.source-builds/v1/source-build-configuration-changed"));
     }
 
     [Fact]
@@ -150,17 +152,17 @@ public sealed class SourceBuildConfigurationLifecycleTests(MongoReplicaSetFixtur
         authorization.GitOwnedResources.Add(owned.Id);
         await Services.GetRequiredService<CleanupSourceBuildConfigurations>()(owned.TenantId,
             owned.WebServiceId, default);
-        Assert.Equal(2, await Configurations.CountDocumentsAsync(_ => true));
+        Assert.Equal(2, await Configurations.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         await Services.GetRequiredService<CleanupSourceBuildConfigurations>()(manual.TenantId,
             manual.WebServiceId, default);
-        Assert.Equal(owned.Id, (await Configurations.Find(_ => true).SingleAsync()).Id);
+        Assert.Equal(owned.Id, (await Configurations.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Id);
         Assert.Equal(1, await DbContext
-            .CountOutboxMessagesAsync("pole.source-builds/v1/source-build-configuration-changed"));
+            .CountOutboxMessagesAsync(Data.TenantId, "pole.source-builds/v1/source-build-configuration-changed"));
     }
 
-    private static SourceBuildConfiguration Configuration() => SourceBuildConfigurationFactory.Create(TestData.TenantId,
+    private SourceBuildConfiguration Configuration() => SourceBuildConfigurationFactory.Create(Data.TenantId,
         "application-build", ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
-        SourceBuildRecipe.Create("FROM scratch"), new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+        SourceBuildRecipe.Create("FROM scratch"), new ManualSourceBuildConfigurationOrigin(Data.UserId),
         SourceBuildConfigurationFactory.DefaultOptions);
     private static ReadLifecycleResourceRequest Read(SourceBuildConfiguration item) => new(item.TenantId,
         new(new("SourceBuildConfiguration", item.TechnicalName), item.Id));

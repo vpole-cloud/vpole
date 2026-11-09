@@ -25,117 +25,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
-    private IMongoCollection<FunctionApp> FunctionApps => Fixture.Database.GetCollection<FunctionApp>("FunctionApps");
-    private IMongoCollection<FunctionRevision> FunctionRevisions =>
-        Fixture.Database.GetCollection<FunctionRevision>("FunctionRevisions");
-    private IMongoCollection<FunctionRouteBinding> FunctionRoutes =>
-        Fixture.Database.GetCollection<FunctionRouteBinding>("FunctionRouteBindings");
-
-    private async Task SeedFunctionPlanningCatalog()
-    {
-        await new FunctionAppsInitialMigration().Up(Fixture.Database);
-        var computes = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
-        var compute = await computes.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
-        compute = compute with { AllowedResourceTypes = compute.AllowedResourceTypes.Add("pole/function-app") };
-        await computes.ReplaceOneAsync(item => item.Id == compute.Id, compute);
-        await Fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
-            item => item.Id == $"{compute.Id}/1", ComputeProfileRevisionFactory.Create(compute),
-            new ReplaceOptions { IsUpsert = true });
-        var targets = Fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets");
-        var target = await targets.Find(item => item.Id == TestData.DefaultDeploymentTargetId).SingleAsync();
-        await targets.ReplaceOneAsync(item => item.Id == target.Id, target with
-        {
-            WorkloadConfiguration = target.WorkloadConfiguration with
-            {
-                NetworkSources = new(ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty
-                    .Add(FunctionResourceDeployment.GatewaySourceName,
-                        DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32")))
-            }
-        });
-    }
-
-    private static ManifestFile[] FunctionSnapshot(bool secrets = false, string route = "function-worker",
-        string? scope = "function-scope") =>
-    [
-        new("group.yaml", """
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceGroup
-            metadata: {name: function-group}
-            spec: {description: Functions}
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: IsolationScope
-            metadata: {name: function-scope}
-            spec: {resourceGroup: function-group}
-            """),
-        new("function.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: FunctionApp
-            metadata: {name: function-worker}
-            spec:
-              resourceGroup: function-group
-              functionRoute: {{route}}
-              placement:
-                deploymentTarget: lab
-                computeProfile: {name: small, revision: 1}
-                {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              image: {server: example.test, name: function, tag: one}
-              environment: {APP_MODE: production}
-              {{(secrets ? "secretEnvironment: {STAGE_FIVE_SECRET: {secret: function-secret, key: password}}" : "")}}
-              resources:
-                requests: {cpuMillis: 100, memoryMi: 256}
-                limits: {cpuMillis: 500, memoryMi: 512}
-              scaling:
-                minInstances: 0
-                maxInstances: 2
-                targetConcurrencyPerInstance: 1
-                maxConcurrencyPerInstance: 10
-                scaleDownDelaySeconds: 60
-                activationTimeoutSeconds: 120
-              handlers:
-                - name: hello
-                  maxConcurrencyPerInstance: 10
-                  trigger: {route: hello, methods: [GET], exposure: Internal, type: http}
-                - name: clock
-                  maxConcurrencyPerInstance: 1
-                  trigger:
-                    type: timer
-                    cron: '*/5 * * * *'
-                    concurrencyPolicy: Forbid
-                    misfirePolicy: Skip
-                    retry: {maxAttempts: 2, backoffSeconds: [5]}
-              tags: [functions]
-            """),
-        .. secrets ? new[] { new ManifestFile("secret.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: Secret
-            metadata: {name: function-secret}
-            spec:
-              resourceGroup: function-group
-              {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              keys: [password]
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: SecretBinding
-            metadata: {name: function-access}
-            spec:
-              secret: function-secret
-              consumer: {kind: FunctionApp, name: function-worker}
-            """) } : []
-    ];
-
-    private async Task<FunctionApp> CurrentFunction() =>
-        await FunctionApps.Find(Builders<FunctionApp>.Filter.Empty).SingleAsync();
-
-    private async Task FailFunctionRuntime(FunctionApp app)
-    {
-        var failed = await Services.GetRequiredService<FailFunctionRevision>()(app.TenantId, app.Id,
-            app.PendingRevisionId!, new("TestRuntimeFailure", "Runtime failure"));
-        Assert.IsType<FunctionRevisionLifecycleCompleted>(failed.Value);
-    }
-
     [Fact]
     public async Task FunctionSameShaRepairsManagedFieldsThenNoOpsWithoutNewRevisionOrTriggerIdentity()
     {
@@ -149,7 +41,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(2, original.NextRevisionNumber);
         Assert.All(first.Spec.Handlers, handler => Assert.NotEmpty(handler.Trigger.TriggerId));
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == original.Id).SingleAsync();
-        var scope = await DbContext.IsolationScopes.Find(item => item.Name == "function-scope").SingleAsync();
+        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "function-scope").SingleAsync();
         Assert.Equal(scope.Id, placement.IsolationScopeId);
         Assert.Equal(first.Spec.Resources.Requests.CpuMillis, placement.ResolvedPlacement.Compute.Requests.CpuMillis);
         await FunctionRevisions.UpdateOneAsync(item => item.Id == first.Id,
@@ -184,7 +76,7 @@ public sealed partial class DeclarativePipelineTests
             second.Spec.Handlers.Select(handler => handler.Trigger.TriggerId));
         Assert.Equal(1, Assert.IsType<TimerFunctionTriggerSpec>(second.Spec.Handlers
             .Single(handler => handler.Name == "clock").Trigger).ScheduleVersion);
-        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(TestData.TenantId,
+        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(Data.TenantId,
             source, repaired.Context!.RunId, 1, 20, default))!.Items;
         Assert.DoesNotContain("private-drift", JsonSerializer.Serialize(operations));
         var configure = operations.Single(item => item.Kind == "FunctionApp" &&
@@ -197,7 +89,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(current.NextRevisionNumber, stable.NextRevisionNumber);
         Assert.Equal(current.UpdatedAtUtc, stable.UpdatedAtUtc);
         Assert.Equal(events, await BusinessEvents());
-        Assert.Equal(2, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Empty));
+        Assert.Equal(2, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         var detail = await ActivatorUtilities.CreateInstance<GetFunctionAppByIdHandler>(Services)
             .HandleAsync(new(original.Id, original.TenantId));
         Assert.NotNull(Assert.IsType<FunctionAppDetailsDto>(detail.Value).FunctionApp.GitOps);
@@ -224,7 +116,7 @@ public sealed partial class DeclarativePipelineTests
         var prepared = await CurrentFunction();
         Assert.Equal(FunctionAppDesiredState.Prepared, prepared.DesiredState);
         Assert.Equal(1, prepared.NextRevisionNumber);
-        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Empty));
+        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Empty((await FunctionRoutes.Find(item => item.FunctionAppId == prepared.Id).SingleAsync()).HttpRoutes);
         Assert.IsType<PreparedResourceDeploymentState>((await DbContext.ResourceDeployments
             .Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
@@ -235,7 +127,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(prepared.Id, app.Id);
         Assert.Equal(FunctionAppDesiredState.Enabled, app.DesiredState);
         Assert.Equal(2, app.NextRevisionNumber);
-        var secret = await Secrets.Find(Builders<Pole.Features.Secrets.Domain.Secret>.Filter.Empty).SingleAsync();
+        var secret = await Secrets.Find(Builders<Pole.Features.Secrets.Domain.Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var revision = await FunctionRevisions.Find(item => item.Id == app.PendingRevisionId).SingleAsync();
         Assert.Equal(secret.Id, revision.Spec.Configuration.SecretReferences["STAGE_FIVE_SECRET"].SecretId);
         await Supply("rotated-private-value");
@@ -244,7 +136,7 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, stable.Status);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(2, (await CurrentFunction()).NextRevisionNumber);
-        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(TestData.TenantId, source,
+        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(Data.TenantId, source,
             stable.Context!.RunId, default);
         Assert.DoesNotContain("rotated-private-value", JsonSerializer.Serialize(view));
     }
@@ -273,10 +165,10 @@ public sealed partial class DeclarativePipelineTests
         var app = await CurrentFunction();
         await FunctionRevisions.DeleteOneAsync(item => item.Id == app.PendingRevisionId);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(files)).Status);
-        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Empty));
+        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await FunctionApps.DeleteOneAsync(item => item.Id == app.Id);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(files)).Status);
-        Assert.Equal(0, await FunctionApps.CountDocumentsAsync(Builders<FunctionApp>.Filter.Empty));
+        Assert.Equal(0, await FunctionApps.CountDocumentsAsync(Builders<FunctionApp>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -299,8 +191,8 @@ public sealed partial class DeclarativePipelineTests
                 Builders<FunctionApp>.Update.Set(item => item.Tags, ImmutableHashSet.Create("racing-change")),
                 cancellationToken: ct);
         });
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customMutations: mutations)
-            .SubmitAsync(new(TestData.TenantId, source), files);
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations)
+            .SubmitAsync(new(Data.TenantId, source), files);
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.True((await CurrentFunction()).Tags.SetEquals(["functions"]));
@@ -321,12 +213,12 @@ public sealed partial class DeclarativePipelineTests
         var content = files[1].Content;
         content = invalid switch
         {
-            "unknown-root" => content.Replace("functionRoute: function-worker",
-                "unknown: true\n  functionRoute: function-worker"),
+            "unknown-root" => content.Replace($"functionRoute: function-worker-{Data.TenantId}",
+                $"unknown: true\n  functionRoute: function-worker-{Data.TenantId}"),
             "trigger-identity" => content.Replace("exposure: Internal, type: http",
                 "exposure: Internal, triggerId: client-selected, type: http"),
             "invalid-resources" => content.Replace("cpuMillis: 500", "cpuMillis: 0"),
-            "reserved-route" => content.Replace("functionRoute: function-worker", "functionRoute: api"),
+            "reserved-route" => content.Replace($"functionRoute: function-worker-{Data.TenantId}", "functionRoute: api"),
             "reserved-environment" => content.Replace("APP_MODE: production", "PoleFunctions__TenantId: unsafe"),
             "missing-exposure" => content.Replace("exposure: Internal, ", ""),
             _ => throw new ArgumentOutOfRangeException(nameof(invalid))
@@ -334,8 +226,8 @@ public sealed partial class DeclarativePipelineTests
         files[1] = files[1] with { Content = content };
         var result = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
-        Assert.Equal(0, await FunctionApps.CountDocumentsAsync(Builders<FunctionApp>.Filter.Empty));
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Empty));
+        Assert.Equal(0, await FunctionApps.CountDocumentsAsync(Builders<FunctionApp>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -365,25 +257,25 @@ public sealed partial class DeclarativePipelineTests
             provider.GetType(), execution);
         var registry = new DeclarativeProviderRegistry(
             providers.Select(item => item.Kind == "FunctionApp" ? failing : item));
-        var result = await new RepositoryPipelineDriver(Services, Fixture, repository, customProviders: registry)
-            .SubmitAsync(new(TestData.TenantId, source), FunctionSnapshot());
+        var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
+            .SubmitAsync(new(Data.TenantId, source), FunctionSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
         var prepared = await CurrentFunction();
         Assert.Equal(FunctionAppDesiredState.Prepared, prepared.DesiredState);
         Assert.Equal(1, prepared.NextRevisionNumber);
         Assert.Null(prepared.PendingRevisionId);
-        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Empty));
+        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.IsType<PreparedResourceDeploymentState>((await DbContext.ResourceDeployments
             .Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
-        var inventory = await Inventory.Find(item => item.Kind == "FunctionApp").SingleAsync();
+        var inventory = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "FunctionApp").SingleAsync();
         Assert.Null(inventory.Projections.Applied);
-        var events = await DbContext.OutboxMessages.Find(item => item.EventType.StartsWith("pole.functions/"))
+        var events = await DbContext.OutboxMessages.Find(item => item.TenantId == Data.TenantId && item.EventType.StartsWith("pole.functions/"))
             .ToListAsync();
         Assert.Empty(events);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
             (await Pipeline.ResumeAsync(result.Context!)).Status);
         Assert.Equal(2, (await CurrentFunction()).NextRevisionNumber);
-        Assert.Equal(1, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Empty));
+        Assert.Equal(1, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 }

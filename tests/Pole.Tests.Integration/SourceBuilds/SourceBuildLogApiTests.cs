@@ -16,20 +16,21 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Tenant2)]
 public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Viewer_reads_stable_incremental_ranges_after_owner_deletion_and_guesses_are_denied()
     {
-        var job = CreateJob(TestData.TenantId);
+        var job = CreateJob(Data.TenantId);
         await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);
         var now = DateTime.UtcNow;
         var log = SourceBuildLogFactory.Create(job.Id, job.TenantId, job.WebServiceId, "writer", new(1024 * 1024, 2048, 4096, 7), now);
         for (var sequence = 1; sequence <= 50; sequence++) log = log.Append(sequence, SourceBuildLogStream.StandardError, $"line-{sequence}\n", now);
         log = log.Seal(now);
         await Logs.InsertOneAsync(log);
-        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == TestData.TenantId).SingleAsync();
-        await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with { Members = ImmutableList.Create(TenantFactory.CreateMember(TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer)) });
+        var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, tenant with { Members = ImmutableList.Create(TenantFactory.CreateMember(Data.TenantId, Data.UserId, Data.UserEmail, TenantRole.Viewer)) });
         // No configuration or WebService exists: retained job identity is authoritative.
         var first = (await Client.GetFromJsonAsync<SourceBuildLogsDto>(Url(job)))!;
         Assert.Equal("Completed", first.CaptureState);
@@ -54,7 +55,7 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
     [Fact]
     public async Task Ongoing_capture_is_read_incrementally_and_reader_cancellation_does_not_fence_the_writer()
     {
-        var job = CreateJob(TestData.TenantId);
+        var job = CreateJob(Data.TenantId);
         await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);
         using var services = Services(TimeProvider.System);
         using var scope = services.CreateScope();
@@ -82,11 +83,16 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
     [Fact]
     public async Task Mongo_appends_are_atomic_idempotent_across_service_restart_and_writer_identity_fenced()
     {
-        var job = CreateJob(TestData.TenantId);
+        // The recovery clock scans and expires every log, including logs owned by other tenants.
+        await using var isolated = new TestDatabaseScope(
+            Fixture.Client.GetDatabase("pole-integration-" + Guid.NewGuid().ToString("N")));
+        await isolated.PrepareAsync();
+        var logs = isolated.Database.GetCollection<SourceBuildLog>("SourceBuildLogs");
+        var job = CreateJob(Data.TenantId);
         var now = DateTimeOffset.UtcNow;
         var clock = new MutableClock(now);
         var identity = new SourceBuildLogIdentity(job.TenantId, job.WebServiceId, job.Id, "writer");
-        using (var services = Services(clock))
+        using (var services = Services(clock, isolated.Database))
         using (var scope = services.CreateScope())
         {
             var start = scope.ServiceProvider.GetRequiredService<StartSourceBuildLog>();
@@ -95,7 +101,7 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
             var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => append(identity, 1, SourceBuildLogStream.StandardOutput, "first")));
             Assert.All(results, result => Assert.IsType<SourceBuildLogWriteAccepted>(result.Value));
         }
-        using var restarted = Services(clock);
+        using var restarted = Services(clock, isolated.Database);
         using var restartedScope = restarted.CreateScope();
         var writer = restartedScope.ServiceProvider.GetRequiredService<AppendSourceBuildLog>();
         Assert.IsType<SourceBuildLogWriteAccepted>((await writer(identity, 1, SourceBuildLogStream.StandardOutput, "first")).Value);
@@ -104,7 +110,7 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
         Assert.IsType<SourceBuildLogWriteFenced>((await writer(identity with { WriterToken = "stale" }, 2, SourceBuildLogStream.StandardOutput, "foreign")).Value);
         for (var sequence = 2; sequence <= 16; sequence++) await writer(identity, sequence, SourceBuildLogStream.StandardOutput, new string('x', 256));
         await writer(identity, 17, SourceBuildLogStream.StandardOutput, "discarded");
-        var stored = await Logs.Find(x => x.Id == job.Id).SingleAsync();
+        var stored = await logs.Find(x => x.Id == job.Id).SingleAsync();
         Assert.True(stored.Truncated);
         Assert.Equal(16, stored.Entries.Count);
         Assert.Equal(16, stored.LastSequence);
@@ -112,10 +118,10 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
         clock.Now = now.AddMinutes(3);
         Assert.IsType<SourceBuildLogWriteFenced>((await writer(identity, 17, SourceBuildLogStream.StandardOutput, "late")).Value);
         await restartedScope.ServiceProvider.GetRequiredService<RecoverSourceBuildLogs>()();
-        Assert.IsType<InterruptedSourceBuildLog>((await Logs.Find(x => x.Id == job.Id).SingleAsync()).State);
+        Assert.IsType<InterruptedSourceBuildLog>((await logs.Find(x => x.Id == job.Id).SingleAsync()).State);
         clock.Now = now.AddDays(8);
         await restartedScope.ServiceProvider.GetRequiredService<RecoverSourceBuildLogs>()();
-        var expired = await Logs.Find(x => x.Id == job.Id).SingleAsync();
+        var expired = await logs.Find(x => x.Id == job.Id).SingleAsync();
         Assert.IsType<ExpiredSourceBuildLog>(expired.State);
         Assert.Empty(expired.Entries);
         Assert.Equal(16, expired.LastSequence);
@@ -124,7 +130,7 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
     [Fact]
     public async Task Read_enforces_expiry_and_reports_legacy_unavailable_without_resetting_ahead_cursor()
     {
-        var job = CreateJob(TestData.TenantId);
+        var job = CreateJob(Data.TenantId);
         await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);
         Assert.Equal("Unavailable", (await Client.GetFromJsonAsync<SourceBuildLogsDto>(Url(job)))!.CaptureState);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync(Url(job, 1))).StatusCode);
@@ -139,10 +145,11 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
     }
 
     private IMongoCollection<SourceBuildLog> Logs => Fixture.Database.GetCollection<SourceBuildLog>("SourceBuildLogs");
-    private ServiceProvider Services(TimeProvider clock) => new ServiceCollection().AddLogging().AddSingleton(Fixture.Database).AddSingleton(clock)
-        .AddSourceBuildsFeature(new ConfigurationBuilder().Build()).BuildServiceProvider(validateScopes: true);
+    private ServiceProvider Services(TimeProvider clock, IMongoDatabase? database = null) =>
+        new ServiceCollection().AddLogging().AddSingleton(database ?? Fixture.Database).AddSingleton(clock)
+            .AddSourceBuildsFeature(new ConfigurationBuilder().Build()).BuildServiceProvider(validateScopes: true);
     private static string Url(SourceBuildJob job, long after = 0) => $"/api/v1/source-build-jobs/{job.Id}/logs?webServiceId={job.WebServiceId}&afterSequence={after}";
-    private static SourceBuildJob CreateJob(string tenantId) => SourceBuildJobFactory.CreateManual(
+    private SourceBuildJob CreateJob(string tenantId) => SourceBuildJobFactory.CreateManual(
         tenantId,
         ObjectId.GenerateNewId().ToString(),
         ObjectId.GenerateNewId().ToString(),
@@ -151,8 +158,8 @@ public sealed class SourceBuildLogApiTests(MongoReplicaSetFixture fixture) : Api
         "abc123",
         new SourceBuildInputVersion(1, 1, 1),
         new("FROM scratch"),
-        TestData.UserId,
-        TestData.UserEmail,
+        Data.UserId,
+        Data.UserEmail,
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
     private sealed class MutableClock(DateTimeOffset now) : TimeProvider
     {

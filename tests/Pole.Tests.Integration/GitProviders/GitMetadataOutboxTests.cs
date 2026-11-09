@@ -17,7 +17,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
-public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global)]
+public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private const string ConnectionEvent = "pole.git-providers/v1/git-provider-connection-changed";
     private const string RepositoryEvent = "pole.git-providers/v1/source-repository-changed";
@@ -41,7 +42,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
             metadata,
             now,
             default)).Value);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(ConnectionEvent));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(ConnectionEvent));
         await persistence.UpsertConnectionAsync(attempt,
             metadata with
             {
@@ -49,7 +50,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
             },
             now.AddSeconds(1),
             default);
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(ConnectionEvent));
+        Assert.Equal(2, await DbContext.CountAllOutboxMessagesAsync(ConnectionEvent));
         Assert.All(await DbContext.OutboxMessages.Find(row => row.EventType == ConnectionEvent).ToListAsync(),
             row =>
             {
@@ -81,7 +82,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         var delete = Delete(Fixture.StoreOutboxWrites);
         Assert.IsType<SourceRepositoryDeleted>((await delete.InvokeAsync(stored.TenantId, stored.Id)).Value);
         Assert.IsType<SourceRepositoryNotFound>((await delete.InvokeAsync(stored.TenantId, stored.Id)).Value);
-        Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(RepositoryEvent));
+        Assert.Equal(2, await DbContext.CountAllOutboxMessagesAsync(RepositoryEvent));
         Assert.All(await DbContext.OutboxMessages.Find(row => row.EventType == RepositoryEvent).ToListAsync(),
             row =>
             {
@@ -101,7 +102,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         Assert.Single(outcomes, outcome => outcome.Value is SourceRepository);
         Assert.Equal(3, outcomes.Count(outcome => outcome.Value is SourceRepositoryNameConflict));
         Assert.Equal(1, await DbContext.SourceRepositories.CountDocumentsAsync(_ => true));
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(RepositoryEvent));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(RepositoryEvent));
     }
 
     [Theory]
@@ -165,8 +166,8 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
         return rows.ToArray();
     }
 
-    private static GitHubSetupAttempt Attempt() => GitHubSetupAttemptFactory.Create(TestData.TenantId,
-        TestData.UserId,
+    private GitHubSetupAttempt Attempt() => GitHubSetupAttemptFactory.Create(Data.TenantId,
+        Data.UserId,
         "github-test",
         "private-state",
         GitHubSetupAttemptFactory.DefaultOptions);
@@ -194,7 +195,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
     private Task SeedConnection(SourceRepository repository) => DbContext.GitProviderConnections.InsertOneAsync(
         GitProviderConnectionFactory.Create(repository.TenantId, "repository-connection", GitProviderKind.GitHub,
             "42", "account", "organization", GitProviderAccountType.Organization, GitProviderRepositorySelection.All,
-            TestData.UserId, GitProviderConnectionFactory.DefaultOptions with { Id = repository.ConnectionId }));
+            Data.UserId, GitProviderConnectionFactory.DefaultOptions with { Id = repository.ConnectionId }));
 
     private Task RepositoryIndexes() => DbContext.SourceRepositories.Indexes.CreateManyAsync(
     [
@@ -207,7 +208,7 @@ public sealed class GitMetadataOutboxTests(MongoReplicaSetFixture fixture) : Med
             new CreateIndexOptions { Unique = true, Name = SourceRepositoryIndexes.Location })
     ]);
 
-    private static SourceRepository Repository() => SourceRepositoryFactory.Create(
-        TestData.TenantId, "application", ObjectId.GenerateNewId().ToString(), "external",
+    private SourceRepository Repository() => SourceRepositoryFactory.Create(
+        Data.TenantId, "application", ObjectId.GenerateNewId().ToString(), "external",
         "private-repository-name", "private-url", true, "main", SourceRepositoryFactory.DefaultOptions);
 }

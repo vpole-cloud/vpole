@@ -25,26 +25,27 @@ using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.storage-profiles/v1/storage-observation-changed";
 
     private IMongoCollection<StorageObservationControlDocument> Controls =>
-        fixture.Database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore
+        Fixture.Database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore
             .ControlsCollection);
 
     private IMongoCollection<StorageObservationDemandDocument> Demands =>
-        fixture.Database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore
+        Fixture.Database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore
             .DemandsCollection);
 
     private IMongoCollection<StorageObservationSnapshotDocument> Snapshots =>
-        fixture.Database.GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore
+        Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(MongoStorageObservationStore
             .SnapshotsCollection);
 
-    private IMongoCollection<BsonDocument> Targets => fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    private IMongoCollection<BsonDocument> Targets => Fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task DemandAndSourceDollarPrefixedValuesAreStoredAsLiterals()
@@ -98,11 +99,11 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         demand["DeploymentTargetId"] = ObjectId.Parse(context.DeploymentTargetId);
         demand["OriginalExpiresAtUtc"] = now.AddMinutes(5);
         demand["ExpiresAtUtc"] = now.AddMinutes(1);
-        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.ControlsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.ControlsCollection)
             .InsertOneAsync(control);
-        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
             .InsertOneAsync(demand);
-        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
             .InsertOneAsync(snapshot);
 
         var store = Store();
@@ -115,7 +116,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         var committed = Assert.IsType<StorageObservationSnapshot>((await store.TryCommitSnapshotAsync(
             lease, context, 7, "source", Inventory())).Value);
         Assert.Equal(9, committed.ObservationVersion);
-        var written = await fixture.Database
+        var written = await Fixture.Database
             .GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection)
             .Find(new BsonDocument("_id", ObjectId.Parse(context.DeploymentTargetId))).SingleAsync();
         Assert.Equal(snapshot.Names, written.Names);
@@ -142,7 +143,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         var next = await store.ScanDemandsAsync(page.NextCursor, 1);
         Assert.Equal(second.Context.DeploymentTargetId, Assert.Single(next.DeploymentTargetIds));
         Assert.Null(next.NextCursor);
-        await fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
+        await Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.DemandsCollection)
             .UpdateManyAsync(new BsonDocument("DeploymentTargetId", ObjectId.Parse(first.Context.DeploymentTargetId)),
                 Builders<BsonDocument>.Update.Set("ExpiresAtUtc", DateTime.UnixEpoch));
         var active = await store.ScanDemandsAsync(null, 10);
@@ -259,7 +260,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         var before = await Controls.Find(FilterDefinition<StorageObservationControlDocument>.Empty).SingleAsync();
         var failing = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected negative outbox failure.");
         });
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -376,7 +377,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         Assert.Equal(StorageNativeApi.MaximumQualifiedProvisioner, Assert.Single(roundTrip.StorageClasses).Provisioner);
         Assert.Equal(committed.ObservationVersion, roundTrip.ObservationVersion);
         Assert.Equal(2, await EventCountAsync());
-        foreach (var message in await fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName)
+        foreach (var message in await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName)
                      .ToListAsync())
             Assert.DoesNotContain(StorageNativeApi.MaximumQualifiedProvisioner, message.PayloadJson);
     }
@@ -426,7 +427,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         Assert.Equal(snapshot.ObservationVersion, roundTrip!.ObservationVersion);
         Assert.Equal(snapshot.CheckedAtUtc, roundTrip.CheckedAtUtc);
         var envelope =
-            (await fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync())
+            (await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync())
             .Single(item => item.CorrelationId == "storage-observation");
         var message =
             JsonSerializer.Deserialize<StorageObservationChangedEvent>(envelope.PayloadJson,
@@ -443,7 +444,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         Assert.DoesNotContain("Parameters", stored);
         Assert.DoesNotContain("Metadata", stored);
         Assert.DoesNotContain("native-canary", stored);
-        var plain = fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection);
+        var plain = Fixture.Database.GetCollection<BsonDocument>(MongoStorageObservationStore.SnapshotsCollection);
         Assert.True((await plain.Find(FilterDefinition<BsonDocument>.Empty).SingleAsync())["Inventory"]["Complete"]
             .AsBoolean);
     }
@@ -457,7 +458,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         var target = await Targets.Find(Target(seeded.Context)).SingleAsync();
         var failing = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected outbox failure.");
         });
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -525,7 +526,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         var before = await Controls.Find(FilterDefinition<StorageObservationControlDocument>.Empty).SingleAsync();
         var delayed = Store(async (session, writes, ct) =>
         {
-            await fixture.StoreOutboxWrites(session, writes, ct);
+            await Fixture.StoreOutboxWrites(session, writes, ct);
             await Task.Delay(1400, ct);
         });
         Rejected(demandExpires ? StorageObservationRejection.NoDemand : StorageObservationRejection.LeaseLost,
@@ -549,7 +550,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
         await Controls.UpdateOneAsync(item => item.Id == seeded.Context.DeploymentTargetId,
             Builders<StorageObservationControlDocument>.Update.Set(item => item.LeaseExpiresAtUtc,
                 (await ServerNowAsync()).AddSeconds(1)));
-        var settings = fixture.Client.Settings.Clone();
+        var settings = Fixture.Client.Settings.Clone();
         var previous = settings.ClusterConfigurator;
         var updates = 0;
         settings.ClusterConfigurator = builder =>
@@ -562,7 +563,7 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
             });
         };
         using var client = new MongoClient(settings);
-        var database = client.GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName);
+        var database = client.GetDatabase(Fixture.Database.DatabaseNamespace.DatabaseName);
         var delayed = new MongoStorageObservationStore(
             database.GetCollection<StorageObservationControlDocument>(MongoStorageObservationStore.ControlsCollection),
             database.GetCollection<StorageObservationDemandDocument>(MongoStorageObservationStore.DemandsCollection),
@@ -571,10 +572,10 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
             new MongoRunTransaction(client),
             (request, session, ct) =>
                 new MongoFenceDeploymentTargetObservation(client
-                        .GetDatabase(fixture.Database.DatabaseNamespace.DatabaseName)
+                        .GetDatabase(Fixture.Database.DatabaseNamespace.DatabaseName)
                         .GetCollection<Pole.Features.DeploymentTargets.Domain.DeploymentTarget>("DeploymentTargets"))
                     .InvokeAsync(request, session, ct),
-            fixture.StoreOutboxWrites,
+            Fixture.StoreOutboxWrites,
             new());
         Rejected(StorageObservationRejection.LeaseLost,
             (await delayed.SetSourceStateAsync(owner.Lease,
@@ -696,25 +697,25 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
     }
 
     private MongoStorageObservationStore Store(StoreOutboxWrites? writes = null) => new(
-            fixture.Database.GetCollection<StorageObservationControlDocument>(
+            Fixture.Database.GetCollection<StorageObservationControlDocument>(
                 MongoStorageObservationStore.ControlsCollection),
-            fixture.Database.GetCollection<StorageObservationDemandDocument>(
+            Fixture.Database.GetCollection<StorageObservationDemandDocument>(
                 MongoStorageObservationStore.DemandsCollection),
-            fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
+            Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
                 MongoStorageObservationStore.SnapshotsCollection),
-            new MongoRunTransaction(fixture.Client),
+            new MongoRunTransaction(Fixture.Client),
             (request, session, ct) =>
-                new MongoFenceDeploymentTargetObservation(fixture.DbContext.DeploymentTargets).InvokeAsync(request,
+                new MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets).InvokeAsync(request,
                     session,
                     ct),
-            writes ?? fixture.StoreOutboxWrites,
+            writes ?? Fixture.StoreOutboxWrites,
             new());
 
     private async Task<Seeded> SeedAsync()
     {
-        await new Pole.Features.StorageProfiles.Migrations.StorageObservationIndexMigration().Up(fixture.Database);
+        await new Pole.Features.StorageProfiles.Migrations.StorageObservationIndexMigration().Up(Fixture.Database);
         var id = ObjectId.GenerateNewId().ToString();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(TestData.SeedDeploymentTarget(id));
         return new(new(id, 1),
             new(new(id, Guid.NewGuid().ToString("N"), "connection-a", "session-a"),
                 DateTimeOffset.UtcNow.AddMinutes(20)));
@@ -734,10 +735,10 @@ public sealed class StorageObservationStoreTests(MongoReplicaSetFixture fixture)
     }
 
     private Task<long> EventCountAsync() =>
-        fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName);
+        Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName);
 
     private async Task<DateTime> ServerNowAsync() =>
-        (await fixture.Database.RunCommandAsync<BsonDocument>(new BsonDocument("hello", 1)))["localTime"]
+        (await Fixture.Database.RunCommandAsync<BsonDocument>(new BsonDocument("hello", 1)))["localTime"]
         .ToUniversalTime();
 
     private static FilterDefinition<BsonDocument> Target(StorageObservationContext context) =>

@@ -19,12 +19,9 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public static class TestData
 {
-    public const string TenantId = "507f1f77bcf86cd799439011";
     public const string DefaultDeploymentTargetId = "507f1f77bcf86cd799439098";
     public const string DefaultStorageProfileId = "507f1f77bcf86cd799439099";
     public const string DefaultComputeProfileId = "507f1f77bcf86cd799439097";
-    public const string UserId = "test-user";
-    public const string UserEmail = "test-user@example.test";
 
     public static DeploymentTarget SeedDeploymentTarget(string id = DefaultDeploymentTargetId)
     {
@@ -49,18 +46,21 @@ public static class TestData
     }
 
     public static CreateResourceGroupRequest CreateResourceGroupRequest(
+        string tenantId,
         string name = "alpha",
         string description = "primary group")
         => new(new CreateResourceGroupRequestBody(
             Name: name,
             Description: description,
             Tags: ImmutableHashSet.Create("home", "lab")),
-            TenantId);
+            tenantId);
 
     public static CreateWebServiceRequest CreateWebServiceRequest(
         string resourceGroupId,
-        string name = "web-api",
-        string tenantId = TenantId)
+        string tenantId,
+        string actorUserId,
+        string actorEmail,
+        string name = "web-api")
         => new(new CreateWebServiceRequestBody(
             Name: name,
             ResourceGroupId: resourceGroupId,
@@ -70,8 +70,8 @@ public static class TestData
             Tags: ImmutableHashSet<string>.Empty,
             Exposure: WebServiceExposureMode.Public),
             tenantId,
-            new ClaimValue<string>(UserId),
-            new ClaimValue<string>(UserEmail));
+            new ClaimValue<string>(actorUserId),
+            new ClaimValue<string>(actorEmail));
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
@@ -181,7 +181,7 @@ public static class TestData
         FailureThreshold: 3,
         SuccessThreshold: 1);
 
-    public static ResourceGroup SeedResourceGroup(string name = "alpha", string tenantId = TenantId)
+    public static ResourceGroup SeedResourceGroup(string tenantId, string name = "alpha")
     {
         var options = ResourceGroupFactory.DefaultCreateOptions with
         {
@@ -197,7 +197,7 @@ public static class TestData
 
     public static WebService SeedWebService(
         string resourceGroupId,
-        string tenantId = TenantId,
+        string tenantId,
         string name = "web-api",
         string? id = null,
         long activeRevision = 1)

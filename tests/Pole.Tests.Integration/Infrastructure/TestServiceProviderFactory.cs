@@ -75,9 +75,10 @@ public static class TestServiceProviderFactory
     ];
 
     public static ServiceProvider Create(
-        MongoReplicaSetFixture fixture,
+        TestDatabaseScope fixture,
         Action<IServiceCollection>? configure = null,
-        Pole.Testing.TestTimings? timings = null)
+        Pole.Testing.TestTimings? timings = null,
+        IntegrationTestScope? testScope = null)
     {
         using var registration = timings?.Measure("mediator.services.register");
         var configuration = new ConfigurationBuilder()
@@ -93,7 +94,10 @@ public static class TestServiceProviderFactory
         services.AddSingleton(fixture.Client);
         services.AddSingleton(fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
-        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk");
+        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk")
+        {
+            TenantId = testScope?.TenantId ?? string.Empty
+        };
         services.AddSingleton(storageDiscovery);
         services.AddSingleton<DiscoverKubernetesStorageClasses>(
             storageDiscovery.GetStorageClassesAsync);

@@ -16,6 +16,7 @@ using Xunit;
 
 namespace Pole.Tests.Integration.PrivateAccess;
 
+[Collection(IntegrationTestCollection.Tenant4)]
 public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
     : ApiIntegrationTestBase(fixture)
 {
@@ -25,7 +26,7 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
         await SetViewerAsync();
         var otherTenantId = ObjectId.GenerateNewId().ToString();
         var ownResource = RedisFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             "orders",
             ObjectId.GenerateNewId().ToString(),
             new RedisSpec(new Storage(1, TestData.DefaultStorageProfileId)),
@@ -44,12 +45,12 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
             AppliedDeployment(ownResource.Id, deploymentId));
 
         var own = PrivateAccessGrantFactory.Create(
-            TestData.TenantId, TestData.UserId, "pole/redis", ownResource.Id,
-            deploymentId, "redis", TestData.UserId,
+            Data.TenantId, Data.UserId, "pole/redis", ownResource.Id,
+            deploymentId, "redis", Data.UserId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
         var anotherTenant = PrivateAccessGrantFactory.Create(
-            otherTenantId, TestData.UserId, "pole/redis", otherResource.Id,
-            ObjectId.GenerateNewId().ToString(), "redis", TestData.UserId,
+            otherTenantId, Data.UserId, "pole/redis", otherResource.Id,
+            ObjectId.GenerateNewId().ToString(), "redis", Data.UserId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
         var anotherSubject = own with
         {
@@ -76,7 +77,7 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
     {
         await SetViewerAsync();
         var resource = RedisFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             "orders",
             ObjectId.GenerateNewId().ToString(),
             new RedisSpec(new Storage(1, TestData.DefaultStorageProfileId)),
@@ -117,12 +118,12 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
     public async Task Viewer_ListsOnlyOwnTenantGrants_AndCannotManageEvenWithPlatformAdminClaim()
     {
         await SetViewerAsync();
-        var own = Grant(TestData.TenantId, TestData.UserId);
+        var own = Grant(Data.TenantId, Data.UserId);
         await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .InsertManyAsync([
                 own,
-                Grant(TestData.TenantId, "someone-else"),
-                Grant(ObjectId.GenerateNewId().ToString(), TestData.UserId)
+                Grant(Data.TenantId, "someone-else"),
+                Grant(ObjectId.GenerateNewId().ToString(), Data.UserId)
             ]);
 
         var response = await Client.GetAsync("/api/v1/private-access/grants");
@@ -141,7 +142,7 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
     public async Task SessionIssue_RejectsAnotherSubjectsGrant_ThroughRealTenantPipeline()
     {
         await SetViewerAsync();
-        var other = Grant(TestData.TenantId, "someone-else");
+        var other = Grant(Data.TenantId, "someone-else");
         await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .InsertOneAsync(other);
 
@@ -155,9 +156,9 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
 
     private Task SetViewerAsync()
     {
-        var filter = Builders<Tenant>.Filter.Eq(item => item.Id, TestData.TenantId);
+        var filter = Builders<Tenant>.Filter.Eq(item => item.Id, Data.TenantId);
         var members = ImmutableList.Create(TenantFactory.CreateMember(
-            TestData.TenantId, TestData.UserId, TestData.UserEmail, TenantRole.Viewer));
+            Data.TenantId, Data.UserId, Data.UserEmail, TenantRole.Viewer));
         return Fixture.DbContext.Tenants.UpdateOneAsync(filter,
             Builders<Tenant>.Update.Set(item => item.Members, members));
     }
@@ -171,22 +172,22 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
             await response.Content.ReadFromJsonAsync<PrivateAccessResourceGrantOptions>());
     }
 
-    private static PrivateAccessGrant GrantForResource(
+    private PrivateAccessGrant GrantForResource(
         string resourceId,
         string deploymentId,
         string endpointId) =>
         PrivateAccessGrantFactory.Create(
-            TestData.TenantId, TestData.UserId, "pole/redis", resourceId,
-            deploymentId, endpointId, TestData.UserId,
+            Data.TenantId, Data.UserId, "pole/redis", resourceId,
+            deploymentId, endpointId, Data.UserId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
 
-    private static ResourceDeployment AppliedDeployment(
+    private ResourceDeployment AppliedDeployment(
         string resourceId,
         string deploymentId)
     {
         var now = DateTime.UtcNow;
         var deployment = ResourceDeploymentFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             ResourceTypeId.Create("pole/redis"),
             resourceId,
             ObjectId.GenerateNewId().ToString(),
@@ -214,7 +215,7 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
         };
     }
 
-    private static PrivateAccessGrant Grant(string tenantId, string subject) =>
+    private PrivateAccessGrant Grant(string tenantId, string subject) =>
         PrivateAccessGrantFactory.Create(
             tenantId,
             subject,
@@ -222,7 +223,7 @@ public sealed class PrivateAccessGrantApiTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             "redis",
-            TestData.UserId,
+            Data.UserId,
             DateTime.UtcNow,
             DateTime.UtcNow.AddHours(1));
 }

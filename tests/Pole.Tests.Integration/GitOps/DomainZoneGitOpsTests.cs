@@ -15,34 +15,17 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Global)]
+public sealed class DomainZoneGitOpsGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
 {
-    private IMongoCollection<TenantDomainZone> DomainZones =>
-        Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones");
-
-    private static ManifestFile[] DomainZoneSnapshot(string label = "company") =>
-    [
-        new("zone.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: DomainZone
-            metadata:
-              name: company-zone
-            spec:
-              deploymentTarget: {{NamedCatalogTestData.TargetName}}
-              label: {{label}}
-            """)
-    ];
-
     [Fact]
     public async Task DomainZoneCreatesThenNoOpsWithOwnershipAndNoBusinessEffects()
     {
         await EnablePublicWebTargetAsync();
-        await new TenantDomainZoneSchemaValidationMigration().Up(Fixture.Database);
-        await new DomainIndexesMigration().Up(Fixture.Database);
         var created = await Apply(DomainZoneSnapshot());
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, created.Status);
         var zone = await DomainZones.Find(Builders<TenantDomainZone>.Filter.Empty).SingleAsync();
-        Assert.Equal("company.apps.test.local", zone.Domain);
+        Assert.Equal("company." + Data.Hostname("apps"), zone.Domain);
         var events = await BusinessEvents();
         var unchanged = await Apply(DomainZoneSnapshot());
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, unchanged.Status);
@@ -51,13 +34,13 @@ public sealed partial class DeclarativePipelineTests
         Assert.Equal(zone.UpdatedAtUtc, current.UpdatedAtUtc);
         Assert.Equal(events, await BusinessEvents());
         var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            TestData.TenantId, source, unchanged.Context!.RunId, 1, 30, default))!.Items;
+            Data.TenantId, source, unchanged.Context!.RunId, 1, 30, default))!.Items;
         Assert.Equal(GitPlannedAction.NoOp, Assert.Single(operations).Plan!.Action);
 
-        var detail = (await Mediator.Send(new GetDomainZoneRequest(zone.Id, TestData.TenantId)))
+        var detail = (await Mediator.Send(new GetDomainZoneRequest(zone.Id, Data.TenantId)))
             .AssertHandlerOutcome();
         Assert.NotNull(Assert.IsType<DomainZoneDto>(detail.Value).GitOps);
-        var deletion = (await Mediator.Send(new DeleteDomainZoneRequest(zone.Id, TestData.TenantId)))
+        var deletion = (await Mediator.Send(new DeleteDomainZoneRequest(zone.Id, Data.TenantId)))
             .AssertHandlerOutcome();
         Assert.IsType<DomainZoneGitOwned>(deletion.Value);
     }
@@ -97,9 +80,8 @@ public sealed partial class DeclarativePipelineTests
     public async Task DomainZoneForeignDnsReservationDoesNotCreateResourceOrAppliedOwnership()
     {
         await EnablePublicWebTargetAsync();
-        await new DomainIndexesMigration().Up(Fixture.Database);
-        var manual = TenantDomainZoneFactory.CreateManagedReservation(TestData.TenantId,
-            TestData.DefaultDeploymentTargetId, "company", DnsName.Create("apps.test.local"), "manual-zone",
+        var manual = TenantDomainZoneFactory.CreateManagedReservation(Data.TenantId,
+            TestData.DefaultDeploymentTargetId, "company", DnsName.Create(Data.Hostname("apps")), "manual-zone",
             new(Id(), DateTime.UtcNow));
         await DomainZones.InsertOneAsync(manual);
         var result = await Apply(DomainZoneSnapshot());

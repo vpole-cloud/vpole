@@ -12,10 +12,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
-[Collection(IntegrationTestCollection.Name)]
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class ResourceDeploymentFinalizationCapabilityTests(
-    MongoReplicaSetFixture fixture)
-    : IAsyncLifetime
+    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
 {
     private const string TenantId = "507f1f77bcf86cd799439081";
     private const string OtherTenantId = "507f1f77bcf86cd799439082";
@@ -29,14 +28,14 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
     private static readonly DateTime CreatedAtUtc =
         new(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
 
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public override Task InitializeAsync() => base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task Finalization_WaitsUntilEveryDeploymentIsDeleted()
     {
-        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+        await Fixture.DbContext.ResourceDeployments.InsertManyAsync(
         [
             CreateDeployment(
                 "507f1f77bcf86cd799439088",
@@ -73,14 +72,14 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
         Assert.Equal(ResourceId, error.ResourceId);
         Assert.Equal(
             2,
-            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
                 deployment => deployment.TenantId == TenantId));
     }
 
     [Fact]
     public async Task Finalization_PurgesOnlyTheRequestedTenantInsideCallerTransaction()
     {
-        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+        await Fixture.DbContext.ResourceDeployments.InsertManyAsync(
         [
             CreateDeployment(
                 "507f1f77bcf86cd79943908a",
@@ -116,11 +115,11 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
         Assert.IsType<ResourceDeploymentsPurged>(result.Value);
         Assert.Equal(
             0,
-            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
                 deployment => deployment.TenantId == TenantId));
         Assert.Equal(
             1,
-            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
                 deployment => deployment.TenantId == OtherTenantId));
     }
 
@@ -129,7 +128,7 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
     {
         const string deletedDeploymentId = "507f1f77bcf86cd79943908d";
         const string siblingDeploymentId = "507f1f77bcf86cd79943908e";
-        await fixture.DbContext.ResourceDeployments.InsertManyAsync(
+        await Fixture.DbContext.ResourceDeployments.InsertManyAsync(
         [
             CreateDeployment(deletedDeploymentId, TenantId, deleted: true),
             CreateDeployment(siblingDeploymentId, TenantId, deleted: false)
@@ -161,9 +160,9 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
         Assert.IsType<ResourceDeploymentsPurged>(result.Value);
         Assert.Equal(
             1,
-            await fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
                 deployment => deployment.TenantId == TenantId));
-        var remaining = await fixture.DbContext.ResourceDeployments
+        var remaining = await Fixture.DbContext.ResourceDeployments
             .Find(deployment => deployment.Id == siblingDeploymentId)
             .SingleAsync();
         Assert.IsNotType<DeletedResourceDeploymentState>(remaining.State);
@@ -176,19 +175,19 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
                 CancellationToken,
                 Task<PurgeResourceDeploymentsOutcome>> operation)
     {
-        using var session = await fixture.DbContext.Client.StartSessionAsync();
+        using var session = await Fixture.DbContext.Client.StartSessionAsync();
         return await session.WithTransactionAsync(operation);
     }
 
     private FinalizationOperations CreateOperations() => new(
         new MongoGetResourceDeploymentFinalizationReadiness(
-            fixture.DbContext.ResourceDeployments).InvokeAsync,
+            Fixture.DbContext.ResourceDeployments).InvokeAsync,
         new MongoPurgeDeletedResourceDeployments(
-            fixture.DbContext.ResourceDeployments).InvokeAsync,
+            Fixture.DbContext.ResourceDeployments).InvokeAsync,
         new MongoGetExactResourceDeploymentFinalizationReadiness(
-            fixture.DbContext.ResourceDeployments).InvokeAsync,
+            Fixture.DbContext.ResourceDeployments).InvokeAsync,
         new MongoPurgeExactDeletedResourceDeployment(
-            fixture.DbContext.ResourceDeployments).InvokeAsync);
+            Fixture.DbContext.ResourceDeployments).InvokeAsync);
 
     private sealed record FinalizationOperations(
         GetResourceDeploymentFinalizationReadiness GetReadiness,

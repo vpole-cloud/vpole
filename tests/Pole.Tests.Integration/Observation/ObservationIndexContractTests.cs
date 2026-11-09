@@ -9,11 +9,12 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Observation;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global)]
+public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task InitializeAsync() => base.InitializeAsync();
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Theory]
     [InlineData(false)]
@@ -21,9 +22,9 @@ public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture
     public async Task Migrations_create_expected_observation_index_fields_names_and_expiry(bool storage)
     {
         if (storage)
-            await new StorageObservationIndexMigration().Up(fixture.Database);
+            await new StorageObservationIndexMigration().Up(Fixture.Database);
         else
-            await new ResourceDeploymentObservationIndexMigration().Up(fixture.Database);
+            await new ResourceDeploymentObservationIndexMigration().Up(Fixture.Database);
 
         var demands = storage ? MongoStorageObservationStore.DemandsCollection :
             MongoResourceDeploymentObservationStore.DemandsCollection;
@@ -45,7 +46,7 @@ public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture
 
     private async Task AssertIndex(string collection, string name, BsonDocument keys, bool expires = false)
     {
-        using var cursor = await fixture.Database.GetCollection<BsonDocument>(collection).Indexes.ListAsync();
+        using var cursor = await Fixture.Database.GetCollection<BsonDocument>(collection).Indexes.ListAsync();
         var index = Assert.Single(await cursor.ToListAsync(), item => item["name"].AsString == name);
 
         Assert.Equal(keys, index["key"].AsBsonDocument);

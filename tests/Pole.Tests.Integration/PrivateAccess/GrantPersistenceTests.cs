@@ -29,8 +29,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.PrivateAccess;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global3)]
+public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     private const string TenantId = "66a000000000000000000001";
     private const string OtherTenantId = "66a000000000000000000002";
@@ -47,10 +48,10 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
     private int placementBatchReads;
     private readonly EndpointCapability endpointCapability = new();
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        await fixture.ResetDatabaseAsync();
-        await fixture.DbContext.Tenants.InsertManyAsync([
+        await base.InitializeAsync();
+        await Fixture.DbContext.Tenants.InsertManyAsync([
             TenantFactory.Create("One", TenantId) with
             {
                 Members = ImmutableList.Create(
@@ -67,10 +68,10 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
 
         var services = new ServiceCollection();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(fixture.Client);
-        services.AddSingleton(fixture.Database);
+        services.AddSingleton(Fixture.Client);
+        services.AddSingleton(Fixture.Database);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<StoreOutboxWrites>(fixture.StoreOutboxWrites);
+        services.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
         services.AddPrivateAccessFeature();
         services.AddSingleton<FenceRegisteredResource>(
@@ -133,10 +134,10 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         provider = services.BuildServiceProvider();
     }
 
-    public Task DisposeAsync()
+    public override Task DisposeAsync()
     {
         provider.Dispose();
-        return Task.CompletedTask;
+        return base.DisposeAsync();
     }
 
     [Fact]
@@ -146,12 +147,12 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var outcome = await provider.GetRequiredService<PersistPrivateAccessGrant>()(Command());
         Assert.IsType<PrivateAccessResourceUnavailable>(outcome.Value);
         Assert.Equal(0,
-            await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants").CountDocumentsAsync(
+            await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants").CountDocumentsAsync(
             Builders<PrivateAccessGrant>.Filter.Empty));
         Assert.Equal(0,
-            await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit").CountDocumentsAsync(
+            await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit").CountDocumentsAsync(
             Builders<PrivateAccessAudit>.Filter.Empty));
-        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
@@ -162,19 +163,19 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var grant = Assert.IsType<PrivateAccessGrant>(outcome.Value);
         Assert.Equal(TenantId, grant.TenantId);
         Assert.IsType<ActivePrivateAccessGrant>(grant.State);
-        Assert.Single(await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+        Assert.Single(await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .Find(Builders<PrivateAccessGrant>.Filter.Empty).ToListAsync());
-        var audit = Assert.Single(await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+        var audit = Assert.Single(await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
             .Find(Builders<PrivateAccessAudit>.Filter.Empty).ToListAsync());
         Assert.Equal(grant.Id, audit.GrantId);
         Assert.IsType<PrivateAccessGrantCreatedAudit>(audit.State);
-        var storedAudit = await fixture.Database.GetCollection<BsonDocument>("PrivateAccessAudit")
+        var storedAudit = await Fixture.Database.GetCollection<BsonDocument>("PrivateAccessAudit")
             .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(audit.Id)))
             .SingleAsync();
         Assert.True(storedAudit.Contains("State"));
         Assert.False(storedAudit.Contains("Action"));
         Assert.False(storedAudit.Contains("Reason"));
-        Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+        Assert.Equal(1, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
         var roundTrip = BsonSerializer.Deserialize<PrivateAccessGrant>(grant.ToBson());
         Assert.IsType<ActivePrivateAccessGrant>(roundTrip.State);
@@ -192,9 +193,9 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var absent = await provider.GetRequiredService<PersistPrivateAccessGrant>()(
             Command() with { SubjectUserId = "absent" });
         Assert.IsType<PrivateAccessSubjectNotMember>(absent.Value);
-        Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+        Assert.Equal(0, await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
-        Assert.Equal(0, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
@@ -204,7 +205,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var outcome = await provider.GetRequiredService<PersistPrivateAccessGrant>()(
             Command() with { TenantId = OtherTenantId });
         Assert.IsType<PrivateAccessResourceUnavailable>(outcome.Value);
-        Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+        Assert.Equal(0, await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
     }
 
@@ -215,7 +216,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
             (await provider.GetRequiredService<IssuePrivateAccessSession>()(
                 TenantId, grant.Id, SubjectId)).Value);
-        var stored = await fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions")
+        var stored = await Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions")
             .Find(item => item.Id == issued.SessionId).SingleAsync();
         Assert.NotEqual(issued.Ticket, stored.Ticket.Hash);
         Assert.IsType<PrivateAccessTicketPending>(stored.State);
@@ -246,7 +247,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.IsType<PrivateAccessSessionUnavailable>(
             (await provider.GetRequiredService<RenewPrivateAccessSession>()(
                 issued.SessionId)).Value);
-        var audit = await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+        var audit = await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
             .Find(item => item.SessionId == issued.SessionId).ToListAsync();
         Assert.Contains(audit, item => item.State is PrivateAccessSessionStartedAudit);
         Assert.Contains(audit, item => item.State is PrivateAccessSessionClosedAudit);
@@ -263,7 +264,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var malformedTicket = "pole_pa_" + new string('g', 64);
         var malformedHash = Convert.ToHexStringLower(SHA256.HashData(
             Encoding.UTF8.GetBytes(malformedTicket)));
-        var sessions = fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
+        var sessions = Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
         await sessions.UpdateOneAsync(
             item => item.Id == issued.SessionId,
             Builders<PrivateAccessSession>.Update.Set(item => item.Ticket.Hash, malformedHash));
@@ -289,7 +290,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
             (await provider.GetRequiredService<RenewPrivateAccessSession>()(
                 issued.SessionId)).Value);
 
-        var collection = fixture.Database.GetCollection<PrivateAccessSession>(
+        var collection = Fixture.Database.GetCollection<PrivateAccessSession>(
             "PrivateAccessSessions");
         var current = await collection.Find(item => item.Id == issued.SessionId).SingleAsync();
         var redeemed = Assert.IsType<PrivateAccessTicketRedeemed>(current.State);
@@ -320,7 +321,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         Assert.IsType<PrivateAccessLeaseSnapshot>(
             (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
                 issued.Ticket)).Value);
-        var collection = fixture.Database.GetCollection<PrivateAccessSession>(
+        var collection = Fixture.Database.GetCollection<PrivateAccessSession>(
             "PrivateAccessSessions");
         var current = await collection.Find(item => item.Id == issued.SessionId).SingleAsync();
         var redeemed = Assert.IsType<PrivateAccessTicketRedeemed>(current.State);
@@ -398,7 +399,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var claimed = Assert.Single(await loader(expired, 10));
         Assert.Equal(issued.SessionId, claimed.SessionId);
         Assert.Equal("target", claimed.DeploymentTargetId);
-        Assert.IsType<PrivateAccessSessionCleaning>((await fixture.Database
+        Assert.IsType<PrivateAccessSessionCleaning>((await Fixture.Database
             .GetCollection<PrivateAccessSession>("PrivateAccessSessions")
             .Find(item => item.Id == issued.SessionId).SingleAsync()).State);
         Assert.IsType<PrivateAccessTicketUsed>(
@@ -419,7 +420,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
             TenantId, ActorId, ResourceType.Value, ResourceId,
             DeploymentId, "redis", ActorId,
             DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
-        await fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+        await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
             .InsertOneAsync(second);
         var load = provider.GetRequiredService<LoadPrivateAccessGatewayDesiredStates>();
         var desired = Assert.Single(await load());
@@ -431,7 +432,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
             (endpoint.ResourceDeploymentId, endpoint.EndpointId,
                 endpoint.KubernetesNamespace, endpoint.ServiceName, endpoint.TargetPort));
 
-        var grants = fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants");
+        var grants = Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants");
         await grants.ReplaceOneAsync(item => item.Id == grant.Id,
             grant.Revoke(ActorId, DateTime.UtcNow));
         await grants.ReplaceOneAsync(item => item.Id == second.Id,
@@ -534,7 +535,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
                 InstanceId: "other",
                 InternalOrigin: "https://other.internal:9445"))).Value);
 
-        var owners = fixture.Database.GetCollection<PrivateAccessBrokerOwner>(
+        var owners = Fixture.Database.GetCollection<PrivateAccessBrokerOwner>(
             "PrivateAccessBrokerOwners");
         await owners.UpdateOneAsync(item => item.Id == gatewayId,
             Builders<PrivateAccessBrokerOwner>.Update.Set(
@@ -609,7 +610,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
 
         var thirdPage = Assert.Single(await loader(now, 1));
         Assert.Equal(firstPage.SessionId, thirdPage.SessionId);
-        var claimed = await fixture.Database.GetCollection<PrivateAccessSession>(
+        var claimed = await Fixture.Database.GetCollection<PrivateAccessSession>(
             "PrivateAccessSessions").Find(item => item.Id == firstPage.SessionId)
             .SingleAsync();
         Assert.IsType<PrivateAccessSessionCleaning>(claimed.State);
@@ -623,16 +624,16 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var denied = await provider.GetRequiredService<IssuePrivateAccessSession>()(
             TenantId, grant.Id, ActorId);
         Assert.IsType<PrivateAccessSessionSubjectMismatch>(denied.Value);
-        Assert.Equal(0, await fixture.Database.GetCollection<PrivateAccessSession>(
+        Assert.Equal(0, await Fixture.Database.GetCollection<PrivateAccessSession>(
             "PrivateAccessSessions").CountDocumentsAsync(
             Builders<PrivateAccessSession>.Filter.Empty));
-        var audit = await fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+        var audit = await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
             .Find(item => item.GrantId == grant.Id).ToListAsync();
         Assert.Contains(audit, item =>
             item.State is PrivateAccessSessionIssueDeniedAudit
             { Reason: PrivateAccessAuditReason.SubjectMismatch });
         Assert.All(audit, item => Assert.Null(item.SessionId));
-        Assert.Equal(1, await fixture.DbContext.OutboxMessages.CountDocumentsAsync(
+        Assert.Equal(1, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
             Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
     }
 
@@ -655,7 +656,7 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture) : IAsy
         var loader = provider.GetRequiredService<LoadExpiredPrivateAccessSessionCleanupPage>();
         Assert.Empty(await loader(DateTime.UtcNow, 10));
 
-        var collection = fixture.Database.GetCollection<PrivateAccessSession>(
+        var collection = Fixture.Database.GetCollection<PrivateAccessSession>(
             "PrivateAccessSessions");
         var current = await collection.Find(item => item.Id == issued.SessionId).SingleAsync();
         var active = Assert.IsType<PrivateAccessSessionActive>(current.State);

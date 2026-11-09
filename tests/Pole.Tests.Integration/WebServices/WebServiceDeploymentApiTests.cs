@@ -27,8 +27,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -38,7 +39,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Create_NormalizesAnEmptyEnvironmentVariablesObject_ForTheServiceAndInitialRelease()
     {
-        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var spec = TestData.ValidWebServiceSpec();
 
         using var response = await Client.PostAsJsonAsync("/api/v1/web-services", new
@@ -98,19 +99,19 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             .GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies")
             .InsertOneAsync(
             QuotaDomainFactory.CreatePolicy(
-                TestData.TenantId,
+                Data.TenantId,
                 QuotaDelta.From(CpuQuota.QuotaKey, 500),
                 DateTime.UtcNow));
         var secondTargetId = ObjectId.GenerateNewId().ToString();
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("typed-quota-add").Body);
+            Data.CreateResourceGroupRequest("typed-quota-add").Body);
         var group = await groupResponse.Content
             .ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
         Assert.NotNull(group);
         var createResponse = await Client.PostAsJsonAsync(
             "/api/v1/web-services/",
-            TestData.CreateWebServiceRequest(group.Id, "typed-quota-add").Body);
+            Data.CreateWebServiceRequest(group.Id, "typed-quota-add").Body);
         Assert.True(
             createResponse.StatusCode == HttpStatusCode.Accepted,
             await createResponse.Content.ReadAsStringAsync());
@@ -195,8 +196,8 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             .Find(r => r.WebServiceId == webService.Id && r.ResourceRevision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
-        Assert.Equal(TestData.UserId, release.ActorUserId);
-        Assert.Equal(TestData.UserEmail, release.ActorEmail);
+        Assert.Equal(Data.UserId, release.ActorUserId);
+        Assert.Equal(Data.UserEmail, release.ActorEmail);
     }
 
     [Theory]
@@ -215,7 +216,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(before.Revision, after.Revision);
         Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
         Assert.Single(await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id).ToListAsync());
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
     }
 
     [Theory]
@@ -243,7 +244,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         using var response = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = revision, expectedRevision = 1 });
         Assert.Equal(expected, response.StatusCode);
         Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
-        Assert.Equal(0, await Fixture.DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
     }
 
     [Fact]
@@ -360,9 +361,8 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             .SingleAsync();
         Assert.NotNull(usedToken.LastUsedAtUtc);
         Assert.Equal("github-actions", usedToken.LastUsedSource);
-        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
-        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(
-            "pole.resource-deployments/v1/resource-deployment-reconciliation-requested"));
+        Assert.Equal(1L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(1L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.resource-deployments/v1/resource-deployment-reconciliation-requested"));
     }
 
     [Fact]
@@ -438,13 +438,13 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     {
         var resourceGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
-            TestData.CreateResourceGroupRequest("hostname-api").Body);
+            Data.CreateResourceGroupRequest("hostname-api").Body);
         var resourceGroup = await resourceGroupResponse.Content
             .ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
         Assert.NotNull(resourceGroup);
         var createResponse = await Client.PostAsJsonAsync(
             "/api/v1/web-services/",
-            TestData.CreateWebServiceRequest(resourceGroup.Id, "hostname-api").Body);
+            Data.CreateWebServiceRequest(resourceGroup.Id, "hostname-api").Body);
         Assert.Equal(HttpStatusCode.Accepted, createResponse.StatusCode);
         var created = await createResponse.Content
             .ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
@@ -501,7 +501,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     {
         var placement = await Fixture.DbContext.ResourceDeployments.Find(x => x.ResourceId == service.Id).SingleAsync();
         var release = WebServiceReleaseFactory.CreatePending(service.TenantId, service.Id, revision, WebServiceReleaseAction.Update,
-            TestData.UserId, TestData.UserEmail, service.Spec,
+            Data.UserId, Data.UserEmail, service.Spec,
             [new WebServiceReleaseDeployment(placement.Id, placement.ResolvedPlacement.DeploymentTargetId, revision, placement.DesiredGeneration,
                 WebServiceReleaseDeploymentOperation.Apply, WebServiceReleaseDeploymentOutcome.Succeeded, DateTime.UtcNow, null, null)],
             null, null, new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow), service.Exposure)
@@ -513,14 +513,14 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     private async Task<WebService> InsertWebServiceAsync()
     {
         var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            TestData.SeedResourceGroup());
+            Data.SeedResourceGroup());
         var resourceGroupId = resourceGroup.Id;
         var isolationScopeId = resourceGroup.DefaultIsolationScopeId;
         var runtimeCellId = ObjectId.GenerateNewId().ToString();
         var createdAtUtc = DateTime.UtcNow.AddMinutes(-1);
-        var webService = TestData.SeedWebService(resourceGroupId);
+        var webService = Data.SeedWebService(resourceGroupId);
         var runtimeCell = RuntimeCellFactory.Create(
-                TestData.TenantId,
+                Data.TenantId,
                 resourceGroupId,
                 isolationScopeId,
                 TestData.DefaultDeploymentTargetId,
@@ -532,7 +532,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
                 expectedGeneration: 1,
                 createdAtUtc.AddSeconds(1));
         var deployment = ResourceDeploymentFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             WebServiceResourceDeployment.ResourceType,
             webService.Id,
             resourceGroupId,
@@ -592,18 +592,18 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     private async Task SetCurrentUserRoleAsync(TenantRole role)
     {
         var tenant = await Fixture.DbContext.Tenants
-            .Find(t => t.Id == TestData.TenantId)
+            .Find(t => t.Id == Data.TenantId)
             .SingleAsync();
 
         var updatedTenant = tenant with
         {
             Members = tenant.Members
-                .Select(member => member.UserId == TestData.UserId ? member with { Role = role } : member)
+                .Select(member => member.UserId == Data.UserId ? member with { Role = role } : member)
                 .ToImmutableList()
         };
 
         await Fixture.DbContext.Tenants.ReplaceOneAsync(
-            t => t.Id == TestData.TenantId,
+            t => t.Id == Data.TenantId,
             updatedTenant);
     }
 

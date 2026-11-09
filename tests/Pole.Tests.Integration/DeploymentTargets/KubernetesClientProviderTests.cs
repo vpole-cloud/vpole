@@ -14,20 +14,21 @@ using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
-[Collection(IntegrationTestCollection.Name)]
-public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+[Collection(IntegrationTestCollection.Global4)]
+public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture)
+    : MongoIntegrationTestBase(fixture)
 {
-    public async Task InitializeAsync() => await fixture.ResetDatabaseAsync();
+    public override async Task InitializeAsync() => await base.InitializeAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public override Task DisposeAsync() => base.DisposeAsync();
 
     [Fact]
     public async Task GetAsync_RoutesEachTargetToItsOwnClient_AndDefaultUsesConfiguredTarget()
     {
         var firstTarget = CreateTarget();
         var secondTarget = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
-        await fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
+        await Fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
             DeploymentTargetSettings.Create(secondTarget.Id, DateTime.UtcNow));
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
@@ -48,7 +49,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     public async Task GetAsync_ReusesClientWhileRevisionAndConnectionVersionAreUnchanged()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
@@ -64,7 +65,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     public async Task GetAsync_ReusesClientAfterMetadataRevision_AndRebuildsAfterConnectionRotation()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
@@ -98,7 +99,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     public async Task GetAsync_ReportsMissingDisabledAndUnconfiguredDefaultTargets()
     {
         var disabledTarget = CreateTarget(enabled: false);
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(disabledTarget);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(disabledTarget);
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
@@ -119,7 +120,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     public async Task CleanupClient_UsesStoredConnectionAfterTargetIsDisabled()
     {
         var target = CreateTarget(enabled: false);
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
@@ -135,7 +136,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     public async Task GetAsync_ResolvesEnabledDegradedTarget()
     {
         var target = CreateTarget(degraded: true);
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
@@ -148,7 +149,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     public async Task ReplacedClient_IsNotDisposedUntilProviderIsDisposed()
     {
         var target = CreateTarget();
-        await fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
+        await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
@@ -169,14 +170,14 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     }
 
     private async Task ReplaceTargetAsync(DeploymentTarget target) =>
-        await fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
+        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
             existing => existing.Id == target.Id,
             target);
 
     private KubernetesClientProvider CreateProvider(RecordingClientFactory factory) =>
         new(
-            new MongoLoadDeploymentTargetById(fixture.DbContext.DeploymentTargets).InvokeAsync,
-            new MongoLoadDefaultDeploymentTargetId(fixture.DbContext.DeploymentTargetSettings)
+            new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync,
+            new MongoLoadDefaultDeploymentTargetId(Fixture.DbContext.DeploymentTargetSettings)
                 .InvokeAsync,
             factory.InvokeAsync);
 

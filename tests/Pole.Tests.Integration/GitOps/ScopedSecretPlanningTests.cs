@@ -1,3 +1,4 @@
+using Pole.Tests.Integration.Infrastructure;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Compiler;
@@ -7,7 +8,8 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class DeclarativePipelineTests
+[Collection(IntegrationTestCollection.Tenant2)]
+public sealed class ScopedSecretPlanningTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Secret_uses_accepted_named_scope_and_next_run_is_no_op()
@@ -24,8 +26,8 @@ public sealed partial class DeclarativePipelineTests
             """)).ToArray();
         var applied = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, applied.Status);
-        var scope = await DbContext.IsolationScopes.Find(item => item.Name == "tenant-private").SingleAsync();
-        var secret = await Secrets.Find(item => item.Name == "scoped-credentials").SingleAsync();
+        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "tenant-private").SingleAsync();
+        var secret = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Name == "scoped-credentials").SingleAsync();
         Assert.Equal(scope.Id, secret.IsolationScopeId);
         var events = await BusinessEvents();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
@@ -51,7 +53,7 @@ public sealed partial class DeclarativePipelineTests
             """);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
             (await Apply(prefix.Append(SecretFile(false)).ToArray())).Status);
-        var original = await Secrets.Find(item => item.Name == "scoped-credentials").SingleAsync();
+        var original = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Name == "scoped-credentials").SingleAsync();
         var blocked = await Apply(prefix.Append(SecretFile(true)).ToArray());
         Assert.Equal(RepositoryPipelineStatus.Blocked, blocked.Status);
         var current = await Secrets.Find(item => item.Id == original.Id).SingleAsync();

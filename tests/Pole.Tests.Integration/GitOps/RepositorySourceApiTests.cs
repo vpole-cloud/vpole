@@ -32,42 +32,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
-public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Tenant1)]
+public sealed class RepositorySourceApiCoreTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
 {
-    private const string Root = "/api/v1/gitops/sources";
-    private readonly TestRepositorySnapshots repository = new();
-
-    protected override void ConfigureTestServices(IServiceCollection services)
-    {
-        NamedCatalogTestData.ConfigureIsolatedApi(services);
-        services.AddSingleton<IRepositorySnapshotProvider>(repository);
-    }
-
-    public override async Task InitializeAsync()
-    {
-        await base.InitializeAsync();
-        using (Timings.Measure("gitops.migration.GitOpsIndexesMigration"))
-            await new GitOpsIndexesMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceSchemaValidationMigration"))
-            await new WebServiceSchemaValidationMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceDependencyReferencesSchemaMigration"))
-            await new WebServiceDependencyReferencesSchemaMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.PreparedWebServiceSchemaMigration"))
-            await new PreparedWebServiceSchemaMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceReleaseHistoryMigration"))
-            await new WebServiceReleaseHistoryMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration"))
-            await new Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.TechnicalIdentityMigration"))
-            await new TechnicalIdentityMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.ComputeProfileHistoryMigration"))
-            await new ComputeProfileHistoryMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.migration.WebServiceDeclaredPlacementSchemaMigration"))
-            await new WebServiceDeclaredPlacementSchemaMigration().Up(Fixture.Database);
-        using (Timings.Measure("gitops.seed.catalog"))
-            await NamedCatalogTestData.SeedAsync(Fixture);
-    }
-
     [Fact]
     public async Task Preview_and_confirmation_are_bounded_sanitized_and_idempotent()
     {
@@ -112,7 +79,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(HttpStatusCode.BadRequest, overridden.StatusCode);
         using var scope = ApiServices.CreateScope();
         var retained = await scope.ServiceProvider.GetRequiredService<GitLifecyclePreviews>()
-            .LoadAsync(new(TestData.TenantId, source.Id), preview.Id, default);
+            .LoadAsync(new(Data.TenantId, source.Id), preview.Id, default);
         Assert.IsType<GitPreviewAwaitingConfirmation>(retained!.State);
     }
 
@@ -158,10 +125,10 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
     [Fact]
     public async Task ObjectIdsAreCanonicalAcrossCreateReplayReadsAndCommands()
     {
-        repository.Publish("repo", DeclarativePipelineTests.Snapshot());
+        repository.Publish("repo", DeclarativePipelineTestBase.Snapshot());
         var body = Body();
         Client.DefaultRequestHeaders.Remove("X-Pole-Tenant-ID");
-        Client.DefaultRequestHeaders.Add("X-Pole-Tenant-ID", TestData.TenantId.ToUpperInvariant());
+        Client.DefaultRequestHeaders.Add("X-Pole-Tenant-ID", Data.TenantId.ToUpperInvariant());
         using var created = await Client.PostAsJsonAsync(Root + "/",
             body with { ConnectionId = body.ConnectionId.ToUpperInvariant() });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
@@ -195,67 +162,6 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Assert.DoesNotContain("acceptedSnapshot", body);
     }
 
-    private CreateRepositorySourceBody Body(Guid? key = null) => new(key ?? Guid.NewGuid(),
-        repository.Provider,
-        TestRepositorySnapshots.ConnectionId,
-        "repo",
-        "main",
-        "");
-
-    private async Task<RepositorySourceView> Create(Guid? key = null, ManifestFile[]? files = null)
-    {
-        repository.Publish("repo", files ?? DeclarativePipelineTests.Snapshot());
-        using var response = await Client.PostAsJsonAsync(Root + "/", Body(key));
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<RepositorySourceView>())!;
-    }
-
-    private async Task Run(string source)
-    {
-        using var scope = ApiServices.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<RepositorySourceJob>()
-            .ProcessAsync(new(TestData.TenantId, source), default);
-    }
-
-    private async Task<HttpResponseMessage> Sync(string source, ManifestFile[]? files = null)
-    {
-        if (files is not null)
-            repository.Publish("repo", files);
-        var response =
-            await Client.PostAsJsonAsync($"{Root}/{source}/sync", new SyncRepositorySourceBody(1, Guid.NewGuid()));
-        if (response.StatusCode == HttpStatusCode.Accepted)
-            await Run(source);
-        return response;
-    }
-
-    private async Task<HttpResponseMessage> Retry(string source)
-    {
-        var current = (await Read(source))!;
-        var response = await Client.PostAsJsonAsync($"{Root}/{source}/retry",
-            new RetryRepositorySourceBody(current.Revision, Guid.NewGuid(), current.Synchronization.LatestRunId!));
-        if (response.StatusCode == HttpStatusCode.Accepted)
-            await Run(source);
-        return response;
-    }
-
-    private Task<RepositorySourceView?> Read(string source) =>
-        Client.GetFromJsonAsync<RepositorySourceView>($"{Root}/{source}");
-
-    private static async Task<JsonElement> AssertProblem(HttpResponseMessage response,
-        HttpStatusCode status,
-        string code)
-    {
-        Assert.Equal(status, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal((int)status, body.GetProperty("status").GetInt32());
-        Assert.Equal(code, body.GetProperty("code").GetString());
-        Assert.Equal($"tag:pole.dev,2026:problem:{code}", body.GetProperty("type").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("title").GetString()));
-        return body;
-    }
-
-
     [Fact]
     public async Task Create_worker_ResourceGroup_and_status_form_one_durable_slice()
     {
@@ -269,7 +175,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Assert.Null(source.Synchronization.CurrentRunId);
         Assert.Equal(1,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item =>
-                item.EventType == "pole.gitops/v1/source-work-requested"));
+                item.TenantId == Data.TenantId && item.EventType == "pole.gitops/v1/source-work-requested"));
         await Run(source.Id);
         var applied = (await Read(source.Id))!;
         Assert.Equal(RepositoryRunStatus.ConfigurationApplied, applied.Status);
@@ -280,10 +186,10 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
             $"{Root}/{source.Id}/runs/{applied.Synchronization.LatestRunId}/operations");
         Assert.Equal(RepositoryOperationStatus.Succeeded, Assert.Single(operations!.Items).Status);
         await Run(source.Id);
-        Assert.Equal(1, await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(_ => true));
+        Assert.Equal(1, await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         Assert.Equal(1,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item =>
-                item.EventType == "pole.resource-groups/v1/resource-group-created"));
+                item.TenantId == Data.TenantId && item.EventType == "pole.resource-groups/v1/resource-group-created"));
     }
 
     [Fact]
@@ -296,7 +202,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         await AssertProblem(conflict, HttpStatusCode.Conflict, "gitops.idempotency-conflict");
         Assert.Equal(1,
             await Fixture.Database.GetCollection<RepositorySource>("GitRepositorySources")
-                .CountDocumentsAsync(_ => true));
+                .CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Theory]
@@ -420,7 +326,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0,
             await Fixture.Database.GetCollection<RepositorySource>("GitRepositorySources")
-                .CountDocumentsAsync(_ => true));
+                .CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
@@ -443,7 +349,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         await Run(source.Id);
         var blocked = (await Read(source.Id))!;
         Assert.Equal(RepositoryRunStatus.Blocked, blocked.Status);
-        var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(_ => true).SingleAsync();
+        var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(item => item.TenantId == Data.TenantId).SingleAsync();
         using var supplied = await Client.PostAsJsonAsync($"/api/v1/secrets/{secret.Id}/versions",
             new
             {
@@ -451,7 +357,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
                 values = new Dictionary<string, string> { ["API_TOKEN"] = "synthetic-secret" }
             });
         Assert.Equal(HttpStatusCode.OK, supplied.StatusCode);
-        var nextCommit = repository.Publish("repo", DeclarativePipelineTests.Snapshot("2"));
+        var nextCommit = repository.Publish("repo", DeclarativePipelineTestBase.Snapshot("2"));
         var readCount = repository.ReadCommits.Count;
         using var retried = await Retry(source.Id);
         Assert.Equal(HttpStatusCode.Accepted, retried.StatusCode);
@@ -481,7 +387,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Assert.NotNull(failed.Synchronization.ObservedCommit);
         Assert.Null(failed.Synchronization.AttemptedCommit);
         Assert.Equal(0, failed.Inventory.Owned);
-        Assert.Equal(0, await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(_ => true));
+        Assert.Equal(0, await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         var run = await Client.GetFromJsonAsync<RepositoryRunView>(
             $"{Root}/{source.Id}/runs/{failed.Synchronization.LatestRunId}");
         Assert.NotEmpty(run!.Diagnostics);
@@ -499,14 +405,14 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Client.DefaultRequestHeaders.Remove("X-Test-Unauthenticated");
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync($"{Root}/{source.Id}")).StatusCode);
-        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TestData.TenantId);
-        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == TestData.TenantId).SingleAsync();
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, Data.TenantId);
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
         await Fixture.DbContext.Tenants.ReplaceOneAsync(item => item.Id == tenant.Id,
             tenant with
             {
                 Members =
                 [
-                    TenantFactory.CreateMember(tenant.Id, TestData.UserId, TestData.UserEmail, TenantRole.Viewer)
+                    TenantFactory.CreateMember(tenant.Id, Data.UserId, Data.UserEmail, TenantRole.Viewer)
                 ]
             });
         Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync($"{Root}/{source.Id}")).StatusCode);
@@ -521,8 +427,8 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
             Members =
             [
                 TenantFactory.CreateMember(other.Id,
-                    TestData.UserId,
-                    TestData.UserEmail,
+                    Data.UserId,
+                    Data.UserEmail,
                     TenantRole.Owner)
             ]
         };
@@ -556,7 +462,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
     public async Task Accepted_snapshot_with_escaped_content_resumes_without_reapplying_the_external_byte_limit()
     {
         var source = await Create();
-        var files = DeclarativePipelineTests.Snapshot().Select(file => file with
+        var files = DeclarativePipelineTestBase.Snapshot().Select(file => file with
         {
             Content = string.Join("\n---\n",
                 file.Content.Split("\n---\n").Select(content =>
@@ -573,7 +479,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         using var submitted = await Sync(source.Id, files);
         Assert.Equal(HttpStatusCode.Accepted, submitted.StatusCode);
         Assert.Equal(RepositoryRunStatus.Blocked, (await Read(source.Id))!.Status);
-        var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(Builders<Secret>.Filter.Empty)
+        var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId))
             .SingleAsync();
         using var supplied = await Client.PostAsJsonAsync($"/api/v1/secrets/{secret.Id}/versions",
             new { expectedVersion = 0, values = new Dictionary<string, string> { ["API_TOKEN"] = "" } });
@@ -583,6 +489,94 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         Assert.Equal(RepositoryRunStatus.ConfigurationApplied, (await Read(source.Id))!.Status);
     }
 
+    [Theory]
+    [InlineData("retry")]
+    [InlineData("update")]
+    public async Task Prepared_service_manual_deployment_mutations_return_conflict_without_writes(string operation)
+    {
+        var source = await Create();
+        await Sync(source.Id);
+        var services = Fixture.Database.GetCollection<WebService>("WebServices");
+        var service = await services.Find(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
+        Assert.IsType<PreparedWebServiceLifecycle>(service.Lifecycle);
+        var placement = await Fixture.DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id)
+            .SingleAsync();
+        var outboxCount =
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId));
+        var path = $"/api/v1/web-services/{service.Id}/deployments/{placement.Id}";
+        using var response = operation == "retry"
+            ? await Client.PostAsJsonAsync(path + "/retry",
+                new { expectedDeploymentRevision = placement.Revision, expectedOperation = "Apply" })
+            : await Client.PutAsJsonAsync(path, new { fixedReplicas = 2 });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("web-services.update-unavailable", await response.Content.ReadAsStringAsync());
+        var retained = await services.Find(item => item.Id == service.Id).SingleAsync();
+        Assert.Equal(service.Revision, retained.Revision);
+        Assert.IsType<PreparedWebServiceLifecycle>(retained.Lifecycle);
+        var retainedPlacement =
+            await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
+        Assert.Equal(placement.Revision, retainedPlacement.Revision);
+        Assert.Equal(placement.DesiredGeneration, retainedPlacement.DesiredGeneration);
+        Assert.IsType<PreparedResourceDeploymentState>(retainedPlacement.State);
+        Assert.Equal(outboxCount,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(0,
+            await Fixture.Database.GetCollection<WebServiceRelease>("WebServiceReleases")
+                .CountDocumentsAsync(Builders<WebServiceRelease>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+    }
+
+    [Fact]
+    public async Task Manual_duplicate_names_return_conflict_and_roll_back_placement_and_outbox()
+    {
+        var source = await Create();
+        await Sync(source.Id);
+        using var duplicateGroup = await Client.PostAsJsonAsync("/api/v1/resource-groups/",
+            new { name = "DEMO", description = "manual", tags = Array.Empty<string>() });
+        await AssertProblem(duplicateGroup, HttpStatusCode.Conflict, "resource-groups.name-already-exists");
+        var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("other-group"));
+        var before = await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId));
+        var placementCount =
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+                Builders<Pole.Features.ResourceDeployments.Domain.ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId));
+        var duplicate = new CreateWebServiceRequestBody("DEMO-API",
+            group.Id,
+            TestData.ValidWebServiceSpec(),
+            new(null, [new(TestData.DefaultDeploymentTargetId, 1, TestData.DefaultComputeProfileId)]),
+            []);
+        using var conflict = await Client.PostAsJsonAsync("/api/v1/web-services/", duplicate);
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        var problem = await conflict.Content.ReadAsStringAsync();
+        Assert.True(problem.Contains("web-services.name-already-exists", StringComparison.Ordinal), problem);
+        Assert.Equal(before,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(placementCount,
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
+                Builders<Pole.Features.ResourceDeployments.Domain.ResourceDeployment>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+    }
+
+    [Fact]
+    public async Task Concurrent_manual_group_creation_returns_one_created_and_one_typed_conflict()
+    {
+        var responses = await Task.WhenAll(Client.PostAsJsonAsync("/api/v1/resource-groups/",
+                new { name = "race", description = "first", tags = Array.Empty<string>() }),
+            Client.PostAsJsonAsync("/api/v1/resource-groups/",
+                new { name = "RACE", description = "second", tags = Array.Empty<string>() }));
+        Assert.Single(responses, item => item.StatusCode == HttpStatusCode.Created);
+        Assert.Single(responses, item => item.StatusCode == HttpStatusCode.Conflict);
+        Assert.Single(await Fixture.DbContext.ResourceGroups
+            .Find(Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Eq(item => item.TenantId, Data.TenantId)).ToListAsync());
+        Assert.Equal(1,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item =>
+                item.TenantId == Data.TenantId && item.EventType == "pole.resource-groups/v1/resource-group-created"));
+        foreach (var response in responses)
+            response.Dispose();
+    }
+}
+
+
+[Collection(IntegrationTestCollection.Global)]
+public sealed class RepositorySourceApiCoreGlobalTests(MongoReplicaSetFixture fixture) : IsolatedRepositorySourceApiTestBase(fixture)
+{
     [Fact]
     public async Task Newly_created_catalog_entries_are_immediately_resolvable_by_name_with_profile_revision_one()
     {
@@ -604,7 +598,7 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         var profile = await profileResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, profile.GetProperty("revision").GetInt64());
         var source = await Create();
-        var files = DeclarativePipelineTests.Snapshot().Select(file => file with
+        var files = DeclarativePipelineTestBase.Snapshot().Select(file => file with
         {
             Content = file.Content.Replace("\"deploymentTarget\":\"lab\"", "\"deploymentTarget\":\"new-lab\"")
                 .Replace("\"name\":\"small\"", "\"name\":\"new-small\"")
@@ -626,88 +620,5 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
         using var resumed = await Retry(source.Id);
         Assert.Equal(HttpStatusCode.Accepted, resumed.StatusCode);
         Assert.Equal(RepositoryRunStatus.ConfigurationApplied, (await Read(source.Id))!.Status);
-    }
-
-    [Theory]
-    [InlineData("retry")]
-    [InlineData("update")]
-    public async Task Prepared_service_manual_deployment_mutations_return_conflict_without_writes(string operation)
-    {
-        var source = await Create();
-        await Sync(source.Id);
-        var services = Fixture.Database.GetCollection<WebService>("WebServices");
-        var service = await services.Find(Builders<WebService>.Filter.Empty).SingleAsync();
-        Assert.IsType<PreparedWebServiceLifecycle>(service.Lifecycle);
-        var placement = await Fixture.DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id)
-            .SingleAsync();
-        var outboxCount =
-            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty);
-        var path = $"/api/v1/web-services/{service.Id}/deployments/{placement.Id}";
-        using var response = operation == "retry"
-            ? await Client.PostAsJsonAsync(path + "/retry",
-                new { expectedDeploymentRevision = placement.Revision, expectedOperation = "Apply" })
-            : await Client.PutAsJsonAsync(path, new { fixedReplicas = 2 });
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Contains("web-services.update-unavailable", await response.Content.ReadAsStringAsync());
-        var retained = await services.Find(item => item.Id == service.Id).SingleAsync();
-        Assert.Equal(service.Revision, retained.Revision);
-        Assert.IsType<PreparedWebServiceLifecycle>(retained.Lifecycle);
-        var retainedPlacement =
-            await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
-        Assert.Equal(placement.Revision, retainedPlacement.Revision);
-        Assert.Equal(placement.DesiredGeneration, retainedPlacement.DesiredGeneration);
-        Assert.IsType<PreparedResourceDeploymentState>(retainedPlacement.State);
-        Assert.Equal(outboxCount,
-            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
-        Assert.Equal(0,
-            await Fixture.Database.GetCollection<WebServiceRelease>("WebServiceReleases")
-                .CountDocumentsAsync(Builders<WebServiceRelease>.Filter.Empty));
-    }
-
-    [Fact]
-    public async Task Manual_duplicate_names_return_conflict_and_roll_back_placement_and_outbox()
-    {
-        var source = await Create();
-        await Sync(source.Id);
-        using var duplicateGroup = await Client.PostAsJsonAsync("/api/v1/resource-groups/",
-            new { name = "DEMO", description = "manual", tags = Array.Empty<string>() });
-        await AssertProblem(duplicateGroup, HttpStatusCode.Conflict, "resource-groups.name-already-exists");
-        var group = await Fixture.DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup("other-group"));
-        var before = await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty);
-        var placementCount =
-            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
-                Builders<Pole.Features.ResourceDeployments.Domain.ResourceDeployment>.Filter.Empty);
-        var duplicate = new CreateWebServiceRequestBody("DEMO-API",
-            group.Id,
-            TestData.ValidWebServiceSpec(),
-            new(null, [new(TestData.DefaultDeploymentTargetId, 1, TestData.DefaultComputeProfileId)]),
-            []);
-        using var conflict = await Client.PostAsJsonAsync("/api/v1/web-services/", duplicate);
-        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
-        var problem = await conflict.Content.ReadAsStringAsync();
-        Assert.True(problem.Contains("web-services.name-already-exists", StringComparison.Ordinal), problem);
-        Assert.Equal(before,
-            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
-        Assert.Equal(placementCount,
-            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
-                Builders<Pole.Features.ResourceDeployments.Domain.ResourceDeployment>.Filter.Empty));
-    }
-
-    [Fact]
-    public async Task Concurrent_manual_group_creation_returns_one_created_and_one_typed_conflict()
-    {
-        var responses = await Task.WhenAll(Client.PostAsJsonAsync("/api/v1/resource-groups/",
-                new { name = "race", description = "first", tags = Array.Empty<string>() }),
-            Client.PostAsJsonAsync("/api/v1/resource-groups/",
-                new { name = "RACE", description = "second", tags = Array.Empty<string>() }));
-        Assert.Single(responses, item => item.StatusCode == HttpStatusCode.Created);
-        Assert.Single(responses, item => item.StatusCode == HttpStatusCode.Conflict);
-        Assert.Single(await Fixture.DbContext.ResourceGroups
-            .Find(Builders<Pole.Features.ResourceGroups.Domain.ResourceGroup>.Filter.Empty).ToListAsync());
-        Assert.Equal(1,
-            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item =>
-                item.EventType == "pole.resource-groups/v1/resource-group-created"));
-        foreach (var response in responses)
-            response.Dispose();
     }
 }

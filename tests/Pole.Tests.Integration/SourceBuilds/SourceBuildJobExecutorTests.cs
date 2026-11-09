@@ -22,8 +22,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
+[Collection(IntegrationTestCollection.Global4)]
 public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : IsolatedApiIntegrationTestBase(fixture)
 {
     private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private ServiceProvider? captureServices;
@@ -73,7 +74,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         var deploying = Assert.IsType<DeployingSourceBuild>(deployingJob.State);
         Assert.Equal("release-1", deploying.ReleaseId);
         Assert.Equal("exact-commit", workspace.DownloadedCommit);
-        Assert.Equal(TestData.TenantId, workspace.TenantId);
+        Assert.Equal(Data.TenantId, workspace.TenantId);
         Assert.Equal(queued.SourceRepositoryId, workspace.SourceRepositoryId);
         Assert.Equal("FROM snapshot", buildKit.Request!.Dockerfile);
         Assert.Equal(1, buildKit.Calls);
@@ -97,7 +98,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             ReleaseOutcome: "Pending",
             ReleaseTerminal: false)
         {
-            EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
+            EventCore = Pole.Features.Events.Abstractions.EventCore.Create(Data.TenantId)
         });
 
         var stillDeployingJob = await Fixture.DbContext.SourceBuildJobs
@@ -119,7 +120,7 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             ReleaseOutcome: "Succeeded",
             ReleaseTerminal: true)
         {
-            EventCore = Pole.Features.Events.Abstractions.EventCore.Create(TestData.TenantId)
+            EventCore = Pole.Features.Events.Abstractions.EventCore.Create(Data.TenantId)
         });
 
         var succeededJob = await Fixture.DbContext.SourceBuildJobs.Find(item => item.Id == queued.Job.Id)
@@ -269,15 +270,15 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
         var recipe = new SourceBuildRecipe("FROM snapshot");
         var sourceRepositoryId = ObjectId.GenerateNewId().ToString();
         var configuration = SourceBuildConfigurationFactory.Create(
-            TestData.TenantId,
+            Data.TenantId,
             "application-build",
             sourceRepositoryId,
             ObjectId.GenerateNewId().ToString(),
             recipe with { Dockerfile = "FROM changed-after-enqueue" },
-            new ManualSourceBuildConfigurationOrigin(TestData.UserId),
+            new ManualSourceBuildConfigurationOrigin(Data.UserId),
             new SourceBuildConfigurationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var job = SourceBuildJobFactory.CreateManual(
-            TestData.TenantId,
+            Data.TenantId,
             configuration.Id,
             sourceRepositoryId,
             configuration.WebServiceId,
@@ -285,8 +286,8 @@ public sealed class SourceBuildJobExecutorTests(MongoReplicaSetFixture fixture)
             "exact-commit",
             new SourceBuildInputVersion(1, 1, 1),
             recipe,
-            TestData.UserId,
-            TestData.UserEmail,
+            Data.UserId,
+            Data.UserEmail,
             new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         await Fixture.DbContext.SourceBuildConfigurations.InsertOneAsync(configuration with { BuildGeneration = 1 });
         await Fixture.DbContext.SourceBuildJobs.InsertOneAsync(job);

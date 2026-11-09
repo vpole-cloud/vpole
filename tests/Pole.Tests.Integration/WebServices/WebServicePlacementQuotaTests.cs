@@ -24,8 +24,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
+[Collection(IntegrationTestCollection.Global3)]
 public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Theory]
     [InlineData(false)]
@@ -40,8 +41,8 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
                 profile => profile.Id == TestData.DefaultComputeProfileId,
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var request = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var request = Data.CreateWebServiceRequest(group.Id);
         var created = (await Mediator.Send(request with
         {
             Body = request.Body with
@@ -53,14 +54,14 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
                 ])
             }
         })).AssertSuccess();
-        (await Mediator.Send(TestData.CreateWebServiceRequest(group.Id, "unrelated")))
+        (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "unrelated")))
             .AssertSuccess();
         await AssertUsageAsync(1750, 1792, 7, 2);
 
         var removed = created.Deployments.Single(deployment =>
             deployment.DeploymentTargetId == secondTargetId);
         (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, removed.DeploymentId, TestData.TenantId)))
+            created.WebServiceId, removed.DeploymentId, Data.TenantId)))
             .AssertSuccess();
         await AssertUsageAsync(1000, 1024, 4, 2);
         if (cleanupCompleted)
@@ -77,11 +78,11 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         }
 
         (await Mediator.Send(new DeleteWebServiceRequest(
-            created.WebServiceId, TestData.TenantId))).AssertSuccess();
+            created.WebServiceId, Data.TenantId))).AssertSuccess();
         await AssertUsageAsync(500, 512, 2, 1);
 
         (await Mediator.Send(new DeleteWebServiceRequest(
-            created.WebServiceId, TestData.TenantId))).AssertSuccess();
+            created.WebServiceId, Data.TenantId))).AssertSuccess();
         await AssertUsageAsync(500, 512, 2, 1);
     }
 
@@ -91,7 +92,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         var created = await CreateMultiTargetAsync();
         var removed = created.Deployments.Single(deployment => deployment.FixedReplicas == 3);
         (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, removed.DeploymentId, TestData.TenantId)))
+            created.WebServiceId, removed.DeploymentId, Data.TenantId)))
             .AssertSuccess();
         var scaling = TestData.ValidWebServiceSpec() with
         {
@@ -101,7 +102,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         var updated = (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
             new UpdateWebServiceRequestBody(scaling, [], WebServiceExposureMode.Public),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
 
         Assert.Single(updated.Deployments);
         Assert.DoesNotContain(updated.Deployments, item => item.DeploymentId == removed.DeploymentId);
@@ -134,7 +135,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
             created.WebServiceId,
             changed.DeploymentId,
             new UpdateWebServiceDeploymentBody(4, profileId),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         await AssertUsageAsync(2500, 3584, 6, 1);
 
         var scaling = TestData.ValidWebServiceSpec() with
@@ -144,15 +145,15 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
             new UpdateWebServiceRequestBody(scaling, [], WebServiceExposureMode.Public),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         await AssertUsageAsync(3750, 5120, 10, 1);
 
         (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, changed.DeploymentId, TestData.TenantId)))
+            created.WebServiceId, changed.DeploymentId, Data.TenantId)))
             .AssertSuccess();
         await AssertUsageAsync(1250, 1280, 5, 1);
         (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, changed.DeploymentId, TestData.TenantId)))
+            created.WebServiceId, changed.DeploymentId, Data.TenantId)))
             .AssertFailure();
         await AssertUsageAsync(1250, 1280, 5, 1);
 
@@ -170,7 +171,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         (await Mediator.Send(new AddWebServiceDeploymentRequest(
             created.WebServiceId,
             new WebServiceDeploymentTargetRequest(thirdTargetId, 2, thirdProfileId),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
         await AssertUsageAsync(5000, 6400, 10, 1);
     }
 
@@ -192,7 +193,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
                     ResourceId: request.ResourceId),
                 cancellationToken: token);
             (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-                created.WebServiceId, removed.DeploymentId, TestData.TenantId)))
+                created.WebServiceId, removed.DeploymentId, Data.TenantId)))
                 .AssertSuccess();
             return stale;
         };
@@ -203,7 +204,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
             created.WebServiceId,
             remaining.DeploymentId,
             new UpdateWebServiceDeploymentBody(replicas),
-            TestData.TenantId));
+            Data.TenantId));
 
         Assert.IsType<UpdateWebServiceDeploymentError>(result.Value);
         await AssertUsageAsync(500, 512, 2, 1);
@@ -213,11 +214,11 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         if (replicas > remaining.FixedReplicas)
         {
             Assert.Equal(1, await Fixture.Database.GetCollection<QuotaReservation>("QuotaReservations")
-                .CountDocumentsAsync(item => item.TenantId == TestData.TenantId &&
+                .CountDocumentsAsync(item => item.TenantId == Data.TenantId &&
                     item.State.Kind == QuotaReservationStateKinds.Cancelled));
         }
         Assert.Equal(0, await Fixture.Database.GetCollection<QuotaReservation>("QuotaReservations")
-            .CountDocumentsAsync(item => item.TenantId == TestData.TenantId &&
+            .CountDocumentsAsync(item => item.TenantId == Data.TenantId &&
                 item.State.Kind == QuotaReservationStateKinds.Active));
     }
 
@@ -235,7 +236,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
                 .Set(item => item.CompletedAtUtc, DateTime.UtcNow));
         var removed = created.Deployments.Single(item => item.FixedReplicas == 3);
         (await Mediator.Send(new DeleteWebServiceDeploymentRequest(
-            created.WebServiceId, removed.DeploymentId, TestData.TenantId)))
+            created.WebServiceId, removed.DeploymentId, Data.TenantId)))
             .AssertSuccess();
 
         IReadOnlyList<PlacementSummaryDto> deployments;
@@ -243,25 +244,25 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         {
             case "redeploy":
                 var redeployed = (await Mediator.Send(new RedeployWebServiceRequest(
-                    created.WebServiceId, TestData.TenantId, ExpectedRevision: 2))).AssertSuccess();
+                    created.WebServiceId, Data.TenantId, ExpectedRevision: 2))).AssertSuccess();
                 deployments = Assert.IsType<RedeployWebServiceResponse>(redeployed.Value).Deployments;
                 break;
             case "rollback":
                 deployments = (await Mediator.Send(new RollbackWebServiceRequest(
-                    created.WebServiceId, new RollbackWebServiceRequestBody(1, 2), TestData.TenantId)))
+                    created.WebServiceId, new RollbackWebServiceRequestBody(1, 2), Data.TenantId)))
                     .AssertSuccess().Deployments;
                 break;
             default:
                 var context = new TenantContextAccessor
                 {
-                    Current = new TenantContext(TestData.TenantId, "Test", TenantRole.Member, false)
+                    Current = new TenantContext(Data.TenantId, "Test", TenantRole.Member, false)
                 };
                 var handler = ActivatorUtilities.CreateInstance<UpdateWebServiceImageTagHandler>(
                     Services, context);
                 var updated = await handler.HandleAsync(new UpdateWebServiceImageTagRequest(
                     created.WebServiceId,
                     new UpdateWebServiceImageTagRequestBody("1.28", "manual"),
-                    TestData.TenantId));
+                    Data.TenantId));
                 deployments = Assert.IsType<UpdateWebServiceImageTagResponse>(updated.Value).Deployments;
                 break;
         }
@@ -284,7 +285,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         var created = await CreateMultiTargetAsync();
         await Fixture.Database.GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies")
             .InsertOneAsync(QuotaDomainFactory.CreatePolicy(
-                TestData.TenantId,
+                Data.TenantId,
                 QuotaDelta.From(CpuQuota.QuotaKey, 1750),
                 DateTime.UtcNow));
         var load = Services.GetRequiredService<LoadResourceDeploymentSet>();
@@ -314,17 +315,17 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
             first.HandleAsync(new UpdateWebServiceDeploymentRequest(
                 created.WebServiceId, created.Deployments[0].DeploymentId,
                 new UpdateWebServiceDeploymentBody(created.Deployments[0].FixedReplicas + 2),
-                TestData.TenantId)),
+                Data.TenantId)),
             second.HandleAsync(new UpdateWebServiceDeploymentRequest(
                 created.WebServiceId, created.Deployments[1].DeploymentId,
                 new UpdateWebServiceDeploymentBody(created.Deployments[1].FixedReplicas + 2),
-                TestData.TenantId)));
+                Data.TenantId)));
 
         Assert.Single(results, result => result.Value is PlacementSummaryDto);
         Assert.Single(results, result => result.Value is UpdateWebServiceDeploymentError);
         await AssertUsageAsync(1750, 1792, 7, 1);
         Assert.Equal(0, await Fixture.Database.GetCollection<QuotaReservation>("QuotaReservations")
-            .CountDocumentsAsync(item => item.TenantId == TestData.TenantId &&
+            .CountDocumentsAsync(item => item.TenantId == Data.TenantId &&
                 item.State.Kind == QuotaReservationStateKinds.Active));
         var persisted = await DbContext.ResourceDeployments
             .Find(item => item.ResourceId == created.WebServiceId).ToListAsync();
@@ -354,7 +355,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         var updated = (await Mediator.Send(new UpdateWebServiceRequest(
             created.WebServiceId,
             new UpdateWebServiceRequestBody(scaling, [], WebServiceExposureMode.Public),
-            TestData.TenantId))).AssertSuccess();
+            Data.TenantId))).AssertSuccess();
 
         Assert.Equal(2, updated.Deployments.Count);
         await AssertUsageAsync(2000, 2048, 8, 1);
@@ -370,8 +371,8 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
                 profile => profile.Id == TestData.DefaultComputeProfileId,
                 TestData.SeedComputeProfile(deploymentTargetIds:
                     [TestData.DefaultDeploymentTargetId, secondTargetId]));
-        var group = await DbContext.InsertResourceGroupAsync(TestData.SeedResourceGroup());
-        var request = TestData.CreateWebServiceRequest(group.Id);
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var request = Data.CreateWebServiceRequest(group.Id);
         return (await Mediator.Send(request with
         {
             Body = request.Body with
@@ -392,7 +393,7 @@ public sealed class WebServicePlacementQuotaTests(MongoReplicaSetFixture fixture
         long services)
     {
         var usage = await Fixture.Database.GetCollection<TenantQuotaUsage>("TenantQuotaUsages")
-            .Find(item => item.TenantId == TestData.TenantId)
+            .Find(item => item.TenantId == Data.TenantId)
             .SingleAsync();
         var values = usage.Values.ToDictionary(item => item.Key, item => item.Value);
         Assert.Equal(cpu, values.GetValueOrDefault(CpuQuota.QuotaKey));

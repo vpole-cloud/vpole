@@ -17,7 +17,9 @@ using Xunit;
 
 namespace Pole.Tests.Integration.Tenants;
 
-public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+[Collection(IntegrationTestCollection.Global2)]
+public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
+    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.Identity)
 {
     private const string EventType = "pole.tenants/v1/membership-changed";
 
@@ -29,7 +31,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
         var selected = TenantFactory.CreateMember(tenant.Id, "selected", "selected@example.test", TenantRole.Member);
         tenant = tenant with { Members = tenant.Members.Add(first).Add(selected) };
         await Services.GetRequiredService<PersistCreatedTenant>()(tenant);
-        var eventsBefore = await DbContext.CountOutboxMessagesAsync(EventType);
+        var eventsBefore = await DbContext.CountAllOutboxMessagesAsync(EventType);
 
         var result = await Services.GetRequiredService<PersistUpdatedTenantMemberRole>()(
             new(tenant.Id, selected.Id, TenantRole.Admin));
@@ -40,7 +42,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
         Assert.Equal(TenantRole.Viewer, stored.Members[1].Role);
         Assert.Equal(selected.Id, stored.Members[2].Id);
         Assert.Equal(TenantRole.Admin, stored.Members[2].Role);
-        Assert.Equal(eventsBefore + 1, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(eventsBefore + 1, await DbContext.CountAllOutboxMessagesAsync(EventType));
     }
 
     [Fact]
@@ -78,10 +80,10 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
         var tenant = CreateTenant();
         var ensure = Services.GetRequiredService<EnsureDefaultTenant>();
         await ensure(tenant);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(EventType));
         Assert.Equal(tenant.Id, (await DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync()).Id);
         await ensure(tenant);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(EventType));
     }
 
     [Theory]
@@ -144,7 +146,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
             Assert.Null(after);
         else
             Assert.Equal(before.Members.ToArray(), after!.Members.ToArray());
-        Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(0, await DbContext.CountAllOutboxMessagesAsync(EventType));
     }
 
     [Fact]
@@ -170,7 +172,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
         Assert.Single(outcomes, outcome => outcome.Value is TenantLastOwner);
         Assert.Single((await DbContext.Tenants.Find(candidate => candidate.Id == tenant.Id).SingleAsync()).Members,
             value => value.Role == TenantRole.Owner);
-        Assert.Equal(1, await DbContext.CountOutboxMessagesAsync(EventType));
+        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(EventType));
     }
 
     [Fact]
@@ -184,7 +186,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture) 
         });
         await consumer.HandleAsync(new("owner-subject")
         {
-            EventCore = EventCore.Create(TestData.TenantId)
+            EventCore = EventCore.Create(Data.TenantId)
         });
         Assert.Equal(new("tenant-access", ResourceId: "owner-subject"), Assert.Single(notices));
     }

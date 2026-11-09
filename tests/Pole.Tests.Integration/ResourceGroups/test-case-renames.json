@@ -1,0 +1,25 @@
+{
+  "baselineCommit": "826eb079ec92184624661d86b6eb693ebf1e8d63",
+  "renamedMethods": 2,
+  "renamedCases": 2,
+  "tests": [
+    {
+      "oldClass": "RuntimeCellLifecycleIntegrationTests",
+      "newClass": "RuntimeCellRecoveryIntegrationTests",
+      "method": "Recovery_AdvancesDueFailure_AndOnlyWritesAnOutboxRequest",
+      "source": "RuntimeCellLifecycleIntegrationTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    },
+    {
+      "oldClass": "RuntimeCellLifecycleIntegrationTests",
+      "newClass": "RuntimeCellRecoveryIntegrationTests",
+      "method": "Recovery_FinalizesDeletionAfterDeletedCellCrashWindow",
+      "source": "RuntimeCellLifecycleIntegrationTests.cs",
+      "collection": "Global",
+      "theoryRows": [],
+      "caseCount": 1
+    }
+  ]
+}

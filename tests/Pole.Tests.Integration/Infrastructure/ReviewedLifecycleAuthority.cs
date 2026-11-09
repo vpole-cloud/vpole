@@ -6,10 +6,10 @@ using Pole.Features.GitOps.Primitives;
 namespace Pole.Tests.Integration.Infrastructure;
 
 // Owner tests isolate the shared-session boundary; GitOps tests verify real preview admission and receipts.
-internal sealed class ReviewedLifecycleAuthority(IMongoClient client) : IGitOpsMutations
+internal sealed class ReviewedLifecycleAuthority(IMongoClient client, string tenantId) : IGitOpsMutations
 {
     private readonly Dictionary<(string Consumer, ResourceAddress Address), string> references = [];
-    public GitLifecycleAuthority Authority { get; } = new(TestData.TenantId, ObjectId.GenerateNewId().ToString(),
+    public GitLifecycleAuthority Authority { get; } = new(tenantId, ObjectId.GenerateNewId().ToString(),
         ObjectId.GenerateNewId().ToString(), 1, 1, 1, "worker", 1, "preview", "reviewed", new string('a', 40));
     public GitLifecycleAuthority? Observed { get; private set; }
     public HashSet<string> GitOwnedResources { get; } = [];
