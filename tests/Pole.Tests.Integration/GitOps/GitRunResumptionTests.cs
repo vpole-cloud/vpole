@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Application.Sources;
@@ -19,6 +21,11 @@ namespace Pole.Tests.Integration.GitOps;
 public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private const string WorkRequestedEvent = "pole.gitops/v1/source-work-requested";
+    private readonly GitOpsWorkerOptions _workerOptions = new()
+    {
+        CleanupCheckSeconds = 7,
+        HeartbeatSeconds = 29
+    };
     private bool _rejectResumptionOutbox;
     private GitRunStore Store => Services.GetRequiredService<GitRunStore>();
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
@@ -27,6 +34,7 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
 
     protected override void ConfigureServices(IServiceCollection services)
     {
+        services.AddSingleton<IOptions<GitOpsWorkerOptions>>(Options.Create(_workerOptions));
         services.AddScoped<StoreOutboxWrites>(_ => async (session, writes, token) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, token);
@@ -43,11 +51,18 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
     {
         var claim = await ClaimNewSource();
         var trace = TraceContext.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "gitops-resumption");
+        var before = await ServerNow(claim.Source);
         using (TraceContext.Push(trace))
             Assert.True(await Suspend(claim.Handle, delayed));
+        var after = await ServerNow(claim.Source);
 
         var run = await LoadRun(claim);
         var due = Due(run.State, delayed);
+        var expectedDelay = delayed
+            ? _workerOptions.RetryDelay(1)
+            : TimeSpan.FromSeconds(_workerOptions.CleanupCheckSeconds);
+        Assert.InRange(due, before.Add(expectedDelay), after.Add(expectedDelay));
+        Assert.Equal(delayed ? 1 : 0, run.ConsecutiveFailures);
         var message = Assert.Single(await ResumptionMessages(claim));
         Assert.Equal(due, message.NotBeforeUtc);
         Assert.Equal(claim.Handle.Stamp.Source.SourceId, message.SourceId);
@@ -162,6 +177,13 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
 
     private Task<GitReconciliationRun> LoadRun(GitWorkClaim claim) =>
         Runs.Find(item => item.Id == claim.Run.Id && item.Stamp.Source == claim.Handle.Stamp.Source).SingleAsync();
+
+    private async Task<DateTime> ServerNow(RepositorySource source)
+    {
+        var sources = Services.GetRequiredService<IMongoCollection<RepositorySource>>();
+        using var session = await sources.Database.Client.StartSessionAsync();
+        return await new GitDatabaseClock(sources).NowAsync(new(source.TenantId, source.Id), session, default);
+    }
 
     private async Task MakeDue(GitWorkClaim claim)
     {

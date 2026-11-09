@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Application.Jobs;
@@ -38,7 +39,8 @@ public sealed class GitLifecycleExecutor(
     IMongoCollection<GitReconciliationRun> executions,
     IMongoCollection<ManagedDeclaration> inventory,
     IMongoCollection<GitOperationReceipt> receipts,
-    MongoRunTransaction transactions)
+    MongoRunTransaction transactions,
+    ILogger<GitLifecycleExecutor> logger)
 {
     public async Task<RepositoryExecutionReport> ExecuteAsync(GitWorkClaim claim, CancellationToken ct)
     {
@@ -71,6 +73,9 @@ public sealed class GitLifecycleExecutor(
                 switch (result)
                 {
                     case GitLifecycleActionCompleted:
+                        logger.LogInformation(
+                            "GitOps lifecycle action completed for run {RunId}, operation {OperationId}, action {Action}; completedAtUtc={CompletedAtUtc:O}",
+                            claim.Run.Id, operation.Id, operation.Action, DateTime.UtcNow);
                         complete.Add(operation.Id);
                         break;
                     case GitLifecycleCleanupPending:

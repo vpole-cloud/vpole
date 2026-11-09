@@ -14,6 +14,8 @@ public sealed class GitOpsWorkerOptions
 
     [Range(1, 300)] public int HeartbeatSeconds { get; init; } = 20;
 
+    [Range(1, 300)] public int CleanupCheckSeconds { get; init; } = 5;
+
     [Range(1, 5)] public int MaximumConsecutiveFailures { get; init; } = 5;
 
     public TimeSpan RetryDelay(int failures) => TimeSpan.FromMinutes(failures switch
