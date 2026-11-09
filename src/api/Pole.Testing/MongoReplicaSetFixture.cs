@@ -5,6 +5,7 @@ using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using MongoDB.Driver.Core.Events;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Contracts;
@@ -18,6 +19,7 @@ public class MongoReplicaSetFixture : IAsyncLifetime
 
     private readonly int _mongoPort;
     private readonly IContainer _container;
+    private readonly TestTimings _timings;
     private ServiceProvider? _outboxServices;
 
     public string ConnectionString { get; private set; } = string.Empty;
@@ -29,6 +31,7 @@ public class MongoReplicaSetFixture : IAsyncLifetime
 
     public MongoReplicaSetFixture()
     {
+        _timings = new TestTimings(GetType(), fixture: true);
         _mongoPort = GetFreePort();
         var identity = TestRunIdentity.Create();
         var mongoImage = Environment.GetEnvironmentVariable("POLE_TEST_MONGO_IMAGE");
@@ -45,15 +48,33 @@ public class MongoReplicaSetFixture : IAsyncLifetime
 
     public virtual async Task InitializeAsync()
     {
-        await _container.StartAsync();
+        using (_timings.Measure("fixture.mongo.container.start"))
+            await _container.StartAsync();
 
         DirectConnectionString = $"mongodb://127.0.0.1:{_mongoPort}/?directConnection=true";
         ConnectionString = $"mongodb://127.0.0.1:{_mongoPort}/?replicaSet=rs0";
 
-        await InitializeReplicaSetAsync();
+        using (_timings.Measure("fixture.mongo.replica-set.initialize"))
+            await InitializeReplicaSetAsync();
 
-        Client = new MongoClient(ConnectionString);
-        Database = Client.GetDatabase("pole-integration-tests");
+        using (_timings.Measure("fixture.mongo.client.create"))
+        {
+            if (TestTimings.Enabled)
+            {
+                var settings = MongoClientSettings.FromConnectionString(ConnectionString);
+                settings.ClusterConfigurator = cluster =>
+                {
+                    cluster.Subscribe<CommandStartedEvent>(TestTimings.CommandStarted);
+                    cluster.Subscribe<CommandSucceededEvent>(TestTimings.CommandSucceeded);
+                    cluster.Subscribe<CommandFailedEvent>(TestTimings.CommandFailed);
+                };
+                Client = new MongoClient(settings);
+            }
+            else
+                Client = new MongoClient(ConnectionString);
+            Database = Client.GetDatabase("pole-integration-tests");
+        }
+        using var outboxBuild = _timings.Measure("fixture.mongo.outbox.build");
         _outboxServices = new ServiceCollection()
             .AddSingleton(Database)
             .AddOutboxPersistence()
@@ -62,6 +83,7 @@ public class MongoReplicaSetFixture : IAsyncLifetime
 
     public virtual async Task DisposeAsync()
     {
+        using var dispose = _timings.Measure("fixture.mongo.dispose");
         try
         {
             if (_outboxServices is not null)

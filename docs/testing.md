@@ -218,6 +218,37 @@ three-cluster placement topology, monitoring CRDs, cert-manager, CloudNativePG, 
 BuildKit. Lab lifecycle remains explicit: `dotnet test` validates and uses an existing lab but
 never creates, resets, or deletes one.
 
+## Optional lifecycle profiling
+
+Set `POLE_TEST_TIMING_DIRECTORY` to a fresh artifact directory to record phase durations without
+changing test selection. For example, profile the complete gate with:
+
+```bash
+POLE_TEST_TIMING_DIRECTORY="$PWD/.artifacts/test-profile/timings" python3 scripts/quality_gate.py run --profile full
+```
+
+The shared Mongo fixture records container, replica-set, client, outbox initialization and disposal.
+The central Mongo/Mediator/API bases additionally record database reset, seed, service registration
+and construction, each API migration, route mapping, host startup and cleanup. The two large GitOps
+families also record their extra migrations and catalog seed. Mongo statistics contain command names,
+counts and durations only; command documents, responses and credentials are never recorded. Command
+statistics cover these explicit setup/cleanup phases, not requests inside the test method.
+
+Use the gate's timestamped results directory to join the JSONL phases to TRX case identities:
+
+```bash
+python3 scripts/summarize_test_timings.py --results-directory .artifacts/quality/RUN --timings-directory .artifacts/test-profile/timings --output .artifacts/test-profile/report
+```
+
+The report includes every discovered .NET case and available frontend durations. Detailed phase
+coverage is explicit: tests using other fixtures retain TRX timing but may have no setup breakdown.
+Fixture phases remain separate from test phases. Unmatched or ambiguous records are reported rather
+than attached to a nearby case. Never add overlapping case intervals or Mongo command durations to
+wall time. In xUnit 2, reported execution duration excludes `IAsyncLifetime.InitializeAsync` and
+`DisposeAsync`; UTC case intervals and explicit phases expose that otherwise missing lifecycle time.
+
+Profiling is opt-in. Unavailable diagnostic storage does not change a test's exception or outcome.
+
 ## Code coverage
 
 Both local and CI profiles require backend coverage. They use the selected project inventory,

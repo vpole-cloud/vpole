@@ -155,8 +155,10 @@ public sealed class TestApiApplication : IAsyncDisposable
     public static async Task<TestApiApplication> StartAsync(
         MongoReplicaSetFixture fixture,
         bool privateAccessEnabled = false,
-        Action<IServiceCollection>? configureTestServices = null)
+        Action<IServiceCollection>? configureTestServices = null,
+        Pole.Testing.TestTimings? timings = null)
     {
+        using var keyTiming = timings?.Measure("api.encryption-key");
         var encryptionKeyDirectory = Path.Combine(
             Path.GetTempPath(),
             "pole-api-integration-encryption",
@@ -173,6 +175,8 @@ public sealed class TestApiApplication : IAsyncDisposable
             CryptographicOperations.ZeroMemory(encryptionKey);
         }
 
+        keyTiming?.Dispose();
+        using var registrationTiming = timings?.Measure("api.services.register");
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             EnvironmentName = Environments.Development
@@ -328,29 +332,53 @@ public sealed class TestApiApplication : IAsyncDisposable
         });
 
         configureTestServices?.Invoke(builder.Services);
-        var app = builder.Build();
-        await new DeploymentTargetMigration().Up(fixture.Database);
-        await new DeploymentTargetReferenceMigration().Up(fixture.Database);
-        await new ResourceGroupPlacementMigration().Up(fixture.Database);
-        await new ResourceRegistrationMigration().Up(fixture.Database);
-        await new ResourceConnectionIndexesMigration().Up(fixture.Database);
-        await new ResourceDeploymentMigration().Up(fixture.Database);
-        await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
-        await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
-        await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
-        await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
-        await new DomainIndexesMigration().Up(fixture.Database);
-        await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
-        await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
-        await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
-        await new StorageProfileMigration().Up(fixture.Database);
-        await new OutboxMessageMigration().Up(fixture.Database);
-        await new SourceBuildMigration().Up(fixture.Database);
-        await new SecretIndexesMigration().Up(fixture.Database);
-        await fixture.Database
+        registrationTiming?.Dispose();
+        WebApplication app;
+        using (timings?.Measure("api.services.build"))
+            app = builder.Build();
+        using (timings?.Measure("api.migration.DeploymentTargetMigration"))
+            await new DeploymentTargetMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.DeploymentTargetReferenceMigration"))
+            await new DeploymentTargetReferenceMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceGroupPlacementMigration"))
+            await new ResourceGroupPlacementMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceRegistrationMigration"))
+            await new ResourceRegistrationMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceConnectionIndexesMigration"))
+            await new ResourceConnectionIndexesMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceDeploymentMigration"))
+            await new ResourceDeploymentMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceDeploymentSchemaValidationMigration"))
+            await new ResourceDeploymentSchemaValidationMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.WebServiceReleaseSchemaValidationMigration"))
+            await new WebServiceReleaseSchemaValidationMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.TenantDomainZoneSchemaValidationMigration"))
+            await new TenantDomainZoneSchemaValidationMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.HostnameBindingSchemaValidationMigration"))
+            await new HostnameBindingSchemaValidationMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.DomainIndexesMigration"))
+            await new DomainIndexesMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ComputeProfileSchemaValidationMigration"))
+            await new ComputeProfileSchemaValidationMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ComputeProfileIndexesMigration"))
+            await new ComputeProfileIndexesMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceDeploymentComputeProfileIndexMigration"))
+            await new ResourceDeploymentComputeProfileIndexMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.ResourceDeploymentRecoveryIndexMigration"))
+            await new ResourceDeploymentRecoveryIndexMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.StorageProfileMigration"))
+            await new StorageProfileMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.OutboxMessageMigration"))
+            await new OutboxMessageMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.SourceBuildMigration"))
+            await new SourceBuildMigration().Up(fixture.Database);
+        using (timings?.Measure("api.migration.SecretIndexesMigration"))
+            await new SecretIndexesMigration().Up(fixture.Database);
+        using (timings?.Measure("api.seed.compute-profile"))
+            await fixture.Database
             .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(TestData.SeedComputeProfile());
+        using var mappingTiming = timings?.Measure("api.endpoints.map");
         app.UseTraceContext();
         app.UseCors("frontend-dev");
         app.UseAuthentication();
@@ -394,7 +422,9 @@ public sealed class TestApiApplication : IAsyncDisposable
             .WithTags("ComputeProfiles")
             .MapGetAvailableComputeProfilesEndpoint();
 
-        await app.StartAsync();
+        mappingTiming?.Dispose();
+        using (timings?.Measure("api.host.start"))
+            await app.StartAsync();
 
         return new TestApiApplication(
             app,

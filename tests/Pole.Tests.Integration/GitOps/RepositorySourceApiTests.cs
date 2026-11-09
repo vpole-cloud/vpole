@@ -46,16 +46,26 @@ public sealed partial class RepositorySourceApiTests(MongoReplicaSetFixture fixt
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await new GitOpsIndexesMigration().Up(Fixture.Database);
-        await new WebServiceSchemaValidationMigration().Up(Fixture.Database);
-        await new WebServiceDependencyReferencesSchemaMigration().Up(Fixture.Database);
-        await new PreparedWebServiceSchemaMigration().Up(Fixture.Database);
-        await new WebServiceReleaseHistoryMigration().Up(Fixture.Database);
-        await new Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration().Up(Fixture.Database);
-        await new TechnicalIdentityMigration().Up(Fixture.Database);
-        await new ComputeProfileHistoryMigration().Up(Fixture.Database);
-        await new WebServiceDeclaredPlacementSchemaMigration().Up(Fixture.Database);
-        await NamedCatalogTestData.SeedAsync(Fixture);
+        using (Timings.Measure("gitops.migration.GitOpsIndexesMigration"))
+            await new GitOpsIndexesMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.WebServiceSchemaValidationMigration"))
+            await new WebServiceSchemaValidationMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.WebServiceDependencyReferencesSchemaMigration"))
+            await new WebServiceDependencyReferencesSchemaMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.PreparedWebServiceSchemaMigration"))
+            await new PreparedWebServiceSchemaMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.WebServiceReleaseHistoryMigration"))
+            await new WebServiceReleaseHistoryMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration"))
+            await new Pole.Features.ResourceGroups.Migrations.TechnicalIdentityMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.TechnicalIdentityMigration"))
+            await new TechnicalIdentityMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.ComputeProfileHistoryMigration"))
+            await new ComputeProfileHistoryMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.migration.WebServiceDeclaredPlacementSchemaMigration"))
+            await new WebServiceDeclaredPlacementSchemaMigration().Up(Fixture.Database);
+        using (Timings.Measure("gitops.seed.catalog"))
+            await NamedCatalogTestData.SeedAsync(Fixture);
     }
 
     [Fact]
