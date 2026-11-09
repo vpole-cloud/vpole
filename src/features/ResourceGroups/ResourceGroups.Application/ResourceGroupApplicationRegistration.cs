@@ -97,7 +97,7 @@ public static class ResourceGroupApplicationRegistration
             provider.GetRequiredService<IBackgroundJobClient>().Schedule<RuntimeCellDeletionJob>(job =>
                 job.ExecuteAsync(request, CancellationToken.None), new DateTimeOffset(due));
             provider.GetService<ILogger<RuntimeCellDeletionJob>>()?.LogInformation(
-                "RuntimeCell deletion check scheduled: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc}",
+                "RuntimeCell deletion check scheduled: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}",
                 request.EventCore.TenantId, request.RuntimeCellId, request.Generation, request.CheckSequence, due);
         });
         services.TryAddScoped<RuntimeCellLifecyclePersistence>();

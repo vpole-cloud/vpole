@@ -197,6 +197,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         graphTiming.Dispose();
         using (_timings.Measure("fixture.e2e.graph.build"))
             _application = await appHost.BuildAsync(_shutdown.Token);
+        StartLifecycleEvidence();
         _keycloakPortReservation.Stop();
         using (var startup = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
         {
@@ -356,6 +357,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             await AttemptAsync("dispose application", "fixture.e2e.cleanup.application.dispose",
                 () => _application.DisposeAsync().AsTask());
         }
+        await StopLifecycleEvidenceAsync();
 
         using var gitOpsCleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         using var gitOpsTiming = _timings.Measure("fixture.e2e.cleanup.gitops");
