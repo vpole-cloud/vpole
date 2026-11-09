@@ -1,3 +1,5 @@
+using Aspire.Hosting.ApplicationModel;
+using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Pole.Tests.E2E.Infrastructure;
@@ -40,6 +42,17 @@ public sealed class LifecycleEvidenceTests
         Assert.DoesNotContain(message, serialized);
         if (record.OccurredAtUtc is { } occurred)
             Assert.Equal(1234567, occurred.Ticks % TimeSpan.TicksPerSecond);
+    }
+
+    [Theory]
+    [InlineData("2026-11-09T12:00:00.123456Z", true)]
+    [InlineData("2026-11-09T12:00:00.1234567Z", true)]
+    [InlineData("2026-99-99T12:00:00.1234567Z", false)]
+    [InlineData("credentials-prefix", false)]
+    public void AspireTimestampEnvelope_IsValidatedBeforeOwnedMessageParsing(string envelope, bool expected)
+    {
+        var message = $"{envelope}       RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}";
+        Assert.Equal(expected, LifecycleEvidence.TryParse(message, RecordedAt, out _));
     }
 
     [Theory]
@@ -119,6 +132,43 @@ public sealed class LifecycleEvidenceTests
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             }
             finally { stopped.TrySetResult(); }
+        }
+    }
+
+    [Fact]
+    public async Task AspireResourceLogger_ProducesAcceptedContentAndStreamsBeforeShutdown()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pole-lifecycle-" + Guid.NewGuid().ToString("N"));
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var logger = new ResourceLoggerService();
+        try
+        {
+            await using var collector = new LifecycleEvidence(directory);
+            collector.Start(Read(live: false), Read(live: true));
+            logger.GetLogger("pole-server").LogInformation(
+                "RuntimeCell deletion work started: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}, StartedAtUtc={StartedAtUtc:O}",
+                Tenant, Resource, 2, 0, (DateTime?)null, RecordedAt.UtcDateTime);
+            await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await collector.DisposeAsync();
+            var lines = await File.ReadAllLinesAsync(Path.Combine(directory, "lifecycle-events.jsonl"));
+            Assert.NotEmpty(lines);
+            Assert.All(lines, line =>
+            {
+                using var document = JsonDocument.Parse(line);
+                Assert.Equal("started", document.RootElement.GetProperty("phase").GetString());
+            });
+        }
+        finally { Directory.Delete(directory, true); }
+
+        async IAsyncEnumerable<string> Read(bool live, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var batches = live ? logger.WatchAsync("pole-server") : logger.GetAllAsync("pole-server");
+            await foreach (var batch in batches.WithCancellation(cancellationToken))
+                foreach (var line in batch)
+                {
+                    yield return line.Content;
+                    if (LifecycleEvidence.TryParse(line.Content, RecordedAt, out _)) observed.TrySetResult();
+                }
         }
     }
 
