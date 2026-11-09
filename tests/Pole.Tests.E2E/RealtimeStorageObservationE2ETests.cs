@@ -15,13 +15,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class RealtimeStorageObservationE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(RealtimeStorageObservationE2ETests));
+
     [Fact]
     public async Task Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var ct = budget.Token;
-        var resources = new TestResourceScope("native storage observation E2E");
+        var resources = new TestResourceScope("native storage observation E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var targets = await ReadAdminAsync("/api/v1/platform/deployment-targets", ct);

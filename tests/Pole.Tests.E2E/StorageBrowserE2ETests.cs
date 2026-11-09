@@ -10,13 +10,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class StorageBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(StorageBrowserE2ETests));
+
     [Fact]
     public async Task Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var ct = budget.Token;
-        var resources = new TestResourceScope("storage browser E2E");
+        var resources = new TestResourceScope("storage browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);

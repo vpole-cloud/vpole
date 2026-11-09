@@ -19,11 +19,14 @@ namespace Pole.Tests.E2E;
 [Trait("Scope", "FullE2E")]
 public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(MultiClusterWebServiceE2ETests));
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     [KubernetesFact("multi-cluster", "monitoring")]
     public async Task Two_target_reconciliation_isolates_failure_and_retries_only_failed_target()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Two_target_reconciliation_isolates_failure_and_retries_only_failed_target)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var cancellationToken = timeout.Token;
@@ -33,7 +36,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         var labB = lab.GetRequiredTarget("workload-b");
         using var clientA = new KubernetesClient(labA.CreateConfiguration());
         using var clientB = new KubernetesClient(labB.CreateConfiguration());
-        var resources = new TestResourceScope("multi-cluster WebService E2E");
+        var resources = new TestResourceScope("multi-cluster WebService E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
 
@@ -383,6 +386,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         Func<JsonElement[], bool> completed,
         CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForPlacementsAsync");
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -405,6 +409,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         string targetBId,
         CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForRuntimeCellsAsync");
         while (true)
         {
             using var request = fixture.CreateAuthenticatedRequest(
@@ -455,6 +460,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteTenantResourceAsync(string path, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteTenantResourceAsync");
         await DeleteWithConflictRetryAsync(
             () => fixture.CreateAuthenticatedRequest(
                 HttpMethod.Delete,
@@ -466,6 +472,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteAdminResourceAsync(string path, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAdminResourceAsync");
         await DeleteWithConflictRetryAsync(
             () => fixture.CreatePlatformAdminRequest(HttpMethod.Delete, path),
             cancellationToken);
@@ -475,6 +482,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         Func<HttpRequestMessage> createRequest,
         CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteWithConflictRetryAsync");
         while (true)
         {
             using var request = createRequest();
@@ -493,6 +501,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 
     private async Task WaitForNotFoundAsync(string path, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForNotFoundAsync");
         while (true)
         {
             using var request = fixture.CreateAuthenticatedRequest(

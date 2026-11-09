@@ -12,13 +12,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(TenantWorkspaceBrowserE2ETests));
+
     [Fact]
     public async Task Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        var resources = new TestResourceScope("tenant workspace browser E2E");
+        var resources = new TestResourceScope("tenant workspace browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var alphaTenant = fixture.Alpha.DefaultTenantId;
@@ -210,17 +213,20 @@ public sealed class TenantWorkspaceBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task DeleteAsync(string path, TestUser user, string tenant, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, user, tenant);
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound, $"Tenant browser cleanup returned HTTP {(int)response.StatusCode}.");
     }
     private async Task DeleteGroupAsync(string id, TestUser user, string tenant, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", user, tenant, ct);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }
     private async Task DeleteServiceAsync(string id, string tenant, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteServiceAsync");
         await DeleteAsync($"/api/v1/web-services/{id}", fixture.Alpha, tenant, ct);
         while (true)
         {

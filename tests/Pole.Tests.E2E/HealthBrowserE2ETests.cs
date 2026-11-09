@@ -11,13 +11,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(HealthBrowserE2ETests));
+
     [Fact]
     public async Task Applied_unready_workload_is_observed_independently_and_operations_restore_after_reload()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Applied_unready_workload_is_observed_independently_and_operations_restore_after_reload)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
-        var resources = new TestResourceScope("health browser E2E");
+        var resources = new TestResourceScope("health browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var suffix = Guid.NewGuid().ToString("N")[..10];
@@ -148,12 +151,14 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task DeleteAsync(string path, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound, $"Health cleanup returned HTTP {(int)response.StatusCode}.");
     }
     private async Task DeleteWebServiceAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteWebServiceAsync");
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
         await TestWait.UntilAsync(async probeToken =>
         {
@@ -165,6 +170,7 @@ public sealed class HealthBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }

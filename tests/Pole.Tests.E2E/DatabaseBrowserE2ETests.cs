@@ -12,12 +12,15 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputHelper output)
 {
+    private readonly TestTimings _timings = new(typeof(DatabaseBrowserE2ETests));
+
     [Fact]
     public async Task User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-        var resources = new TestResourceScope("PostgreSQL browser E2E");
+        var resources = new TestResourceScope("PostgreSQL browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var name = $"pg-{Guid.NewGuid():N}"[..16];
@@ -119,9 +122,10 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
     [Fact]
     public async Task User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-        var resources = new TestResourceScope("Redis browser E2E");
+        var resources = new TestResourceScope("Redis browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var name = $"redis-{Guid.NewGuid():N}"[..18];
@@ -263,6 +267,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
 
     private async Task DeleteComputeProfileAsync(string id, long revision, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteComputeProfileAsync");
         using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Delete, $"/api/v1/platform/compute-profiles/{id}?revision={revision}");
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound, $"Compute cleanup returned HTTP {(int)response.StatusCode}.");
@@ -286,6 +291,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
 
     private async Task DeleteDatabaseAsync(string route, string id, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteDatabaseAsync");
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromMinutes(1));
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/{route}/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -301,6 +307,7 @@ public sealed class DatabaseBrowserE2ETests(PoleE2EFixture fixture, ITestOutputH
 
     private async Task DeleteGroupAsync(string id, CancellationToken token)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/resource-groups/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, token);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound);

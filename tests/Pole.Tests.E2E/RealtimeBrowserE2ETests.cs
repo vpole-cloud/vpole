@@ -945,6 +945,7 @@ public sealed class RealtimeBrowserE2ETests(
 
     private async Task WaitForQuietReleaseRecoveryAsync(OwnedService owned, long resourceRevision, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForQuietReleaseRecoveryAsync");
         string? expectedDeploymentId = null;
         string? lastState = null;
         await WaitUntilAsync(async probeCancellation =>
@@ -1042,6 +1043,7 @@ public sealed class RealtimeBrowserE2ETests(
 
     private async Task WaitForReleaseAsync(string id, long revision, string outcome, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForReleaseAsync");
         await WaitUntilAsync(async probeCancellation =>
             {
                 var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, probeCancellation);
@@ -1202,6 +1204,7 @@ public sealed class RealtimeBrowserE2ETests(
 
     private async Task DeleteServiceAsync(string id, CancellationToken ct, TestUser? owner = null)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteServiceAsync");
         owner ??= fixture.Alpha;
         await DeleteAsync($"/api/v1/web-services/{id}", ct, owner);
         await WaitUntilAsync(async probeCancellation =>
@@ -1220,12 +1223,14 @@ public sealed class RealtimeBrowserE2ETests(
 
     private async Task DeleteGroupAsync(string id, CancellationToken ct, TestUser? owner = null)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct, owner);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }
 
     private async Task DeleteAsync(string path, CancellationToken ct, TestUser? owner = null)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         owner ??= fixture.Alpha;
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, owner, owner.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);

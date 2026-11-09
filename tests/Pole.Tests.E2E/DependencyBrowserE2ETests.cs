@@ -225,12 +225,14 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task DeleteIfPresentAsync(string path, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteIfPresentAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound, $"Dependency cleanup returned HTTP {(int)response.StatusCode}.");
     }
     private async Task DeleteResourceAsync(string route, string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteResourceAsync");
         await DeleteIfPresentAsync($"/api/v1/{route}/{id}", ct);
         await TestWait.UntilAsync(async probeToken =>
         {
@@ -242,6 +244,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await TestWait.UntilAsync(async probeToken =>
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/resource-groups/{id}", fixture.Alpha, fixture.Alpha.DefaultTenantId);

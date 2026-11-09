@@ -311,6 +311,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
         await SendAsync(HttpMethod.Post, "/api/v1/redis-services", new { name, resourceGroupId = group, computeProfileId = compute, spec = new { storage = new { sizeGb = 1, storageProfileId = storage } }, tags = new[] { "e2e" }, placement = new { deploymentTargetId = target } }, ct);
     private async Task<JsonElement> WaitForAppliedAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForAppliedAsync");
         while (true)
         {
             var value = await SendAsync(HttpMethod.Get, $"/api/v1/redis-services/{id}", null, ct);
@@ -322,6 +323,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task<JsonElement> WaitForInstancesAsync(string deployment, string? oldUid, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.readiness.WaitForInstancesAsync");
         using var ready = CancellationTokenSource.CreateLinkedTokenSource(ct); ready.CancelAfter(TimeSpan.FromMinutes(3));
         while (true)
         {
@@ -369,6 +371,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task DeleteAsync(string path, CancellationToken ct, bool admin = false)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         while (true)
         {
             using var request = admin ? fixture.CreatePlatformAdminRequest(HttpMethod.Delete, path) : fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
@@ -380,6 +383,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
     }
     private async Task DeleteRedisAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteRedisAsync");
         await DeleteAsync($"/api/v1/redis-services/{id}", ct);
         while (true)
         {

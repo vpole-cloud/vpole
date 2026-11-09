@@ -11,13 +11,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(DomainBrowserE2ETests));
+
     [Fact]
     public async Task Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
-        var resources = new TestResourceScope("domain browser E2E");
+        var resources = new TestResourceScope("domain browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var suffix = Guid.NewGuid().ToString("N")[..10];
@@ -245,6 +248,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteAsync(string path, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         using var request =
             fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);
@@ -254,6 +258,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteWebServiceAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteWebServiceAsync");
         await DeleteAsync($"/api/v1/web-services/{id}", ct);
         await TestWait.UntilAsync(async probeToken =>
         {
@@ -265,6 +270,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteGroupAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }

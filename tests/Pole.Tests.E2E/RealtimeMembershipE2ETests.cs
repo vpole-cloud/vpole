@@ -14,13 +14,16 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(RealtimeMembershipE2ETests));
+
     [Fact]
     public async Task Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime membership browser E2E");
+        var resources = new TestResourceScope("realtime membership browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var tenantId = fixture.Alpha.DefaultTenantId;
@@ -403,6 +406,7 @@ public sealed class RealtimeMembershipE2ETests(PoleE2EFixture fixture)
 
     private async Task DeleteAsync(string path, string? tenantId, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, fixture.Alpha, tenantId);
         using var response = await fixture.Api.SendAsync(request, ct);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound,
