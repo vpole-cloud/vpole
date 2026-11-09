@@ -9,11 +9,21 @@ namespace Pole.Features.GitOps.Application.Jobs;
 
 public delegate void DispatchGitSource(GitSourceIdentity source);
 
-public sealed class EnqueueGitSourceOnRequested(DispatchGitSource dispatch) : IConsumer<GitSourceWorkRequested>
+public delegate void ScheduleGitSourceAt(
+    GitSourceIdentity source,
+    DateTime notBeforeUtc);
+
+public sealed class EnqueueGitSourceOnRequested(
+    DispatchGitSource dispatch,
+    ScheduleGitSourceAt schedule) : IConsumer<GitSourceWorkRequested>
 {
     public Task Consume(ConsumeContext<GitSourceWorkRequested> context)
     {
-        dispatch(new(context.Message.EventCore.TenantId, context.Message.SourceId));
+        var source = new GitSourceIdentity(context.Message.EventCore.TenantId, context.Message.SourceId);
+        if (context.Message.NotBeforeUtc is { } notBeforeUtc)
+            schedule(source, notBeforeUtc);
+        else
+            dispatch(source);
         return Task.CompletedTask;
     }
 }

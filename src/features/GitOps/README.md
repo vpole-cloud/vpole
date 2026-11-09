@@ -27,6 +27,11 @@ generation and an outbox signal. A consumer dispatches a Hangfire job containing
 IDs. The Mongo recovery scanner also discovers pending requests, delayed runs and expired claims.
 An unavailable enqueue cannot lose the request.
 
+Waiting cleanup and retry transitions atomically store an outbox wake-up with the run's persisted
+next-attempt time. The consumer schedules that attempt in Hangfire instead of waiting for the
+recovery scan. Duplicate and stale jobs still pass the Mongo due-time, lease and generation fences;
+the scanner remains the fallback for lost dispatches.
+
 `RepositorySourceJob` claims a run before network access. It checks current tenant/connection
 access, resolves the branch to a full SHA, persists it, reads that exact commit and compiles the
 whole snapshot before resource writes. Fetch/compile failures remain inspectable runs and never

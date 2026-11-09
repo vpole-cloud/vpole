@@ -51,6 +51,10 @@ public static class GitOpsFeature
         services.AddScoped<DispatchGitSource>(sp => source =>
             sp.GetRequiredService<IBackgroundJobClient>().Enqueue<RepositorySourceJob>(job =>
                 job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None)));
+        services.AddScoped<ScheduleGitSourceAt>(sp => (source, notBeforeUtc) =>
+            sp.GetRequiredService<IBackgroundJobClient>().Schedule<RepositorySourceJob>(job =>
+                job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None),
+                new DateTimeOffset(notBeforeUtc)));
         services.AddScoped<GitRunStore>();
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitOperationPreview>(RepositoryCollections.Previews));
