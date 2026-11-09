@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json;
 using System.Xml.Linq;
 using Pole.Architecture.FSharp;
 using Pole.ArchitectureAnalyzers;
@@ -57,6 +59,42 @@ public sealed class RawBsonProjectTests(ITestOutputHelper output)
                     Assert.True(!dependency.IsTest && dependency.Role != ArchitectureProjectRoles.TestSupport,
                         $"Production project {project.Path} references test-only project {target}.");
             }
+        }
+    }
+
+    [Fact]
+    public void Batched_real_project_inputs_match_standalone_MSBuild_metadata_and_FSharp_arguments()
+    {
+        var configuration = typeof(RawBsonProjectTests).Assembly
+            .GetCustomAttribute<AssemblyConfigurationAttribute>()!.Configuration;
+        var paths = new[]
+        {
+            "src/features/Tenants/Tenants.Application/Tenants.Application.csproj",
+            "src/features/Postgres/Postgres.Application/Postgres.Application.fsproj"
+        }.Select(path => Path.Combine(ArchitectureSources.RepositoryRoot, path)).ToArray();
+        var batch = ArchitectureProjectInputs.Load(paths, configuration).Projects
+            .ToDictionary(project => project.Path, StringComparer.Ordinal);
+
+        // Only this regression invokes the old per-project CLI; normal inventory stays batched.
+        foreach (var path in paths)
+        {
+            var fsharp = path.EndsWith(".fsproj", StringComparison.Ordinal);
+            var legacy = StandaloneProjectMetadata(path, configuration);
+            var actual = batch[path];
+            Assert.Equal(legacy.Role, actual.Role);
+            Assert.Equal(legacy.IsTest, actual.IsTest);
+            Assert.Equal(legacy.AssemblyName, actual.AssemblyName);
+            Assert.Equal(legacy.Configuration, actual.Configuration);
+            Assert.NotEmpty(legacy.References);
+            // Sequence equality intentionally preserves declared references and compiler argument order.
+            Assert.Equal<string>(legacy.References, actual.References);
+            if (fsharp)
+            {
+                Assert.NotEmpty(actual.CompilerArguments);
+                Assert.Equal<string>(StandaloneFSharpArguments(path, configuration), actual.CompilerArguments);
+            }
+            else
+                Assert.Empty(actual.CompilerArguments);
         }
     }
 
@@ -200,4 +238,67 @@ public sealed class RawBsonProjectTests(ITestOutputHelper output)
             .Where(path => Path.GetExtension(path) is ".csproj" or ".fsproj");
 
     private static IEnumerable<ArchitectureProject> Projects() => ProjectInventory.Value.Projects;
+
+    private static ArchitectureProject StandaloneProjectMetadata(
+        string path,
+        string configuration)
+    {
+        // Normal evaluation returns declared references; ResolveReferences adds transitive ones.
+        using var json = StandaloneMSBuild(path, configuration,
+            "-getProperty:PoleArchitectureRole,IsTestProject,AssemblyName,Configuration",
+            "-getItem:ProjectReference");
+        var properties = json.RootElement.GetProperty("Properties");
+        var references = json.RootElement.GetProperty("Items").GetProperty("ProjectReference").EnumerateArray()
+            .Select(item => item.GetProperty("FullPath").GetString()!).ToArray();
+        return new(path, properties.GetProperty("PoleArchitectureRole").GetString()!,
+            bool.TryParse(properties.GetProperty("IsTestProject").GetString(), out var isTest) && isTest,
+            properties.GetProperty("AssemblyName").GetString()!, properties.GetProperty("Configuration").GetString()!,
+            references, []);
+    }
+
+    private static string[] StandaloneFSharpArguments(string path, string configuration)
+    {
+        // Match the former F# resolver exactly, independently of normal metadata evaluation.
+        using var json = StandaloneMSBuild(path, configuration,
+            "-target:ResolveReferences,FindReferenceAssembliesForReferences,CoreCompile",
+            "-property:SkipCompilerExecution=true", "-property:ProvideCommandLineArgs=true",
+            "-property:BuildProjectReferences=false", "-property:DesignTimeBuild=true",
+            "-property:NonExistentFile=" + Path.Combine(Path.GetDirectoryName(path)!, "obj", "pole-fsharp-semantic-options.force"),
+            "-getItem:FscCommandLineArgs");
+        return json.RootElement.GetProperty("Items").GetProperty("FscCommandLineArgs").EnumerateArray()
+            .Select(item => item.GetProperty("Identity").GetString()!).ToArray();
+    }
+
+    private static JsonDocument StandaloneMSBuild(
+        string path,
+        string configuration,
+        params string[] arguments)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = Path.GetDirectoryName(path)!,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.Environment["MSBUILDUSESERVER"] = "0";
+        foreach (var argument in new[] { "msbuild", path,
+                     "-property:Configuration=" + configuration, "-nologo", "-maxcpucount:1", "-nodeReuse:false" })
+            start.ArgumentList.Add(argument);
+        foreach (var argument in arguments)
+            start.ArgumentList.Add(argument);
+
+        using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start standalone MSBuild.");
+        var output = child.StandardOutput.ReadToEndAsync();
+        var error = child.StandardError.ReadToEndAsync();
+        if (!child.WaitForExit(180_000))
+        {
+            child.Kill(entireProcessTree: true);
+            throw new InvalidOperationException($"Timed out collecting standalone project inputs for {path}.");
+        }
+        var stdout = output.GetAwaiter().GetResult();
+        var stderr = error.GetAwaiter().GetResult();
+        Assert.True(child.ExitCode == 0, $"Could not evaluate {path}:{Environment.NewLine}{stdout}{stderr}");
+        return JsonDocument.Parse(stdout);
+    }
 }
