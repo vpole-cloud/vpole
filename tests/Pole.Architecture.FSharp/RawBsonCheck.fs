@@ -2,9 +2,7 @@ namespace Pole.Architecture.FSharp
 
 open System
 open System.Collections.Generic
-open System.Diagnostics
 open System.IO
-open System.Text.Json
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.Symbols
@@ -345,55 +343,3 @@ type RawBsonCheck private () =
         |> Seq.distinctBy (fun item -> item.FilePath, item.Line, item.Column, item.Message)
         |> Seq.sortBy (fun item -> item.FilePath, item.Line, item.Column, item.Message)
         |> Seq.toArray
-
-    /// Ask MSBuild for compiler inputs only. This resolves existing references and
-    /// runs the Fsc task with SkipCompilerExecution; it does not restore or compile.
-    static member GetCompilerArguments(projectPath: string) : string array =
-        ArgumentException.ThrowIfNullOrWhiteSpace(projectPath)
-        let projectPath = Path.GetFullPath(projectPath)
-        let directory = Path.GetDirectoryName(projectPath)
-        let start = ProcessStartInfo("dotnet")
-        start.WorkingDirectory <- directory
-        start.RedirectStandardOutput <- true
-        start.RedirectStandardError <- true
-        start.UseShellExecute <- false
-        start.Environment["MSBUILDUSESERVER"] <- "0"
-
-        for argument in
-            [ "msbuild"
-              projectPath
-              "-target:ResolveReferences,FindReferenceAssembliesForReferences,CoreCompile"
-              "-property:SkipCompilerExecution=true"
-              "-property:ProvideCommandLineArgs=true"
-              "-property:BuildProjectReferences=false"
-              "-property:DesignTimeBuild=true"
-              "-property:NonExistentFile=" + Path.Combine(directory, "obj", "pole-fsharp-semantic-options.force")
-              "-getItem:FscCommandLineArgs"
-              "-nologo"
-              "-maxcpucount:1"
-              "-nodeReuse:false" ] do
-            start.ArgumentList.Add(argument)
-
-        use child = Process.Start(start)
-        let stdout = child.StandardOutput.ReadToEndAsync()
-        let stderr = child.StandardError.ReadToEndAsync()
-        child.WaitForExit()
-        let output = stdout.GetAwaiter().GetResult()
-        let error = stderr.GetAwaiter().GetResult()
-
-        if child.ExitCode <> 0 then
-            invalidOp $"Could not resolve F# compiler inputs for '{projectPath}':{Environment.NewLine}{output}{error}"
-
-        try
-            use json = JsonDocument.Parse(output)
-
-            let args =
-                json.RootElement.GetProperty("Items").GetProperty("FscCommandLineArgs").EnumerateArray()
-                |> Seq.map (fun item -> item.GetProperty("Identity").GetString())
-                |> Seq.toArray
-
-            Implementation.normalizeOptions projectPath args |> ignore
-            args
-        with :? JsonException as ex ->
-            let message = $"MSBuild did not return F# compiler inputs for '{projectPath}': {output}{error}"
-            raise (InvalidOperationException(message, ex))

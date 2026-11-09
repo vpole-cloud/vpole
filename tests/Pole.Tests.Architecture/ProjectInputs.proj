@@ -1,0 +1,32 @@
+<Project>
+  <!-- One engine evaluates every project. The list is supplied fresh by each caller. -->
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <PoleCollectCompilerInputs Condition="'$(PoleCollectCompilerInputs)' == ''">true</PoleCollectCompilerInputs>
+    <_PoleCollector>$(MSBuildThisFileDirectory)ProjectInputs.targets</_PoleCollector>
+  </PropertyGroup>
+
+  <Target Name="CollectArchitectureInputs" Returns="@(_PoleArchitectureInput)" KeepDuplicateOutputs="true">
+    <Error Condition="!Exists('$(PoleProjectListFile)')" Text="Supply an existing PoleProjectListFile." />
+    <ReadLinesFromFile File="$(PoleProjectListFile)">
+      <Output TaskParameter="Lines" ItemName="_PoleProject" />
+    </ReadLinesFromFile>
+    <MSBuild Projects="@(_PoleProject)" Targets="CollectPoleProjectMetadata" BuildInParallel="false"
+             Properties="CustomAfterMicrosoftCommonTargets=$(_PoleCollector);Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_PoleArchitectureInput" />
+    </MSBuild>
+    <ItemGroup>
+      <_PoleFSharpProject Include="@(_PoleArchitectureInput)"
+                          Condition="'%(_PoleArchitectureInput.Kind)' == 'Project' And
+                                     '%(_PoleArchitectureInput.Extension)' == '.fsproj' And
+                                     '%(_PoleArchitectureInput.Role)' == 'Production' And
+                                     '%(_PoleArchitectureInput.IsTestProject)' != 'true'" />
+    </ItemGroup>
+    <!-- Design-time flags apply only to compiler-input discovery, never role evaluation. -->
+    <MSBuild Condition="'$(PoleCollectCompilerInputs)' == 'true' And '@(_PoleFSharpProject)' != ''"
+             Projects="@(_PoleFSharpProject)" Targets="CollectPoleFSharpInputs" BuildInParallel="false"
+             Properties="CustomAfterMicrosoftCommonTargets=$(_PoleCollector);Configuration=$(Configuration);SkipCompilerExecution=true;ProvideCommandLineArgs=true;BuildProjectReferences=false;DesignTimeBuild=true">
+      <Output TaskParameter="TargetOutputs" ItemName="_PoleArchitectureInput" />
+    </MSBuild>
+  </Target>
+</Project>
