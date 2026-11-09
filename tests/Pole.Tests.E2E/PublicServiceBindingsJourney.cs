@@ -215,7 +215,7 @@ public sealed class PublicServiceBindingsJourney(PoleE2EFixture fixture, ITestOu
             var deploymentId = Text(placement, "deploymentId");
             var path = $"/api/v1/web-services/{id}/deployments/{deploymentId}/hostnames";
             var bindings = await SendAsync(HttpMethod.Get, path, null, ct);
-            foreach (var binding in bindings.EnumerateArray().Where(item => Text(item, "kind") == "Custom"))
+            foreach (var binding in bindings.EnumerateArray().Where(item => Text(item, "kind") == "custom"))
                 await DeleteAsync($"{path}/{Text(binding, "id")}", ct);
         }
         await DeleteResourceAsync("web-services", id, ct);
