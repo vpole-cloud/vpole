@@ -1,11 +1,13 @@
 import importlib.util
 import json
 import os
+import re
 import threading
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
 
@@ -75,6 +77,80 @@ class EvidenceTests(unittest.TestCase):
             path.write_text(value)
             with self.assertRaises(gate.GateError):
                 gate.parallelism(path)
+
+    def test_build_and_integration_limits_keep_legacy_flat_group_settings(self):
+        path = self.root / "limits.json"
+        path.write_text('{"services": 3, "buildMaxCpuCount": 6, "integrationMaxParallelThreads": 8}')
+        with patch.dict(os.environ, {"CI": "true"}):
+            settings = gate.gate_settings(path)
+        self.assertEqual(6, settings["buildMaxCpuCount"])
+        self.assertEqual(8, settings["integrationMaxParallelThreads"])
+        self.assertEqual(3, gate.parallelism(path)["services"])
+        self.assertIn("-maxcpucount:6", gate.build_options(settings["buildMaxCpuCount"]))
+        self.assertFalse(any(argument.startswith("-maxcpucount") for argument in gate.build_options("auto")))
+        for value in ('{"buildMaxCpuCount": 0}', '{"buildMaxCpuCount": true}',
+                      '{"buildMaxCpuCount": "all"}', '{"integrationMaxParallelThreads": -1}'):
+            path.write_text(value)
+            with self.assertRaises(gate.GateError):
+                gate.gate_settings(path)
+
+    def test_build_and_integration_defaults_follow_local_or_ci_resources(self):
+        with patch.object(gate, "ROOT", self.root), patch.dict(os.environ, {"CI": "true"}):
+            self.assertEqual(2, gate.gate_settings()["buildMaxCpuCount"])
+            self.assertEqual(2, gate.gate_settings()["integrationMaxParallelThreads"])
+        with patch.object(gate, "ROOT", self.root), patch.dict(os.environ, {"CI": ""}):
+            self.assertEqual("auto", gate.gate_settings()["buildMaxCpuCount"])
+            self.assertEqual(4, gate.gate_settings()["integrationMaxParallelThreads"])
+
+    def test_coverage_uses_evaluated_product_names_and_preserves_migrations_and_child_processes(self):
+        items = [dict(Kind="Project", Role=role, IsTestProject=is_test, AssemblyName=name)
+                 for name, role, is_test in (("Product.Core", "Production", "false"),
+                                            ("Blog", "Production", "false"),
+                                            ("Product.Migrations", "Migration", "false"),
+                                            ("Product.Testing", "TestSupport", "false"),
+                                            ("Product.Tests", "Production", "true"))]
+        settings = self.root / "coverage.runsettings"
+        evidence = gate.write_coverage_settings(items, settings)
+        self.assertEqual(["Blog", "Product.Core", "Product.Migrations"], evidence["assemblies"])
+        root = ET.parse(settings).getroot()
+        self.assertEqual("False", root.findtext(".//IncludeTestAssembly"))
+        self.assertEqual("True", root.findtext(".//CollectFromChildProcesses"))
+        patterns = [node.text for node in root.findall(".//ModulePath")]
+        for module in ("/bin/Product.Core.dll", r"C:\bin\Product.Migrations.dll", "/bin/Blog.dll"):
+            self.assertTrue(any(re.search(pattern, module) for pattern in patterns))
+        for module in ("/bin/ProductXCore.dll", "/bin/Product.Testing.dll", "/bin/Product.Tests.dll", "/bin/ThirdParty.dll"):
+            self.assertFalse(any(re.search(pattern, module) for pattern in patterns))
+        self.assertNotIn("CompilerGeneratedAttribute", settings.read_text())
+        self.assertEqual(64, len(evidence["sha256"]))
+
+    def test_coverage_rejects_empty_or_invalid_product_inventory(self):
+        for role, name in (("Other", "Product"), ("Production", ""), ("TestSupport", "Helper")):
+            with self.subTest(role=role, name=name), self.assertRaises(gate.GateError):
+                gate.write_coverage_settings([dict(Kind="Project", Role=role, IsTestProject="false", AssemblyName=name)],
+                                             self.root / "coverage.runsettings")
+
+    def test_coverage_rejects_unexpected_vendor_modules(self):
+        report = self.root / "test.cobertura.xml"
+        report.write_text('<coverage><packages><package name="Vendor" /></packages></coverage>')
+        with self.assertRaisesRegex(gate.GateError, "excluded modules"):
+            gate.read_coverage_reports(self.root, ["Product"])
+
+    def test_coverage_project_discovery_excludes_worktrees_outputs_and_node_modules(self):
+        paths = ["src/Feature/Feature.csproj", "tests/Fixture.fsproj", "src/Feature/obj/Other.csproj",
+                 "src/Feature/.tmp/Other.csproj", "src/node_modules/Other.csproj", ".tmp/other/src/Other.csproj"]
+        for relative in paths:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("<Project />")
+        self.assertEqual([self.root / paths[0], self.root / paths[1]], gate.project_files(self.root))
+
+    def test_coverage_missing_project_metadata_cannot_produce_a_successful_allowlist(self):
+        path = self.root / "Product.csproj"
+        data = {"TargetResults": {"CollectArchitectureInputs": {"Items": []}}}
+        (self.root / "coverage-metadata.log").write_text(json.dumps(data))
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "project_files", return_value=[path]), \
+                patch.object(gate, "execute"), self.assertRaisesRegex(gate.GateError, "inventory differs"):
+            gate.prepare_coverage(self.root, [])
 
     def test_pr_report_inventory_requires_only_selected_projects(self):
         (self.root / "tests").mkdir()
@@ -207,24 +283,33 @@ class EvidenceTests(unittest.TestCase):
             gate.execute("intentional-failure", ["python3", "-c", "raise SystemExit(3)"], self.root, steps)
         self.assertEqual(3, steps[0]["exit_code"])
 
-    def backend_fixture(self, missing_coverage=False, fail_second=False):
-        projects = ["tests/A.csproj", "tests/B.csproj"]
+    def backend_fixture(self, missing_coverage=False, fail_second=False, names=("A", "B")):
+        projects = [f"tests/{name}.csproj" for name in names]
         (self.root / "tests").mkdir()
-        for name in ("A", "B"):
+        (self.root / "src").mkdir()
+        (self.root / "src" / "Product.csproj").write_text("<Project />")
+        for name in names:
             (self.root / "tests" / f"{name}.csproj").write_text(f"<Project><PropertyGroup><AssemblyName>{name}</AssemblyName></PropertyGroup></Project>")
         report = self.trx().read_text()
         calls = []
 
         def execute(name, command, directory, steps, environment=None):
+            if name == "coverage-metadata":
+                items = [dict(Identity=str(path), Kind="Project", ProjectPath=str(path), Role="Production",
+                              IsTestProject="true" if path.parent.name == "tests" else "false", AssemblyName=path.stem)
+                         for path in gate.project_files(self.root)]
+                data = {"TargetResults": {"CollectArchitectureInputs": {"Items": items}}}
+                (directory / "coverage-metadata.log").write_text(json.dumps(data))
+                return
             calls.append((name, command, environment))
             if fail_second and name == "backend-1":
                 raise gate.GateError("controlled command failure")
-            output = Path(command[-1])
+            output = Path(command[command.index("--results-directory") + 1])
             output.mkdir()
             assembly = Path(command[2]).stem
             (output / "results.trx").write_text(report.replace("<Results>", f'<TestDefinitions><UnitTest><TestMethod codeBase="/bin/{assembly}.dll" /></UnitTest></TestDefinitions><Results>'))
             if not missing_coverage:
-                (output / "test.cobertura.xml").write_text("<coverage />")
+                (output / "test.cobertura.xml").write_text('<coverage><packages><package name="Product" /></packages></coverage>')
 
         return projects, calls, execute
 
@@ -245,13 +330,16 @@ class EvidenceTests(unittest.TestCase):
         manifest = json.loads((output / "backend-manifest.json").read_text())
         self.assertEqual("passed", manifest["status"])
         self.assertTrue(manifest["coverage"])
+        self.assertEqual(["Product"], manifest["coverage_settings"]["assemblies"])
+        self.assertEqual(["Product"], manifest["coverage_modules"][projects[0]])
 
     def test_backend_parallelism_overlaps_independent_projects(self):
         projects, calls, execute = self.backend_fixture()
         rendezvous = threading.Barrier(2)
 
         def simultaneous(*args, **kwargs):
-            rendezvous.wait(timeout=5)
+            if args[0].startswith("backend-"):
+                rendezvous.wait(timeout=5)
             execute(*args, **kwargs)
 
         with patch.object(gate, "ROOT", self.root), patch.object(gate, "test_projects", return_value=projects), \
@@ -259,6 +347,17 @@ class EvidenceTests(unittest.TestCase):
             result = gate.run_backend(self.root / "output", limits=dict.fromkeys(gate.GROUPS, 2))
         self.assertEqual(set(projects), set(result))
         self.assertEqual(2, len(calls))
+
+    def test_integration_parallelism_uses_standard_runner_settings_only_for_central_suite(self):
+        projects, calls, execute = self.backend_fixture(names=("Pole.Tests.Integration", "Feature.Tests.Integration"))
+        with patch.object(gate, "ROOT", self.root), patch.object(gate, "test_projects", return_value=projects), \
+                patch.object(gate, "execute", side_effect=execute), patch.object(gate, "capture_headroom"):
+            gate.run_backend(self.root / "output", integration_max_parallel_threads=3)
+        central = next(command for _, command, _ in calls if command[2] == projects[0])
+        feature = next(command for _, command, _ in calls if command[2] == projects[1])
+        self.assertEqual(["--", "xUnit.MaxParallelThreads=3"], central[-2:])
+        self.assertNotIn("--", feature)
+        self.assertIn("-maxcpucount:1", central)
 
     def test_pr_gate_does_not_require_cluster_commands(self):
         with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \

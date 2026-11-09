@@ -264,12 +264,20 @@ rejected. The executor records each project's command, outcome and coverage file
 missing, failed, skipped, empty or aborted suites. `python3 scripts/quality_gate.py run` invokes this
 same backend lane as part of the complete publication gate.
 
+The lane evaluates actual project roles and assembly names in one MSBuild invocation and writes
+`coverage.runsettings` plus `coverage-settings.json`. Only production and migration assemblies are
+instrumented; tests, test-support libraries and third-party binaries are excluded. Child-process
+coverage stays enabled, including product assemblies started by E2E. The manifest records the
+settings hash, included assemblies and observed modules; unexpected modules fail the lane.
+
 Focused development checks may still use plain `dotnet test` without coverage. To collect coverage
-for one focused project, choose fresh inputs and add the collector:
+for one focused project, generate settings in a fresh directory and add the collector:
 
 ```bash
 rm -rf -- .artifacts/coverage/backend/raw .artifacts/coverage/backend/report
+python3 scripts/quality_gate.py coverage-settings --results-directory .artifacts/coverage/backend/settings
 dotnet test src/features/GitProviders/GitProviders.Tests/GitProviders.Tests.csproj \
+  --no-build --no-restore --settings .artifacts/coverage/backend/settings/coverage.runsettings \
   --collect:"Code Coverage;Format=Cobertura" \
   --results-directory .artifacts/coverage/backend/raw
 ```
@@ -283,7 +291,6 @@ dotnet tool run reportgenerator \
   "-reports:.artifacts/coverage/backend/raw/**/*.cobertura.xml" \
   "-targetdir:.artifacts/coverage/backend/report" \
   "-reporttypes:Html;Cobertura;MarkdownAssembliesSummary" \
-  "-assemblyfilters:+Pole.*;-*.Tests*;-Pole.Testing;-Pole.ArchitectureAnalyzers" \
   "-filefilters:-**/obj/**;-**/*.g.cs;-**/*.generated.cs"
 ```
 
@@ -299,9 +306,9 @@ summaries to the Actions run page, and uploads both HTML reports as 14-day artif
 no threshold yet; establish a representative baseline before using it as a merge gate.
 
 Line or branch coverage only shows whether code executed, not whether assertions proved the right
-behavior. The backend collector measures production assemblies loaded inside each test host.
-Services launched as separate Aspire processes are not automatically attributed to the E2E test
-host, so E2E results remain separate behavioral evidence rather than a coverage metric.
+behavior. Coverage also depends on which processes inherit the collector environment; verify
+observed product modules before attributing coverage to a separately launched Aspire service.
+E2E results remain behavioral evidence even when an external process is absent from coverage.
 
 To run the lab contracts and only the cluster-backed webservice tests:
 
@@ -457,6 +464,20 @@ limits, create ignored `.quality-gate.local.json`, for example
 `{"fast": 8, "services": 2}`, or pass `--config /path/to/limits.json`.
 Group order prevents Kubernetes and E2E from competing with other test groups.
 Measure project durations and host memory before raising heavy limits.
+Restore/build use a single `dotnet` invocation each and let MSBuild schedule the dependency graph.
+Locally, `buildMaxCpuCount` defaults to `"auto"` (the SDK's CPU-based limit); CI defaults to 2.
+Set a positive integer to cap build workers. The local gate records build duration and sampled
+host memory/headroom in its receipt. This is separate from test-project concurrency:
+`integrationMaxParallelThreads` bounds central Integration xUnit workers (local 4, CI 2), using the
+standard runner setting. Plain `dotnet test` uses the committed xUnit defaults and still runs all
+.NET suites. Existing four-key files remain valid; a combined override is
+`{"fast": 8, "services": 2, "buildMaxCpuCount": 8, "integrationMaxParallelThreads": 4}`.
+
+The Architecture suite collects fresh project metadata and F# compiler arguments in one MSBuild
+engine per test process, preserving imported/conditional properties and references. It does not
+restore or compile projects and needs the solution outputs already built. No persisted metadata
+cache is trusted. Test output separates input collection time from F# semantic checking.
+
 Build once before tests. The backend manifest records the selected inventory, configuration
 and per-project elapsed seconds. Each profile rejects failed, skipped and missing reports
 within that inventory.

@@ -56,10 +56,10 @@ jobs:
         run: npm ci --prefix src/api/frontend
 
       - name: Restore backend
-        run: dotnet restore Pole.slnx --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
+        run: dotnet restore Pole.slnx --disable-build-servers --nologo -maxcpucount:2 -nodeReuse:false
 
       - name: Build backend
-        run: dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
+        run: dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:2 -nodeReuse:false
 
       - name: Check source formatting
         env:
@@ -97,7 +97,6 @@ jobs:
             "-reports:.artifacts/coverage/backend/raw/**/*.cobertura.xml" \
             "-targetdir:.artifacts/coverage/backend/report" \
             "-reporttypes:Html;Cobertura;MarkdownAssembliesSummary" \
-            "-assemblyfilters:+Pole.*;-*.Tests*;-Pole.Testing;-Pole.ArchitectureAnalyzers" \
             "-filefilters:-**/obj/**;-**/*.g.cs;-**/*.generated.cs" \
             "-title:Pole backend coverage"
           {
