@@ -3,9 +3,12 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Application.Mongo;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Events;
 using Pole.Features.GitOps.Primitives;
+using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.GitOps.Application.Runs;
 
@@ -40,6 +43,7 @@ public sealed class GitRunStore(
     IMongoCollection<GitOperationReceipt> receipts,
     IMongoCollection<GitPlannedOperation> plans,
     MongoRunTransaction transactions,
+    StoreOutboxWrites outbox,
     IOptions<GitOpsWorkerOptions> options)
 {
     private readonly GitDatabaseClock clock = new(sources);
@@ -329,6 +333,17 @@ public sealed class GitRunStore(
             GitRepositoryFilters.ActiveState(handle.Stamp),
             transition.State,
             cancellationToken: ct);
+        DateTime? notBeforeUtc = transition.Run.State switch
+        {
+            GitRunWaitingCleanup waiting => waiting.NextAttemptAtUtc,
+            GitRunDelayed delayed => delayed.NextAttemptAtUtc,
+            GitRunWaiting or GitRunClaimed or GitRunFinished => null
+        };
+        if (notBeforeUtc is { } due)
+            await outbox(session,
+                [OutboxWrite.Create(new GitSourceWorkRequested(handle.Stamp.Source.SourceId,
+                    EventCore.Create(handle.Stamp.Source.TenantId), due))],
+                ct);
         return true;
     }
 
