@@ -11,6 +11,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     [Fact]
     public async Task LifecycleRequiresFreshApprovalAndReturnsManualControlAfterDetach()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var evidence = new TestPhaseJournal(
             nameof(LifecycleRequiresFreshApprovalAndReturnsManualControlAfterDetach)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(12));

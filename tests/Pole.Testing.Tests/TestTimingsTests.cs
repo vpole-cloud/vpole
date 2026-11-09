@@ -69,4 +69,42 @@ public sealed class TestTimingsTests
         Assert.Same(original, observed);
         Assert.False(Directory.Exists(directory));
     }
+
+    [Fact]
+    public async Task Timed_disposal_records_teardown_once_and_preserves_the_disposal_failure()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pole-timed-disposal-{Guid.NewGuid():N}");
+        try
+        {
+            var timings = new TestTimings(GetType(), directory: directory);
+            var original = new InvalidOperationException("private-disposal-canary");
+            var resource = new FailingResource(original);
+            var disposal = timings.MeasureDisposal(resource, "browser.context.dispose");
+
+            var observed = await Assert.ThrowsAsync<InvalidOperationException>(() => disposal.DisposeAsync().AsTask());
+            await disposal.DisposeAsync();
+
+            Assert.Same(original, observed);
+            Assert.Equal(1, resource.Disposals);
+            var output = File.ReadAllText(Assert.Single(Directory.GetFiles(directory)));
+            using var record = JsonDocument.Parse(output);
+            Assert.Equal("browser.context.dispose", record.RootElement.GetProperty("phase").GetString());
+            Assert.DoesNotContain("canary", output);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private sealed class FailingResource(Exception failure) : IAsyncDisposable
+    {
+        public int Disposals { get; private set; }
+        public ValueTask DisposeAsync()
+        {
+            Disposals++;
+            return ValueTask.FromException(failure);
+        }
+    }
+
 }

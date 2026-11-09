@@ -18,15 +18,19 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     [SourceBuildFact]
     public async Task MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var evidence = new TestPhaseJournal(nameof(MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp))
             .Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
         var ct = timeout.Token;
         fixture.EnableGitOpsNamespaceCleanup();
-        await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
+        using (_timings.Measure("e2e.source-build.infrastructure.ready"))
+            await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
         using (var revision = await fixture.Stub.PostAsJsonAsync("/__e2e/revision", new { revision = "v1" }, ct))
             revision.EnsureSuccessStatusCode();
-        var image = await fixture.CreateGitOpsFunctionImageAsync(ct);
+        FunctionSdkTestImage image;
+        using (_timings.Measure("e2e.gitops.image.prepare"))
+            image = await fixture.CreateGitOpsFunctionImageAsync(ct);
         var target = await CreateMixedCatalogAsync(ct);
         var connection = await ConnectAsync(ct);
         var commit = new string('d', 40);
@@ -65,8 +69,10 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var applied = await AppliedAsync(source, commit, ct);
         Assert.Equal(15, applied.GetProperty("inventory").GetProperty("owned").GetInt64());
         Assert.NotEqual(blockedRun, LatestRunId(applied));
-        await fixture.WaitForNamespaceCreationAsync(ids["ResourceGroup"], ct);
-        await fixture.VerifyGitOpsPostgresBootstrapAsync(ids["PostgresCluster"], value, ct);
+        using (_timings.Measure("e2e.gitops.namespace.ready"))
+            await fixture.WaitForNamespaceCreationAsync(ids["ResourceGroup"], ct);
+        using (_timings.Measure("e2e.gitops.postgres.ready"))
+            await fixture.VerifyGitOpsPostgresBootstrapAsync(ids["PostgresCluster"], value, ct);
 
         var webService = await JsonAsync(HttpMethod.Get, $"/api/v1/web-services/{ids["WebService"]}", null, ct);
         Assert.Equal("AwaitingFirstArtifact", webService.GetProperty("lifecycle").GetString());
@@ -85,7 +91,8 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var digest = completed.GetProperty("state").GetProperty("imageDigest").GetString()!;
         Assert.Equal(digest, await fixture.GetHarborArtifactDigestAsync(
             fixture.Alpha.DefaultTenantId, ids["WebService"], digest, ct));
-        await fixture.WaitForWebServiceReadyAsync(ids["ResourceGroup"], "mixed-web", ct);
+        using (_timings.Measure("e2e.gitops.web-service.ready"))
+            await fixture.WaitForWebServiceReadyAsync(ids["ResourceGroup"], "mixed-web", ct);
         await fixture.AssertGitOpsDeliveryWiringAsync(ids, digest, ct);
 
         // A controlled database fixture is the only writer bypassing the production ownership guards.
@@ -181,7 +188,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var cleaned = await WaitAsync(source, item =>
             item.GetProperty("status").GetString() is "Blocked" or "Failed" ||
             item.GetProperty("status").GetString() == "ConfigurationApplied" &&
-            item.GetProperty("inventory").GetProperty("owned").GetInt64() == 0, ct);
+            item.GetProperty("inventory").GetProperty("owned").GetInt64() == 0, ct, "e2e.gitops.lifecycle.cleanup");
         if (cleaned.GetProperty("status").GetString() is "Blocked" or "Failed")
         {
             var codes = cleaned.GetProperty("latestRun").GetProperty("diagnostics").EnumerateArray()
@@ -190,7 +197,8 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
             Assert.Fail("Reviewed cleanup stopped: " + string.Join(", ", codes) + "; metadata=" + metadata);
         }
         Assert.Equal(emptyCommit, cleaned.GetProperty("synchronization").GetProperty("fullyAppliedCommit").GetString());
-        await fixture.AssertGitOpsCleanupCompletedAsync(native, ids, ct);
+        using (_timings.Measure("e2e.gitops.native.cleanup"))
+            await fixture.AssertGitOpsCleanupCompletedAsync(native, ids, ct);
     }
 
     private async Task<JsonElement> MixedBuildsAsync(string webServiceId, CancellationToken ct) =>
@@ -199,6 +207,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
 
     private async Task<JsonElement> WaitMixedBuildAsync(string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure("e2e.gitops.build.ready");
         while (true)
         {
             var job = await JsonAsync(HttpMethod.Get, $"/api/v1/source-build-jobs/{id}", null, ct);

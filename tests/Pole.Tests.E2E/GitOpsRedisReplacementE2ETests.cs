@@ -12,6 +12,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     [Fact]
     public async Task ConfirmedRedisReplacementChangesNativeIdentityAndWaitsForReviewedCleanup()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var evidence = new TestPhaseJournal(
             nameof(ConfirmedRedisReplacementChangesNativeIdentityAndWaitsForReviewedCleanup)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(12));
@@ -68,7 +69,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         Assert.Contains("RedisPersistentVolumeClaimsDeleted", warnings);
         Assert.Contains("PersistentVolumeReclaimPolicyDeterminesDataRetention", warnings);
         var replacementRun = await ConfirmRedisReplacementAsync(source, preview, ct);
-        await WaitForRedisLifecycleRunAsync(source, replacementRun, ct);
+        await WaitForRedisLifecycleRunAsync(source, replacementRun, ct, "e2e.gitops.lifecycle.replace");
         await ExpectLifecycleStatusAsync(HttpMethod.Get, $"/api/v1/redis-services/{oldId}", null,
             HttpStatusCode.NotFound, ct);
         var after = await fixture.WaitForGitOpsRedisNativeAsync(newId, ct);
@@ -104,9 +105,10 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
             item.GetProperty("resource").GetProperty("resourceId").GetString() == newId &&
             item.GetProperty("warnings").EnumerateArray().Any(warning => warning.GetString() == "ProtectedData"));
         var cleanupRun = await ConfirmRedisReplacementAsync(source, cleanup, ct);
-        var cleaned = await WaitForRedisLifecycleRunAsync(source, cleanupRun, ct);
+        var cleaned = await WaitForRedisLifecycleRunAsync(source, cleanupRun, ct, "e2e.gitops.lifecycle.cleanup");
         Assert.Equal(0, cleaned.GetProperty("inventory").GetProperty("owned").GetInt64());
-        await fixture.AssertGitOpsRedisNamespaceRemovedAsync(after, ct);
+        using (_timings.Measure("e2e.gitops.native.cleanup"))
+            await fixture.AssertGitOpsRedisNamespaceRemovedAsync(after, ct);
         Assert.Equal(builds, await fixture.CountGitOpsRedisScenarioBuildJobsAsync(ct));
     }
 
@@ -117,14 +119,18 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         return scheduled.GetProperty("runId").GetString()!;
     }
 
-    private async Task<JsonElement> WaitForRedisLifecycleRunAsync(string source, string? runId, CancellationToken ct)
+    private async Task<JsonElement> WaitForRedisLifecycleRunAsync(
+        string source,
+        string? runId,
+        CancellationToken ct,
+        string timingPhase = "e2e.gitops.lifecycle.wait")
     {
         var current = await WaitAsync(source, item =>
         {
             if (runId is not null && LatestRunId(item) != runId)
                 return false;
             return item.GetProperty("status").GetString() is "ConfigurationApplied" or "Blocked" or "Failed";
-        }, ct);
+        }, ct, timingPhase);
         if (current.GetProperty("status").GetString() is "Blocked" or "Failed")
         {
             var codes = current.GetProperty("latestRun").GetProperty("diagnostics").EnumerateArray()

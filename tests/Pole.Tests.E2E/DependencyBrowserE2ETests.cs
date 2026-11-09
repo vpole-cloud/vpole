@@ -11,14 +11,18 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(DependencyBrowserE2ETests));
+
     [SourceBuildFact]
     public async Task Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(20));
         var ct = timeout.Token;
-        await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
-        var resources = new TestResourceScope("application dependency browser E2E");
+        using (_timings.Measure("e2e.source-build.infrastructure.ready"))
+            await fixture.EnsureSourceBuildInfrastructureReadyAsync(ct);
+        var resources = new TestResourceScope("application dependency browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             resources.Defer("restore sample source revision", async cleanup =>
@@ -122,16 +126,21 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             var job = await SendAsync(HttpMethod.Post,
                 $"/api/v1/source-build-configurations/{configurationId}/builds", new { }, ct);
             await WaitBuildAsync(Text(job, "id"), ct);
-            await fixture.WaitForNamespaceCreationAsync(groupId, ct);
-            await fixture.WaitForWebServiceReadyAsync(groupId, appName, ct);
+            using (_timings.Measure("e2e.namespace.ready"))
+                await fixture.WaitForNamespaceCreationAsync(groupId, ct);
+            using (_timings.Measure("e2e.web-service.ready"))
+                await fixture.WaitForWebServiceReadyAsync(groupId, appName, ct);
             var secrets = await SendAsync(HttpMethod.Get, "/api/v1/secrets/?limit=50", null, ct);
             var credential = secrets.GetProperty("items").EnumerateArray().Single(item => item.TryGetProperty("managedBy", out var owner) && owner.ValueKind == JsonValueKind.Object && Text(owner, "resourceId") == pgId);
             var secretId = Text(credential, "id");
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             await LoginAsync(page);
             await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resource={appId}&section=dependencies").ToString());
@@ -246,6 +255,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
 
     private async Task<JsonElement> WaitDatabaseAsync(string route, string id, CancellationToken ct)
     {
+        using var timing = _timings.Measure(route == "postgres" ? "e2e.postgres.ready" : "e2e.redis.ready");
         JsonElement result = default;
         await TestWait.UntilAsync(async probeToken =>
         {

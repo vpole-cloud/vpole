@@ -15,20 +15,24 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(RuntimeLogsBrowserE2ETests));
+
     [KubernetesFact("multi-cluster")]
     public async Task Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10)); var ct = budget.Token;
         var lab = fixture.LabState.GetRequiredTarget("workload-a");
         var nativeConfiguration = lab.CreateConfiguration(); var originalServer = new Uri(nativeConfiguration.Host);
         await using var relay = new KubernetesApiRelay(originalServer);
         using var native = new k8s.Kubernetes(nativeConfiguration);
-        var resources = new TestResourceScope("runtime diagnostics browser E2E");
+        var resources = new TestResourceScope("runtime diagnostics browser E2E", timings: _timings);
         Exception? primaryFailure = null;
         TestPhaseJournal? journal = null;
         try
         {
+            using var setupTiming = _timings.Measure("e2e.setup");
             var kubeconfig = await File.ReadAllTextAsync(lab.KubeconfigPath, ct);
             var replacedConfig = kubeconfig.Replace(originalServer.AbsoluteUri.TrimEnd('/'), relay.Endpoint.AbsoluteUri.TrimEnd('/'), StringComparison.Ordinal);
             Assert.True(replacedConfig != kubeconfig, "The dedicated target kubeconfig server must be replaced without changing TLS identity.");
@@ -42,7 +46,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
                 connection = new { kind = "Kubeconfig", kubeconfig = replacedConfig, contextName = lab.Context }
             }, ct, admin: true);
             var targetId = Text(target, "id");
-            resources.Defer("delete runtime target", cleanup => DeleteAsync($"/api/v1/platform/deployment-targets/{targetId}", cleanup, admin: true));
+            resources.Defer("delete runtime target", cleanup => DeleteAsync($"/api/v1/platform/deployment-targets/{targetId}", cleanup, admin: true), "cleanup.target.delete");
             await fixture.AllowTargetWithoutEnforcementAsync(targetId, target.GetProperty("revision").GetInt64(), ct);
             var targets = await SendAsync(HttpMethod.Get, "/api/v1/platform/deployment-targets", null, ct, admin: true);
             var defaultTarget = targets.EnumerateArray().Single(item => item.GetProperty("isDefault").GetBoolean()); var defaultTargetId = Text(defaultTarget, "id");
@@ -61,7 +65,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
                 isDefault = false
             }, ct, admin: true);
             var computeId = Text(compute, "id");
-            resources.Defer("delete runtime compute profile", cleanup => DeleteAsync($"/api/v1/platform/compute-profiles/{computeId}?revision={compute.GetProperty("revision").GetInt64()}", cleanup, admin: true));
+            resources.Defer("delete runtime compute profile", cleanup => DeleteAsync($"/api/v1/platform/compute-profiles/{computeId}?revision={compute.GetProperty("revision").GetInt64()}", cleanup, admin: true), "cleanup.compute.delete");
             var storage = await SendAsync(HttpMethod.Post, "/api/v1/platform/storage/profiles", StorageBody(true, 0), ct, admin: true);
             var storageId = Text(storage, "id");
             resources.Defer("disable runtime test storage profile", async cleanup =>
@@ -69,7 +73,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
                 var profiles = await SendAsync(HttpMethod.Get, "/api/v1/platform/storage/profiles", null, cleanup, admin: true);
                 var current = profiles.EnumerateArray().Single(item => Text(item, "id") == storageId);
                 await SendAsync(HttpMethod.Put, $"/api/v1/platform/storage/profiles/{storageId}", StorageBody(false, current.GetProperty("revision").GetInt64()), cleanup, admin: true);
-            });
+            }, "cleanup.storage.disable");
             var suffix = Guid.NewGuid().ToString("N")[..10]; var groupName = $"runtime-{suffix}";
             var group = await SendAsync(HttpMethod.Post, "/api/v1/resource-groups", new { name = groupName, description = "Runtime logs E2E", tags = new[] { "e2e" } }, ct);
             var groupId = Text(group, "id");
@@ -77,8 +81,10 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             resources.Defer("delete runtime group and owned namespaces", async cleanup =>
             {
                 await DeleteAsync($"/api/v1/resource-groups/{groupId}", cleanup);
-                foreach (var pair in namespaces)
+                // At most the two dedicated target namespaces exist, and neither depends on the other.
+                await Task.WhenAll(namespaces.Select(async pair =>
                 {
+                    using var namespaceTiming = _timings.Measure("cleanup.namespace.wait-deleted");
                     using var client = pair.Key == targetId ? new k8s.Kubernetes(lab.CreateConfiguration()) : new k8s.Kubernetes(fixture.LabState.Targets.Single(item => item.Key == "default").CreateConfiguration());
                     while (true)
                     {
@@ -86,13 +92,15 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
                         catch (HttpOperationException exception) when (exception.Response.StatusCode == HttpStatusCode.NotFound) { break; }
                         await Task.Delay(500, cleanup);
                     }
-                }
-            });
+                }));
+            }, "cleanup.group.delete-and-wait");
+            var redisCleanup = resources.CreateConcurrentCleanupGroup("delete independent runtime Redis services");
             var first = await CreateRedisAsync($"runtime-a-{suffix}", targetId, storageId, computeId, groupId, ct);
-            resources.Defer("delete relay target Redis", cleanup => DeleteRedisAsync(Text(first, "redisId"), cleanup));
+            redisCleanup.Defer("delete relay target Redis", cleanup => DeleteRedisAsync(Text(first, "redisId"), cleanup), "cleanup.redis.relay");
             var healthy = await CreateRedisAsync($"runtime-b-{suffix}", defaultTargetId, storageId, computeId, groupId, ct);
-            resources.Defer("delete healthy target Redis", cleanup => DeleteRedisAsync(Text(healthy, "redisId"), cleanup));
-            resources.Defer("restore test target transport before cleanup", _ => { relay.Resume(); return Task.CompletedTask; });
+            redisCleanup.Defer("delete healthy target Redis", cleanup => DeleteRedisAsync(Text(healthy, "redisId"), cleanup), "cleanup.redis.healthy");
+            resources.Defer("restore test target transport before cleanup", _ => { relay.Resume(); return Task.CompletedTask; }, "cleanup.transport.restore");
+            using var readinessTiming = _timings.Measure("e2e.workloads.ready");
             var firstPlacement = await WaitForAppliedAsync(Text(first, "redisId"), ct);
             var healthyPlacement = await WaitForAppliedAsync(Text(healthy, "redisId"), ct);
             while (namespaces.Count != 2)
@@ -106,6 +114,8 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             Assert.Equal(fixture.Identity.WorktreeId, nativeNamespace.Metadata.Labels[TestRunIdentity.WorktreeLabel]);
             Assert.Equal(fixture.Identity.RunId, nativeNamespace.Metadata.Labels[TestRunIdentity.RunLabel]);
             Assert.Equal(TestRunIdentity.Owner, nativeNamespace.Metadata.Labels[TestRunIdentity.OwnerLabel]);
+            readinessTiming.Dispose();
+            using var logContainersTiming = _timings.Measure("e2e.log-containers.ready");
             var name = $"runtime-a-{suffix}";
             var workload = await native.AppsV1.ReadNamespacedStatefulSetAsync(name, ns, cancellationToken: ct);
             var identity = new WorkloadIdentityLabels(fixture.Alpha.DefaultTenantId, groupId, Text(firstPlacement, "isolationScopeId"), Text(firstPlacement, "runtimeCellId"), targetId, "Redis", Text(first, "redisId"), Text(firstPlacement, "deploymentId"));
@@ -129,11 +139,20 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             var discovered = await WaitForInstancesAsync(Text(firstPlacement, "deploymentId"), null, ct);
             var pod = discovered.GetProperty("diagnostics").GetProperty("instances").EnumerateArray().Single(item => item.GetProperty("containers").EnumerateArray().Any(container => Text(container, "name") == "log-a"));
             var uid = Text(pod, "uid"); var podName = Text(pod, "name");
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity); await browserContainer.StartAsync(ct);
+            logContainersTiming.Dispose();
+            setupTiming.Dispose();
+            using var browserSetupTiming = _timings.Measure("e2e.browser.setup");
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var containerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
+            await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context); await LoginAsync(page);
+            browserSetupTiming.Dispose();
+            using var scenarioTiming = _timings.Measure("e2e.scenario");
             journal = TestPhaseJournal.Current!;
             await page.GotoAsync(ResourceUrl(Text(first, "redisId")));
             await SelectAsync(page, Text(firstPlacement, "deploymentId"), uid, "log-a");
@@ -181,7 +200,7 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             await StartReadAsync(page, Text(firstPlacement, "deploymentId"), Text(replacement, "uid"), "log-a", false, journal, ct);
             await Assertions.Expect(page.GetByLabel("Runtime log output")).ToContainTextAsync(markerA);
             await CaptureAsync(page, "reconnected");
-            journal.Record(TestPhase.Completed);
+            journal.Record(TestPhase.BodyCompleted);
 
             object StorageBody(bool enabled, long revision)
             {
@@ -228,8 +247,18 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
         catch (Exception exception) { journal?.Record(TestPhase.Failed); primaryFailure = exception; throw; }
         finally
         {
-            try { await resources.DisposeAsync(); }
-            catch (Exception cleanupFailure) when (primaryFailure is not null) { throw new AggregateException("Runtime diagnostics journey and cleanup failed.", primaryFailure, cleanupFailure); }
+            try
+            {
+                journal?.Record(TestPhase.Cleanup);
+                await resources.DisposeAsync();
+                if (primaryFailure is null) journal?.Record(TestPhase.Completed);
+            }
+            catch (Exception cleanupFailure)
+            {
+                journal?.Record(TestPhase.Failed);
+                if (primaryFailure is null) throw;
+                throw new AggregateException("Runtime diagnostics journey and cleanup failed.", primaryFailure, cleanupFailure);
+            }
         }
     }
 

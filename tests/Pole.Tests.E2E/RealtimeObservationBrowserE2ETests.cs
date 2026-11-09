@@ -16,18 +16,23 @@ public sealed class RealtimeObservationBrowserE2ETests(
     PoleE2EFixture fixture,
     ITestOutputHelper output)
 {
+    private readonly TestTimings _timings = new(typeof(RealtimeObservationBrowserE2ETests));
+
     [Fact]
     public async Task Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime observation browser E2E");
+        var resources = new TestResourceScope("realtime observation browser E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var owned = await CreateOwnedServiceAsync(resources, ct);
-            await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
-            await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
+            using (_timings.Measure("e2e.namespace.ready"))
+                await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
+            using (_timings.Measure("e2e.web-service.ready"))
+                await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
             await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
             var service = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}", null, ct);
             var placement = Assert.Single(service.GetProperty("deployments").EnumerateArray());
@@ -35,16 +40,19 @@ public sealed class RealtimeObservationBrowserE2ETests(
             var revision = placement.GetProperty("deploymentRevision").GetInt64();
             var generation = placement.GetProperty("desiredGeneration").GetInt64();
 
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new ObservationJournal(page,
                 fixture.Alpha.DefaultTenantId,
@@ -75,6 +83,8 @@ public sealed class RealtimeObservationBrowserE2ETests(
             var removed = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < sampleCount; index++)
             {
+                using var sampleTiming = _timings.Measure("e2e.observation.sample");
+                using var readinessTiming = _timings.Measure("e2e.observation.replacement.ready");
                 string? podUid = null;
                 // Native readiness and replacement startup are prerequisites, outside the
                 // measured deletion-to-visible interval. Every helper revalidates ownership.
@@ -97,6 +107,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
                     "A fresh owned replacement was not ready and visible before the next sample.",
                     ct);
                 Assert.NotNull(podUid);
+                readinessTiming.Dispose();
                 await instance.SelectOptionAsync(podUid);
                 var before = Math.Max(journal.HintVersion, journal.DiagnosticsVersion);
                 Assert.True(journal.HasCurrentCoverage && before > 0,

@@ -12,11 +12,14 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed partial class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
 {
+    private readonly TestTimings _timings = new(typeof(GitOpsRepositoryFlowE2ETests));
+
     private const string Root = "/api/v1/gitops/sources";
 
     [Fact]
     public async Task RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var evidence = new TestPhaseJournal(nameof(RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling))
             .Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(7));
@@ -159,8 +162,13 @@ public sealed partial class GitOpsRepositoryFlowE2ETests(PoleE2EFixture fixture)
                 == commit && item.GetProperty("status").GetString() == "ConfigurationApplied",
             ct);
 
-    private async Task<JsonElement> WaitAsync(string source, Func<JsonElement, bool> ready, CancellationToken ct)
+    private async Task<JsonElement> WaitAsync(
+        string source,
+        Func<JsonElement, bool> ready,
+        CancellationToken ct,
+        string timingPhase = "e2e.gitops.wait")
     {
+        using var timing = _timings.Measure(timingPhase);
         while (true)
         {
             var current = await JsonAsync(HttpMethod.Get, $"{Root}/{source}", null, ct);
