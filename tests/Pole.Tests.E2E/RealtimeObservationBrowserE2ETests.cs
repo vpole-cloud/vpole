@@ -22,6 +22,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
     public async Task Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget()
     {
         using var caseTiming = _timings.Measure("e2e.case");
+        using var setupTiming = _timings.Measure("e2e.setup");
         using var testEvidence = new TestPhaseJournal(nameof(Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(15));
         var ct = budget.Token;
@@ -40,12 +41,14 @@ public sealed class RealtimeObservationBrowserE2ETests(
             var revision = placement.GetProperty("deploymentRevision").GetInt64();
             var generation = placement.GetProperty("desiredGeneration").GetInt64();
 
-            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
-            await browserContainer.StartAsync(ct);
+            string browserEndpoint;
+            using (_timings.Measure("e2e.browser.acquire"))
+                browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            setupTiming.Dispose();
+            using var scenarioTiming = _timings.Measure("e2e.scenario");
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
             var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
@@ -174,7 +177,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
             path = "/",
             port = "80",
             initialDelaySeconds = 0,
-            periodSeconds = 6,
+            periodSeconds = 1,
             timeoutSeconds = 1,
             failureThreshold = 10,
             successThreshold = 1
@@ -205,7 +208,7 @@ public sealed class RealtimeObservationBrowserE2ETests(
                     probes = new
                     {
                         startup = probe,
-                        liveness = probe,
+                        liveness = probe with { periodSeconds = 6 },
                         readiness = probe
                     }
                 },

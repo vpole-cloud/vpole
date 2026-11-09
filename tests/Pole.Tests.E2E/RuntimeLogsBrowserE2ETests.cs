@@ -142,11 +142,11 @@ public sealed class RuntimeLogsBrowserE2ETests(PoleE2EFixture fixture)
             logContainersTiming.Dispose();
             setupTiming.Dispose();
             using var browserSetupTiming = _timings.Measure("e2e.browser.setup");
-            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-            await using var containerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
-            await browserContainer.StartAsync(ct);
+            string browserEndpoint;
+            using (_timings.Measure("e2e.browser.acquire"))
+                browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
             var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
             await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");

@@ -17,6 +17,7 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
     public async Task Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations()
     {
         using var caseTiming = _timings.Measure("e2e.case");
+        using var setupTiming = _timings.Measure("e2e.setup");
         using var testEvidence = new TestPhaseJournal(nameof(Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(20));
         var ct = timeout.Token;
@@ -133,11 +134,13 @@ public sealed class DependencyBrowserE2ETests(PoleE2EFixture fixture)
             var secrets = await SendAsync(HttpMethod.Get, "/api/v1/secrets/?limit=50", null, ct);
             var credential = secrets.GetProperty("items").EnumerateArray().Single(item => item.TryGetProperty("managedBy", out var owner) && owner.ValueKind == JsonValueKind.Object && Text(owner, "resourceId") == pgId);
             var secretId = Text(credential, "id");
-            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
-            await browserContainer.StartAsync(ct);
+            string browserEndpoint;
+            using (_timings.Measure("e2e.browser.acquire"))
+                browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint, new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            setupTiming.Dispose();
+            using var scenarioTiming = _timings.Measure("e2e.scenario");
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
             var context = await browser.NewContextAsync(new BrowserNewContextOptions { ViewportSize = new ViewportSize { Width = 1440, Height = 900 }, IgnoreHTTPSErrors = true });
             await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");

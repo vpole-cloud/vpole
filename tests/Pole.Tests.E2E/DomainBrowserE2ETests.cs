@@ -17,6 +17,7 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
     public async Task Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces()
     {
         using var caseTiming = _timings.Measure("e2e.case");
+        using var setupTiming = _timings.Measure("e2e.setup");
         using var testEvidence = new TestPhaseJournal(nameof(Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces)).Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = timeout.Token;
@@ -39,16 +40,21 @@ public sealed class DomainBrowserE2ETests(PoleE2EFixture fixture)
                 ct);
             var groupId = Text(group, "id");
             resources.Defer("delete domain browser group", cleanup => DeleteGroupAsync(groupId, cleanup));
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
-            await browserContainer.StartAsync(ct);
+            string browserEndpoint;
+            using (_timings.Measure("e2e.browser.acquire"))
+                browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            setupTiming.Dispose();
+            using var scenarioTiming = _timings.Measure("e2e.scenario");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();

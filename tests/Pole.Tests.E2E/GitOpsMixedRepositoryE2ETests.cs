@@ -71,9 +71,6 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         Assert.NotEqual(blockedRun, LatestRunId(applied));
         using (_timings.Measure("e2e.gitops.namespace.ready"))
             await fixture.WaitForNamespaceCreationAsync(ids["ResourceGroup"], ct);
-        using (_timings.Measure("e2e.gitops.postgres.ready"))
-            await fixture.VerifyGitOpsPostgresBootstrapAsync(ids["PostgresCluster"], value, ct);
-
         var webService = await JsonAsync(HttpMethod.Get, $"/api/v1/web-services/{ids["WebService"]}", null, ct);
         Assert.Equal("AwaitingFirstArtifact", webService.GetProperty("lifecycle").GetString());
         Assert.Equal(JsonValueKind.Null, webService.GetProperty("spec").GetProperty("image").ValueKind);
@@ -82,10 +79,23 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var releases = await JsonAsync(HttpMethod.Get, $"/api/v1/web-services/{ids["WebService"]}/releases", null, ct);
         Assert.Empty(releases.GetProperty("releases").GetProperty("items").EnumerateArray());
 
-        var build = await JsonAsync(HttpMethod.Post,
-            $"/api/v1/source-build-configurations/{ids["SourceBuildConfiguration"]}/builds", null, ct);
-        var buildId = build.GetProperty("id").GetString()!;
-        var completed = await WaitMixedBuildAsync(buildId, ct);
+        // Inertness was verified above. SQL bootstrap and first artifact delivery are independent.
+        async Task VerifyPostgresAsync()
+        {
+            using (_timings.Measure("e2e.gitops.postgres.ready"))
+                await fixture.VerifyGitOpsPostgresBootstrapAsync(ids["PostgresCluster"], value, ct);
+        }
+        async Task<JsonElement> BuildFirstArtifactAsync()
+        {
+            var build = await JsonAsync(HttpMethod.Post,
+                $"/api/v1/source-build-configurations/{ids["SourceBuildConfiguration"]}/builds", null, ct);
+            return await WaitMixedBuildAsync(build.GetProperty("id").GetString()!, ct);
+        }
+        var postgresBootstrap = VerifyPostgresAsync();
+        var artifactBuild = BuildFirstArtifactAsync();
+        await Task.WhenAll(postgresBootstrap, artifactBuild);
+        var completed = await artifactBuild;
+        var buildId = completed.GetProperty("id").GetString()!;
         Assert.Equal(new string('1', 40), completed.GetProperty("commitSha").GetString());
         Assert.NotEqual(commit, completed.GetProperty("commitSha").GetString());
         var digest = completed.GetProperty("state").GetProperty("imageDigest").GetString()!;
