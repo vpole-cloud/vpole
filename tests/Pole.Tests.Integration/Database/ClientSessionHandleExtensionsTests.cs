@@ -8,15 +8,15 @@ using Xunit;
 namespace Pole.Tests.Integration.Database;
 
 public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+    : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task OutcomeTransaction_CommitsWritesAndReturnsOutcome()
     {
-        var documents = Fixture.Database.GetCollection<BsonDocument>(
+        var documents = Database.GetCollection<BsonDocument>(
             "transaction-outcome-commit-tests");
 
-        var outcome = await Fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+        var outcome = await DbContext.RunOutcomeInTransactionAsync<string>(
             async (transaction, cancellationToken) =>
             {
                 await documents.InsertOneAsync(
@@ -37,10 +37,10 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
     [Fact]
     public async Task OutcomeTransaction_AbortsWritesAndReturnsOutcome()
     {
-        var documents = Fixture.Database.GetCollection<BsonDocument>(
+        var documents = Database.GetCollection<BsonDocument>(
             "transaction-outcome-abort-tests");
 
-        var outcome = await Fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+        var outcome = await DbContext.RunOutcomeInTransactionAsync<string>(
             async (transaction, cancellationToken) =>
             {
                 await documents.InsertOneAsync(
@@ -61,11 +61,11 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
     [Fact]
     public async Task OutcomeTransaction_PropagatesExceptionAndAbortsWrites()
     {
-        var documents = Fixture.Database.GetCollection<BsonDocument>(
+        var documents = Database.GetCollection<BsonDocument>(
             "transaction-outcome-exception-tests");
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+            DbContext.RunOutcomeInTransactionAsync<string>(
                 async (transaction, cancellationToken) =>
                 {
                     await documents.InsertOneAsync(
@@ -85,12 +85,12 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
     [Fact]
     public async Task OutcomeTransaction_CancellationAbortsWrites()
     {
-        var documents = Fixture.Database.GetCollection<BsonDocument>(
+        var documents = Database.GetCollection<BsonDocument>(
             "transaction-outcome-cancellation-tests");
         using var cancellation = new CancellationTokenSource();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            Fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+            DbContext.RunOutcomeInTransactionAsync<string>(
                 async (transaction, cancellationToken) =>
                 {
                     await documents.InsertOneAsync(
@@ -113,7 +113,7 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
     [Fact]
     public async Task OutcomeTransaction_DoesNotTranslateDuplicateKeyException()
     {
-        var documents = Fixture.Database.GetCollection<BsonDocument>(
+        var documents = Database.GetCollection<BsonDocument>(
             "transaction-outcome-duplicate-tests");
         await documents.Indexes.CreateOneAsync(
             new CreateIndexModel<BsonDocument>(
@@ -122,7 +122,7 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
         await documents.InsertOneAsync(new BsonDocument("name", "existing"));
 
         var exception = await Assert.ThrowsAsync<MongoWriteException>(() =>
-            Fixture.DbContext.RunOutcomeInTransactionAsync<string>(
+            DbContext.RunOutcomeInTransactionAsync<string>(
                 async (transaction, cancellationToken) =>
                 {
                     await documents.InsertOneAsync(
@@ -143,9 +143,9 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
     [Fact]
     public async Task OutcomeTransaction_AbortsWrites_WhenCallbackReturnsRejectedOutcome()
     {
-        var documents = Fixture.Database.GetCollection<BsonDocument>("transaction-result-tests");
+        var documents = Database.GetCollection<BsonDocument>("transaction-result-tests");
 
-        var result = await Fixture.DbContext.RunOutcomeInTransactionAsync<TransactionRejected>(
+        var result = await DbContext.RunOutcomeInTransactionAsync<TransactionRejected>(
             async (transaction, cancellationToken) =>
         {
             await documents.InsertOneAsync(
@@ -158,6 +158,27 @@ public sealed class MongoTestStoreTransactionExtensionsTests(MongoReplicaSetFixt
 
         Assert.Equal("Expected command failure.", result.Message);
         Assert.Equal(0L, await documents.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty));
+    }
+
+    [Fact]
+    public async Task OutcomeTransaction_CancellationReleasesDatabaseBeforeServerTransactionExpiry()
+    {
+        var documents = Database.GetCollection<BsonDocument>("cancelled-transaction");
+        await documents.InsertOneAsync(new BsonDocument("name", "existing"));
+        using var cancellation = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            DbContext.RunOutcomeInTransactionAsync<string>(async (transaction, token) =>
+            {
+                await documents.InsertOneAsync(transaction.Session,
+                    new BsonDocument("name", "uncommitted"), cancellationToken: token);
+                await cancellation.CancelAsync();
+                token.ThrowIfCancellationRequested();
+                return transaction.Commit("unreachable");
+            }, cancellationToken: cancellation.Token));
+
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await Database.Client.DropDatabaseAsync(Database.DatabaseNamespace.DatabaseName, deadline.Token);
     }
 
     private sealed record TransactionRejected(string Message);

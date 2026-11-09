@@ -37,17 +37,34 @@ internal static class MongoTransactionPersistence
         var decision = await session.WithTransactionAsync(
             async (transactionSession, transactionCancellationToken) =>
             {
-                var context = new MongoTransactionContext<TOutcome>(transactionSession);
-                var transactionDecision = await operation(
-                    context,
-                    transactionCancellationToken);
-                if (transactionDecision is MongoTransactionAbort<TOutcome>)
+                try
                 {
-                    await transactionSession.AbortTransactionAsync(
+                    var context = new MongoTransactionContext<TOutcome>(transactionSession);
+                    var transactionDecision = await operation(
+                        context,
                         transactionCancellationToken);
-                }
+                    if (transactionDecision is MongoTransactionAbort<TOutcome>)
+                        await AbortAsync(transactionSession);
 
-                return transactionDecision;
+                    return transactionDecision;
+                }
+                catch (Exception original)
+                {
+                    // Abort before the driver marks the session aborted using the cancelled request token.
+                    if (transactionSession.IsInTransaction)
+                    {
+                        try
+                        {
+                            await AbortAsync(transactionSession);
+                        }
+                        catch (Exception cleanupFailure)
+                        {
+                            original.Data["Pole.MongoTransaction.AbortFailure"] = cleanupFailure;
+                        }
+                    }
+
+                    throw;
+                }
             },
             transactionOptions,
             cancellationToken);
@@ -59,4 +76,9 @@ internal static class MongoTransactionPersistence
         };
     }
 
+    private static async Task AbortAsync(IClientSessionHandle session)
+    {
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await session.AbortTransactionAsync(cleanup.Token);
+    }
 }
