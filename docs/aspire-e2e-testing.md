@@ -84,6 +84,17 @@ The following scenarios retain independent test boundaries:
 | RuntimeLogs, MultiCluster and TenantWorkspace | Exact runtime stream/container/UID and independent transport failure; real two-cluster isolated retry with healthy target unchanged; Viewer/Owner tenant switching, stream cancellation and late-response fencing.                                                                        |
 | Storage CRUD and helper tests                 | Admin profile revision/mapping UI and screenshots; every existing isolated helper assertion and frozen Theory row.                                                                                                                                                                        |
 
+The image-service lifecycle creates an owned tenant through `POST /api/v1/tenants`; every UI
+selection, HTTP helper and namespace discovery receives that tenant explicitly. Its tenant document
+lives until disposable fixture database teardown. After both original viewport branches finish,
+`e2e.image.quota-and-recreation` verifies committed service count and settled reservations through
+`GET /api/v1/tenant-quotas/usage`. It deletes the mobile resource through UI, observes API404/native
+absence/group deregistration, recreates the same name/group through UI with a different resource ID
+and native Deployment UID, then deletes replacement and desktop resources. All four WebService
+quota dimensions must return to the original baseline. The extra rollout is added coverage, not
+an optimization saving. Existing desktop/mobile screenshots and cancellation/focus assertions finish
+before this added lifecycle phase.
+
 Functional phases fail fast. Cleanup still attempts all registered actions and preserves both body
 and cleanup failures. Shared browser **transport** does not imply shared cookies, storage, routes,
 contexts or logged-in state across journeys. Original screenshots and negative/native assertions

@@ -21,28 +21,25 @@ public sealed class BrowserSmokeE2ETests(
     public async Task User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths()
     {
         using var caseTiming = _timings.Measure("e2e.case");
-        using var setupTiming = _timings.Measure("e2e.setup");
         using var testEvidence = new TestPhaseJournal(nameof(User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths)).Activate();
         var resources = new TestResourceScope("browser smoke E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
-            string browserEndpoint;
-            using (var startup = new CancellationTokenSource(TimeSpan.FromMinutes(20)))
-            using (_timings.Measure("e2e.browser.acquire"))
-                browserEndpoint = await fixture.GetBrowserEndpointAsync(startup.Token);
-
             using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            using var setupPhase = _timings.Measure("e2e.setup");
+            var tenantId = await CreateJourneyTenantAsync(cancellation.Token);
+            var quotaBaseline = await ReadQuotaUsageAsync(tenantId, cancellation.Token);
+            using var browserAcquisition = _timings.Measure("e2e.browser.acquire");
+            var browserEndpoint = await fixture.GetBrowserEndpointAsync(cancellation.Token);
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(
-                browserEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
-            setupTiming.Dispose();
-            using var scenarioTiming = _timings.Measure("e2e.scenario");
+            browserAcquisition.Dispose();
 
             var sidebarGroupName = $"aa-rename-{Guid.NewGuid():N}"[..20];
             using var sidebarRequest = fixture.CreateAuthenticatedRequest(HttpMethod.Post,
-                "/api/v1/resource-groups", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+                "/api/v1/resource-groups", fixture.Alpha, tenantId);
             sidebarRequest.Content = JsonContent.Create(new
             {
                 name = sidebarGroupName,
@@ -54,16 +51,19 @@ public sealed class BrowserSmokeE2ETests(
             var sidebarGroup = await sidebarResponse.Content.ReadFromJsonAsync<JsonElement>(cancellation.Token);
             var sidebarGroupId = sidebarGroup.GetProperty("id").GetString()!;
             resources.Defer("delete selector regression group",
-                token => DeleteResourceGroupAsync(sidebarGroupId, token));
+                token => DeleteResourceGroupAsync(sidebarGroupId, tenantId, token));
 
             var servicePrefix = $"browser-{Guid.NewGuid():N}"[..16];
             string? previousServiceName = null;
+            var services = new List<JourneyService>();
+            setupPhase.Dispose();
             foreach (var (name, width, height) in new[]
             {
                 ("desktop", 1440, 900),
                 ("mobile", 390, 844)
             })
             {
+                using var viewportPhase = _timings.Measure(name == "desktop" ? "e2e.image.desktop" : "e2e.image.mobile");
                 var context = await browser.NewContextAsync(new BrowserNewContextOptions
                 {
                     ViewportSize = new ViewportSize { Width = width, Height = height },
@@ -124,7 +124,7 @@ public sealed class BrowserSmokeE2ETests(
 
                 var tenantSelector = page.GetByLabel("Tenant");
                 await tenantSelector.WaitForAsync();
-                await tenantSelector.SelectOptionAsync(fixture.Alpha.DefaultTenantId);
+                await tenantSelector.SelectOptionAsync(tenantId);
                 await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Resource groups" }).ClickAsync();
                 await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Environment boundaries" }).WaitForAsync();
                 await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New group" }).ClickAsync();
@@ -163,7 +163,7 @@ public sealed class BrowserSmokeE2ETests(
                                           "The browser-created resource group has no id.");
                 resources.Defer(
                     $"delete browser-created resource group '{resourceGroupId}'",
-                    token => DeleteResourceGroupAsync(resourceGroupId, token));
+                    token => DeleteResourceGroupAsync(resourceGroupId, tenantId, token));
 
                 await content.GetByRole(AriaRole.Heading, new LocatorGetByRoleOptions { Name = resourceGroupName, Exact = true }).WaitForAsync();
                 Assert.Contains($"resource={resourceGroupId}", page.Url);
@@ -223,10 +223,10 @@ public sealed class BrowserSmokeE2ETests(
                                 ?? throw new InvalidOperationException("The browser-created service has no id.");
                 resources.Defer(
                     $"delete browser-created service '{serviceId}'",
-                    token => DeleteWebServiceAsync(serviceId, token));
+                    token => DeleteWebServiceAsync(serviceId, tenantId, token));
                 await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service overview", Exact = true }).WaitForAsync();
-                await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellation.Token);
-                await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, cancellation.Token);
+                await fixture.WaitForNamespaceCreationAsync(resourceGroupId, cancellation.Token, tenantId: tenantId);
+                await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, tenantId, cancellation.Token);
                 await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync();
                 await page.GetByText("Applied", new PageGetByTextOptions { Exact = true }).WaitForAsync();
                 await CaptureWorkspaceAsync(page, name, "overview", serviceId);
@@ -237,7 +237,7 @@ public sealed class BrowserSmokeE2ETests(
                 await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
                 await page.GetByLabel("Environment variables").FillAsync("UI_REVIEW=true");
                 var configurationUrl = page.Url;
-                Assert.Contains($"tenant={fixture.Alpha.DefaultTenantId}", configurationUrl);
+                Assert.Contains($"tenant={tenantId}", configurationUrl);
                 Assert.Contains($"resource={serviceId}", configurationUrl);
                 Assert.Contains("section=configuration", configurationUrl);
                 var beforeRenewal = await page.RunAndWaitForResponseAsync(
@@ -286,7 +286,7 @@ public sealed class BrowserSmokeE2ETests(
                 Assert.True(updateResponse.Ok, $"Browser configuration update returned HTTP {updateResponse.Status}.");
                 await resourceTab.WaitForAsync();
                 var acceptedUpdate = await updateResponse.JsonAsync() ?? throw new InvalidOperationException("Service update response was empty.");
-                await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, cancellation.Token,
+                await WaitForImageDeploymentAsync(resourceGroupId, serviceId, serviceName, tenantId, cancellation.Token,
                     acceptedUpdate.GetProperty("resourceRevision").GetInt64(), new Dictionary<string, string> { ["UI_REVIEW"] = "true" });
                 await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Builds", Exact = true }).ClickAsync();
                 await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Source builds", Exact = true }).WaitForAsync();
@@ -311,7 +311,7 @@ public sealed class BrowserSmokeE2ETests(
                     await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "All services", Exact = true }).ClickAsync();
                 }
                 var catalogUrl = new UriBuilder(page.Url);
-                catalogUrl.Query = $"view=web-services&tenant={fixture.Alpha.DefaultTenantId}&resource=catalog&pageSize=1&search={servicePrefix}";
+                catalogUrl.Query = $"view=web-services&tenant={tenantId}&resource=catalog&pageSize=1&search={servicePrefix}";
                 await page.GotoAsync(catalogUrl.Uri.ToString());
                 await content.GetByText(previousServiceName is null ? "Page 1 of 1" : "Page 1 of 2", new LocatorGetByTextOptions { Exact = true }).WaitForAsync();
                 if (previousServiceName is not null)
@@ -351,7 +351,7 @@ public sealed class BrowserSmokeE2ETests(
                 await dialog.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Hidden });
                 Assert.True(await deleteButton.EvaluateAsync<bool>("element => element === document.activeElement"));
 
-                var groupUrl = new UriBuilder(page.Url) { Query = $"view=resource-groups&tenant={fixture.Alpha.DefaultTenantId}&resource={resourceGroupId}&section=resources" };
+                var groupUrl = new UriBuilder(page.Url) { Query = $"view=resource-groups&tenant={tenantId}&resource={resourceGroupId}&section=resources" };
                 await page.GotoAsync(groupUrl.Uri.ToString());
                 await content.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).WaitForAsync();
                 await CaptureWorkspaceAsync(page, name, "group-resources", resourceGroupId);
@@ -369,7 +369,18 @@ public sealed class BrowserSmokeE2ETests(
                 await tree.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).ClickAsync();
                 Assert.Equal(1, await page.GetByRole(AriaRole.Tablist, new PageGetByRoleOptions { Name = "Web service workspace", Exact = true })
                     .GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = serviceName, Exact = true }).CountAsync());
+                var native = await fixture.GetWebServiceDeploymentAsync(resourceGroupId, serviceName, cancellation.Token);
+                Assert.Equal(tenantId, native.GetProperty("metadata").GetProperty("labels").GetProperty("pole.io/tenant-id").GetString());
+                Assert.Equal(serviceId, native.GetProperty("metadata").GetProperty("labels").GetProperty("pole.io/resource-id").GetString());
+                services.Add(new JourneyService(serviceId, resourceGroupId, serviceName,
+                    native.GetProperty("metadata").GetProperty("uid").GetString()!));
                 previousServiceName = serviceName;
+                viewportPhase.Dispose();
+                if (name == "mobile")
+                {
+                    using (_timings.Measure("e2e.image.quota-and-recreation"))
+                        await VerifyQuotaAndRecreationAsync(page, tenantId, services, quotaBaseline, resources, cancellation.Token);
+                }
             }
         });
     }
@@ -408,14 +419,14 @@ public sealed class BrowserSmokeE2ETests(
         }
     }
 
-    private async Task DeleteResourceGroupAsync(string resourceGroupId, CancellationToken cancellationToken)
+    private async Task DeleteResourceGroupAsync(string resourceGroupId, string tenantId, CancellationToken cancellationToken)
     {
         using var timing = _timings.Measure("e2e.cleanup.DeleteResourceGroupAsync");
         using var request = fixture.CreateAuthenticatedRequest(
             HttpMethod.Delete,
             $"/api/v1/resource-groups/{resourceGroupId}",
             fixture.Alpha,
-            fixture.Alpha.DefaultTenantId);
+            tenantId);
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound);
         await fixture.WaitForNamespaceDeletionAsync(resourceGroupId, cancellationToken);
@@ -425,13 +436,14 @@ public sealed class BrowserSmokeE2ETests(
         string resourceGroupId,
         string serviceId,
         string serviceName,
+        string tenantId,
         CancellationToken cancellationToken,
         long minimumRevision = 1,
         IReadOnlyDictionary<string, string>? expectedEnvironment = null) =>
         TestWait.UntilAsync(async probeToken =>
         {
             using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
-                $"/api/v1/web-services/{serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+                $"/api/v1/web-services/{serviceId}", fixture.Alpha, tenantId);
             using var response = await fixture.Api.SendAsync(request, probeToken);
             response.EnsureSuccessStatusCode();
             var resource = await response.Content.ReadFromJsonAsync<JsonElement>(probeToken);
@@ -452,15 +464,20 @@ public sealed class BrowserSmokeE2ETests(
         }, TimeSpan.FromMinutes(10), "The accepted WebService rollout did not become natively ready.", cancellationToken,
             pollInterval: TimeSpan.FromSeconds(1));
 
-    private async Task DeleteWebServiceAsync(string serviceId, CancellationToken cancellationToken)
+    private async Task DeleteWebServiceAsync(string serviceId, string tenantId, CancellationToken cancellationToken)
     {
         using var timing = _timings.Measure("e2e.cleanup.DeleteWebServiceAsync");
-        using (var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/web-services/{serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId))
+        using (var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, $"/api/v1/web-services/{serviceId}", fixture.Alpha, tenantId))
         using (var response = await fixture.Api.SendAsync(request, cancellationToken))
             if (TestDeletion.IsComplete(response.StatusCode)) return;
+        await WaitForServiceDeletionAsync(serviceId, tenantId, cancellationToken);
+    }
+
+    private async Task WaitForServiceDeletionAsync(string serviceId, string tenantId, CancellationToken cancellationToken)
+    {
         await TestWait.UntilAsync(async probeToken =>
         {
-            using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{serviceId}", fixture.Alpha, fixture.Alpha.DefaultTenantId);
+            using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get, $"/api/v1/web-services/{serviceId}", fixture.Alpha, tenantId);
             using var response = await fixture.Api.SendAsync(request, probeToken);
             return TestDeletion.IsComplete(response.StatusCode);
         }, TimeSpan.FromMinutes(3), "The browser service did not finish deletion.", cancellationToken, pollInterval: TimeSpan.FromSeconds(1));
@@ -506,5 +523,152 @@ public sealed class BrowserSmokeE2ETests(
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
             ? uri.GetLeftPart(UriPartial.Path)
             : "unavailable";
+
+    private async Task<string> CreateJourneyTenantAsync(CancellationToken ct)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Post, "/api/v1/tenants", fixture.Alpha);
+        request.Content = JsonContent.Create(new { name = $"image-e2e-{Guid.NewGuid():N}"[..20] });
+        using var response = await fixture.Api.SendAsync(request, ct);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var tenant = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        return tenant.GetProperty("id").GetString()!;
+    }
+
+    private async Task<JsonElement> ReadQuotaUsageAsync(string tenantId, CancellationToken ct)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
+            "/api/v1/tenant-quotas/usage", fixture.Alpha, tenantId);
+        using var response = await fixture.Api.SendAsync(request, ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var usage = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(tenantId, usage.GetProperty("tenantId").GetString());
+        return usage;
+    }
+
+    private static long QuotaValue(JsonElement usage, string section, string key) => usage.GetProperty(section)
+        .EnumerateArray().Single(value => value.GetProperty("key").GetString() == key).GetProperty("value").GetInt64();
+
+    private async Task AssertQuotaUsageAsync(string tenantId, JsonElement baseline, int serviceDelta, CancellationToken ct,
+        bool allDimensionsAtBaseline = false)
+    {
+        var usage = await ReadQuotaUsageAsync(tenantId, ct);
+        Assert.Equal(QuotaValue(baseline, "committedUsage", "WebServiceCount") + serviceDelta,
+            QuotaValue(usage, "committedUsage", "WebServiceCount"));
+        foreach (var key in new[] { "WebServiceCount", "WorkloadInstances", "CpuMillis", "MemoryMi" })
+        {
+            Assert.Equal(0, QuotaValue(usage, "activeReservations", key));
+            if (allDimensionsAtBaseline)
+                Assert.Equal(QuotaValue(baseline, "committedUsage", key), QuotaValue(usage, "committedUsage", key));
+        }
+    }
+
+    private async Task AssertGroupRegistrationAsync(string tenantId, string groupId, string serviceId, bool present,
+        CancellationToken ct)
+    {
+        using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
+            $"/api/v1/resource-groups/{groupId}/resources?pageNumber=1&pageSize=50", fixture.Alpha, tenantId);
+        using var response = await fixture.Api.SendAsync(request, ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var inventory = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var matching = inventory.GetProperty("items").EnumerateArray().Where(item =>
+            item.GetProperty("resourceId").GetString() == serviceId).ToArray();
+        if (present)
+        {
+            var registration = Assert.Single(matching);
+            Assert.Equal("pole/web-service", registration.GetProperty("resourceTypeId").GetString());
+        }
+        else
+            Assert.Empty(matching);
+    }
+
+    private async Task VerifyQuotaAndRecreationAsync(IPage page, string tenantId, IReadOnlyList<JourneyService> services,
+        JsonElement baseline, TestResourceScope resources, CancellationToken ct)
+    {
+        Assert.Equal(2, services.Count);
+        var desktop = services[0];
+        var mobile = services[1];
+        await AssertQuotaUsageAsync(tenantId, baseline, 2, ct);
+        foreach (var service in services)
+            await AssertGroupRegistrationAsync(tenantId, service.GroupId, service.Id, present: true, ct);
+        using (_timings.Measure("e2e.image.delete-original"))
+        {
+            await DeleteThroughUiAsync(page, tenantId, mobile.Name, mobile.Id, ct);
+            await WaitForServiceDeletionAsync(mobile.Id, tenantId, ct);
+            await fixture.WaitForOwnedImageServiceDeletionAsync(mobile.GroupId, mobile.Id, mobile.NativeUid, ct);
+            await AssertGroupRegistrationAsync(tenantId, mobile.GroupId, mobile.Id, present: false, ct);
+            await AssertQuotaUsageAsync(tenantId, baseline, 1, ct);
+        }
+
+        JourneyService replacement;
+        using (_timings.Measure("e2e.image.recreate"))
+        {
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "New service", Exact = true }).ClickAsync();
+            await page.GetByLabel("Name", new PageGetByLabelOptions { Exact = true }).FillAsync(mobile.Name);
+            await page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Resource group" }).SelectOptionAsync(mobile.GroupId);
+            await page.GetByLabel("Image registry").FillAsync("docker.io");
+            await page.GetByLabel("Image name").FillAsync("library/nginx");
+            await page.GetByLabel("Tag", new PageGetByLabelOptions { Exact = true }).FillAsync("1.27.5-alpine");
+            await page.GetByLabel("Probe path").FillAsync("/");
+            await page.GetByLabel("Probe port").FillAsync("80");
+            await page.GetByLabel("Target port").FillAsync("80");
+            await page.WaitForFunctionAsync("!document.getElementById('new-web-service-isolation-scope').disabled");
+            var create = page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Create service", Exact = true });
+            await Assertions.Expect(create).ToBeEnabledAsync();
+            var accepted = await page.RunAndWaitForResponseAsync(() => create.ClickAsync(), response =>
+                response.Request.Method == HttpMethod.Post.Method &&
+                new Uri(response.Url).AbsolutePath.TrimEnd('/') == "/api/v1/web-services");
+            Assert.True(accepted.Ok, $"Same-name recreation returned HTTP {accepted.Status}.");
+            var body = await accepted.JsonAsync() ?? throw new InvalidOperationException("Recreation response was empty.");
+            var replacementId = body.GetProperty("webServiceId").GetString()!;
+            resources.Defer("delete recreated image service", cleanup => DeleteWebServiceAsync(replacementId, tenantId, cleanup));
+            Assert.NotEqual(mobile.Id, replacementId);
+            await page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Service overview", Exact = true }).WaitForAsync();
+            var location = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(page.Url).Query);
+            Assert.Equal(replacementId, location["resource"].ToString());
+            Assert.Equal(tenantId, location["tenant"].ToString());
+            await WaitForImageDeploymentAsync(mobile.GroupId, replacementId, mobile.Name, tenantId, ct);
+            var deployment = await fixture.GetWebServiceDeploymentAsync(mobile.GroupId, mobile.Name, ct);
+            var replacementUid = deployment.GetProperty("metadata").GetProperty("uid").GetString()!;
+            Assert.NotEqual(mobile.NativeUid, replacementUid);
+            Assert.Equal(tenantId, deployment.GetProperty("metadata").GetProperty("labels").GetProperty("pole.io/tenant-id").GetString());
+            Assert.Equal(replacementId, deployment.GetProperty("metadata").GetProperty("labels").GetProperty("pole.io/resource-id").GetString());
+            replacement = new JourneyService(replacementId, mobile.GroupId, mobile.Name, replacementUid);
+            await AssertGroupRegistrationAsync(tenantId, mobile.GroupId, replacement.Id, present: true, ct);
+            await AssertGroupRegistrationAsync(tenantId, mobile.GroupId, mobile.Id, present: false, ct);
+            await AssertQuotaUsageAsync(tenantId, baseline, 2, ct);
+        }
+
+        using (_timings.Measure("e2e.image.delete-final"))
+        {
+            foreach (var service in new[] { replacement, desktop })
+            {
+                await DeleteThroughUiAsync(page, tenantId, service.Name, service.Id, ct);
+                await WaitForServiceDeletionAsync(service.Id, tenantId, ct);
+                await fixture.WaitForOwnedImageServiceDeletionAsync(service.GroupId, service.Id, service.NativeUid, ct);
+                await AssertGroupRegistrationAsync(tenantId, service.GroupId, service.Id, present: false, ct);
+            }
+            await AssertQuotaUsageAsync(tenantId, baseline, 0, ct, allDimensionsAtBaseline: true);
+        }
+    }
+
+    private async Task DeleteThroughUiAsync(IPage page, string tenantId, string name, string id, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        await page.GotoAsync(new Uri(fixture.FrontendBaseAddress,
+            $"?view=web-services&tenant={tenantId}&resource=catalog").ToString());
+        await page.Locator("#app-content").GetByRole(AriaRole.Button,
+            new LocatorGetByRoleOptions { Name = $"Delete {name}", Exact = true }).ClickAsync();
+        var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = $"Delete {name}?", Exact = true });
+        var deleted = await page.RunAndWaitForResponseAsync(() => dialog.GetByRole(AriaRole.Button,
+            new LocatorGetByRoleOptions { Name = "Delete service", Exact = true }).ClickAsync(), response =>
+            response.Request.Method == HttpMethod.Delete.Method && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{id}");
+        Assert.Equal(202, deleted.Status);
+    }
+
+    private sealed record JourneyService(
+        string Id,
+        string GroupId,
+        string Name,
+        string NativeUid);
 
 }

@@ -857,7 +857,8 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     public async Task WaitForNamespaceCreationAsync(string resourceGroupId,
         CancellationToken cancellationToken,
-        TestUser? owner = null)
+        TestUser? owner = null,
+        string? tenantId = null)
     {
         owner ??= Alpha;
         await TestWait.UntilAsync(async phase =>
@@ -866,7 +867,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
                     HttpMethod.Get,
                     $"/api/v1/resource-groups/{resourceGroupId}/runtime-cells",
                     owner,
-                    owner.DefaultTenantId);
+                    tenantId ?? owner.DefaultTenantId);
                 using var response = await Api.SendAsync(request, phase);
                 response.EnsureSuccessStatusCode();
                 using var document = JsonDocument.Parse(
