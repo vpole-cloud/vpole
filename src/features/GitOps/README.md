@@ -196,6 +196,15 @@ options default to a one-minute scan, batch 100, two-minute lease, 20-second hea
 consecutive failed attempts. Temporary failures persist delays of 1/2/4/5 minutes; exhaustion
 finishes the run with an explicit failure. Polling or Sync can start a new run later.
 
+`GitOpsWorker:CleanupCheckSeconds` defaults to 5 seconds and accepts 1–300. Waiting-cleanup
+resumption uses this separate cadence; `HeartbeatSeconds` continues to renew the lease.
+Each wait atomically persists its due time and outbox wake-up, and scheduled execution retains
+the server-clock due, claim and generation fences. The minutely recovery scanner remains the
+fallback for lost dispatches. The genuine-failure retry delays above are unchanged.
+
+`Hangfire:SchedulePollingIntervalSeconds` defaults to 5 and accepts 1–60. This controls discovery
+of due scheduled jobs; it does not change the recurring recovery scanner or source poll interval.
+
 Configure a separate `GitHubWebhook:Secret` (required at startup when GitHub is enabled), and point
 the GitHub App push webhook at `POST /api/v1/integrations/github/webhook`. Use a randomly generated
 secret. The endpoint verifies HMAC-SHA256 over the raw bytes with constant-time comparison before

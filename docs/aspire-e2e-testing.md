@@ -344,6 +344,28 @@ After an interrupted run, stop the tests and recover only the current worktree's
 The test results need no user secrets and never call the real GitHub API. For manual validation
 against a real GitHub installation, see [GitHub source build E2E](github-source-build-e2e.md).
 
+## Lifecycle defaults and timing evidence
+
+The serial Aspire fixture owns one Playwright run-server container. Every browser journey opens
+fresh browser connections and contexts, with independent cookies, storage, routes, pages and journals;
+its contexts are closed before fixture teardown removes the shared transport. The standalone
+browser-start test still owns its own container. Independent cleanup groups are limited to two
+actions. The two sequential 65-second observation windows, twenty native Pod samples, twenty
+metadata samples and their latency budgets remain explicit scenario guarantees.
+
+RuntimeCell pending-deletion checks use a five-second persisted due time. GitOps cleanup uses
+`GitOpsWorker:CleanupCheckSeconds` (default 5, range 1–300), independently of lease heartbeats.
+Hangfire scheduled-job polling uses `Hangfire:SchedulePollingIntervalSeconds` (default 5, range
+1–60); minutely recovery scanners remain fallback paths.
+
+Set `POLE_TEST_TIMING_DIRECTORY` to collect opt-in phase timings and separate
+`lifecycle-events.jsonl` evidence from the primary API process. The fixture owns the asynchronous
+log reader and cancels and awaits it after application disposal. Only exact application-owned
+lifecycle messages with validated timestamps/counters and hashed identities are persisted;
+raw log lines, payloads and credentials are excluded. These records are independent of the HTTP
+journal limit. Diagnostic storage failures do not replace a scenario failure, and nested spans
+must not be added together as wall time.
+
 ## CI
 
 The [Test workflow](../.github/workflows/kubernetes-lab.yml) runs the full lab and the complete

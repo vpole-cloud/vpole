@@ -40,6 +40,21 @@ in the resource owner's transaction. Repeated no-ops and typed conflicts emit no
 realtime consumers translate committed events into group and workspace-inventory invalidations;
 HTTP remains authoritative for names, counts and resource details.
 
+## RuntimeCell deletion progress
+
+An owned namespace that still exists after DELETE leaves its RuntimeCell in `Deleting` at the
+same generation. Persistence advances a check sequence and atomically stores the next check time
+with its outbox request. The five-second due time is rounded up to BSON millisecond precision
+before both state and event are created, so JSON dispatch and persisted authority agree exactly.
+Scheduled checks validate tenant, generation, sequence and due time; compare-and-swap prevents
+concurrent or stale results from advancing the same check twice.
+
+Only confirmed native absence permits the transaction that marks the cell deleted and releases
+its deployment-target reference. ResourceGroup finalization follows that commit. The minutely
+recovery scanner restores lost dispatches and still accepts legacy deleting documents and events
+without scheduling fields. Actual infrastructure and ownership failures keep their existing
+failure/retry path; ordinary deletion progress does not enter that backoff.
+
 ## RuntimeCell ingress baseline
 
 ResourceGroups also owns the RuntimeCell namespace lifecycle. It installs an ingress-only
