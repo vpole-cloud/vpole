@@ -111,6 +111,36 @@ public sealed class GitSourceDispatchTests
             Assert.IsType<EnqueuedState>(state);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1_234_567)]
+    [InlineData(9_999_999)]
+    public void Scheduled_transport_score_cannot_precede_the_durable_due(long fractionalTicks)
+    {
+        var jobs = new RecordingJobs();
+        using var provider = new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
+            .AddSingleton<IBackgroundJobClient>(jobs)
+            .AddGitOpsFeature()
+            .BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var source = new GitSourceIdentity("tenant", "source");
+        var wholeSecond = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var due = wholeSecond.AddTicks(fractionalTicks);
+
+        scope.ServiceProvider.GetRequiredService<ScheduleGitSourceAt>()(source, due);
+
+        var (job, state) = Assert.Single(jobs.Recorded);
+        Assert.Equal(source.TenantId, job.Args[0]);
+        Assert.Equal(source.SourceId, job.Args[1]);
+        var enqueueAt = Assert.IsType<ScheduledState>(state).EnqueueAt;
+        Assert.Equal(wholeSecond.AddSeconds(fractionalTicks == 0 ? 0 : 1), enqueueAt);
+        var persistedScheduleScore = JobHelper.FromTimestamp(JobHelper.ToTimestamp(enqueueAt));
+        Assert.True(persistedScheduleScore >= due);
+        Assert.Equal(enqueueAt, persistedScheduleScore);
+    }
+
     private static ConsumeContext<GitSourceWorkRequested> Context(GitSourceWorkRequested message)
     {
         var context = DispatchProxy.Create<ConsumeContext<GitSourceWorkRequested>, WorkRequestedContext>();

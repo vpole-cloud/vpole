@@ -61,13 +61,18 @@ public sealed class RuntimeCellDeletionDispatchTests
         Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => failing.Consume(Context(request))));
     }
 
-    [Fact]
-    public void Registration_SchedulesTheProviderJobWithTheDurableRequest()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1_234_567)]
+    [InlineData(9_999_999)]
+    public void Registration_SchedulesTheProviderJobWithoutPrecedingTheDurableDue(long fractionalTicks)
     {
         var jobs = new RecordingJobs();
         using var provider = new ServiceCollection().AddSingleton<IBackgroundJobClient>(jobs)
             .AddResourceGroupsFeature(new ConfigurationBuilder().Build()).BuildServiceProvider();
-        var due = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var wholeSecond = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var due = wholeSecond.AddTicks(fractionalTicks);
         var request = new RuntimeCellDeletionRequestedEvent("cell", 7, due, 3) { EventCore = EventCore.Create("tenant") };
 
         provider.GetRequiredService<ScheduleRuntimeCellDeletionAt>()(request, due);
@@ -75,8 +80,13 @@ public sealed class RuntimeCellDeletionDispatchTests
         var (job, state) = Assert.Single(jobs.Recorded);
         Assert.Equal(typeof(RuntimeCellDeletionJob), job.Type);
         Assert.Equal(nameof(RuntimeCellDeletionJob.ExecuteAsync), job.Method.Name);
-        Assert.Equal(request, job.Args[0]);
-        Assert.Equal(due, Assert.IsType<ScheduledState>(state).EnqueueAt);
+        Assert.Same(request, job.Args[0]);
+        Assert.Equal(due, request.NotBeforeUtc);
+        var enqueueAt = Assert.IsType<ScheduledState>(state).EnqueueAt;
+        Assert.Equal(wholeSecond.AddSeconds(fractionalTicks == 0 ? 0 : 1), enqueueAt);
+        var persistedScheduleScore = JobHelper.FromTimestamp(JobHelper.ToTimestamp(enqueueAt));
+        Assert.True(persistedScheduleScore >= due);
+        Assert.Equal(enqueueAt, persistedScheduleScore);
     }
 
     [Theory]
