@@ -161,6 +161,12 @@ Hostname ownership is intentionally unique across tenants. Tenant filters protec
 access, while a global canonical-hostname index prevents two tenants or deployment targets from
 claiming the same DNS name.
 
+New generated domain-zone labels include the full canonical tenant ObjectId after a shortened name
+slug. The first eight ObjectId characters are a timestamp and cannot distinguish tenants created
+together. Existing generated zones using the previous eight-character suffix are reused without
+renaming when their tenant name and public base domain still match; changing either remains a
+generated-zone mismatch.
+
 ## Kubernetes Isolation
 
 Every resource group owns one default `IsolationScope`, created atomically with the group.
