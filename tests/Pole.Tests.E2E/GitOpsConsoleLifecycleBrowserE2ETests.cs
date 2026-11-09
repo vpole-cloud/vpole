@@ -19,6 +19,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     public async Task BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl()
     {
         using var caseTiming = _timings.Measure("e2e.case");
+        using var setupTiming = _timings.Measure("e2e.setup");
         using var evidence = new TestPhaseJournal(
             nameof(BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(18));
@@ -35,12 +36,14 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         var blocked = await WaitAsync(source, item => item.GetProperty("status").GetString() == "Blocked", ct);
         await LifecycleActivityAsync(source, "pause", blocked, ct);
 
-        var container = new PlaywrightBrowserContainer(fixture.Identity);
-        await using var containerDisposal = _timings.MeasureDisposal(container, "e2e.browser.container.dispose");
-        await container.StartAsync(ct);
+        string browserEndpoint;
+        using (_timings.Measure("e2e.browser.acquire"))
+            browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
         using var playwright = await Playwright.CreateAsync();
-        var browser = await playwright.Chromium.ConnectAsync(container.WebSocketEndpoint,
+        var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
             new() { ExposeNetwork = "<loopback>" });
+        setupTiming.Dispose();
+        using var scenarioTiming = _timings.Measure("e2e.scenario");
         await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
         var context = await browser.NewContextAsync(new()
         {

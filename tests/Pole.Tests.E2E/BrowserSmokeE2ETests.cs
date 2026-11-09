@@ -21,19 +21,24 @@ public sealed class BrowserSmokeE2ETests(
     public async Task User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths()
     {
         using var caseTiming = _timings.Measure("e2e.case");
+        using var setupTiming = _timings.Measure("e2e.setup");
         using var testEvidence = new TestPhaseJournal(nameof(User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths)).Activate();
         var resources = new TestResourceScope("browser smoke E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            string browserEndpoint;
             using (var startup = new CancellationTokenSource(TimeSpan.FromMinutes(20)))
-                await browserContainer.StartAsync(startup.Token);
+            using (_timings.Measure("e2e.browser.acquire"))
+                browserEndpoint = await fixture.GetBrowserEndpointAsync(startup.Token);
 
             using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(10));
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(
-                browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(
+                browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            setupTiming.Dispose();
+            using var scenarioTiming = _timings.Measure("e2e.scenario");
 
             var sidebarGroupName = $"aa-rename-{Guid.NewGuid():N}"[..20];
             using var sidebarRequest = fixture.CreateAuthenticatedRequest(HttpMethod.Post,
@@ -59,12 +64,13 @@ public sealed class BrowserSmokeE2ETests(
                 ("mobile", 390, 844)
             })
             {
-                await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+                var context = await browser.NewContextAsync(new BrowserNewContextOptions
                 {
                     ViewportSize = new ViewportSize { Width = width, Height = height },
                     // Keycloak's local HTTPS endpoint uses an untrusted development certificate.
                     IgnoreHTTPSErrors = true
                 });
+                await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
                 var page = await BrowserEvidence.NewPageAsync(context);
                 var content = page.Locator("#app-content");
                 var navigation = new ConcurrentQueue<string>();
