@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../../src/features/Tenants/Tenants.Testing/Tenants.Testing.csproj" />
         <!-- Pole API tests opt into the server JSON policy; external protocol fixtures import framework helpers explicitly. -->
         <Using Remove="System.Net.Http.Json" />
     </ItemGroup>
