@@ -10,7 +10,8 @@ namespace Pole.Testing;
 
 [Collection(CollectionName)]
 public abstract class KubernetesIntegrationTestBase(
-    KubernetesClusterFixture fixture) : IAsyncLifetime
+    KubernetesClusterFixture fixture,
+    TestTimings? timings = null) : IAsyncLifetime
 {
     public const string CollectionName = "kubernetes-integration-tests";
     public const string NamespaceOwnerLabel = TestRunIdentity.OwnerLabel;
@@ -18,9 +19,11 @@ public abstract class KubernetesIntegrationTestBase(
     public const string NamespaceRunLabel = TestRunIdentity.RunLabel;
     public const string NamespaceOwner = TestRunIdentity.Owner;
 
+    private TestTimings? _timings = timings;
     private string? _namespaceUid;
     private string? _runId;
 
+    protected TestTimings Timings => _timings ??= new(GetType());
     protected IKubernetes Kubernetes => fixture.Client;
     protected KubernetesLabTarget Target => fixture.Target;
     protected string NamespaceName { get; private set; } = null!;
@@ -114,6 +117,7 @@ public abstract class KubernetesIntegrationTestBase(
 
     public virtual async Task InitializeAsync()
     {
+        using var timing = Timings.Measure("kubernetes.namespace.create");
         _runId = fixture.Identity.RunId;
         NamespaceName = fixture.Identity.CreateNamespaceName("k8s");
 
@@ -130,6 +134,7 @@ public abstract class KubernetesIntegrationTestBase(
 
     public virtual async Task DisposeAsync()
     {
+        using var timing = Timings.Measure("kubernetes.namespace.dispose");
         if (string.IsNullOrWhiteSpace(NamespaceName) ||
             string.IsNullOrWhiteSpace(_namespaceUid) ||
             string.IsNullOrWhiteSpace(_runId))
@@ -163,7 +168,9 @@ public abstract class KubernetesIntegrationTestBase(
                 $"Refusing to delete namespace '{NamespaceName}' on target '{Target.Key}' because its UID or ownership labels changed.");
         }
 
-        await Kubernetes.CoreV1.DeleteNamespaceAsync(NamespaceName, cancellationToken: timeout.Token);
+        using (Timings.Measure("kubernetes.namespace.delete-request"))
+            await Kubernetes.CoreV1.DeleteNamespaceAsync(NamespaceName, cancellationToken: timeout.Token);
+        using var deletionTiming = Timings.Measure("kubernetes.namespace.wait-deleted");
         try
         {
             while (true)

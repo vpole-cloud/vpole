@@ -19,7 +19,21 @@ mediator.scope.create mediator.scope.dispose mediator.provider.dispose api.encry
 api.services.register api.services.build api.seed.compute-profile api.endpoints.map
 api.host.start api.host.dispose gitops.seed.catalog fixture.mongo.container.start
 fixture.mongo.replica-set.initialize fixture.mongo.client.create fixture.mongo.outbox.build
-fixture.mongo.dispose""".split())
+fixture.mongo.dispose fixture.database.drop fixture.database.migrations
+cleanup.action cleanup.compute.delete cleanup.group.concurrent cleanup.group.delete-and-wait
+cleanup.group.sequence cleanup.namespace.wait-deleted cleanup.redis.healthy cleanup.redis.relay
+cleanup.storage.disable cleanup.target.delete cleanup.total cleanup.transport.restore
+e2e.browser.container.dispose e2e.browser.context.dispose e2e.browser.dispose e2e.browser.setup
+e2e.case e2e.gitops.build.ready e2e.gitops.image.prepare e2e.gitops.lifecycle.cleanup
+e2e.gitops.lifecycle.replace e2e.gitops.lifecycle.wait e2e.gitops.namespace.ready
+e2e.gitops.native.cleanup e2e.gitops.postgres.ready e2e.gitops.wait e2e.gitops.web-service.ready
+e2e.log-containers.ready e2e.namespace.ready e2e.observation.replacement.ready
+e2e.observation.sample e2e.postgres.ready e2e.realtime.window.covered
+e2e.realtime.window.disconnected e2e.redis.ready e2e.scenario e2e.setup
+e2e.source-build.infrastructure.ready e2e.web-service.ready e2e.workloads.ready
+kubernetes.namespace.create kubernetes.namespace.delete-request kubernetes.namespace.dispose
+kubernetes.namespace.wait-deleted kubernetes.peer.dispose kubernetes.pod.create-and-ready
+kubernetes.policy.scenario kubernetes.traffic.allow kubernetes.traffic.deny test.body""".split())
 MONGO_COMMANDS = frozenset("""aggregate abortTransaction buildInfo collMod commitTransaction
 count create createIndexes delete distinct drop dropDatabase dropIndexes endSessions find
 findAndModify getMore hello insert isMaster killCursors listCollections listDatabases

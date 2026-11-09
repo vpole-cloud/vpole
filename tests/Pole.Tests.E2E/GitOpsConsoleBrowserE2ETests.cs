@@ -14,6 +14,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
     [Fact]
     public async Task BrowserGitOpsSourceRunsSettingsAndTenantAccess()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var evidence = new TestPhaseJournal(nameof(BrowserGitOpsSourceRunsSettingsAndTenantAccess)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(12));
         var ct = budget.Token;
@@ -25,16 +26,19 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         await PublishConsoleAsync(invalidCommit,
             files.Select(file => file with { Content = file.Content + "  unknownConsoleField: true\n" }).ToArray(), ct);
 
-        await using var container = new PlaywrightBrowserContainer(fixture.Identity);
+        var container = new PlaywrightBrowserContainer(fixture.Identity);
+        await using var containerDisposal = _timings.MeasureDisposal(container, "e2e.browser.container.dispose");
         await container.StartAsync(ct);
         using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.ConnectAsync(container.WebSocketEndpoint,
+        var browser = await playwright.Chromium.ConnectAsync(container.WebSocketEndpoint,
             new() { ExposeNetwork = "<loopback>" });
-        await using var context = await browser.NewContextAsync(new()
+        await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+        var context = await browser.NewContextAsync(new()
         {
             ViewportSize = new() { Width = 1440, Height = 900 },
             IgnoreHTTPSErrors = true
         });
+        await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
         var page = await ConsoleLoginAsync(context, fixture.Alpha, fixture.Alpha.DefaultTenantId);
         await page.GetByRole(AriaRole.Button, new() { Name = "GitOps", Exact = true }).ClickAsync();
         var content = page.Locator("#app-content");

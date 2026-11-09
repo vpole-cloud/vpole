@@ -22,13 +22,16 @@ public sealed class RealtimeBrowserE2ETests(
     PoleE2EFixture fixture,
     ITestOutputHelper output)
 {
+    private readonly TestTimings _timings = new(typeof(RealtimeBrowserE2ETests));
+
     [Fact]
     public async Task Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime root replicas E2E");
+        var resources = new TestResourceScope("realtime root replicas E2E", timings: _timings);
         Exception? primaryFailure = null;
         var phase = "created";
 
@@ -234,10 +237,11 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime browser refresh E2E");
+        var resources = new TestResourceScope("realtime browser refresh E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var owned = await CreateOwnedServiceAsync(resources, ct);
@@ -245,16 +249,19 @@ public sealed class RealtimeBrowserE2ETests(
             await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
             await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromSeconds(40), ct);
 
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
@@ -315,26 +322,30 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime owned Redis outage E2E");
+        var resources = new TestResourceScope("realtime owned Redis outage E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var owned = await CreateOwnedServiceAsync(resources, ct);
             await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
             await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
             await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
@@ -428,10 +439,11 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime same-account tenant tabs E2E");
+        var resources = new TestResourceScope("realtime same-account tenant tabs E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var alphaTenant = fixture.Alpha.DefaultTenantId;
@@ -455,16 +467,19 @@ public sealed class RealtimeBrowserE2ETests(
             await fixture.WaitForWebServiceReadyAsync(alpha.GroupId, alpha.Name, ct);
             await fixture.WaitForWebServiceReadyAsync(beta.GroupId, beta.Name, ct);
             await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var alphaPage = await BrowserEvidence.NewPageAsync(context);
             var alphaJournal = new BrowserJournal(alphaPage, alphaTenant);
             await LoginAsync(alphaPage, fixture.Beta);
@@ -576,11 +591,12 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         const int windowSeconds = 65;
-        var resources = new TestResourceScope("realtime browser polling E2E");
+        var resources = new TestResourceScope("realtime browser polling E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var owned = await CreateOwnedServiceAsync(resources, ct);
@@ -608,11 +624,13 @@ public sealed class RealtimeBrowserE2ETests(
             await PrepareQuietFailedDeploymentAsync(owned, TimeSpan.FromSeconds(windowSeconds * 2 + 60), ct);
             await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
 
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
             var baseline = await MeasurePendingReadsAsync(browser, owned, disconnected: true, windowSeconds, ct);
             var covered = await MeasurePendingReadsAsync(browser, owned, disconnected: false, windowSeconds, ct);
             Assert.True(baseline >= 20,
@@ -634,25 +652,29 @@ public sealed class RealtimeBrowserE2ETests(
     [Fact]
     public async Task Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget()
     {
+        using var caseTiming = _timings.Measure("e2e.case");
         using var testEvidence = new TestPhaseJournal(nameof(Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
-        var resources = new TestResourceScope("realtime browser metadata E2E");
+        var resources = new TestResourceScope("realtime browser metadata E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
             var owned = await CreateOwnedServiceAsync(resources, ct);
             await fixture.WaitForNamespaceCreationAsync(owned.GroupId, ct);
             await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
-            await using var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            var browserContainer = new PlaywrightBrowserContainer(fixture.Identity);
+            await using var browserContainerDisposal = _timings.MeasureDisposal(browserContainer, "e2e.browser.container.dispose");
             await browserContainer.StartAsync(ct);
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(browserContainer.WebSocketEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
-            await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+            await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
+            var context = await browser.NewContextAsync(new BrowserNewContextOptions
             {
                 ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
                 IgnoreHTTPSErrors = true
             });
+            await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new BrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
@@ -793,11 +815,12 @@ public sealed class RealtimeBrowserE2ETests(
         int windowSeconds,
         CancellationToken ct)
     {
-        await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await browser.NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
             IgnoreHTTPSErrors = true
         });
+        await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
         var page = await BrowserEvidence.NewPageAsync(context);
         if (disconnected)
             await page.RouteAsync("**/api/v1/realtime/**", route => route.AbortAsync("failed"));
@@ -838,11 +861,14 @@ public sealed class RealtimeBrowserE2ETests(
         var started = Stopwatch.GetTimestamp();
         var connectionClosures = journal.ConnectionClosures;
         var end = started + windowSeconds * Stopwatch.Frequency;
+        using var windowTiming = _timings.Measure(disconnected
+            ? "e2e.realtime.window.disconnected" : "e2e.realtime.window.covered");
         await WaitUntilAsync(() => Stopwatch.GetTimestamp() >= end,
             TimeSpan.FromSeconds(windowSeconds + 5),
             "The metadata sampling window did not finish.",
             ct);
         var finished = Stopwatch.GetTimestamp();
+        windowTiming.Dispose();
         var after = await LoadQuietOperationAsync(owned.Id, ct);
         Assert.Equal("Failed", Text(after, "phase"));
         Assert.Equal(before.GetProperty("attemptCount").GetInt32(), after.GetProperty("attemptCount").GetInt32());

@@ -40,6 +40,24 @@ public sealed class TestTimings
     public IDisposable Measure(string phase) =>
         _path is null ? EmptyMeasurement.Instance : new Measurement(this, phase);
 
+    public IAsyncDisposable MeasureDisposal(IAsyncDisposable resource, string phase) =>
+        new TimedDisposal(this, resource, phase);
+
+    private sealed class TimedDisposal(
+        TestTimings timings,
+        IAsyncDisposable resource,
+        string phase) : IAsyncDisposable
+    {
+        private int _disposed;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            using (timings.Measure(phase))
+                await resource.DisposeAsync();
+        }
+    }
+
     public static void CommandStarted(CommandStartedEvent command)
     {
         if (Current.Value is { IsActive: true } measurement)

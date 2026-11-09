@@ -9,7 +9,7 @@ public enum TestPhase
 {
     Started, Discovery, Selection, Action, RequestStarted, ResponseReceived,
     RequestCancelled, RequestFailed, SnapshotAccepted, StreamOpening, StreamReading,
-    StreamEnded, StreamFailed, Cleanup, Completed, Failed, Truncated
+    StreamEnded, StreamFailed, Cleanup, Completed, Failed, Truncated, BodyCompleted
 }
 
 /// <summary>Bounded diagnostic metadata. Caller-owned identifiers are hashed; payloads are never accepted.</summary>

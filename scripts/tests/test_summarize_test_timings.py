@@ -128,6 +128,26 @@ class TimingSummaryTests(unittest.TestCase):
         self.assertAlmostEqual(1000, case["overlapping_phase_interval_ms"], places=2)
         self.assertAlmostEqual(2000, case["unattributed_ms"], places=2)
 
+    def test_nested_e2e_and_cleanup_phases_survive_and_unknown_resource_names_are_rejected(self):
+        owner = "Pole.Tests.E2E.Example"
+        self.trx([(owner, "Scenario", 0, 10, 1)])
+        self.phase(owner, 0, 10, phase="e2e.case", instance="same")
+        self.phase(owner, 1, 8, phase="test.body", instance="same")
+        self.phase(owner, 6, 7, phase="e2e.source-build.infrastructure.ready", instance="same")
+        self.phase(owner, 7, 8, phase="kubernetes.namespace.wait-deleted", instance="same")
+        self.phase(owner, 8, 10, phase="cleanup.total", instance="same")
+        self.phase(owner, 8, 9, phase="cleanup.redis.relay", instance="same")
+        self.phase(owner, 9, 10, phase="cleanup.namespace.wait-deleted", instance="same")
+        self.phase(owner, 8, 9, phase="cleanup.private-resource-canary", instance="same")
+
+        report = self.summary()
+
+        self.assertEqual(7, report["backend"]["matched_phase_records"])
+        self.assertEqual(0, report["backend"]["unmatched_phase_records"])
+        self.assertEqual(1, report["diagnostics"]["invalid_timing_records"])
+        self.assertEqual(10000, report["backend"]["case_records"][0]["phase_interval_union_ms"])
+        self.assertNotIn("canary", json.dumps(report) + timings.markdown(report))
+
     def test_missing_profiles_remain_visible_and_bad_records_are_counted_without_payload(self):
         self.trx([("Pole.Tests.A", "One", 0, 10, 3)])
         self.phase("Pole.Tests.A", 1, 2, phase="payload-secret-canary")

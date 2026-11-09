@@ -32,9 +32,11 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
     [KubernetesFact]
     public async Task BaselineAndPublicPolicies_EnforceSelectedSourcesAndPorts_AndRevokeTraffic()
     {
+        using var timing = Timings.Measure("kubernetes.policy.scenario");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
         var ct = timeout.Token;
-        await using var peer = new PeerNamespace(clusterFixture);
+        var peer = new PeerNamespace(clusterFixture, Timings);
+        await using var peerCleanup = Timings.MeasureDisposal(peer, "kubernetes.peer.dispose");
         await peer.InitializeAsync();
         await CreatePodAsync("spoofed", new() { ["test-source"] = "selected" }, null, ct, peer.Name);
         var cell = RuntimeCellFactory.Create(
@@ -123,6 +125,7 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
         CancellationToken ct,
         string? kubernetesNamespace = null)
     {
+        using var timing = Timings.Measure("kubernetes.pod.create-and-ready");
         var podNamespace = kubernetesNamespace ?? NamespaceName;
         var command = port is { } number
             ? $"mkdir -p /www; echo pole-network-test >/www/index.html; exec httpd -f -p {number} -h /www"
@@ -172,6 +175,7 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
         CancellationToken ct,
         string? kubernetesNamespace = null)
     {
+        using var timing = Timings.Measure(allowed ? "kubernetes.traffic.allow" : "kubernetes.traffic.deny");
         var deadline = DateTime.UtcNow.AddSeconds(25);
         var consecutive = 0;
         while (DateTime.UtcNow < deadline)
@@ -244,8 +248,8 @@ public sealed class ResourceIngressPolicyKubernetesTests : KubernetesIntegration
             NetworkPolicyReason.OperatorAttestedSupported, DateTime.UtcNow,
             NetworkPolicyEvidenceSource.OperatorAttestation, false));
 
-    private sealed class PeerNamespace(KubernetesClusterFixture peerFixture)
-        : KubernetesIntegrationTestBase(peerFixture), IAsyncDisposable
+    private sealed class PeerNamespace(KubernetesClusterFixture peerFixture, TestTimings timings)
+        : KubernetesIntegrationTestBase(peerFixture, timings), IAsyncDisposable
     {
         public string Name => NamespaceName;
 
