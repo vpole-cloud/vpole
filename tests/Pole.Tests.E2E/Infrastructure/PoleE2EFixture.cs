@@ -197,7 +197,6 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         graphTiming.Dispose();
         using (_timings.Measure("fixture.e2e.graph.build"))
             _application = await appHost.BuildAsync(_shutdown.Token);
-        StartLifecycleEvidence();
         _keycloakPortReservation.Stop();
         using (var startup = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
         {
@@ -253,6 +252,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             }
         }
 
+        StartLifecycleEvidence();
         using (_timings.Measure("fixture.e2e.frontend.ready"))
             await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
         using (_timings.Measure("fixture.e2e.github-stub.ready"))

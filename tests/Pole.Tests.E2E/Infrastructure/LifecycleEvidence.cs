@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using Aspire.Hosting.ApplicationModel;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -64,6 +66,19 @@ internal sealed class LifecycleEvidence : IAsyncDisposable
         {
             StorageFailed = true;
         }
+    }
+
+    public static async IAsyncEnumerable<string> ResourceLines(
+        ResourceLoggerService logger,
+        IResource resource,
+        bool live,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        // Typed overloads resolve the current model's DCP instance suffix; literal display names do not.
+        var batches = live ? logger.WatchAsync(resource) : logger.GetAllAsync(resource);
+        await foreach (var batch in batches.WithCancellation(cancellationToken))
+            foreach (var line in batch)
+                yield return line.Content;
     }
 
     public void Start(IAsyncEnumerable<string> snapshot, IAsyncEnumerable<string> live)
