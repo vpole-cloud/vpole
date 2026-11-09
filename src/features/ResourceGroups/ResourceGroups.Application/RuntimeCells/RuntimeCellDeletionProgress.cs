@@ -20,7 +20,7 @@ public sealed class RuntimeCellDeletionProgress(
         CancellationToken cancellationToken = default)
     {
         using var trace = TraceContext.Push(TraceContext.Create(message.EventCore.TraceId, message.EventCore.CorrelationId));
-        logger?.LogInformation("RuntimeCell deletion work started: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc}, StartedAtUtc={StartedAtUtc}",
+        logger?.LogInformation("RuntimeCell deletion work started: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}, StartedAtUtc={StartedAtUtc:O}",
             message.EventCore.TenantId, message.RuntimeCellId, message.Generation, message.CheckSequence,
             message.NotBeforeUtc, timeProvider.GetUtcNow().UtcDateTime);
         var runtimeCell = await persistence.LoadAsync(
@@ -34,12 +34,12 @@ public sealed class RuntimeCellDeletionProgress(
 
         var namespaceResult = await deleteRuntimeCellNamespace(runtimeCell, cancellationToken);
         if (namespaceResult is Unit)
-            logger?.LogInformation("RuntimeCell native absence confirmed: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, ObservedAtUtc={ObservedAtUtc}",
+            logger?.LogInformation("RuntimeCell native absence confirmed: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, ObservedAtUtc={ObservedAtUtc:O}",
                 runtimeCell.TenantId, runtimeCell.Id, message.Generation, message.CheckSequence,
                 timeProvider.GetUtcNow().UtcDateTime);
         if (await persistence.PersistDeletionAsync(runtimeCell, message.Generation, namespaceResult, cancellationToken))
         {
-            logger?.LogInformation("RuntimeCell deletion finalized and target reference released: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, CommittedAtUtc={CommittedAtUtc}",
+            logger?.LogInformation("RuntimeCell deletion finalized and target reference released: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, CommittedAtUtc={CommittedAtUtc:O}",
                 runtimeCell.TenantId, runtimeCell.Id, message.Generation, message.CheckSequence,
                 timeProvider.GetUtcNow().UtcDateTime);
             await finalizeResourceGroupDeletion(runtimeCell.TenantId, runtimeCell.ResourceGroupId,
