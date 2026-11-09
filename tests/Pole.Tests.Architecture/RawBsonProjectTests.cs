@@ -1,17 +1,16 @@
 using System.Diagnostics;
-using System.Text.Json;
 using System.Xml.Linq;
 using Pole.Architecture.FSharp;
 using Pole.ArchitectureAnalyzers;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Pole.Tests.Architecture;
 
-public sealed class RawBsonProjectTests
+public sealed class RawBsonProjectTests(ITestOutputHelper output)
 {
-    private static readonly Lazy<Project[]> ProjectInventory = new(() =>
-        ProjectFiles(ArchitectureSources.RepositoryRoot).AsParallel().WithDegreeOfParallelism(2)
-            .Select(path => EvaluateProject(path)).ToArray());
+    private static readonly Lazy<ArchitectureProjectSnapshot> ProjectInventory = new(() =>
+        ArchitectureProjectInputs.Load(ProjectFiles(ArchitectureSources.RepositoryRoot)));
 
     [Fact]
     public void Analyzer_failures_are_build_errors()
@@ -28,8 +27,14 @@ public sealed class RawBsonProjectTests
             !project.Exempt).ToArray();
         Assert.NotEmpty(projects);
 
-        var violations = projects.SelectMany(project => RawBsonCheck.CheckProject(project.Path,
-            RawBsonCheck.GetCompilerArguments(project.Path))).ToArray();
+        output.WriteLine($"architecture.inputs: {ProjectInventory.Value.Elapsed.TotalMilliseconds:F0} ms; {Projects().Count()} projects");
+        var violations = projects.SelectMany(project =>
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var result = RawBsonCheck.CheckProject(project.Path, project.CompilerArguments);
+            output.WriteLine($"architecture.fsharp.semantic: {stopwatch.Elapsed.TotalMilliseconds:F0} ms; {Path.GetFileName(project.Path)}");
+            return result;
+        }).ToArray();
 
         Assert.True(violations.Length == 0, string.Join(Environment.NewLine, violations.Select(violation =>
             $"{violation.FilePath}:{violation.Line}:{violation.Column} {violation.Rule}: {violation.Message}")));
@@ -58,6 +63,9 @@ public sealed class RawBsonProjectTests
     [Theory]
     [InlineData("Debug", "Production", false, 1)]
     [InlineData("Tests", "TestSupport", true, 2)]
+    [InlineData("Support", "TestSupport", false, 1)]
+    [InlineData("Migration", "Migration", false, 1)]
+    [InlineData("ProductionTests", "Production", true, 1)]
     public void Project_metadata_respects_imports_and_conditions(
         string configuration, string role, bool isTest, int referenceCount)
     {
@@ -77,21 +85,41 @@ public sealed class RawBsonProjectTests
                 """);
             File.WriteAllText(Path.Combine(root, "metadata.props"), """
                 <Project>
+                  <PropertyGroup>
+                    <AssemblyName>Feature.$(Configuration)</AssemblyName>
+                  </PropertyGroup>
                   <PropertyGroup Condition="'$(Configuration)' == 'Tests'">
                     <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
+                    <IsTestProject>true</IsTestProject>
+                  </PropertyGroup>
+                  <PropertyGroup Condition="'$(Configuration)' == 'Support'">
+                    <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
+                  </PropertyGroup>
+                  <PropertyGroup Condition="'$(Configuration)' == 'Migration'">
+                    <PoleArchitectureRole>Migration</PoleArchitectureRole>
+                  </PropertyGroup>
+                  <PropertyGroup Condition="'$(Configuration)' == 'ProductionTests'">
                     <IsTestProject>true</IsTestProject>
                   </PropertyGroup>
                   <ItemGroup>
                     <ProjectReference Include="Always.csproj" />
                     <ProjectReference Include="TestOnly.csproj" Condition="'$(Configuration)' == 'Tests'" />
+                    <ProjectReference Include="UnexpectedDesignTime.csproj" Condition="'$(DesignTimeBuild)' == 'true'" />
                   </ItemGroup>
                 </Project>
                 """);
-
-            var project = EvaluateProject(path, configuration);
+            var fixture = XDocument.Load(path);
+            fixture.Root!.Add(new XElement("Import", new XAttribute("Project",
+                Path.Combine(ArchitectureSources.RepositoryRoot, "tests/Pole.Tests.Architecture/ProjectInputs.targets"))));
+            fixture.Save(path);
+            var project = Assert.Single(ArchitectureProjectInputs.Load([path], configuration,
+                includeCompilerInputs: false).Projects);
 
             Assert.Equal(role, project.Role);
             Assert.Equal(isTest, project.IsTest);
+            Assert.Equal("Feature." + configuration, project.AssemblyName);
+            Assert.Equal(configuration, project.Configuration);
+            Assert.Equal(configuration != "Debug", project.Exempt);
             Assert.Equal(referenceCount, project.References.Length);
             Assert.Contains(Path.Combine(root, "Always.csproj"), project.References);
         }
@@ -99,6 +127,45 @@ public sealed class RawBsonProjectTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Batch_metadata_is_fresh_and_keeps_each_projects_references()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pole-project-batch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var paths = new[] { "First.csproj", "Second.fsproj" }.Select(name => Path.Combine(root, name)).ToArray();
+            var collector = Path.Combine(ArchitectureSources.RepositoryRoot, "tests/Pole.Tests.Architecture/ProjectInputs.targets");
+            foreach (var path in paths)
+            {
+                new XDocument(new XElement("Project",
+                    new XElement("PropertyGroup", new XElement("PoleArchitectureRole", "Production")),
+                    new XElement("Import", new XAttribute("Project", "references.props")),
+                    new XElement("Import", new XAttribute("Project", collector)))).Save(path);
+            }
+            var props = Path.Combine(root, "references.props");
+            File.WriteAllText(props, "<Project><ItemGroup><ProjectReference Include=\"Before.csproj\" /></ItemGroup></Project>");
+            var before = ArchitectureProjectInputs.Load(paths, includeCompilerInputs: false);
+            File.WriteAllText(props, "<Project><ItemGroup><ProjectReference Include=\"After.csproj\" /></ItemGroup></Project>");
+            var after = ArchitectureProjectInputs.Load(paths, includeCompilerInputs: false);
+
+            Assert.Equal(2, after.Projects.Length);
+            Assert.All(before.Projects, project => Assert.Equal(Path.Combine(root, "Before.csproj"), Assert.Single(project.References)));
+            Assert.All(after.Projects, project => Assert.Equal(Path.Combine(root, "After.csproj"), Assert.Single(project.References)));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Missing_projects_fail_the_batch_instead_of_disappearing()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "pole-missing-" + Guid.NewGuid().ToString("N"), "Missing.csproj");
+        Assert.Throws<InvalidOperationException>(() => ArchitectureProjectInputs.Load([path], includeCompilerInputs: false));
     }
 
     [Fact]
@@ -132,52 +199,5 @@ public sealed class RawBsonProjectTests
             .SelectMany(directory => ArchitectureSources.SourceFiles(directory, "*.*proj"))
             .Where(path => Path.GetExtension(path) is ".csproj" or ".fsproj");
 
-    private static IEnumerable<Project> Projects() => ProjectInventory.Value;
-
-    private static Project EvaluateProject(string path, string? configuration = null)
-    {
-        path = Path.GetFullPath(path);
-        var start = new ProcessStartInfo("dotnet")
-        {
-            WorkingDirectory = Path.GetDirectoryName(path)!,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-        start.Environment["MSBUILDUSESERVER"] = "0";
-        foreach (var argument in new[] { "msbuild", path, "-getProperty:PoleArchitectureRole,IsTestProject",
-                     "-getItem:ProjectReference", "-nologo", "-maxcpucount:1", "-nodeReuse:false" })
-            start.ArgumentList.Add(argument);
-        if (configuration is not null)
-            start.ArgumentList.Add("-property:Configuration=" + configuration);
-
-        using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start MSBuild.");
-        var output = child.StandardOutput.ReadToEndAsync();
-        var error = child.StandardError.ReadToEndAsync();
-        if (!child.WaitForExit(30_000))
-        {
-            child.Kill(entireProcessTree: true);
-            throw new InvalidOperationException($"Timed out reading architecture metadata for {path}.");
-        }
-
-        var stdout = output.GetAwaiter().GetResult();
-        var stderr = error.GetAwaiter().GetResult();
-        Assert.True(child.ExitCode == 0, $"Could not evaluate {path}:{Environment.NewLine}{stdout}{stderr}");
-        using var json = JsonDocument.Parse(stdout);
-        var properties = json.RootElement.GetProperty("Properties");
-        var role = properties.GetProperty("PoleArchitectureRole").GetString()!;
-        var isTest = bool.TryParse(properties.GetProperty("IsTestProject").GetString(), out var value) && value;
-        var references = json.RootElement.GetProperty("Items").GetProperty("ProjectReference").EnumerateArray()
-            .Select(reference => reference.GetProperty("FullPath").GetString()!).ToArray();
-        return new(path, role, isTest, references);
-    }
-
-    private sealed record Project(
-        string Path,
-        string Role,
-        bool IsTest,
-        string[] References)
-    {
-        public bool Exempt => ArchitectureProjectRoles.ExemptsMongoRules(Role, IsTest);
-    }
+    private static IEnumerable<ArchitectureProject> Projects() => ProjectInventory.Value.Projects;
 }

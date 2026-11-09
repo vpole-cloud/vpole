@@ -1,0 +1,35 @@
+<Project>
+  <Target Name="CollectPoleProjectMetadata" Returns="@(_PoleProjectMetadata)" KeepDuplicateOutputs="true">
+    <ItemGroup>
+      <_PoleProjectMetadata Include="$(MSBuildProjectFullPath)">
+        <Kind>Project</Kind>
+        <ProjectPath>$(MSBuildProjectFullPath)</ProjectPath>
+        <Role>$(PoleArchitectureRole)</Role>
+        <IsTestProject>$(IsTestProject)</IsTestProject>
+        <AssemblyName>$(AssemblyName)</AssemblyName>
+        <Configuration>$(Configuration)</Configuration>
+        <TargetFramework>$(TargetFramework)</TargetFramework>
+      </_PoleProjectMetadata>
+      <_PoleProjectMetadata Include="@(ProjectReference->'%(FullPath)')">
+        <Kind>ProjectReference</Kind>
+        <ProjectPath>$(MSBuildProjectFullPath)</ProjectPath>
+      </_PoleProjectMetadata>
+    </ItemGroup>
+  </Target>
+
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.fsproj'">
+    <!-- Force command-line production even when the existing assembly is current. -->
+    <NonExistentFile>$(MSBuildProjectDirectory)/obj/pole-fsharp-semantic-options.force</NonExistentFile>
+  </PropertyGroup>
+  <Target Name="CollectPoleFSharpInputs"
+          DependsOnTargets="ResolveReferences;FindReferenceAssembliesForReferences;CoreCompile"
+          Returns="@(_PoleFSharpInput)" KeepDuplicateOutputs="true">
+    <Error Condition="'@(FscCommandLineArgs)' == ''" Text="No F# compiler inputs for $(MSBuildProjectFullPath). Build the solution first." />
+    <ItemGroup>
+      <_PoleFSharpInput Include="@(FscCommandLineArgs)">
+        <Kind>CompilerArgument</Kind>
+        <ProjectPath>$(MSBuildProjectFullPath)</ProjectPath>
+      </_PoleFSharpInput>
+    </ItemGroup>
+  </Target>
+</Project>
