@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Aspire.Hosting.ApplicationModel;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,8 +13,11 @@ public sealed partial class PoleE2EFixture
         if (string.IsNullOrWhiteSpace(directory)) return;
         _lifecycleEvidence = new LifecycleEvidence(directory);
         var logger = _application!.Services.GetService<ResourceLoggerService>();
-        if (logger is not null)
-            _lifecycleEvidence.Start(LifecycleLines(logger, live: false), LifecycleLines(logger, live: true));
+        var primary = _application.Services.GetService<DistributedApplicationModel>()?.Resources
+            .SingleOrDefault(resource => resource.Name == "pole-server");
+        if (logger is not null && primary is not null)
+            _lifecycleEvidence.Start(LifecycleEvidence.ResourceLines(logger, primary, live: false),
+                LifecycleEvidence.ResourceLines(logger, primary, live: true));
     }
 
     private async Task StopLifecycleEvidenceAsync()
@@ -24,14 +26,4 @@ public sealed partial class PoleE2EFixture
             await _lifecycleEvidence.DisposeAsync();
     }
 
-    private static async IAsyncEnumerable<string> LifecycleLines(
-        ResourceLoggerService logger,
-        bool live,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        var batches = live ? logger.WatchAsync("pole-server") : logger.GetAllAsync("pole-server");
-        await foreach (var batch in batches.WithCancellation(cancellationToken))
-            foreach (var line in batch)
-                yield return line.Content;
-    }
 }
