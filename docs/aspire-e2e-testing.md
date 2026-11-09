@@ -41,6 +41,73 @@ The suite covers:
   generated names, alias replacement/reload and confirmed detach. Zone details link the owning
   resource and group; desktop/mobile light/dark screenshots exercise both domain workspaces.
 
+## Journey guarantees and inventory
+
+The migration inventory is frozen at `5ddf8c00`: **160 passing cases**, including every Theory
+display identity and multiplicity. The machine-readable
+[journey inventory](../tests/Pole.Tests.E2E/journey-inventory.json) maps each original case to its
+target test, named phase and guarantee description. Argument values are represented only by SHA-256
+hashes of complete TRX display names; the verifier never exports arguments, output or exceptions.
+
+Only two pairs are approved for consolidation. They reduce the original inventory to **158 cases
+before new regression tests**. A successful case count alone does not prove preservation: review
+the named guarantee phases and the actual assertion diff.
+
+| Original cases                                                                                                       | Target journey and phases                                                                                                                                             | Guarantees retained                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SecretBrowserE2ETests` + `DomainBrowserE2ETests`                                                                    | `PublicServiceBindingsJourney.Secret_projection_and_domain_bindings_share_one_public_service`; `e2e.public-bindings.secret`, then `e2e.public-bindings.domain`        | Default-placement Public service; endpoint discovery and anonymous/foreign-tenant rejection; write-only Secret create/rotate/project/detach/delete and credential absence; exact-target zone reservation, attach/replace/detach, protected deletion and ownership links; existing theme/viewport screenshots and native absence. |
+| `Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated` + `RealtimeMembershipE2ETests` | `TenantAccessRealtimeJourney.Tenant_tabs_and_membership_changes_preserve_realtime_workspace_isolation`; `e2e.tenant-access.tabs`, then `e2e.tenant-access.membership` | Two tenants/resources in the same SSO context; independent hints, reads and dirty DOM/storage; held discovery response across Member→Viewer, actual forbidden write, membership removal/restoration without token rotation and fresh authority; cleanup the latest membership ID.                                                |
+| Existing image-service browser smoke                                                                                 | Existing case identity, extended lifecycle phases                                                                                                                     | Both complete desktop/mobile branches, navigation/drafts/focus/auth refresh, group/catalog/tree/tab checks, exact native rollout/config and screenshots; isolated-tenant quota usage, registration, actual UI deletion, same-name recreation with fresh resource/native identities and final baseline restoration.               |
+
+For public bindings, create through the Secret scenario's default-placement path, retain all its
+checks, then select the service's **actual** public-ingress-eligible target in the domain UI. This
+explicitly changes the old Domain setup order, which reserved the zone before creating an
+explicit-target service; target correctness and every domain assertion remain required. A single
+owned group/service and a single fresh browser context serve both phases.
+
+For tenant access, attach both journals **before login**, finish all two-tab assertions before
+starting membership faults, close the separate Beta page, and establish fresh membership-phase
+counters. The Alpha resource may already have its tab-phase metadata revision. Keep two real
+services across the two tenants and retain the same browser session for the no-token-rotation
+checks. Register one cleanup closure over the current membership ID, including its recreated ID.
+
+The following scenarios retain independent test boundaries:
+
+| Family                                        | Independent guarantees                                                                                                                                                                                                                                                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health and Releases                           | Initial unhealthy create with Applied distinct from Ready; separately, ready initial spec, Pending redeploy across reload/automatic recovery and exact rollback revision/spec.                                                                                                            |
+| PostgreSQL and Redis browser journeys         | Provider-specific credentials/placement/configuration, accepted writes/reload, current native state and real Redis UI deletion.                                                                                                                                                           |
+| SourceBuild UI and API                        | Automatic UI initial artifact and failed-recipe log/recovery; separately, deferred/manual first artifact, exact commits/digests/provenance and real BuildKit transport failure.                                                                                                           |
+| Six GitOps journeys                           | Webhook and actual recurring Poll; mixed-provider preparation/drift/no-op; source UI settings/access; API approval/independent-source fences; browser reviewed lifecycle; stateful Redis identity/PVC replacement and reviewed removal.                                                   |
+| Realtime replicas, refresh and outage         | Two real API processes with shared cookie/backplane and owned stop/restart/logout; real short-lived token renewal; actual Redis outage/fallback/recovery. Each keeps its own restoration boundary.                                                                                        |
+| Realtime sampling and storage                 | Two **sequential 65-second** quiet windows; **20 metadata samples** with p95≤3s; **20 real Pod deletes** with p95≤5s and Ready outside latency; native-storage 35-second held read/30-second validation and 46-second freshness checks; separate cheap native API/hub authorization case. |
+| RuntimeLogs, MultiCluster and TenantWorkspace | Exact runtime stream/container/UID and independent transport failure; real two-cluster isolated retry with healthy target unchanged; Viewer/Owner tenant switching, stream cancellation and late-response fencing.                                                                        |
+| Storage CRUD and helper tests                 | Admin profile revision/mapping UI and screenshots; every existing isolated helper assertion and frozen Theory row.                                                                                                                                                                        |
+
+Functional phases fail fast. Cleanup still attempts all registered actions and preserves both body
+and cleanup failures. Shared browser **transport** does not imply shared cookies, storage, routes,
+contexts or logged-in state across journeys. Original screenshots and negative/native assertions
+remain part of their owning phases. Quota edge cases, races and rollback remain in narrower Quotas
+tests rather than being duplicated in every journey.
+
+Verify a complete final E2E result against the planned inventory and both merged-phase records:
+
+```bash
+python3 scripts/verify_e2e_journeys.py --trx /path/to/results.trx \
+  --timings-directory /path/to/current-run-timings --output .artifacts/e2e-inventory.json
+```
+
+`--mode baseline` checks the frozen original inventory before consolidation. Missing cases,
+unexpected duplicate executions, retired source cases, failures/skips or inconsistent result
+counters fail verification. Additional regression cases are reported separately. Each pair's
+timing phases must belong to one current target-case instance within its TRX execution interval;
+stale timing files or phases from separate instances cannot fill a missing phase. Timing identity
+does not prove assertion semantics, so source review remains mandatory.
+
+Performance comparisons distinguish shared transport, lifecycle changes, merges and added
+quota/recreation work. Compare merges only after browser transport reuse so the same startup and
+teardown saving is not counted twice. Nested phase durations are not additive wall time.
+
 ## GitOps repository scenarios
 
 The GitHub stub serves deterministic source archives and isolated YAML-only repositories.
