@@ -371,8 +371,9 @@ failure when only the fixture's BuildKit port-forward is stopped.
 `RealtimeBrowserE2ETests` exercises two full API processes with real Keycloak/shared cookie,
 protected keyring/backplane and remote logout; bearer refresh preserving a dirty tenant workspace;
 quiet covered metadata reads compared with disconnected polling; and committed metadata bursts
-around a held HTTP read. `RealtimeMembershipE2ETests` checks current roles, Viewer actions,
-held-read fencing and membership removal/restoration without relying on token rotation.
+around a held HTTP read. `TenantAccessRealtimeJourney` combines same-account tenant-tab isolation
+with current roles, Viewer actions, held-read fencing and membership removal/restoration without
+relying on token rotation.
 `RealtimeObservationBrowserE2ETests` uses owned WebService Pod deletes with exact UID preconditions
 and journals write-start-to-visible old UID removal. Its twenty-sample upper bound is compared
 with a five-second p95 budget; the verified stage 7 sample measured 3.1 s. That result is a specific
