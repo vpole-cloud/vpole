@@ -24,9 +24,16 @@ The repository pins .NET SDK `11.0.100-rc.3.26522.148` in `global.json`.
 From the repository root:
 
 ```bash
-dotnet restore Pole.slnx --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
-dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:1 -nodeReuse:false
+dotnet restore Pole.slnx --disable-build-servers --nologo -nodeReuse:false
+dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -nodeReuse:false
 ```
+
+The local CLI uses its CPU-based MSBuild worker limit. The gate defaults to two build workers in CI;
+`buildMaxCpuCount` can override it. Build once before tests and never overlap a build with tests using
+its outputs. Central Integration uses four tenant collections with distinct Mongo containers and
+four global collections with a fresh database per case. Process environment mutation has an exclusive
+collection. Its xUnit worker limit defaults to four
+locally and two in CI; `integrationMaxParallelThreads` overrides that separately from project limits.
 
 After that build, independent infrastructure-free suites may run concurrently with `--no-build --no-restore`:
 

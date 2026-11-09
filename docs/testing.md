@@ -228,9 +228,11 @@ POLE_TEST_TIMING_DIRECTORY="$PWD/.artifacts/test-profile/timings" python3 script
 ```
 
 The shared Mongo fixture records container, replica-set, client, outbox initialization and disposal.
-The central Mongo/Mediator/API bases additionally record database reset, seed, service registration
-and construction, each API migration, route mapping, host startup and cleanup. The two large GitOps
-families also record their extra migrations and catalog seed. Mongo statistics contain command names,
+The central Mongo/Mediator/API bases additionally record database preparation, per-case tenant/user
+seed, service registration and construction, route mapping, host startup and cleanup. Database
+fixtures record migrations once per database and scoped database disposal; GitOps records its cached
+immutable catalog preparation. E2E and Kubernetes record named setup, readiness, cleanup action/group
+and browser/namespace disposal phases independently of the bounded HTTP request journal. Mongo statistics contain command names,
 counts and durations only; command documents, responses and credentials are never recorded. Command
 statistics cover these explicit setup/cleanup phases, not requests inside the test method.
 
@@ -248,6 +250,38 @@ wall time. In xUnit 2, reported execution duration excludes `IAsyncLifetime.Init
 `DisposeAsync`; UTC case intervals and explicit phases expose that otherwise missing lifecycle time.
 
 Profiling is opt-in. Unavailable diagnostic storage does not change a test's exception or outcome.
+
+## Central Integration isolation
+
+`Pole.Tests.Integration` gives each persisted tenant scenario an immutable `IntegrationTestScope`:
+tenant ID, user ID, email, unique suffix and a concrete `TestDatabaseScope`. Requests and preparation
+helpers receive that context explicitly. Tenant and ResourceGroup preparation uses provider-owned
+`Tenants.Testing` and `ResourceGroups.Testing`; no ambient current tenant or shared client headers are
+switched between tests.
+
+Four explicit xUnit collections each own one Mongo replica set and a shared database. Schema,
+indexes and immutable catalogs are prepared once per database. Tenant records remain until fixture
+disposal, and every tenant-local query/assertion uses the case's tenant or owned resource identity.
+Globally unique routes, hostnames, provider installation identities and document IDs must also be
+unique per case; a different TenantId does not partition those indexes.
+
+Catalog mutations, schema/migration tests and database-wide processors use four explicit Global
+collections with a dedicated database per case. Their class assignments balance measured setup and
+case costs; global work has the same four-local/two-CI worker cap. Process environment mutation uses
+an exclusive collection. `MongoIntegrationTestBase` starts with an empty database; isolated
+API/Mediator bases prepare an explicitly selected immutable schema profile. Profiles apply complete
+owner migration assemblies with the normal ordering and history, and cannot upgrade after creation.
+The full profile remains the default for cross-feature scenarios and shared tenant databases;
+identity, target and catalog-only cases use narrower profiles. HTTP hosts, DI providers and their mutable
+fakes remain per case. Never reset shared storage or switch a fixture's database handle. A narrowly
+scoped database-wide assertion may use a local database lease inside an otherwise tenant-owned test.
+
+The committed xUnit runner defaults work with ordinary `dotnet test`. Gate overrides use standard
+xUnit RunSettings: four workers locally, two in CI. Collections serialize their own cases and may
+overlap other collections up to that limit. Large GitOps scenarios use concrete classes with shared
+explicit helper bases rather than one partial class that serializes the whole family. The fixture
+contract test checks collection declarations and physical-isolation markers; tracked rename maps
+preserve the original case inventory when a class is split.
 
 ## Code coverage
 
