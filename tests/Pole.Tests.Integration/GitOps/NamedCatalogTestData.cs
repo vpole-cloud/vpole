@@ -60,18 +60,22 @@ internal static class NamedCatalogTestData
         public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) => Rejected();
     }
 
-    public static async Task SeedAsync(MongoReplicaSetFixture fixture)
+    public static Task SeedAsync(MongoReplicaSetFixture fixture) => SeedAsync(fixture.Database);
+
+    public static Task SeedAsync(TestDatabaseScope fixture) => SeedAsync(fixture.Database);
+
+    private static async Task SeedAsync(IMongoDatabase database)
     {
-        await new ComputeProfileIndexesMigration().Up(fixture.Database);
-        await new DeploymentTargetMigration().Up(fixture.Database);
-        var profile = await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+        await new ComputeProfileIndexesMigration().Up(database);
+        await new DeploymentTargetMigration().Up(database);
+        var profile = await database.GetCollection<ComputeProfile>("ComputeProfiles")
             .Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
         Assert.Equal(ProfileName, profile.TechnicalName);
-        await fixture.Database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
+        await database.GetCollection<ComputeProfileRevision>("ComputeProfileRevisions").ReplaceOneAsync(
             item => item.Id == $"{profile.Id}/{profile.Revision}",
             ComputeProfileRevisionFactory.Create(profile),
             new ReplaceOptions { IsUpsert = true });
-        await fixture.Database.GetCollection<DeploymentTarget>("DeploymentTargets").ReplaceOneAsync(
+        await database.GetCollection<DeploymentTarget>("DeploymentTargets").ReplaceOneAsync(
             item => item.Id == TestData.DefaultDeploymentTargetId,
             TestData.SeedDeploymentTarget().AttestForTests() with { TechnicalName = TargetName },
             new ReplaceOptions { IsUpsert = true });

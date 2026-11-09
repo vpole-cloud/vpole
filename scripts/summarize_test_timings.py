@@ -14,12 +14,15 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:[.+][A-Za-z_][A-Za-z0-9_]*|`[0-9]+)*$")
-PHASES = frozenset("""database.reset seed.base mediator.services.register mediator.services.build
+PHASES = frozenset("""database.reset database.prepare database.dispose seed.base mediator.services.register mediator.services.build
 mediator.scope.create mediator.scope.dispose mediator.provider.dispose api.encryption-key
 api.services.register api.services.build api.seed.compute-profile api.endpoints.map
 api.host.start api.host.dispose gitops.seed.catalog fixture.mongo.container.start
 fixture.mongo.replica-set.initialize fixture.mongo.client.create fixture.mongo.outbox.build
 fixture.mongo.dispose fixture.database.drop fixture.database.migrations
+fixture.database.migrations.Full fixture.database.migrations.Identity
+fixture.database.migrations.DeploymentTargets fixture.database.migrations.StorageCatalog
+fixture.database.migrations.StorageObservation fixture.database.migrations.ComputeCatalog fixture.database.migrations.Catalogs
 cleanup.action cleanup.compute.delete cleanup.group.concurrent cleanup.group.delete-and-wait
 cleanup.group.sequence cleanup.namespace.wait-deleted cleanup.redis.healthy cleanup.redis.relay
 cleanup.storage.disable cleanup.target.delete cleanup.total cleanup.transport.restore
