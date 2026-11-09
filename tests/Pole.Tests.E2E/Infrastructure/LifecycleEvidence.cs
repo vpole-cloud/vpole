@@ -39,6 +39,9 @@ internal sealed class LifecycleEvidence : IAsyncDisposable
         Pattern("gitops", "started", $"GitOps attempt started for source (?<source>{Id}), run (?<run>{Id}), attempt (?<attempt>{Number}); startedAtUtc=(?<occurred>{Instant})"),
         Pattern("gitops", "action-completed", $"GitOps lifecycle action completed for run (?<run>{Id}), operation (?<operation>[A-Za-z][A-Za-z0-9]{{0,63}}/{Id}), action (?<action>Adopt|Remove|Replace|Detach|Apply|Retain); completedAtUtc=(?<occurred>{Instant})")
     ];
+    private static readonly Regex AspireEnvelope = new(
+        @"\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6,7}Z) (?<message>.*)\z",
+        RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking);
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly CancellationTokenSource _shutdown = new();
     private readonly StreamWriter? _writer;
@@ -54,7 +57,8 @@ internal sealed class LifecycleEvidence : IAsyncDisposable
         {
             Directory.CreateDirectory(directory);
             _writer = new StreamWriter(new FileStream(Path.Combine(directory, "lifecycle-events.jsonl"),
-                FileMode.Append, FileAccess.Write, FileShare.Read, 4096, useAsync: true)) { AutoFlush = true };
+                FileMode.Append, FileAccess.Write, FileShare.Read, 4096, useAsync: true))
+            { AutoFlush = true };
         }
         catch (Exception exception) when (IsStorageFailure(exception))
         {
@@ -70,11 +74,15 @@ internal sealed class LifecycleEvidence : IAsyncDisposable
 
     private async Task ReadAsync(IAsyncEnumerable<string> snapshot, IAsyncEnumerable<string> live)
     {
-        try
-        {
-            await CopyAsync(snapshot);
-            await CopyAsync(live);
-        }
+        await TryCopyAsync(snapshot);
+        // Snapshot access can be unavailable before Aspire starts. Keep the live subscription active.
+        if (!_shutdown.IsCancellationRequested && !StorageFailed)
+            await TryCopyAsync(live);
+    }
+
+    private async Task TryCopyAsync(IAsyncEnumerable<string> source)
+    {
+        try { await CopyAsync(source); }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         catch (Exception exception) when (IsStorageFailure(exception)) { StorageFailed = true; }
         catch (Exception) { SourceFailed = true; }
@@ -102,11 +110,23 @@ internal sealed class LifecycleEvidence : IAsyncDisposable
     public static bool TryParse(string line, DateTimeOffset recordedAtUtc, out LifecycleEvidenceRecord? record)
     {
         record = null;
-        // Console logger indentation is accepted. Prefixes, ANSI escapes, newlines and arbitrary trailing text are not.
+        // Accept only console indentation and Aspire's validated UTC envelope before an owned message.
         if (line.Length > 1024 || line.Contains('\r') || line.Contains('\n')) return false;
+        line = line.TrimStart(' ');
+        // Aspire's LogLine.Content prepends its own UTC console timestamp to resource output.
+        var envelope = AspireEnvelope.Match(line);
+        if (envelope.Success)
+        {
+            if (!DateTimeOffset.TryParseExact(envelope.Groups["timestamp"].Value,
+                ["yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'"], CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out _)) return false;
+            line = envelope.Groups["message"].Value.TrimStart(' ');
+        }
+        if (!line.StartsWith("RuntimeCell ", StringComparison.Ordinal) &&
+            !line.StartsWith("GitOps ", StringComparison.Ordinal)) return false;
         foreach (var (component, phase, pattern) in Patterns)
         {
-            var match = pattern.Match(line.TrimStart(' '));
+            var match = pattern.Match(line);
             if (!match.Success) continue;
             DateTimeOffset? occurred = null, due = null;
             foreach (var name in new[] { "occurred", "due" })
