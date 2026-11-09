@@ -30,7 +30,8 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private const string KeycloakAdminUsername = "pole-e2e-admin";
     private readonly CancellationTokenSource _shutdown = new(TimeSpan.FromMinutes(10));
-    private readonly List<Func<CancellationToken, Task>> _cleanup = [];
+    private readonly List<(string TimingPhase, Func<CancellationToken, Task> Action)> _cleanup = [];
+    private readonly TestTimings _timings = new(typeof(PoleE2EFixture), fixture: true);
     private readonly TestRunIdentity _identity = TestRunIdentity.Create();
     private readonly Dictionary<string, RecordedNamespace> _kubernetesNamespaces = new(StringComparer.Ordinal);
     private readonly string _githubClientSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -97,6 +98,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        using var timing = _timings.Measure("fixture.e2e.initialize");
         var evidence = new TestPhaseJournal("E2E fixture initialization");
         using var activation = evidence.Activate();
         try
@@ -115,6 +117,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
     private async Task InitializeCoreAsync()
     {
         await StartLabServiceAccessAsync(_shutdown.Token);
+        using var credentialsTiming = _timings.Measure("fixture.e2e.credentials.prepare");
         _scratchDirectory = Path.Combine(Path.GetTempPath(), "pole-e2e", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_scratchDirectory);
         var privateKeyPath = Path.Combine(_scratchDirectory, "github-app-private-key.pem");
@@ -134,6 +137,8 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             CryptographicOperations.ZeroMemory(envelopeEncryptionKey);
         }
 
+        credentialsTiming.Dispose();
+        using var graphTiming = _timings.Measure("fixture.e2e.graph.construct");
         var githubClientId = $"pole-e2e-client-{Guid.NewGuid():N}";
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Pole_AppHost>(
             CreateAppHostArguments(
@@ -189,19 +194,32 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             .Order(StringComparer.Ordinal)
             .Take(32)
             .ToArray();
-        _application = await appHost.BuildAsync(_shutdown.Token);
+        graphTiming.Dispose();
+        using (_timings.Measure("fixture.e2e.graph.build"))
+            _application = await appHost.BuildAsync(_shutdown.Token);
         _keycloakPortReservation.Stop();
         using (var startup = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
         {
             using var mongoWatch = CancellationTokenSource.CreateLinkedTokenSource(startup.Token);
-            var starting = _application.StartAsync(startup.Token);
+            async Task StartApplicationAsync()
+            {
+                using var timing = _timings.Measure("fixture.e2e.graph.start");
+                await _application!.StartAsync(startup.Token);
+            }
+            async Task WaitForServerAsync()
+            {
+                using var timing = _timings.Measure("fixture.e2e.server.ready");
+                await WaitForRequiredResourceHealthyAsync("pole-server", startup.Token);
+            }
+            var starting = StartApplicationAsync();
             var mongoExited = _application.ResourceNotifications.WaitForResourceAsync("pole-mongo",
                 KnownResourceStates.TerminalStates,
                 mongoWatch.Token);
-            var serverReady = WaitForRequiredResourceHealthyAsync("pole-server", startup.Token);
+            var serverReady = WaitForServerAsync();
             try
             {
-                await WaitForStartupAsync(starting, serverReady, mongoExited);
+                using (_timings.Measure("fixture.e2e.graph.startup.wait"))
+                    await WaitForStartupAsync(starting, serverReady, mongoExited);
             }
             catch (Exception exception)
             {
@@ -234,8 +252,10 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             }
         }
 
-        await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
-        await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
+        using (_timings.Measure("fixture.e2e.frontend.ready"))
+            await WaitForRequiredResourceHealthyAsync("frontend", _shutdown.Token);
+        using (_timings.Measure("fixture.e2e.github-stub.ready"))
+            await WaitForRequiredResourceHealthyAsync("github-stub", _shutdown.Token);
 
         using var apiClient = _application.CreateHttpClient("pole-server", "http");
         ApiBaseAddress = apiClient.BaseAddress ??
@@ -254,17 +274,22 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             _application.CreateHttpClient("pole-keycloak", "http"),
             KeycloakAdminUsername,
             _keycloakAdminPassword);
-        await WaitForKeycloakDiscoveryAsync(
-            _application.CreateHttpClient("pole-keycloak", "http"),
-            _shutdown.Token);
+        using (_timings.Measure("fixture.e2e.keycloak.discovery.ready"))
+            await WaitForKeycloakDiscoveryAsync(
+                _application.CreateHttpClient("pole-keycloak", "http"),
+                _shutdown.Token);
 
+        using var realmTiming = _timings.Measure("fixture.e2e.keycloak.realm.configure");
         await _keycloak.SetRealmAccessTokenLifespanAsync(TimeSpan.FromHours(1), _shutdown.Token);
         await ConfigureInteractiveClientAsync(_shutdown.Token);
         var directGrantClient = await _keycloak.CreateDirectGrantClientAsync(
             $"pole.e2e.direct-{Guid.NewGuid():N}",
             _shutdown.Token);
-        _cleanup.Add(ct => _keycloak.DeleteClientAsync(directGrantClient.InternalId, ct));
+        _cleanup.Add(("fixture.e2e.cleanup.keycloak.direct-client.delete",
+            ct => _keycloak.DeleteClientAsync(directGrantClient.InternalId, ct)));
 
+        realmTiming.Dispose();
+        using var usersTiming = _timings.Measure("fixture.e2e.users.prepare");
         var bootstrap = await CreateBootstrapUserAsync(_shutdown.Token);
         await _keycloak.AssignRealmRoleAsync(bootstrap.KeycloakUserId, "pole-platform-admin", _shutdown.Token);
         var bootstrapToken = await _keycloak.GetPasswordGrantTokenAsync(
@@ -287,13 +312,15 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        using var timing = _timings.Measure("fixture.e2e.dispose");
         var evidence = new TestPhaseJournal("E2E fixture disposal");
         using var activation = evidence.Activate();
         evidence.Record(TestPhase.Cleanup);
         var failures = new List<Exception>();
 
-        async Task AttemptAsync(string phase, Func<Task> action)
+        async Task AttemptAsync(string phase, string timingPhase, Func<Task> action)
         {
+            using var actionTiming = _timings.Measure(timingPhase);
             try
             {
                 await action();
@@ -304,50 +331,64 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             }
         }
 
-        _keycloakPortReservation.Stop();
-        foreach (var reservation in _realtimeReplicaPortReservations)
-            reservation.Stop();
+        using (_timings.Measure("fixture.e2e.cleanup.port-reservations"))
+        {
+            _keycloakPortReservation.Stop();
+            foreach (var reservation in _realtimeReplicaPortReservations)
+                reservation.Stop();
+        }
         using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-        foreach (var action in _cleanup.AsEnumerable().Reverse())
-            await AttemptAsync("restore external fixture state", () => action(cleanupTimeout.Token));
+        using (_timings.Measure("fixture.e2e.cleanup.external"))
+        {
+            foreach (var action in _cleanup.AsEnumerable().Reverse())
+                await AttemptAsync("restore external fixture state", action.TimingPhase,
+                    () => action.Action(cleanupTimeout.Token));
+        }
 
         if (_application is not null)
         {
-            await AttemptAsync("cancel startup", () => _shutdown.CancelAsync());
+            using var applicationTiming = _timings.Measure("fixture.e2e.cleanup.application");
+            await AttemptAsync("cancel startup", "fixture.e2e.cleanup.startup.cancel", () => _shutdown.CancelAsync());
             using var stopTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
-            await AttemptAsync("stop application", () => _application.StopAsync(stopTimeout.Token));
+            await AttemptAsync("stop application", "fixture.e2e.cleanup.application.stop",
+                () => _application.StopAsync(stopTimeout.Token));
             // Dispose remains mandatory even when Stop fails.
-            await AttemptAsync("dispose application", () => _application.DisposeAsync().AsTask());
+            await AttemptAsync("dispose application", "fixture.e2e.cleanup.application.dispose",
+                () => _application.DisposeAsync().AsTask());
         }
 
         using var gitOpsCleanupTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-        await AttemptAsync("remove owned GitOps namespaces", () =>
+        using var gitOpsTiming = _timings.Measure("fixture.e2e.cleanup.gitops");
+        await AttemptAsync("remove owned GitOps namespaces", "fixture.e2e.cleanup.gitops.namespaces", () =>
             CleanupGitOpsNamespacesAsync(gitOpsCleanupTimeout.Token));
-        await AttemptAsync("remove GitOps test images", DisposeGitOpsImagesAsync);
+        await AttemptAsync("remove GitOps test images", "fixture.e2e.cleanup.gitops.images", DisposeGitOpsImagesAsync);
+        gitOpsTiming.Dispose();
 
-        await AttemptAsync("dispose BuildKit forwarding", () => DisposePortForwardAsync(_buildKitPortForward));
+        await AttemptAsync("dispose BuildKit forwarding", "fixture.e2e.cleanup.buildkit.forward.dispose",
+            () => DisposePortForwardAsync(_buildKitPortForward));
         _buildKitPortForward = null;
-        await AttemptAsync("dispose Harbor forwarding", () => DisposePortForwardAsync(_harborPortForward));
+        await AttemptAsync("dispose Harbor forwarding", "fixture.e2e.cleanup.harbor.forward.dispose",
+            () => DisposePortForwardAsync(_harborPortForward));
         _harborPortForward = null;
-        await AttemptAsync("dispose Kubernetes client",
+        await AttemptAsync("dispose Kubernetes client", "fixture.e2e.cleanup.kubernetes-client.dispose",
             () =>
             {
                 _kubernetes.Dispose();
                 return Task.CompletedTask;
             });
-        await AttemptAsync("dispose API client",
+        await AttemptAsync("dispose API client", "fixture.e2e.cleanup.api-client.dispose",
             () =>
             {
                 Api?.Dispose();
                 return Task.CompletedTask;
             });
-        await AttemptAsync("dispose startup budget",
+        await AttemptAsync("dispose startup budget", "fixture.e2e.cleanup.startup-budget.dispose",
             () =>
             {
                 _shutdown.Dispose();
                 return Task.CompletedTask;
             });
-        await AttemptAsync("remove scratch files",
+        await AttemptAsync("remove scratch files", "fixture.e2e.cleanup.scratch.remove",
             () =>
             {
                 if (!string.IsNullOrWhiteSpace(_scratchDirectory) && Directory.Exists(_scratchDirectory))
@@ -674,11 +715,12 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         await WaitForHarborHealthAsync(cancellationToken);
         if (!_harborProjectCleanupRegistered)
         {
-            _cleanup.Add(async token =>
+            _cleanup.Add(("fixture.e2e.cleanup.harbor.project.delete", async token =>
             {
                 await DeleteHarborProjectAsync(Alpha.DefaultTenantId, token);
                 _harborProjectCleanupCompleted = true;
-            });
+            }
+            ));
             _harborProjectCleanupRegistered = true;
         }
     }
@@ -1308,6 +1350,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private async Task StartLabServiceAccessAsync(CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.lab-service-access");
         if (!string.Equals(_lab.State.Profile, "full", StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -1317,20 +1360,22 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         _harborCredentials = await ReadHarborCredentialsAsync(
             _labServices.Harbor.CredentialsPath,
             cancellationToken);
-        _harborPortForward = await KubernetesPortForwardSession.StartAsync(
-            _serviceTarget,
-            _labServices.Harbor.Namespace,
-            $"service/{_labServices.Harbor.Service}",
-            _labServices.Harbor.Port,
-            cancellationToken);
+        using (_timings.Measure("fixture.e2e.harbor.forward.start"))
+            _harborPortForward = await KubernetesPortForwardSession.StartAsync(
+                _serviceTarget,
+                _labServices.Harbor.Namespace,
+                $"service/{_labServices.Harbor.Service}",
+                _labServices.Harbor.Port,
+                cancellationToken);
         try
         {
-            _buildKitPortForward = await KubernetesPortForwardSession.StartAsync(
-                _serviceTarget,
-                _labServices.BuildKit.Namespace,
-                $"service/{_labServices.BuildKit.Service}",
-                _labServices.BuildKit.Port,
-                cancellationToken);
+            using (_timings.Measure("fixture.e2e.buildkit.forward.start"))
+                _buildKitPortForward = await KubernetesPortForwardSession.StartAsync(
+                    _serviceTarget,
+                    _labServices.BuildKit.Namespace,
+                    $"service/{_labServices.BuildKit.Service}",
+                    _labServices.BuildKit.Port,
+                    cancellationToken);
         }
         catch
         {
@@ -1589,6 +1634,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private async Task ConfigureInteractiveClientAsync(CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.keycloak.ui-client.configure");
         var client = await _keycloak!.GetClientAsync("pole.control-plane.ui", cancellationToken);
         var originalUiClient = client.DeepClone().AsObject();
         var uiClientInternalId = client["id"]?.GetValue<string>()
@@ -1600,7 +1646,8 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         client["attributes"] = attributes;
         attributes["post.logout.redirect.uris"] = "+";
         await _keycloak.UpdateClientAsync(uiClientInternalId, client, cancellationToken);
-        _cleanup.Add(ct => _keycloak.UpdateClientAsync(uiClientInternalId, originalUiClient, ct));
+        _cleanup.Add(("fixture.e2e.cleanup.keycloak.ui-client.restore",
+            ct => _keycloak.UpdateClientAsync(uiClientInternalId, originalUiClient, ct)));
     }
 
     public async Task UseInteractiveClientTokenLifespanAsync(
@@ -1629,10 +1676,12 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private async Task<TestUser> CreateBootstrapUserAsync(CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.keycloak.bootstrap-user.create");
         var password = $"Bootstrap-{Guid.NewGuid():N}-1!";
         var email = $"bootstrap-{Guid.NewGuid():N}@e2e.pole.test";
         var keycloakUserId = await _keycloak!.CreateUserAsync(email, "E2E", "Bootstrap", password, cancellationToken);
-        _cleanup.Add(ct => _keycloak.DeleteUserAsync(keycloakUserId, ct));
+        _cleanup.Add(("fixture.e2e.cleanup.keycloak.user.delete",
+            ct => _keycloak.DeleteUserAsync(keycloakUserId, ct)));
         return new TestUser(email, password, keycloakUserId, string.Empty, string.Empty);
     }
 
@@ -1642,6 +1691,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         DirectGrantClient directGrantClient,
         CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.platform-user.create");
         var email = $"{prefix}-{Guid.NewGuid():N}@e2e.pole.test";
         using var create = new HttpRequestMessage(HttpMethod.Post, "/api/v1/users")
         {
@@ -1666,7 +1716,8 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         var password = $"{prefix}-{Guid.NewGuid():N}-1!";
         await _keycloak!.SetPasswordAsync(keycloakUserId, password, cancellationToken);
         await _keycloak.MakeUserInteractiveAsync(keycloakUserId, cancellationToken);
-        _cleanup.Add(ct => _keycloak.DeleteUserAsync(keycloakUserId, ct));
+        _cleanup.Add(("fixture.e2e.cleanup.keycloak.user.delete",
+            ct => _keycloak.DeleteUserAsync(keycloakUserId, ct)));
 
         var accessToken = await _keycloak.GetPasswordGrantTokenAsync(
             directGrantClient.ClientId,
@@ -1690,6 +1741,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private async Task<string> WaitForDefaultTenantAsync(string accessToken, CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.default-tenant.ready");
         string? result = null;
         await TestWait.UntilAsync(async phase =>
             {
@@ -1728,6 +1780,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private async Task WaitForHarborHealthAsync(CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.harbor.ready");
         using var client = new HttpClient(new HttpClientHandler { UseCookies = false })
         {
             BaseAddress = HarborBaseAddress
@@ -1765,6 +1818,7 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private async Task WaitForBuildKitReadyAsync(CancellationToken cancellationToken)
     {
+        using var timing = _timings.Measure("fixture.e2e.buildkit.ready");
         await TestWait.UntilAsync(async phase =>
             {
                 if (await IsBuildKitReadyAsync(phase))

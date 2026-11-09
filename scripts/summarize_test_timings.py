@@ -23,6 +23,25 @@ fixture.mongo.dispose fixture.database.drop fixture.database.migrations
 fixture.database.migrations.Full fixture.database.migrations.Identity
 fixture.database.migrations.DeploymentTargets fixture.database.migrations.StorageCatalog
 fixture.database.migrations.StorageObservation fixture.database.migrations.ComputeCatalog fixture.database.migrations.Catalogs
+fixture.e2e.buildkit.forward.start fixture.e2e.buildkit.ready
+fixture.e2e.cleanup.api-client.dispose fixture.e2e.cleanup.application
+fixture.e2e.cleanup.application.dispose fixture.e2e.cleanup.application.stop
+fixture.e2e.cleanup.buildkit.forward.dispose fixture.e2e.cleanup.external
+fixture.e2e.cleanup.gitops fixture.e2e.cleanup.gitops.image fixture.e2e.cleanup.gitops.images
+fixture.e2e.cleanup.gitops.namespace fixture.e2e.cleanup.gitops.namespaces
+fixture.e2e.cleanup.harbor.forward.dispose fixture.e2e.cleanup.harbor.project.delete
+fixture.e2e.cleanup.keycloak.direct-client.delete fixture.e2e.cleanup.keycloak.ui-client.restore
+fixture.e2e.cleanup.keycloak.user.delete fixture.e2e.cleanup.kubernetes-client.dispose
+fixture.e2e.cleanup.port-reservations fixture.e2e.cleanup.scratch.remove
+fixture.e2e.cleanup.startup-budget.dispose fixture.e2e.cleanup.startup.cancel
+fixture.e2e.credentials.prepare fixture.e2e.default-tenant.ready fixture.e2e.dispose
+fixture.e2e.frontend.ready fixture.e2e.github-stub.ready fixture.e2e.graph.build
+fixture.e2e.graph.construct fixture.e2e.graph.start fixture.e2e.graph.startup.wait
+fixture.e2e.harbor.forward.start fixture.e2e.harbor.ready fixture.e2e.initialize
+fixture.e2e.keycloak.bootstrap-user.create fixture.e2e.keycloak.discovery.ready
+fixture.e2e.keycloak.realm.configure fixture.e2e.keycloak.ui-client.configure
+fixture.e2e.lab-service-access fixture.e2e.platform-user.create fixture.e2e.server.ready
+fixture.e2e.users.prepare
 cleanup.action cleanup.compute.delete cleanup.group.concurrent cleanup.group.delete-and-wait
 cleanup.group.sequence cleanup.namespace.wait-deleted cleanup.redis.healthy cleanup.redis.relay
 cleanup.storage.disable cleanup.target.delete cleanup.total cleanup.transport.restore

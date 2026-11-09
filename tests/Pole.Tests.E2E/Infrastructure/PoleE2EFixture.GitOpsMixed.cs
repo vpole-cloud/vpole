@@ -245,7 +245,7 @@ public sealed partial class PoleE2EFixture
         var selector = $"{TestRunIdentity.OwnerLabel}={TestRunIdentity.Owner}," +
             $"{TestRunIdentity.WorktreeLabel}={_identity.WorktreeId},{TestRunIdentity.RunLabel}={_identity.RunId}";
         var namespaces = await _kubernetes.CoreV1.ListNamespaceAsync(labelSelector: selector, cancellationToken: ct);
-        await using var cleanup = new TestResourceScope("GitOps fixture namespaces");
+        await using var cleanup = new TestResourceScope("GitOps fixture namespaces", timings: _timings);
         foreach (var ns in namespaces.Items)
         {
             cleanup.Defer(ns.Metadata.Name, async token =>
@@ -269,15 +269,15 @@ public sealed partial class PoleE2EFixture
                 await TestWait.UntilAsync(async phase =>
                     await ReadNamespaceIfPresentAsync(ns.Metadata.Name, phase) is null,
                     TimeSpan.FromMinutes(2), "The owned GitOps namespace did not terminate.", token);
-            });
+            }, "fixture.e2e.cleanup.gitops.namespace");
         }
     }
 
     private async Task DisposeGitOpsImagesAsync()
     {
-        await using var cleanup = new TestResourceScope("GitOps fixture images");
+        await using var cleanup = new TestResourceScope("GitOps fixture images", timings: _timings);
         foreach (var image in _gitOpsImages)
-            cleanup.Defer(image.Repository, _ => image.DisposeAsync().AsTask());
+            cleanup.Defer(image.Repository, _ => image.DisposeAsync().AsTask(), "fixture.e2e.cleanup.gitops.image");
         _gitOpsImages.Clear();
     }
 }
