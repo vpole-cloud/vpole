@@ -1,0 +1,2848 @@
+{
+  "version": 1,
+  "baselineCommit": "5ddf8c00",
+  "baselineTrxSha256": "f3386c2a4e52c2f0f0464eea4b9045fd9311a3481991ed8bfc0bcdb041b3056f",
+  "baselineCaseCount": 160,
+  "plannedCaseCount": 158,
+  "baselineProjectWallSeconds": 3052.8,
+  "identityAlgorithm": "SHA-256 of the complete UTF-8 TRX testName; preserve duplicate display multiplicity. Arguments are hashed, never exported.",
+  "merges": {
+    "PublicServiceBindingsJourney": {
+      "sourceCaseCount": 2,
+      "owner": "Pole.Tests.E2E.PublicServiceBindingsJourney",
+      "method": "Secret_projection_and_domain_bindings_share_one_public_service"
+    },
+    "TenantAccessRealtimeJourney": {
+      "sourceCaseCount": 2,
+      "owner": "Pole.Tests.E2E.TenantAccessRealtimeJourney",
+      "method": "Tenant_tabs_and_membership_changes_preserve_realtime_workspace_isolation"
+    }
+  },
+  "guarantees": {
+    "ApiProblemCodeTests.Rejects_oversized_content_even_when_it_starts_with_a_problem_code": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for ApiProblemCodeTests.Rejects_oversized_content_even_when_it_starts_with_a_problem_code.",
+    "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier.",
+    "AuthenticationAndGitHubE2ETests.GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AuthenticationAndGitHubE2ETests.GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub.",
+    "AuthenticationAndGitHubE2ETests.Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AuthenticationAndGitHubE2ETests.Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called.",
+    "AutomaticPhaseEvidenceTests.Ambient_activation_restores_nested_context_and_flows_into_async_work": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Ambient_activation_restores_nested_context_and_flows_into_async_work.",
+    "AutomaticPhaseEvidenceTests.Browser_factory_attaches_safe_evidence_and_detaches_on_close": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Browser_factory_attaches_safe_evidence_and_detaches_on_close.",
+    "AutomaticPhaseEvidenceTests.Cancelled_requests_are_distinct_from_transport_failures": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Cancelled_requests_are_distinct_from_transport_failures.",
+    "AutomaticPhaseEvidenceTests.Journal_creation_failure_cannot_replace_body_or_cleanup_failures": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Journal_creation_failure_cannot_replace_body_or_cleanup_failures.",
+    "AutomaticPhaseEvidenceTests.Requests_share_unique_ids_and_never_record_headers_payloads_or_unknown_query_values": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Requests_share_unique_ids_and_never_record_headers_payloads_or_unknown_query_values.",
+    "AutomaticPhaseEvidenceTests.Run_creates_an_ambient_journal_and_restores_the_callers_context": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Run_creates_an_ambient_journal_and_restores_the_callers_context.",
+    "AutomaticPhaseEvidenceTests.Run_records_cleanup_and_terminal_failure_without_masking_the_body": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Run_records_cleanup_and_terminal_failure_without_masking_the_body.",
+    "AutomaticPhaseEvidenceTests.Successful_body_and_cleanup_record_completion_once": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Successful_body_and_cleanup_record_completion_once.",
+    "AutomaticPhaseEvidenceTests.Transport_failures_preserve_the_original_exception_and_record_a_typed_outcome": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for AutomaticPhaseEvidenceTests.Transport_failures_preserve_the_original_exception_and_record_a_typed_outcome.",
+    "BrowserPhaseJournalTests.Correlates_the_exact_deployment_uid_container_and_read_mode": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for BrowserPhaseJournalTests.Correlates_the_exact_deployment_uid_container_and_read_mode.",
+    "BrowserPhaseJournalTests.Missing_request_fails_after_the_action_without_replaying_it": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for BrowserPhaseJournalTests.Missing_request_fails_after_the_action_without_replaying_it.",
+    "BrowserPhaseJournalTests.Request_deadline_does_not_expire_while_the_single_action_waits_for_eligibility": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for BrowserPhaseJournalTests.Request_deadline_does_not_expire_while_the_single_action_waits_for_eligibility.",
+    "BrowserSmokeE2ETests.User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths": "Keep both desktop/mobile UI create/update flows, forced auth refresh, draft/focus/Escape guards, URL/back-forward/reload, pagination/search, group/tree links, exact native rollout/config and both-theme screenshots. Keep desktop resource until mobile two-page/tab assertions finish. Add isolated-tenant quota/group registration and complete UI delete/same-name recreate with new resource/native identity; final usage returns to baseline.",
+    "DatabaseBrowserE2ETests.User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement": "UI create with transient credentials and safe pre-entry screenshots; disabled instance/storage editing, default-to-owned-nondefault compute change with dirty retention; accepted202/profile/spec/reload/currentApplied; unsupported password rotation absent; owned profiles cleanup.",
+    "DatabaseBrowserE2ETests.User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement": "UI create202 with selected storage/target and readable Redis/TCP; disabled storage edits, retained tag draft/save/reload/currentApplied; actual confirmed UI delete202; desktop/mobile light/dark screenshots and owned profile cleanup.",
+    "DependencyBrowserE2ETests.Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for DependencyBrowserE2ETests.Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations.",
+    "DomainBrowserE2ETests.Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces": "Reserve zone through UI on exact public-ingress eligible target resolved from the shared service; wait real native Ready; attach/reload/technical hostname; reservation deletion blocked while bound; resource/group ownership links; replace removes old identity; detach keeps service alive and permits reservation removal; desktop/mobile both-theme screenshots. Setup changes from explicit-target create after zone reservation to default-placement create before reservation, with all original target/ownership assertions retained.",
+    "E2eApiClientTests.Anonymous_unregistered_and_non_bearer_requests_keep_their_original_authorization": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Anonymous_unregistered_and_non_bearer_requests_keep_their_original_authorization.",
+    "E2eApiClientTests.Authorization_failures_are_returned_without_renewal_or_API_retries": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Authorization_failures_are_returned_without_renewal_or_API_retries.",
+    "E2eApiClientTests.Cancellation_during_renewal_does_not_send_a_request": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Cancellation_during_renewal_does_not_send_a_request.",
+    "E2eApiClientTests.Concurrent_requests_share_one_renewal_and_subsequent_requests_use_the_cached_token": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Concurrent_requests_share_one_renewal_and_subsequent_requests_use_the_cached_token.",
+    "E2eApiClientTests.Overnight_clock_gap_renews_the_same_user_before_sending_and_preserves_the_request": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Overnight_clock_gap_renews_the_same_user_before_sending_and_preserves_the_request.",
+    "E2eApiClientTests.Renewal_rejects_a_different_user_or_still_expired_token_before_sending": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Renewal_rejects_a_different_user_or_still_expired_token_before_sending.",
+    "E2eApiClientTests.Response_headers_read_preserves_streaming_without_buffering_the_content": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for E2eApiClientTests.Response_headers_read_preserves_streaming_without_buffering_the_content.",
+    "FunctionSdkTestImageTests.BuildFailureDiagnosticsRemovePlaintextAndEncodedCredentials": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for FunctionSdkTestImageTests.BuildFailureDiagnosticsRemovePlaintextAndEncodedCredentials.",
+    "FunctionSdkTestImageTests.FixtureSdkVersionMatchesTheControlPlaneProtocol": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for FunctionSdkTestImageTests.FixtureSdkVersionMatchesTheControlPlaneProtocol.",
+    "FunctionSdkTestImageTests.TruncatedBuildOutputCannotExposeAPartialCredential": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for FunctionSdkTestImageTests.TruncatedBuildOutputCannotExposeAPartialCredential.",
+    "GitOpsConsoleFixtureTests.LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsConsoleFixtureTests.LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract.",
+    "GitOpsMixedStubStateTests.CommitsRemainImmutableWhileTheBranchHeadMoves": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsMixedStubStateTests.CommitsRemainImmutableWhileTheBranchHeadMoves.",
+    "GitOpsMixedStubStateTests.ConcurrentPublishCannotReplaceAnImmutableSnapshot": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsMixedStubStateTests.ConcurrentPublishCannotReplaceAnImmutableSnapshot.",
+    "GitOpsMixedStubStateTests.InvalidCommitsAndAmbiguousTreePathsAreRejected": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsMixedStubStateTests.InvalidCommitsAndAmbiguousTreePathsAreRejected.",
+    "GitOpsMixedStubStateTests.SnapshotInputIsBoundedAndInvalidUtf8IsRejected": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsMixedStubStateTests.SnapshotInputIsBoundedAndInvalidUtf8IsRejected.",
+    "GitOpsMixedStubStateTests.TreeAndArchiveHaveDeterministicOrderingAndCompleteNestedPaths": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsMixedStubStateTests.TreeAndArchiveHaveDeterministicOrderingAndCompleteNestedPaths.",
+    "GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit.",
+    "GitOpsRepositoryExamplesTests.FullFixtureUsesCanonicalPathsAndOnlySubstitutesItsEnvironment": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for GitOpsRepositoryExamplesTests.FullFixtureUsesCanonicalPathsAndOnlySubstitutesItsEnvironment.",
+    "GitOpsRepositoryFlowE2ETests.BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl": "Multi-kind manual adoption incl metadata-selected SecretBinding; exact reviewed actions and safe preview/confirm payload, acknowledgement reset and stale409/fresh confirmation; removal, group replacement, relocation/detach and restored manualcontrol; guarded source deletion.",
+    "GitOpsRepositoryFlowE2ETests.BrowserGitOpsSourceRunsSettingsAndTenantAccess": "UI defaults/pickers/create; immutable failed Retry versus Sync head; inventory/ownership/catalog links/runs reload; settings revision-conflict retained draft/reapply, pause/resume; Viewer read-only and foreign-tenant denial; safe viewport/theme screenshots.",
+    "GitOpsRepositoryFlowE2ETests.ConfirmedRedisReplacementChangesNativeIdentityAndWaitsForReviewedCleanup": "Same-name server-reserved new Redis identity; protected-data/PVC/reclaim warnings, real nativeidentity replacement and exact receipt/run authority; reviewed empty-input removal and namespace/PVC absence, no source builds caused.",
+    "GitOpsRepositoryFlowE2ETests.LifecycleRequiresFreshApprovalAndReturnsManualControlAfterDetach": "Paused explicit reviewed adoption versus ordinarySync rejection; Git-owned manual-write conflict, stale confirmation rejection, removal/replacement/relocation/detach restores manual writes; independent secondsource unchanged.",
+    "GitOpsRepositoryFlowE2ETests.MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp": "15 declarations/13 kinds/19 phase operations; missingSecret blocker and inert prepared resources; no first build/releases/native workload before manual artifact; real SQL bootstrap then build/Harbor/digest/native/connection/ingress wiring; automatic mixed-provider and hostname-attachment drift repair,19 no-ops preserve revisions/digest/no extra build, foreign404, reviewed destructive cleanup and native namespace/PVC/credential absence.",
+    "GitOpsRepositoryFlowE2ETests.RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling": "Initial real outbox/worker apply, signed Webhook trigger; actual recurring Poll discovers commit and repairs same-SHA managed drift; manual Sync no-op preserves revision; failed input retains applied commit/inventory; tarball rather than contents API.",
+    "HealthBrowserE2ETests.Applied_unready_workload_is_observed_independently_and_operations_restore_after_reload": "Initial create Applied but NotReady, owned warning context and keyboard details; accepted fixed generation becomes native Ready across reload; injected operation read failure preserves stale row/disables retry, subsequent real read restores; group/tenant health views and desktop/mobile both-theme screenshots.",
+    "MongoReplicaSetCommandTests.Malformed_primary_state_is_not_coerced_to_a_boolean": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoReplicaSetCommandTests.Malformed_primary_state_is_not_coerced_to_a_boolean.",
+    "MongoReplicaSetCommandTests.Primary_result_ignores_metadata_and_handles_missing_primary_state": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoReplicaSetCommandTests.Primary_result_ignores_metadata_and_handles_missing_primary_state.",
+    "MongoReplicaSetCommandTests.Typed_commands_keep_the_replica_set_wire_shapes": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoReplicaSetCommandTests.Typed_commands_keep_the_replica_set_wire_shapes.",
+    "MongoStartupTests.Healthy_API_completes_startup_while_the_mongo_terminal_watcher_is_still_pending": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.Healthy_API_completes_startup_while_the_mongo_terminal_watcher_is_still_pending.",
+    "MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories.",
+    "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure.",
+    "MongoStartupTests.Original_startup_failure_is_preserved_while_dependencies_are_still_pending": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.Original_startup_failure_is_preserved_while_dependencies_are_still_pending.",
+    "MongoStartupTests.Oversized_native_lines_are_ignored": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.Oversized_native_lines_are_ignored.",
+    "MongoStartupTests.Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly.",
+    "MongoStartupTests.String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for MongoStartupTests.String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload.",
+    "MultiClusterWebServiceE2ETests.Two_target_reconciliation_isolates_failure_and_retries_only_failed_target": "Two real cluster identities/owned namespaces/currentReady; disabled B yields partial failure; UI confirms only failedB retry with exact deploymentrevision/Apply; healthyA generations/native release unchanged and B receives newrelease; restore target and verify native cleanup.",
+    "NativeDeploymentReadinessTests.Current_rollout_with_literals_from_the_owned_config_map_is_ready": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Current_rollout_with_literals_from_the_owned_config_map_is_ready.",
+    "NativeDeploymentReadinessTests.Initial_readiness_without_expected_values_needs_no_config_map": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Initial_readiness_without_expected_values_needs_no_config_map.",
+    "NativeDeploymentReadinessTests.Rejects_a_wrong_config_map_reference_identity_or_old_value": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Rejects_a_wrong_config_map_reference_identity_or_old_value.",
+    "NativeDeploymentReadinessTests.Rejects_the_previous_logical_revision_or_deployment_generation": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Rejects_the_previous_logical_revision_or_deployment_generation.",
+    "NativeDeploymentReadinessTests.Requires_complete_native_rollout": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Requires_complete_native_rollout.",
+    "NativeDeploymentReadinessTests.Requires_the_config_map_when_values_are_expected": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Requires_the_config_map_when_values_are_expected.",
+    "NativeDeploymentReadinessTests.Still_rejects_a_different_image": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for NativeDeploymentReadinessTests.Still_rejects_a_different_image.",
+    "PlaywrightBrowserContainerTests.Start_waits_until_published_endpoint_accepts_browser_connections": "Standalone owned Playwright container must expose a usable published browser transport before returning; real connection/context/page title succeeds and disposal remains mandatory.",
+    "RealtimeBrowserE2ETests.Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget": "Held fetched stale GET across eight committed updates, request stays alive and one coalesced trailing authoritative GET, no stale visible render;20 metadata samples with p95<=3s and stable dirty workspace/credential guards.",
+    "RealtimeBrowserE2ETests.Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling": "Actual disabled-target failure/backoff; two sequential65s disconnected/covered windows, baseline>=20GETs and reduction>=80%, unchanged failure/attempt counters and zero owned change hints; real fenced retry/recovery of same revision after target restoration.",
+    "RealtimeBrowserE2ETests.Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace": "Stop actual owned Redis, coverage loss/manual authoritative fallback, restore Redis then cookie bootstrap/reconnect/hints; preserve dirty DOM and no navigation; mandatory restoration.",
+    "RealtimeBrowserE2ETests.Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes": "Real shared protected cookie/backplane across two API processes, subscription and report limits, foreign tenant hub denial; same replica instance stop/restart/endpoint and connection closure checks, same-cookie reuse, cross-replica logout and old-cookie rejection; lifecycle cleanup.",
+    "RealtimeBrowserE2ETests.Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated": "Beta Member in Alpha; two real ready services across two tenants; same browser-context SSO/cookie; two independent dirty editors, tenant hints and authoritative reads, revision/focus transitions, same DOM nodes, localStorage and foreign resource exclusion, no navigation or credential leakage. Finish every tab assertion before membership fault phase.",
+    "RealtimeBrowserE2ETests.Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace": "Real Keycloak40s token refresh, subsequent cookie bootstrap/newer realtime connection, unchanged dirty editor/selection/DOM/navigation and safe credentials; restore client lifetime.",
+    "RealtimeJournalTests.Acknowledgements_require_matching_invocation_and_resource": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Acknowledgements_require_matching_invocation_and_resource.",
+    "RealtimeJournalTests.Changed_interests_fence_pending_heartbeat": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Changed_interests_fence_pending_heartbeat.",
+    "RealtimeJournalTests.Current_acknowledgements_replace_true_coverage": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Current_acknowledgements_replace_true_coverage.",
+    "RealtimeJournalTests.Current_document_pending_and_failed_reads_still_block_quiet": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Current_document_pending_and_failed_reads_still_block_quiet.",
+    "RealtimeJournalTests.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome.",
+    "RealtimeJournalTests.Older_completion_cannot_overwrite_newer_false_acknowledgement": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Older_completion_cannot_overwrite_newer_false_acknowledgement.",
+    "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence.",
+    "RealtimeJournalTests.Recovery_must_finish_and_does_not_hide_an_older_pending_read": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Recovery_must_finish_and_does_not_hide_an_older_pending_read.",
+    "RealtimeJournalTests.Replaced_resource_interests_do_not_keep_previous_resource_coverage": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Replaced_resource_interests_do_not_keep_previous_resource_coverage.",
+    "RealtimeJournalTests.Retired_document_reads_cannot_block_current_success_or_restore_evidence": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Retired_document_reads_cannot_block_current_success_or_restore_evidence.",
+    "RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion.",
+    "RealtimeMembershipE2ETests.Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation": "Attach membership journal before login; preserve held real Member discovery across Viewer demotion; newer own-user hint and fresh read, no canceled held request/stale authority, Viewer UI writes disabled and HTTP403; remove membership, clear inaccessible data and retain own-user subscription; restore membership without token rotation, fresh writes and discarded draft; cleanup latest recreated membership ID.",
+    "RealtimeObservationBrowserE2ETests.Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget": "20 real distinct owned PodUID-precondition deletes; fresh actualReady/coverage/UI prerequisite outside each latency sample; current diagnostics remove exact oldUID and reset selection, p95<=5s; all ownership and version fences retained.",
+    "RealtimePortReservationTests.Reserved_listener_port_is_unavailable_to_both_localhost_address_families": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for RealtimePortReservationTests.Reserved_listener_port_is_unavailable_to_both_localhost_address_families.",
+    "RealtimeProviderBrowserE2ETests.Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current": "Dirty admin form; held coherent snapshot overtaken by real native StorageClass change;35s hold includes30s validation hint, one inflight+one trailing read/no stale render/cancel;46s freshness check, no remount/navigation or credentials; owned native cleanup.",
+    "RealtimeStorageObservationE2ETests.Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users": "Admin versus regular-user HTTP/hub authorization, coherent connection-version snapshot, real native StorageClass mutation and compatibility endpoint; sanitized payloads and exact ownership cleanup.",
+    "ReleaseBrowserE2ETests.Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release": "Initial ready revision1 APP_MODE=initial, changed revision2, disabled-target redeploy3 Pending across reload, restored target and automatic retry; rollback4 restores initial spec/Private/fixed replicas and current native Ready; history and desktop/mobile both-theme screenshots.",
+    "RuntimeLogsBrowserE2ETests.Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage": "Two owned Redis on independent targets; exact Pod/container/readmode, one click/one request, stream cancel on UID-fenced replacement/scope change, explicit reconnect; actual relay transport outage does not disrupt healthytarget; restore transport then bounded concurrent resource/native/ref/profile/target cleanup.",
+    "SecretBrowserE2ETests.User_can_create_rotate_bind_inspect_and_detach_write_only_Secret_projections": "Default-placement Public nginx; endpoint discovery http/tcp/80, anonymous401 and foreign404; authenticated browser writes, write-only Secret1, projection/native convergence, rotate2 and blank form after reload; no values/tokens in metadata/projections/DOM/storage; detach marks Deleted and native absence; UI Secret deletion; safe desktop/mobile light/dark screenshots.",
+    "SourceBuildE2ETests.Browser_git_creation_and_global_search_reach_the_same_source_built_resource": "Actual UI creation/recipe selection and automatic initial real BuildKit/Harbor build; exact digest/native resource and search navigation/keyboard/focus/existing-tab reuse; viewport/theme screenshots; missing-file COPY failure logs survive reload/Operations with unchanged desired/native/release fingerprint, then repaired recipe recovery.",
+    "SourceBuildE2ETests.Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance": "Deferred service has no releases before first manual build; exact v1/v2 commits, immutable differing Harbor digests and native image/pull-secret/release provenance/history; real BuildKit transport outage produces sanitized terminal failure, forwarding and source revision restored.",
+    "StorageBrowserE2ETests.Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile": "Real platform-admin login, native target/default-class inventory; UI mapped profile create and accepted-write reset, edit with exact revision/no obsolete storageClassNames, persisted description; desktop/mobile both-theme screenshots and owned profile disable.",
+    "TenantWorkspaceBrowserE2ETests.Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads": "Beta Viewer in Alpha and Owner in Beta; delete403/read-only controls; canceled then confirmed dirty tenant switch, nativeReady/logs reading, exact follow-stream cancel; held fetched Alpha response after switch cannot populate Beta workspace/persistence; screenshots and membership cleanup.",
+    "TestLifecycleTests.Body_and_cleanup_failures_are_preserved_and_later_cleanup_still_runs": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestLifecycleTests.Body_and_cleanup_failures_are_preserved_and_later_cleanup_still_runs.",
+    "TestLifecycleTests.Cleanup_runs_after_a_partially_completed_mutation_fails": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestLifecycleTests.Cleanup_runs_after_a_partially_completed_mutation_fails.",
+    "TestLifecycleTests.Local_deadline_bounds_a_stalled_probe_and_cancels_its_token": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestLifecycleTests.Local_deadline_bounds_a_stalled_probe_and_cancels_its_token.",
+    "TestLifecycleTests.Only_not_found_completes_deletion": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestLifecycleTests.Only_not_found_completes_deletion.",
+    "TestLifecycleTests.Startup_cancellation_does_not_stop_running_port_forward_pipe_readers": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestLifecycleTests.Startup_cancellation_does_not_stop_running_port_forward_pipe_readers.",
+    "TestLifecycleTests.Unexpected_deletion_status_is_an_immediate_safe_failure": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestLifecycleTests.Unexpected_deletion_status_is_an_immediate_safe_failure.",
+    "TestPhaseJournalTests.Bounds_records_and_does_not_replace_a_scenario_failure_when_storage_disappears": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestPhaseJournalTests.Bounds_records_and_does_not_replace_a_scenario_failure_when_storage_disappears.",
+    "TestPhaseJournalTests.Failed_kubernetes_call_records_only_status_and_preserves_original_exception": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestPhaseJournalTests.Failed_kubernetes_call_records_only_status_and_preserves_original_exception.",
+    "TestPhaseJournalTests.Records_only_hashed_identifiers_and_typed_phase_metadata": "Retain the complete original infrastructure-free/helper assertion set and exact frozen Theory display identity/multiplicity for TestPhaseJournalTests.Records_only_hashed_identifiers_and_typed_phase_metadata."
+  },
+  "cases": [
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Rejects_oversized_content_even_when_it_starts_with_a_problem_code",
+        "displaySha256": "23f78cab0d0574301ad2f858b7cffbfc437a62baa275d71c1f6bbb000caf350d"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Rejects_oversized_content_even_when_it_starts_with_a_problem_code",
+        "displaySha256": "23f78cab0d0574301ad2f858b7cffbfc437a62baa275d71c1f6bbb000caf350d"
+      },
+      "phase": "test.Rejects_oversized_content_even_when_it_starts_with_a_problem_code",
+      "guarantees": [
+        "ApiProblemCodeTests.Rejects_oversized_content_even_when_it_starts_with_a_problem_code"
+      ],
+      "baselineSeconds": 0.0010448
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "26692fd84c4f604d4b3b73474f2590ee242fbf69bac1509759314d38ec44fccc"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "26692fd84c4f604d4b3b73474f2590ee242fbf69bac1509759314d38ec44fccc"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 0.0022409
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "33ff08e54f7aa5ded880aa7737d9e4396d3229ea619925733f44447f5b42cbe8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "33ff08e54f7aa5ded880aa7737d9e4396d3229ea619925733f44447f5b42cbe8"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 3.3e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "68f3a28e002bcc68c8fb83dce38ede82a9df5f93da6c34dacf1d1aa64e47ebc8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "68f3a28e002bcc68c8fb83dce38ede82a9df5f93da6c34dacf1d1aa64e47ebc8"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 0.0010443
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "6f23c96501a47200769671c9cd006ba847d2b285b246f7aabf5a10664e57c6b6"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "6f23c96501a47200769671c9cd006ba847d2b285b246f7aabf5a10664e57c6b6"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 5e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "8541d55f83326954b02e00443634df3cb31ef1dde52bf0a9787ba01976584e7b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "8541d55f83326954b02e00443634df3cb31ef1dde52bf0a9787ba01976584e7b"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 0.015906
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "a58dd1b6cff2e174d0a6ca6a326df27f6ccb165acfbb44bb1052c2603720a8a1"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "a58dd1b6cff2e174d0a6ca6a326df27f6ccb165acfbb44bb1052c2603720a8a1"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 1.19e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "d4579305d5c3f6f2192ead2139a017ed129499414da931d6878e7c6b3c3bd4ce"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "d4579305d5c3f6f2192ead2139a017ed129499414da931d6878e7c6b3c3bd4ce"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 6.4e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "f4472ac11b77796a1f87f113c0758f1cde9f1d57439402905b3e0c3b510121c2"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ApiProblemCodeTests",
+        "method": "Returns_only_a_bounded_problem_identifier",
+        "displaySha256": "f4472ac11b77796a1f87f113c0758f1cde9f1d57439402905b3e0c3b510121c2"
+      },
+      "phase": "test.Returns_only_a_bounded_problem_identifier",
+      "guarantees": [
+        "ApiProblemCodeTests.Returns_only_a_bounded_problem_identifier"
+      ],
+      "baselineSeconds": 3.6e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AuthenticationAndGitHubE2ETests",
+        "method": "GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub",
+        "displaySha256": "f4803bdef883b9e65c3b590a48bcefec686ed0d6820bf326c8cb375fcb74a6c0"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AuthenticationAndGitHubE2ETests",
+        "method": "GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub",
+        "displaySha256": "f4803bdef883b9e65c3b590a48bcefec686ed0d6820bf326c8cb375fcb74a6c0"
+      },
+      "phase": "test.GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub",
+      "guarantees": [
+        "AuthenticationAndGitHubE2ETests.GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub"
+      ],
+      "baselineSeconds": 0.031382
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AuthenticationAndGitHubE2ETests",
+        "method": "Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called",
+        "displaySha256": "8f2a909c8923129a8effafabbfa4188291f7b1a7f8052a1bc81fe9fbbfc6f0d8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AuthenticationAndGitHubE2ETests",
+        "method": "Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called",
+        "displaySha256": "8f2a909c8923129a8effafabbfa4188291f7b1a7f8052a1bc81fe9fbbfc6f0d8"
+      },
+      "phase": "test.Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called",
+      "guarantees": [
+        "AuthenticationAndGitHubE2ETests.Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called"
+      ],
+      "baselineSeconds": 0.0082511
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Ambient_activation_restores_nested_context_and_flows_into_async_work",
+        "displaySha256": "bc931c86f106a8f2c44eb9b3c6558813e0b515b3cefa344ffa2f8181680f1974"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Ambient_activation_restores_nested_context_and_flows_into_async_work",
+        "displaySha256": "bc931c86f106a8f2c44eb9b3c6558813e0b515b3cefa344ffa2f8181680f1974"
+      },
+      "phase": "test.Ambient_activation_restores_nested_context_and_flows_into_async_work",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Ambient_activation_restores_nested_context_and_flows_into_async_work"
+      ],
+      "baselineSeconds": 0.0017593
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Browser_factory_attaches_safe_evidence_and_detaches_on_close",
+        "displaySha256": "2537f6aacaa411dd9cbe37b8184c6ca04e43bb1f496043418671339ab2adf857"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Browser_factory_attaches_safe_evidence_and_detaches_on_close",
+        "displaySha256": "2537f6aacaa411dd9cbe37b8184c6ca04e43bb1f496043418671339ab2adf857"
+      },
+      "phase": "test.Browser_factory_attaches_safe_evidence_and_detaches_on_close",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Browser_factory_attaches_safe_evidence_and_detaches_on_close"
+      ],
+      "baselineSeconds": 0.0762847
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Cancelled_requests_are_distinct_from_transport_failures",
+        "displaySha256": "ec63c62e05b7f3d9d975676b51275a1455ff50ff94683156f9e3e37af6bcda2e"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Cancelled_requests_are_distinct_from_transport_failures",
+        "displaySha256": "ec63c62e05b7f3d9d975676b51275a1455ff50ff94683156f9e3e37af6bcda2e"
+      },
+      "phase": "test.Cancelled_requests_are_distinct_from_transport_failures",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Cancelled_requests_are_distinct_from_transport_failures"
+      ],
+      "baselineSeconds": 0.003054
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Journal_creation_failure_cannot_replace_body_or_cleanup_failures",
+        "displaySha256": "e2bdba5f3533b21f4d9b722c99a96c86359136015d6604c223343c521303a81f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Journal_creation_failure_cannot_replace_body_or_cleanup_failures",
+        "displaySha256": "e2bdba5f3533b21f4d9b722c99a96c86359136015d6604c223343c521303a81f"
+      },
+      "phase": "test.Journal_creation_failure_cannot_replace_body_or_cleanup_failures",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Journal_creation_failure_cannot_replace_body_or_cleanup_failures"
+      ],
+      "baselineSeconds": 0.00468
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Requests_share_unique_ids_and_never_record_headers_payloads_or_unknown_query_values",
+        "displaySha256": "a06478a5b787afae8ed5ef302af7bf099fed74db1f4d0dc6a4868ab34d6ff7a1"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Requests_share_unique_ids_and_never_record_headers_payloads_or_unknown_query_values",
+        "displaySha256": "a06478a5b787afae8ed5ef302af7bf099fed74db1f4d0dc6a4868ab34d6ff7a1"
+      },
+      "phase": "test.Requests_share_unique_ids_and_never_record_headers_payloads_or_unknown_query_values",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Requests_share_unique_ids_and_never_record_headers_payloads_or_unknown_query_values"
+      ],
+      "baselineSeconds": 0.0025568
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Run_creates_an_ambient_journal_and_restores_the_callers_context",
+        "displaySha256": "633b7e6b6e63f1b1089c34520de87310c3708bfdeaf96d3e97cf84fb820ddd48"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Run_creates_an_ambient_journal_and_restores_the_callers_context",
+        "displaySha256": "633b7e6b6e63f1b1089c34520de87310c3708bfdeaf96d3e97cf84fb820ddd48"
+      },
+      "phase": "test.Run_creates_an_ambient_journal_and_restores_the_callers_context",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Run_creates_an_ambient_journal_and_restores_the_callers_context"
+      ],
+      "baselineSeconds": 0.0037386
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Run_records_cleanup_and_terminal_failure_without_masking_the_body",
+        "displaySha256": "90fb6c855c995a06cd13005c1676cb66aea5d1b53b5c17d3438d98dcc4582d53"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Run_records_cleanup_and_terminal_failure_without_masking_the_body",
+        "displaySha256": "90fb6c855c995a06cd13005c1676cb66aea5d1b53b5c17d3438d98dcc4582d53"
+      },
+      "phase": "test.Run_records_cleanup_and_terminal_failure_without_masking_the_body",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Run_records_cleanup_and_terminal_failure_without_masking_the_body"
+      ],
+      "baselineSeconds": 0.0015409
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Successful_body_and_cleanup_record_completion_once",
+        "displaySha256": "4c31226840fc8129456a4aa6fb1b29e380a847c8562b66e7b9cce08217e51086"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Successful_body_and_cleanup_record_completion_once",
+        "displaySha256": "4c31226840fc8129456a4aa6fb1b29e380a847c8562b66e7b9cce08217e51086"
+      },
+      "phase": "test.Successful_body_and_cleanup_record_completion_once",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Successful_body_and_cleanup_record_completion_once"
+      ],
+      "baselineSeconds": 0.0009035
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Transport_failures_preserve_the_original_exception_and_record_a_typed_outcome",
+        "displaySha256": "303d0d61eb615db202a094b28a57a565fc393f84a39ceeab2648f9182e1fbe44"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.AutomaticPhaseEvidenceTests",
+        "method": "Transport_failures_preserve_the_original_exception_and_record_a_typed_outcome",
+        "displaySha256": "303d0d61eb615db202a094b28a57a565fc393f84a39ceeab2648f9182e1fbe44"
+      },
+      "phase": "test.Transport_failures_preserve_the_original_exception_and_record_a_typed_outcome",
+      "guarantees": [
+        "AutomaticPhaseEvidenceTests.Transport_failures_preserve_the_original_exception_and_record_a_typed_outcome"
+      ],
+      "baselineSeconds": 0.0020385
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.BrowserPhaseJournalTests",
+        "method": "Correlates_the_exact_deployment_uid_container_and_read_mode",
+        "displaySha256": "2f2201d9e0c8ce340c7a1aef8b83619c470a5f8fab640afb77c58cc5e4657f9a"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.BrowserPhaseJournalTests",
+        "method": "Correlates_the_exact_deployment_uid_container_and_read_mode",
+        "displaySha256": "2f2201d9e0c8ce340c7a1aef8b83619c470a5f8fab640afb77c58cc5e4657f9a"
+      },
+      "phase": "test.Correlates_the_exact_deployment_uid_container_and_read_mode",
+      "guarantees": [
+        "BrowserPhaseJournalTests.Correlates_the_exact_deployment_uid_container_and_read_mode"
+      ],
+      "baselineSeconds": 0.0133136
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.BrowserPhaseJournalTests",
+        "method": "Missing_request_fails_after_the_action_without_replaying_it",
+        "displaySha256": "b86aba981e523d792bccc349cfe1097980a39ee81844c22a3f74be831436f9f8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.BrowserPhaseJournalTests",
+        "method": "Missing_request_fails_after_the_action_without_replaying_it",
+        "displaySha256": "b86aba981e523d792bccc349cfe1097980a39ee81844c22a3f74be831436f9f8"
+      },
+      "phase": "test.Missing_request_fails_after_the_action_without_replaying_it",
+      "guarantees": [
+        "BrowserPhaseJournalTests.Missing_request_fails_after_the_action_without_replaying_it"
+      ],
+      "baselineSeconds": 0.0163899
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.BrowserPhaseJournalTests",
+        "method": "Request_deadline_does_not_expire_while_the_single_action_waits_for_eligibility",
+        "displaySha256": "765a40609be7159b18cb0772200de33a409e40df7c865f9635ea4b49f569076b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.BrowserPhaseJournalTests",
+        "method": "Request_deadline_does_not_expire_while_the_single_action_waits_for_eligibility",
+        "displaySha256": "765a40609be7159b18cb0772200de33a409e40df7c865f9635ea4b49f569076b"
+      },
+      "phase": "test.Request_deadline_does_not_expire_while_the_single_action_waits_for_eligibility",
+      "guarantees": [
+        "BrowserPhaseJournalTests.Request_deadline_does_not_expire_while_the_single_action_waits_for_eligibility"
+      ],
+      "baselineSeconds": 0.0029528
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.BrowserSmokeE2ETests",
+        "method": "User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths",
+        "displaySha256": "c53eb8a63e7c4d85035fd06b325af37b8b77f23a98ef6f274102391d018f354c"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.BrowserSmokeE2ETests",
+        "method": "User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths",
+        "displaySha256": "c53eb8a63e7c4d85035fd06b325af37b8b77f23a98ef6f274102391d018f354c"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "BrowserSmokeE2ETests.User_can_manage_image_services_in_separate_workspace_tabs_at_desktop_and_mobile_widths"
+      ],
+      "baselineSeconds": 123.6018121
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.DatabaseBrowserE2ETests",
+        "method": "User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement",
+        "displaySha256": "5cf6ff79195dcd8f25c0b9da05c7c0d0763359258ab57c9f27b844b1563a751e"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.DatabaseBrowserE2ETests",
+        "method": "User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement",
+        "displaySha256": "5cf6ff79195dcd8f25c0b9da05c7c0d0763359258ab57c9f27b844b1563a751e"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "DatabaseBrowserE2ETests.User_can_provision_and_edit_PostgreSQL_with_transient_credentials_and_readable_placement"
+      ],
+      "baselineSeconds": 45.5850762
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.DatabaseBrowserE2ETests",
+        "method": "User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement",
+        "displaySha256": "fc2f09987a339111716d76afb5a25a0e41e7a3846634b901cce04c9a7eb0235d"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.DatabaseBrowserE2ETests",
+        "method": "User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement",
+        "displaySha256": "fc2f09987a339111716d76afb5a25a0e41e7a3846634b901cce04c9a7eb0235d"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "DatabaseBrowserE2ETests.User_can_provision_edit_and_delete_Redis_with_readable_single_target_placement"
+      ],
+      "baselineSeconds": 42.860131
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.DependencyBrowserE2ETests",
+        "method": "Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations",
+        "displaySha256": "f9be0d49ae517bc70757efca726ef8448983cac2baad4f2f7e85639dcf3e2d77"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.DependencyBrowserE2ETests",
+        "method": "Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations",
+        "displaySha256": "f9be0d49ae517bc70757efca726ef8448983cac2baad4f2f7e85639dcf3e2d77"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "DependencyBrowserE2ETests.Application_dependencies_restore_partial_steps_and_allow_real_SQL_and_Redis_only_after_network_declarations"
+      ],
+      "baselineSeconds": 160.2476006
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.DomainBrowserE2ETests",
+        "method": "Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces",
+        "displaySha256": "e42e2fceae93ef64ccf64d4035ad971a35b7105f109eb18a257cf20d8a4c1730"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.PublicServiceBindingsJourney",
+        "method": "Secret_projection_and_domain_bindings_share_one_public_service",
+        "displaySha256": "77c5a69933779351385cfac8684f84338dbf2de7d0a0b6e04ab549094f561631"
+      },
+      "phase": "e2e.public-bindings.domain",
+      "guarantees": [
+        "DomainBrowserE2ETests.Tenant_can_reserve_inspect_replace_and_detach_exact_target_hostnames_in_separate_workspaces"
+      ],
+      "baselineSeconds": 58.4365722,
+      "merge": "PublicServiceBindingsJourney"
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Anonymous_unregistered_and_non_bearer_requests_keep_their_original_authorization",
+        "displaySha256": "a0f9fddebf83f6afb0e96f75a526bca0afe6a2b40fe291f98ce4b2c2dd8cc14e"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Anonymous_unregistered_and_non_bearer_requests_keep_their_original_authorization",
+        "displaySha256": "a0f9fddebf83f6afb0e96f75a526bca0afe6a2b40fe291f98ce4b2c2dd8cc14e"
+      },
+      "phase": "test.Anonymous_unregistered_and_non_bearer_requests_keep_their_original_authorization",
+      "guarantees": [
+        "E2eApiClientTests.Anonymous_unregistered_and_non_bearer_requests_keep_their_original_authorization"
+      ],
+      "baselineSeconds": 0.0017573
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Authorization_failures_are_returned_without_renewal_or_API_retries",
+        "displaySha256": "7f56e55ad2b5b6b5c9f6757ac4cad13830526ceff313573ac01cd78cd196cf45"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Authorization_failures_are_returned_without_renewal_or_API_retries",
+        "displaySha256": "7f56e55ad2b5b6b5c9f6757ac4cad13830526ceff313573ac01cd78cd196cf45"
+      },
+      "phase": "test.Authorization_failures_are_returned_without_renewal_or_API_retries",
+      "guarantees": [
+        "E2eApiClientTests.Authorization_failures_are_returned_without_renewal_or_API_retries"
+      ],
+      "baselineSeconds": 0.0372969
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Authorization_failures_are_returned_without_renewal_or_API_retries",
+        "displaySha256": "ba7b1fbd57d06f2bee8661a6dbee8e248cce65f4cba18317b4ca5b8619a0e544"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Authorization_failures_are_returned_without_renewal_or_API_retries",
+        "displaySha256": "ba7b1fbd57d06f2bee8661a6dbee8e248cce65f4cba18317b4ca5b8619a0e544"
+      },
+      "phase": "test.Authorization_failures_are_returned_without_renewal_or_API_retries",
+      "guarantees": [
+        "E2eApiClientTests.Authorization_failures_are_returned_without_renewal_or_API_retries"
+      ],
+      "baselineSeconds": 0.0005748
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Cancellation_during_renewal_does_not_send_a_request",
+        "displaySha256": "aca4fb2991643f4f5ab00f353b72e8aa4b5b49ab6fcc8ba3e5d6fec6981e7b06"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Cancellation_during_renewal_does_not_send_a_request",
+        "displaySha256": "aca4fb2991643f4f5ab00f353b72e8aa4b5b49ab6fcc8ba3e5d6fec6981e7b06"
+      },
+      "phase": "test.Cancellation_during_renewal_does_not_send_a_request",
+      "guarantees": [
+        "E2eApiClientTests.Cancellation_during_renewal_does_not_send_a_request"
+      ],
+      "baselineSeconds": 0.0017993
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Concurrent_requests_share_one_renewal_and_subsequent_requests_use_the_cached_token",
+        "displaySha256": "ffaf39a0d9ddb4f80480d52079ff27d473548c42bc55065aa535858c3c4b9402"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Concurrent_requests_share_one_renewal_and_subsequent_requests_use_the_cached_token",
+        "displaySha256": "ffaf39a0d9ddb4f80480d52079ff27d473548c42bc55065aa535858c3c4b9402"
+      },
+      "phase": "test.Concurrent_requests_share_one_renewal_and_subsequent_requests_use_the_cached_token",
+      "guarantees": [
+        "E2eApiClientTests.Concurrent_requests_share_one_renewal_and_subsequent_requests_use_the_cached_token"
+      ],
+      "baselineSeconds": 0.0058703
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Overnight_clock_gap_renews_the_same_user_before_sending_and_preserves_the_request",
+        "displaySha256": "dc93efaeacb91294d6632ef892defd29a07c252737e1d7af7345a48c3f3c172e"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Overnight_clock_gap_renews_the_same_user_before_sending_and_preserves_the_request",
+        "displaySha256": "dc93efaeacb91294d6632ef892defd29a07c252737e1d7af7345a48c3f3c172e"
+      },
+      "phase": "test.Overnight_clock_gap_renews_the_same_user_before_sending_and_preserves_the_request",
+      "guarantees": [
+        "E2eApiClientTests.Overnight_clock_gap_renews_the_same_user_before_sending_and_preserves_the_request"
+      ],
+      "baselineSeconds": 0.0038479
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Renewal_rejects_a_different_user_or_still_expired_token_before_sending",
+        "displaySha256": "34fd8799f8b245f8a79d29e571cb574e7d45a27748eb9cbabd74bd931dcccc62"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Renewal_rejects_a_different_user_or_still_expired_token_before_sending",
+        "displaySha256": "34fd8799f8b245f8a79d29e571cb574e7d45a27748eb9cbabd74bd931dcccc62"
+      },
+      "phase": "test.Renewal_rejects_a_different_user_or_still_expired_token_before_sending",
+      "guarantees": [
+        "E2eApiClientTests.Renewal_rejects_a_different_user_or_still_expired_token_before_sending"
+      ],
+      "baselineSeconds": 0.0008237
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Renewal_rejects_a_different_user_or_still_expired_token_before_sending",
+        "displaySha256": "fa4d4525402e7b3a3b6822842349204cc8b91689166d4215591c0e83aa27d093"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Renewal_rejects_a_different_user_or_still_expired_token_before_sending",
+        "displaySha256": "fa4d4525402e7b3a3b6822842349204cc8b91689166d4215591c0e83aa27d093"
+      },
+      "phase": "test.Renewal_rejects_a_different_user_or_still_expired_token_before_sending",
+      "guarantees": [
+        "E2eApiClientTests.Renewal_rejects_a_different_user_or_still_expired_token_before_sending"
+      ],
+      "baselineSeconds": 0.0002746
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Response_headers_read_preserves_streaming_without_buffering_the_content",
+        "displaySha256": "f9fcb59bcd8aa3f4d2efb6f08fdaa630676cbbb2ccb5f6b346b347c21781fe5b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.E2eApiClientTests",
+        "method": "Response_headers_read_preserves_streaming_without_buffering_the_content",
+        "displaySha256": "f9fcb59bcd8aa3f4d2efb6f08fdaa630676cbbb2ccb5f6b346b347c21781fe5b"
+      },
+      "phase": "test.Response_headers_read_preserves_streaming_without_buffering_the_content",
+      "guarantees": [
+        "E2eApiClientTests.Response_headers_read_preserves_streaming_without_buffering_the_content"
+      ],
+      "baselineSeconds": 0.0009127
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.FunctionSdkTestImageTests",
+        "method": "BuildFailureDiagnosticsRemovePlaintextAndEncodedCredentials",
+        "displaySha256": "eb8aea03295bfdd199b32e253b30bc4256cfdff2804c7890096d5ee0d619d9d3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.FunctionSdkTestImageTests",
+        "method": "BuildFailureDiagnosticsRemovePlaintextAndEncodedCredentials",
+        "displaySha256": "eb8aea03295bfdd199b32e253b30bc4256cfdff2804c7890096d5ee0d619d9d3"
+      },
+      "phase": "test.BuildFailureDiagnosticsRemovePlaintextAndEncodedCredentials",
+      "guarantees": [
+        "FunctionSdkTestImageTests.BuildFailureDiagnosticsRemovePlaintextAndEncodedCredentials"
+      ],
+      "baselineSeconds": 0.0123597
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.FunctionSdkTestImageTests",
+        "method": "FixtureSdkVersionMatchesTheControlPlaneProtocol",
+        "displaySha256": "6c44b568cfd8fc7ba9b35f6702f0ba486a15e24f054b8747bec12c22c07bb673"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.FunctionSdkTestImageTests",
+        "method": "FixtureSdkVersionMatchesTheControlPlaneProtocol",
+        "displaySha256": "6c44b568cfd8fc7ba9b35f6702f0ba486a15e24f054b8747bec12c22c07bb673"
+      },
+      "phase": "test.FixtureSdkVersionMatchesTheControlPlaneProtocol",
+      "guarantees": [
+        "FunctionSdkTestImageTests.FixtureSdkVersionMatchesTheControlPlaneProtocol"
+      ],
+      "baselineSeconds": 0.0033483
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.FunctionSdkTestImageTests",
+        "method": "TruncatedBuildOutputCannotExposeAPartialCredential",
+        "displaySha256": "b911cf3583fe234d50aa6f98fec6e8b5226af2e9cb625ff908cf758fec89efe3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.FunctionSdkTestImageTests",
+        "method": "TruncatedBuildOutputCannotExposeAPartialCredential",
+        "displaySha256": "b911cf3583fe234d50aa6f98fec6e8b5226af2e9cb625ff908cf758fec89efe3"
+      },
+      "phase": "test.TruncatedBuildOutputCannotExposeAPartialCredential",
+      "guarantees": [
+        "FunctionSdkTestImageTests.TruncatedBuildOutputCannotExposeAPartialCredential"
+      ],
+      "baselineSeconds": 0.0118478
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsConsoleFixtureTests",
+        "method": "LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract",
+        "displaySha256": "3ee91ca10953328cefbbab2f41a375954899e8eb35363896c926809bea380489"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsConsoleFixtureTests",
+        "method": "LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract",
+        "displaySha256": "3ee91ca10953328cefbbab2f41a375954899e8eb35363896c926809bea380489"
+      },
+      "phase": "test.LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract",
+      "guarantees": [
+        "GitOpsConsoleFixtureTests.LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract"
+      ],
+      "baselineSeconds": 0.0709058
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsConsoleFixtureTests",
+        "method": "LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract",
+        "displaySha256": "7521441b106c4f6fb853541d4bca39b734892859fd6c28437069eba3828952e7"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsConsoleFixtureTests",
+        "method": "LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract",
+        "displaySha256": "7521441b106c4f6fb853541d4bca39b734892859fd6c28437069eba3828952e7"
+      },
+      "phase": "test.LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract",
+      "guarantees": [
+        "GitOpsConsoleFixtureTests.LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract"
+      ],
+      "baselineSeconds": 0.0008783
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "CommitsRemainImmutableWhileTheBranchHeadMoves",
+        "displaySha256": "4c07d59c69133440ad7fd4bdb042be5b772bbfffed8480e2dc8fefeaabb07c1a"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "CommitsRemainImmutableWhileTheBranchHeadMoves",
+        "displaySha256": "4c07d59c69133440ad7fd4bdb042be5b772bbfffed8480e2dc8fefeaabb07c1a"
+      },
+      "phase": "test.CommitsRemainImmutableWhileTheBranchHeadMoves",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.CommitsRemainImmutableWhileTheBranchHeadMoves"
+      ],
+      "baselineSeconds": 0.0014946
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "ConcurrentPublishCannotReplaceAnImmutableSnapshot",
+        "displaySha256": "8cd94a44c386dafce05bfa385d1f8aa473403b35ed12b84adf4e435aadcc0078"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "ConcurrentPublishCannotReplaceAnImmutableSnapshot",
+        "displaySha256": "8cd94a44c386dafce05bfa385d1f8aa473403b35ed12b84adf4e435aadcc0078"
+      },
+      "phase": "test.ConcurrentPublishCannotReplaceAnImmutableSnapshot",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.ConcurrentPublishCannotReplaceAnImmutableSnapshot"
+      ],
+      "baselineSeconds": 0.0392331
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "InvalidCommitsAndAmbiguousTreePathsAreRejected",
+        "displaySha256": "682a0bb5fd402244838ee704520a4e897d50262d4d519469f24f72ab4cc0d3a3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "InvalidCommitsAndAmbiguousTreePathsAreRejected",
+        "displaySha256": "682a0bb5fd402244838ee704520a4e897d50262d4d519469f24f72ab4cc0d3a3"
+      },
+      "phase": "test.InvalidCommitsAndAmbiguousTreePathsAreRejected",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.InvalidCommitsAndAmbiguousTreePathsAreRejected"
+      ],
+      "baselineSeconds": 0.0009275
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "SnapshotInputIsBoundedAndInvalidUtf8IsRejected",
+        "displaySha256": "3eb839c973235c68fde6438d86ac06cb8934fdaffc82513ec559e33b8020c26b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "SnapshotInputIsBoundedAndInvalidUtf8IsRejected",
+        "displaySha256": "3eb839c973235c68fde6438d86ac06cb8934fdaffc82513ec559e33b8020c26b"
+      },
+      "phase": "test.SnapshotInputIsBoundedAndInvalidUtf8IsRejected",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.SnapshotInputIsBoundedAndInvalidUtf8IsRejected"
+      ],
+      "baselineSeconds": 0.0026789
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "TreeAndArchiveHaveDeterministicOrderingAndCompleteNestedPaths",
+        "displaySha256": "edd5332a0fc517e2472ab71da1f72ff3c87c5361245f0b7b42a0782975942c9f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "TreeAndArchiveHaveDeterministicOrderingAndCompleteNestedPaths",
+        "displaySha256": "edd5332a0fc517e2472ab71da1f72ff3c87c5361245f0b7b42a0782975942c9f"
+      },
+      "phase": "test.TreeAndArchiveHaveDeterministicOrderingAndCompleteNestedPaths",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.TreeAndArchiveHaveDeterministicOrderingAndCompleteNestedPaths"
+      ],
+      "baselineSeconds": 0.0341206
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "1cbe6b07274f2223df5a782317505210d9e75cd72ca0d5c79ca51c52f7742330"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "1cbe6b07274f2223df5a782317505210d9e75cd72ca0d5c79ca51c52f7742330"
+      },
+      "phase": "test.UnsafePathsDoNotPublishACommit",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit"
+      ],
+      "baselineSeconds": 0.0042926
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "5ad0ae267ce763351ffe1e1cea4ad8fc9e12f21dd418101f76b878c6f2aeacd9"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "5ad0ae267ce763351ffe1e1cea4ad8fc9e12f21dd418101f76b878c6f2aeacd9"
+      },
+      "phase": "test.UnsafePathsDoNotPublishACommit",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit"
+      ],
+      "baselineSeconds": 2.5e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "91eae4c8e728393aa56952fb62ecc0a00785da170966c0b8f7deabb3ba7a18d3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "91eae4c8e728393aa56952fb62ecc0a00785da170966c0b8f7deabb3ba7a18d3"
+      },
+      "phase": "test.UnsafePathsDoNotPublishACommit",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit"
+      ],
+      "baselineSeconds": 1.4e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "d18a02fe3c510f7625570f3d885695d8bcfad05d5543a3c014eda0bb39ebd8b8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "d18a02fe3c510f7625570f3d885695d8bcfad05d5543a3c014eda0bb39ebd8b8"
+      },
+      "phase": "test.UnsafePathsDoNotPublishACommit",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit"
+      ],
+      "baselineSeconds": 0.0004159
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "e93942d1c6d25824705f4d27258333374087d5815a5f04d022f6d6b01b71dbb5"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsMixedStubStateTests",
+        "method": "UnsafePathsDoNotPublishACommit",
+        "displaySha256": "e93942d1c6d25824705f4d27258333374087d5815a5f04d022f6d6b01b71dbb5"
+      },
+      "phase": "test.UnsafePathsDoNotPublishACommit",
+      "guarantees": [
+        "GitOpsMixedStubStateTests.UnsafePathsDoNotPublishACommit"
+      ],
+      "baselineSeconds": 3.8e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryExamplesTests",
+        "method": "FullFixtureUsesCanonicalPathsAndOnlySubstitutesItsEnvironment",
+        "displaySha256": "e2641d00f173f930af3b92ba8c33236bbee31791ccce2e5e8129c31681ccfc4a"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryExamplesTests",
+        "method": "FullFixtureUsesCanonicalPathsAndOnlySubstitutesItsEnvironment",
+        "displaySha256": "e2641d00f173f930af3b92ba8c33236bbee31791ccce2e5e8129c31681ccfc4a"
+      },
+      "phase": "test.FullFixtureUsesCanonicalPathsAndOnlySubstitutesItsEnvironment",
+      "guarantees": [
+        "GitOpsRepositoryExamplesTests.FullFixtureUsesCanonicalPathsAndOnlySubstitutesItsEnvironment"
+      ],
+      "baselineSeconds": 0.0399593
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl",
+        "displaySha256": "67a19dc6b87bd2f63df9b1634c1d0bf7adc88429de08724b210bbcf1448ef9f6"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl",
+        "displaySha256": "67a19dc6b87bd2f63df9b1634c1d0bf7adc88429de08724b210bbcf1448ef9f6"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "GitOpsRepositoryFlowE2ETests.BrowserGitOpsLifecycleReviewsExactPlansAndRestoresManualControl"
+      ],
+      "baselineSeconds": 148.74674
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "BrowserGitOpsSourceRunsSettingsAndTenantAccess",
+        "displaySha256": "80c648ab3b3b4a99cdbf0f63abb5c8e5f8520eaf35eaddbd6e4f9245da8381aa"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "BrowserGitOpsSourceRunsSettingsAndTenantAccess",
+        "displaySha256": "80c648ab3b3b4a99cdbf0f63abb5c8e5f8520eaf35eaddbd6e4f9245da8381aa"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "GitOpsRepositoryFlowE2ETests.BrowserGitOpsSourceRunsSettingsAndTenantAccess"
+      ],
+      "baselineSeconds": 33.5173104
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "ConfirmedRedisReplacementChangesNativeIdentityAndWaitsForReviewedCleanup",
+        "displaySha256": "b12f7c29b0dd72d7cbe14056f3889951ee423968ac92f6fb04fafb5803645c2f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "ConfirmedRedisReplacementChangesNativeIdentityAndWaitsForReviewedCleanup",
+        "displaySha256": "b12f7c29b0dd72d7cbe14056f3889951ee423968ac92f6fb04fafb5803645c2f"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "GitOpsRepositoryFlowE2ETests.ConfirmedRedisReplacementChangesNativeIdentityAndWaitsForReviewedCleanup"
+      ],
+      "baselineSeconds": 202.6264174
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "LifecycleRequiresFreshApprovalAndReturnsManualControlAfterDetach",
+        "displaySha256": "1f6eef830b7f5178dad54475123d2aecca611133e123ef55cd48fe0184f58eba"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "LifecycleRequiresFreshApprovalAndReturnsManualControlAfterDetach",
+        "displaySha256": "1f6eef830b7f5178dad54475123d2aecca611133e123ef55cd48fe0184f58eba"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "GitOpsRepositoryFlowE2ETests.LifecycleRequiresFreshApprovalAndReturnsManualControlAfterDetach"
+      ],
+      "baselineSeconds": 9.5535155
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp",
+        "displaySha256": "253c50f9648b465418c37ecb71c2b2befcc8c2f124936ebf92c7bc4140f013a5"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp",
+        "displaySha256": "253c50f9648b465418c37ecb71c2b2befcc8c2f124936ebf92c7bc4140f013a5"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "GitOpsRepositoryFlowE2ETests.MixedRepositoryWaitsForSecretsRepairsDriftAndThenPerformsNoOp"
+      ],
+      "baselineSeconds": 356.4566624
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling",
+        "displaySha256": "d3755eabfc83f8c2abfd28173014d3cc0ff1dfbc14308eff526aeffdbc71eec9"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.GitOpsRepositoryFlowE2ETests",
+        "method": "RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling",
+        "displaySha256": "d3755eabfc83f8c2abfd28173014d3cc0ff1dfbc14308eff526aeffdbc71eec9"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "GitOpsRepositoryFlowE2ETests.RepositorySourceAppliesThroughOutboxWorkerWebhookAndPolling"
+      ],
+      "baselineSeconds": 144.3460144
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.HealthBrowserE2ETests",
+        "method": "Applied_unready_workload_is_observed_independently_and_operations_restore_after_reload",
+        "displaySha256": "cacf34b7d55d70127b43c5d870ecec4b37efbf86d023c165d52a10c0014fcc11"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.HealthBrowserE2ETests",
+        "method": "Applied_unready_workload_is_observed_independently_and_operations_restore_after_reload",
+        "displaySha256": "cacf34b7d55d70127b43c5d870ecec4b37efbf86d023c165d52a10c0014fcc11"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "HealthBrowserE2ETests.Applied_unready_workload_is_observed_independently_and_operations_restore_after_reload"
+      ],
+      "baselineSeconds": 74.8882586
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Malformed_primary_state_is_not_coerced_to_a_boolean",
+        "displaySha256": "5e8956c17038ceca939fcccae8278a702cc7cd45545eb7ddff9908b58dc735f4"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Malformed_primary_state_is_not_coerced_to_a_boolean",
+        "displaySha256": "5e8956c17038ceca939fcccae8278a702cc7cd45545eb7ddff9908b58dc735f4"
+      },
+      "phase": "test.Malformed_primary_state_is_not_coerced_to_a_boolean",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Malformed_primary_state_is_not_coerced_to_a_boolean"
+      ],
+      "baselineSeconds": 0.0003366
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Malformed_primary_state_is_not_coerced_to_a_boolean",
+        "displaySha256": "ae2da125cce140af23b7dc9f1a1290d54f415e3b936542669da0b005bc12c3b8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Malformed_primary_state_is_not_coerced_to_a_boolean",
+        "displaySha256": "ae2da125cce140af23b7dc9f1a1290d54f415e3b936542669da0b005bc12c3b8"
+      },
+      "phase": "test.Malformed_primary_state_is_not_coerced_to_a_boolean",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Malformed_primary_state_is_not_coerced_to_a_boolean"
+      ],
+      "baselineSeconds": 0.0002612
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Malformed_primary_state_is_not_coerced_to_a_boolean",
+        "displaySha256": "fa6146a78d1e40fc66ebe23c8140bf0cb569b700fb133f1f11425a3d6d66f309"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Malformed_primary_state_is_not_coerced_to_a_boolean",
+        "displaySha256": "fa6146a78d1e40fc66ebe23c8140bf0cb569b700fb133f1f11425a3d6d66f309"
+      },
+      "phase": "test.Malformed_primary_state_is_not_coerced_to_a_boolean",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Malformed_primary_state_is_not_coerced_to_a_boolean"
+      ],
+      "baselineSeconds": 0.0097271
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Primary_result_ignores_metadata_and_handles_missing_primary_state",
+        "displaySha256": "528732a3d31d7a57a7816cc12ff55f8cf763ac43b6671c8c67d4fcbdc95ab0e2"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Primary_result_ignores_metadata_and_handles_missing_primary_state",
+        "displaySha256": "528732a3d31d7a57a7816cc12ff55f8cf763ac43b6671c8c67d4fcbdc95ab0e2"
+      },
+      "phase": "test.Primary_result_ignores_metadata_and_handles_missing_primary_state",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Primary_result_ignores_metadata_and_handles_missing_primary_state"
+      ],
+      "baselineSeconds": 5.8e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Primary_result_ignores_metadata_and_handles_missing_primary_state",
+        "displaySha256": "72fb47129691aebf7dccc8190f6fd3d0e9d8019a0175b7a96453de3cf2a6e69a"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Primary_result_ignores_metadata_and_handles_missing_primary_state",
+        "displaySha256": "72fb47129691aebf7dccc8190f6fd3d0e9d8019a0175b7a96453de3cf2a6e69a"
+      },
+      "phase": "test.Primary_result_ignores_metadata_and_handles_missing_primary_state",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Primary_result_ignores_metadata_and_handles_missing_primary_state"
+      ],
+      "baselineSeconds": 0.0002025
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Primary_result_ignores_metadata_and_handles_missing_primary_state",
+        "displaySha256": "e4f0af0bedcf14f5df00edea68d3d3b31ca524d78591320a7491ed9afa704617"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Primary_result_ignores_metadata_and_handles_missing_primary_state",
+        "displaySha256": "e4f0af0bedcf14f5df00edea68d3d3b31ca524d78591320a7491ed9afa704617"
+      },
+      "phase": "test.Primary_result_ignores_metadata_and_handles_missing_primary_state",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Primary_result_ignores_metadata_and_handles_missing_primary_state"
+      ],
+      "baselineSeconds": 0.0017815
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Typed_commands_keep_the_replica_set_wire_shapes",
+        "displaySha256": "c6707a5edebf7d6e5811a7adc90873e9a3d4ba94e9a4fe7276070d5af7a36f18"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoReplicaSetCommandTests",
+        "method": "Typed_commands_keep_the_replica_set_wire_shapes",
+        "displaySha256": "c6707a5edebf7d6e5811a7adc90873e9a3d4ba94e9a4fe7276070d5af7a36f18"
+      },
+      "phase": "test.Typed_commands_keep_the_replica_set_wire_shapes",
+      "guarantees": [
+        "MongoReplicaSetCommandTests.Typed_commands_keep_the_replica_set_wire_shapes"
+      ],
+      "baselineSeconds": 0.1025738
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Healthy_API_completes_startup_while_the_mongo_terminal_watcher_is_still_pending",
+        "displaySha256": "76d572e789b94c2b2ad73b5c5bec3dce143addb7ff7b5760b45e1e6dcb254a6a"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Healthy_API_completes_startup_while_the_mongo_terminal_watcher_is_still_pending",
+        "displaySha256": "76d572e789b94c2b2ad73b5c5bec3dce143addb7ff7b5760b45e1e6dcb254a6a"
+      },
+      "phase": "test.Healthy_API_completes_startup_while_the_mongo_terminal_watcher_is_still_pending",
+      "guarantees": [
+        "MongoStartupTests.Healthy_API_completes_startup_while_the_mongo_terminal_watcher_is_still_pending"
+      ],
+      "baselineSeconds": 0.0005819
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "17824416eb9335f71c4087df9227297115cc28e2ffaefee0f54b3f1a97c7e2a4"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "17824416eb9335f71c4087df9227297115cc28e2ffaefee0f54b3f1a97c7e2a4"
+      },
+      "phase": "test.Native_errors_expose_only_numeric_codes_and_known_categories",
+      "guarantees": [
+        "MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories"
+      ],
+      "baselineSeconds": 0.0288897
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "3dbb1f2950b4def7df26462d0939a93fda20c9b5758fe2be7848c1073ca8fd83"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "3dbb1f2950b4def7df26462d0939a93fda20c9b5758fe2be7848c1073ca8fd83"
+      },
+      "phase": "test.Native_errors_expose_only_numeric_codes_and_known_categories",
+      "guarantees": [
+        "MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories"
+      ],
+      "baselineSeconds": 4.3e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "aef643b45e2d3fcc5e3f3fe82f67b2fabd161a6a052aad77e11d5768801dbe53"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "aef643b45e2d3fcc5e3f3fe82f67b2fabd161a6a052aad77e11d5768801dbe53"
+      },
+      "phase": "test.Native_errors_expose_only_numeric_codes_and_known_categories",
+      "guarantees": [
+        "MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories"
+      ],
+      "baselineSeconds": 1.16e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "b2eb6dd0aad5c27c10e04795b5ab75d1912b0e2721f81226c028891844af80fb"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "b2eb6dd0aad5c27c10e04795b5ab75d1912b0e2721f81226c028891844af80fb"
+      },
+      "phase": "test.Native_errors_expose_only_numeric_codes_and_known_categories",
+      "guarantees": [
+        "MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories"
+      ],
+      "baselineSeconds": 0.0002786
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "b7e417b3bc1c9f63fcfb81f8fce6e96c2eefeb6d750e3c62cd1670fa02446914"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Native_errors_expose_only_numeric_codes_and_known_categories",
+        "displaySha256": "b7e417b3bc1c9f63fcfb81f8fce6e96c2eefeb6d750e3c62cd1670fa02446914"
+      },
+      "phase": "test.Native_errors_expose_only_numeric_codes_and_known_categories",
+      "guarantees": [
+        "MongoStartupTests.Native_errors_expose_only_numeric_codes_and_known_categories"
+      ],
+      "baselineSeconds": 5.1e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "26e1d5331c19be49ca977bd977339b1ad0a240b3c1c69bfe98da526b003d6a90"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "26e1d5331c19be49ca977bd977339b1ad0a240b3c1c69bfe98da526b003d6a90"
+      },
+      "phase": "test.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+      "guarantees": [
+        "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure"
+      ],
+      "baselineSeconds": 0.0001312
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "306d5ed9a02cae333222c96ae33337ee0f94492bfe06c38c6809890947c639a0"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "306d5ed9a02cae333222c96ae33337ee0f94492bfe06c38c6809890947c639a0"
+      },
+      "phase": "test.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+      "guarantees": [
+        "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure"
+      ],
+      "baselineSeconds": 0.0002311
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "3711be7c4ee4b4f1e49894f3b1836d0e02780205da1bf9212ffeadcb9808ee74"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "3711be7c4ee4b4f1e49894f3b1836d0e02780205da1bf9212ffeadcb9808ee74"
+      },
+      "phase": "test.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+      "guarantees": [
+        "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure"
+      ],
+      "baselineSeconds": 1.1e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "a0b89adeb91ce8c57e2de24abc95eca102028d9de659c7c034a53e8110fe4f5f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "a0b89adeb91ce8c57e2de24abc95eca102028d9de659c7c034a53e8110fe4f5f"
+      },
+      "phase": "test.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+      "guarantees": [
+        "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure"
+      ],
+      "baselineSeconds": 3.3e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "a9115aaeb2aa055dbbde2bff5376e96434147c02422954aa7280fac227720442"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "a9115aaeb2aa055dbbde2bff5376e96434147c02422954aa7280fac227720442"
+      },
+      "phase": "test.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+      "guarantees": [
+        "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure"
+      ],
+      "baselineSeconds": 1.2e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "ef81f8d3a0bc04df7289e32cf865c7399fc1537bddb3ade9af67e4a644d53a1b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+        "displaySha256": "ef81f8d3a0bc04df7289e32cf865c7399fc1537bddb3ade9af67e4a644d53a1b"
+      },
+      "phase": "test.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure",
+      "guarantees": [
+        "MongoStartupTests.Non_errors_or_malformed_frames_do_not_replace_the_original_startup_failure"
+      ],
+      "baselineSeconds": 7.6e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Original_startup_failure_is_preserved_while_dependencies_are_still_pending",
+        "displaySha256": "56697aa1eb10e33968160a34f7c07525222fec83d5ae41b02b7b42931f5ea5c1"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Original_startup_failure_is_preserved_while_dependencies_are_still_pending",
+        "displaySha256": "56697aa1eb10e33968160a34f7c07525222fec83d5ae41b02b7b42931f5ea5c1"
+      },
+      "phase": "test.Original_startup_failure_is_preserved_while_dependencies_are_still_pending",
+      "guarantees": [
+        "MongoStartupTests.Original_startup_failure_is_preserved_while_dependencies_are_still_pending"
+      ],
+      "baselineSeconds": 0.0009758
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Oversized_native_lines_are_ignored",
+        "displaySha256": "a1df4332ad938a06c49da990497b608a781454dd196712eb8a1937c948a73940"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Oversized_native_lines_are_ignored",
+        "displaySha256": "a1df4332ad938a06c49da990497b608a781454dd196712eb8a1937c948a73940"
+      },
+      "phase": "test.Oversized_native_lines_are_ignored",
+      "guarantees": ["MongoStartupTests.Oversized_native_lines_are_ignored"],
+      "baselineSeconds": 0.0002865
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly",
+        "displaySha256": "004bd1b0a241958773d9e427bd17f2482eb1b1f459dfb0b0ac21a3c474614602"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly",
+        "displaySha256": "004bd1b0a241958773d9e427bd17f2482eb1b1f459dfb0b0ac21a3c474614602"
+      },
+      "phase": "test.Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly",
+      "guarantees": [
+        "MongoStartupTests.Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly"
+      ],
+      "baselineSeconds": 0.0091506
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload",
+        "displaySha256": "2c09c6c55e82e492080573bfe072d5414a3c1575e9dd6ec8f7f7eddece2e5123"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MongoStartupTests",
+        "method": "String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload",
+        "displaySha256": "2c09c6c55e82e492080573bfe072d5414a3c1575e9dd6ec8f7f7eddece2e5123"
+      },
+      "phase": "test.String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload",
+      "guarantees": [
+        "MongoStartupTests.String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload"
+      ],
+      "baselineSeconds": 0.0001543
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.MultiClusterWebServiceE2ETests",
+        "method": "Two_target_reconciliation_isolates_failure_and_retries_only_failed_target",
+        "displaySha256": "650497d7b32752e64eabac7c96b0812bf34268e543f1074c473198aa77aebd1f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.MultiClusterWebServiceE2ETests",
+        "method": "Two_target_reconciliation_isolates_failure_and_retries_only_failed_target",
+        "displaySha256": "650497d7b32752e64eabac7c96b0812bf34268e543f1074c473198aa77aebd1f"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "MultiClusterWebServiceE2ETests.Two_target_reconciliation_isolates_failure_and_retries_only_failed_target"
+      ],
+      "baselineSeconds": 163.2270149
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Current_rollout_with_literals_from_the_owned_config_map_is_ready",
+        "displaySha256": "8486a6b998c5e0d3a1857b9dcfc86c14d72c0f10df603b6d9fdb58ed29195a67"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Current_rollout_with_literals_from_the_owned_config_map_is_ready",
+        "displaySha256": "8486a6b998c5e0d3a1857b9dcfc86c14d72c0f10df603b6d9fdb58ed29195a67"
+      },
+      "phase": "test.Current_rollout_with_literals_from_the_owned_config_map_is_ready",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Current_rollout_with_literals_from_the_owned_config_map_is_ready"
+      ],
+      "baselineSeconds": 0.0003446
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Initial_readiness_without_expected_values_needs_no_config_map",
+        "displaySha256": "0da52e78ff19706528637760684ff85d3eec510db0796e142e6d8f3b9ec89def"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Initial_readiness_without_expected_values_needs_no_config_map",
+        "displaySha256": "0da52e78ff19706528637760684ff85d3eec510db0796e142e6d8f3b9ec89def"
+      },
+      "phase": "test.Initial_readiness_without_expected_values_needs_no_config_map",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Initial_readiness_without_expected_values_needs_no_config_map"
+      ],
+      "baselineSeconds": 0.0003336
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "756e57263b8bb51e2c19d1c8ae4c4f57f04a6e85fa909ca7c53e476fea664899"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "756e57263b8bb51e2c19d1c8ae4c4f57f04a6e85fa909ca7c53e476fea664899"
+      },
+      "phase": "test.Rejects_a_wrong_config_map_reference_identity_or_old_value",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Rejects_a_wrong_config_map_reference_identity_or_old_value"
+      ],
+      "baselineSeconds": 2.75e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "7e30a1db5e7c1beb7851b55ab48eaba4a82004931836f2b680ce4c64b142bf21"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "7e30a1db5e7c1beb7851b55ab48eaba4a82004931836f2b680ce4c64b142bf21"
+      },
+      "phase": "test.Rejects_a_wrong_config_map_reference_identity_or_old_value",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Rejects_a_wrong_config_map_reference_identity_or_old_value"
+      ],
+      "baselineSeconds": 0.0004418
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "9f9e075f3143f42bd0e3d7f554bddebd9c8e6020e5175a9d5288a52fbab53958"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "9f9e075f3143f42bd0e3d7f554bddebd9c8e6020e5175a9d5288a52fbab53958"
+      },
+      "phase": "test.Rejects_a_wrong_config_map_reference_identity_or_old_value",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Rejects_a_wrong_config_map_reference_identity_or_old_value"
+      ],
+      "baselineSeconds": 0.000413
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "ff7089a54ee4ae1df09688ef48e490f1d07668d2ac4fdf5a0fafc95b92aedae7"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_a_wrong_config_map_reference_identity_or_old_value",
+        "displaySha256": "ff7089a54ee4ae1df09688ef48e490f1d07668d2ac4fdf5a0fafc95b92aedae7"
+      },
+      "phase": "test.Rejects_a_wrong_config_map_reference_identity_or_old_value",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Rejects_a_wrong_config_map_reference_identity_or_old_value"
+      ],
+      "baselineSeconds": 1.57e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_the_previous_logical_revision_or_deployment_generation",
+        "displaySha256": "2b1a721d7aebde0901d79861589f2258d9176567b0100f376e5202ec16f53738"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_the_previous_logical_revision_or_deployment_generation",
+        "displaySha256": "2b1a721d7aebde0901d79861589f2258d9176567b0100f376e5202ec16f53738"
+      },
+      "phase": "test.Rejects_the_previous_logical_revision_or_deployment_generation",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Rejects_the_previous_logical_revision_or_deployment_generation"
+      ],
+      "baselineSeconds": 0.0005856
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_the_previous_logical_revision_or_deployment_generation",
+        "displaySha256": "dca2b832d865da462eda64b376b1d258161eb37d5a6788d66de38537d2a5f2a3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Rejects_the_previous_logical_revision_or_deployment_generation",
+        "displaySha256": "dca2b832d865da462eda64b376b1d258161eb37d5a6788d66de38537d2a5f2a3"
+      },
+      "phase": "test.Rejects_the_previous_logical_revision_or_deployment_generation",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Rejects_the_previous_logical_revision_or_deployment_generation"
+      ],
+      "baselineSeconds": 0.0003011
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "69ac95052989b9ac435baba50071a4e3223634d57a88c76736ff95d466e7ae7e"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "69ac95052989b9ac435baba50071a4e3223634d57a88c76736ff95d466e7ae7e"
+      },
+      "phase": "test.Requires_complete_native_rollout",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_complete_native_rollout"
+      ],
+      "baselineSeconds": 2.15e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "764c7f7afa1ddceab76b98c3129595238c8204a170e49c0c164de3f9a79faec4"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "764c7f7afa1ddceab76b98c3129595238c8204a170e49c0c164de3f9a79faec4"
+      },
+      "phase": "test.Requires_complete_native_rollout",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_complete_native_rollout"
+      ],
+      "baselineSeconds": 1.91e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "8848a313004878a0e7cb5486cb2d117eb2f5fc23d51c4a96fd33f5f0f963cb79"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "8848a313004878a0e7cb5486cb2d117eb2f5fc23d51c4a96fd33f5f0f963cb79"
+      },
+      "phase": "test.Requires_complete_native_rollout",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_complete_native_rollout"
+      ],
+      "baselineSeconds": 5.04e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "8df96e803d3588e2d232cd7330f33f34371be663d2f95cb3382b4779821f38cc"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "8df96e803d3588e2d232cd7330f33f34371be663d2f95cb3382b4779821f38cc"
+      },
+      "phase": "test.Requires_complete_native_rollout",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_complete_native_rollout"
+      ],
+      "baselineSeconds": 0.0486342
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "caae580d48f78a6c6f5927e9897da9c942d0dd856ef58b64eddac50481631c19"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "caae580d48f78a6c6f5927e9897da9c942d0dd856ef58b64eddac50481631c19"
+      },
+      "phase": "test.Requires_complete_native_rollout",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_complete_native_rollout"
+      ],
+      "baselineSeconds": 1.8e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "d1af7c0b892e5caeca4e3ef6d8c8281ea0db65bd9bac463afc0a490c864e9c23"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_complete_native_rollout",
+        "displaySha256": "d1af7c0b892e5caeca4e3ef6d8c8281ea0db65bd9bac463afc0a490c864e9c23"
+      },
+      "phase": "test.Requires_complete_native_rollout",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_complete_native_rollout"
+      ],
+      "baselineSeconds": 0.0011011
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_the_config_map_when_values_are_expected",
+        "displaySha256": "9b466c92601b149ef6efa0d215e6bf33d6cd4c3583870f6fedfa37a7f43fbcb3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Requires_the_config_map_when_values_are_expected",
+        "displaySha256": "9b466c92601b149ef6efa0d215e6bf33d6cd4c3583870f6fedfa37a7f43fbcb3"
+      },
+      "phase": "test.Requires_the_config_map_when_values_are_expected",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Requires_the_config_map_when_values_are_expected"
+      ],
+      "baselineSeconds": 0.0002001
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Still_rejects_a_different_image",
+        "displaySha256": "7323f95d691627e00b7548c45597fa92f8cb6473484c84aca3ac716ae650a73f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.NativeDeploymentReadinessTests",
+        "method": "Still_rejects_a_different_image",
+        "displaySha256": "7323f95d691627e00b7548c45597fa92f8cb6473484c84aca3ac716ae650a73f"
+      },
+      "phase": "test.Still_rejects_a_different_image",
+      "guarantees": [
+        "NativeDeploymentReadinessTests.Still_rejects_a_different_image"
+      ],
+      "baselineSeconds": 0.0004262
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.PlaywrightBrowserContainerTests",
+        "method": "Start_waits_until_published_endpoint_accepts_browser_connections",
+        "displaySha256": "1910f8bd7951a382e9928f2235c5126006d338d59a02d7c324a21e1faee57067"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.PlaywrightBrowserContainerTests",
+        "method": "Start_waits_until_published_endpoint_accepts_browser_connections",
+        "displaySha256": "1910f8bd7951a382e9928f2235c5126006d338d59a02d7c324a21e1faee57067"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "PlaywrightBrowserContainerTests.Start_waits_until_published_endpoint_accepts_browser_connections"
+      ],
+      "baselineSeconds": 16.6093116
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget",
+        "displaySha256": "dfc050c8065faa66595e169e3bc7509c4419487496c6a25fe0e70236e36d24b6"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget",
+        "displaySha256": "dfc050c8065faa66595e169e3bc7509c4419487496c6a25fe0e70236e36d24b6"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeBrowserE2ETests.Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget"
+      ],
+      "baselineSeconds": 78.981907
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling",
+        "displaySha256": "d3dc5bea0e04e8ef2561e8907ec8a718549e707857f6714a7fbaea54fb3a6c1c"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling",
+        "displaySha256": "d3dc5bea0e04e8ef2561e8907ec8a718549e707857f6714a7fbaea54fb3a6c1c"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeBrowserE2ETests.Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling"
+      ],
+      "baselineSeconds": 176.2060789
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace",
+        "displaySha256": "7a3692a3a2c089b0264737e7c4a98348369a1ac66171794e37f7d193efbefd38"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace",
+        "displaySha256": "7a3692a3a2c089b0264737e7c4a98348369a1ac66171794e37f7d193efbefd38"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeBrowserE2ETests.Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace"
+      ],
+      "baselineSeconds": 77.0538809
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes",
+        "displaySha256": "b7cb0815b17654420b8d81efed41fc5fd656dce44e5819643ac1c38fe4b7aa61"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes",
+        "displaySha256": "b7cb0815b17654420b8d81efed41fc5fd656dce44e5819643ac1c38fe4b7aa61"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeBrowserE2ETests.Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes"
+      ],
+      "baselineSeconds": 29.4817731
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated",
+        "displaySha256": "6c38be40b0f02db32e02e9368226c4cd91683883f480c8f6692d43448d34b16e"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TenantAccessRealtimeJourney",
+        "method": "Tenant_tabs_and_membership_changes_preserve_realtime_workspace_isolation",
+        "displaySha256": "02e0b4bb5f67972330db9d3c49abdac20225e52520b3dfd6285e4415029c71fc"
+      },
+      "phase": "e2e.tenant-access.tabs",
+      "guarantees": [
+        "RealtimeBrowserE2ETests.Same_account_tabs_keep_different_tenant_notifications_and_dirty_workspaces_isolated"
+      ],
+      "baselineSeconds": 62.7110872,
+      "merge": "TenantAccessRealtimeJourney"
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace",
+        "displaySha256": "649dcb261858199a85b49473db9e78656c94d0cea7e928f8bd7e1bd0aae6f7e7"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeBrowserE2ETests",
+        "method": "Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace",
+        "displaySha256": "649dcb261858199a85b49473db9e78656c94d0cea7e928f8bd7e1bd0aae6f7e7"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeBrowserE2ETests.Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace"
+      ],
+      "baselineSeconds": 87.6602238
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Acknowledgements_require_matching_invocation_and_resource",
+        "displaySha256": "20097db65b5fc15f0eccf2df919ea283e749c61f23d139576355178ef9a70e3c"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Acknowledgements_require_matching_invocation_and_resource",
+        "displaySha256": "20097db65b5fc15f0eccf2df919ea283e749c61f23d139576355178ef9a70e3c"
+      },
+      "phase": "test.Acknowledgements_require_matching_invocation_and_resource",
+      "guarantees": [
+        "RealtimeJournalTests.Acknowledgements_require_matching_invocation_and_resource"
+      ],
+      "baselineSeconds": 0.0004417
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Changed_interests_fence_pending_heartbeat",
+        "displaySha256": "15e6f0e7effdf5d692e095899cb1cc5eb78224f7384cc4666619b6a85eac60f9"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Changed_interests_fence_pending_heartbeat",
+        "displaySha256": "15e6f0e7effdf5d692e095899cb1cc5eb78224f7384cc4666619b6a85eac60f9"
+      },
+      "phase": "test.Changed_interests_fence_pending_heartbeat",
+      "guarantees": [
+        "RealtimeJournalTests.Changed_interests_fence_pending_heartbeat"
+      ],
+      "baselineSeconds": 0.0001508
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Changed_interests_fence_pending_heartbeat",
+        "displaySha256": "96a4699b71fa9398aaf018b252ac45ff38642461e207ed6cc860c874a53301c1"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Changed_interests_fence_pending_heartbeat",
+        "displaySha256": "96a4699b71fa9398aaf018b252ac45ff38642461e207ed6cc860c874a53301c1"
+      },
+      "phase": "test.Changed_interests_fence_pending_heartbeat",
+      "guarantees": [
+        "RealtimeJournalTests.Changed_interests_fence_pending_heartbeat"
+      ],
+      "baselineSeconds": 0.0001398
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_acknowledgements_replace_true_coverage",
+        "displaySha256": "d3e547e8de86e7bebb68d29e96892e0fcb291cef3fc5685a36a6df32181798ac"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_acknowledgements_replace_true_coverage",
+        "displaySha256": "d3e547e8de86e7bebb68d29e96892e0fcb291cef3fc5685a36a6df32181798ac"
+      },
+      "phase": "test.Current_acknowledgements_replace_true_coverage",
+      "guarantees": [
+        "RealtimeJournalTests.Current_acknowledgements_replace_true_coverage"
+      ],
+      "baselineSeconds": 0.0002384
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_acknowledgements_replace_true_coverage",
+        "displaySha256": "e3a2686be9490f8e0e9aa2049e66c40eca6ab98700d849ca1cd736ed645d2ad6"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_acknowledgements_replace_true_coverage",
+        "displaySha256": "e3a2686be9490f8e0e9aa2049e66c40eca6ab98700d849ca1cd736ed645d2ad6"
+      },
+      "phase": "test.Current_acknowledgements_replace_true_coverage",
+      "guarantees": [
+        "RealtimeJournalTests.Current_acknowledgements_replace_true_coverage"
+      ],
+      "baselineSeconds": 0.0437103
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_acknowledgements_replace_true_coverage",
+        "displaySha256": "e3e6e5a74783ba10d59ad0771e24872bbb8431d7a4d8628774ebe6502f50f334"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_acknowledgements_replace_true_coverage",
+        "displaySha256": "e3e6e5a74783ba10d59ad0771e24872bbb8431d7a4d8628774ebe6502f50f334"
+      },
+      "phase": "test.Current_acknowledgements_replace_true_coverage",
+      "guarantees": [
+        "RealtimeJournalTests.Current_acknowledgements_replace_true_coverage"
+      ],
+      "baselineSeconds": 1.65e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "3c1a72be66d06a22af0c5011bbfcf5e57df9aceb9c09e5fcb1d1e59cedad53bb"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "3c1a72be66d06a22af0c5011bbfcf5e57df9aceb9c09e5fcb1d1e59cedad53bb"
+      },
+      "phase": "test.Current_document_pending_and_failed_reads_still_block_quiet",
+      "guarantees": [
+        "RealtimeJournalTests.Current_document_pending_and_failed_reads_still_block_quiet"
+      ],
+      "baselineSeconds": 0.0001317
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "511bebc12fed9d326834a3031cb1eeff440cd430871e7947bf919e856a3ca332"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "511bebc12fed9d326834a3031cb1eeff440cd430871e7947bf919e856a3ca332"
+      },
+      "phase": "test.Current_document_pending_and_failed_reads_still_block_quiet",
+      "guarantees": [
+        "RealtimeJournalTests.Current_document_pending_and_failed_reads_still_block_quiet"
+      ],
+      "baselineSeconds": 2.6e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "e144b5897fe9f685b958b5a5ef7d9568ca9a8299b3d811cbf5185a8f68809190"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "e144b5897fe9f685b958b5a5ef7d9568ca9a8299b3d811cbf5185a8f68809190"
+      },
+      "phase": "test.Current_document_pending_and_failed_reads_still_block_quiet",
+      "guarantees": [
+        "RealtimeJournalTests.Current_document_pending_and_failed_reads_still_block_quiet"
+      ],
+      "baselineSeconds": 6.6e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "fe7b86e5c0bd6b40a796b32d5bc0d80720f8bbf975f9e33c733f9889a581a9ce"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Current_document_pending_and_failed_reads_still_block_quiet",
+        "displaySha256": "fe7b86e5c0bd6b40a796b32d5bc0d80720f8bbf975f9e33c733f9889a581a9ce"
+      },
+      "phase": "test.Current_document_pending_and_failed_reads_still_block_quiet",
+      "guarantees": [
+        "RealtimeJournalTests.Current_document_pending_and_failed_reads_still_block_quiet"
+      ],
+      "baselineSeconds": 0.0002238
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+        "displaySha256": "341272b70ed3ddac70d4cc6d4dd43993b2215fc302037a610afdb37280020e0d"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+        "displaySha256": "341272b70ed3ddac70d4cc6d4dd43993b2215fc302037a610afdb37280020e0d"
+      },
+      "phase": "test.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+      "guarantees": [
+        "RealtimeJournalTests.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome"
+      ],
+      "baselineSeconds": 0.0001252
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+        "displaySha256": "915fe5d9186dbdfec05752636cdd6e3d3167ed3b44ff959b7ec4f99c61d11612"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+        "displaySha256": "915fe5d9186dbdfec05752636cdd6e3d3167ed3b44ff959b7ec4f99c61d11612"
+      },
+      "phase": "test.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+      "guarantees": [
+        "RealtimeJournalTests.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome"
+      ],
+      "baselineSeconds": 8.5e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+        "displaySha256": "9cdc805461015535c294e9543f3733a103779d3485ccf08216d4520facb2e8e0"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+        "displaySha256": "9cdc805461015535c294e9543f3733a103779d3485ccf08216d4520facb2e8e0"
+      },
+      "phase": "test.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome",
+      "guarantees": [
+        "RealtimeJournalTests.Late_retired_completion_keeps_current_quiet_and_retains_its_outcome"
+      ],
+      "baselineSeconds": 0.0003484
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Older_completion_cannot_overwrite_newer_false_acknowledgement",
+        "displaySha256": "db4371dfa1aa0aeec2f496a0d26a1f50dcd509b6dc23fc617a20bd1697370adc"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Older_completion_cannot_overwrite_newer_false_acknowledgement",
+        "displaySha256": "db4371dfa1aa0aeec2f496a0d26a1f50dcd509b6dc23fc617a20bd1697370adc"
+      },
+      "phase": "test.Older_completion_cannot_overwrite_newer_false_acknowledgement",
+      "guarantees": [
+        "RealtimeJournalTests.Older_completion_cannot_overwrite_newer_false_acknowledgement"
+      ],
+      "baselineSeconds": 0.0002094
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "1f36d032b97e9fea51b8fd5f8a7506deb99fbced5f98f4522b05c4e5ce0e65d3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "1f36d032b97e9fea51b8fd5f8a7506deb99fbced5f98f4522b05c4e5ce0e65d3"
+      },
+      "phase": "test.Only_completed_successful_reads_count_as_quiet_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence"
+      ],
+      "baselineSeconds": 4.3e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "6f02099d26d63977bfa79eb609529760129ed8ca86f895eaac96c367fd0a8e2f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "6f02099d26d63977bfa79eb609529760129ed8ca86f895eaac96c367fd0a8e2f"
+      },
+      "phase": "test.Only_completed_successful_reads_count_as_quiet_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence"
+      ],
+      "baselineSeconds": 5.8e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "6f41217d0d43d36fd939eb6397f6f99dd6a270757fde11a3546f36c1057ba077"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "6f41217d0d43d36fd939eb6397f6f99dd6a270757fde11a3546f36c1057ba077"
+      },
+      "phase": "test.Only_completed_successful_reads_count_as_quiet_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence"
+      ],
+      "baselineSeconds": 0.002368
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "78aa43de72216436babae6dcb7b6e11745b9455fdf5c2e78fbe2740c40f99c9c"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "78aa43de72216436babae6dcb7b6e11745b9455fdf5c2e78fbe2740c40f99c9c"
+      },
+      "phase": "test.Only_completed_successful_reads_count_as_quiet_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence"
+      ],
+      "baselineSeconds": 5.1e-6
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "b8b831886ea8f188bb35f21057e5a696a014891508e5aeffeba8948d7a6530a9"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "b8b831886ea8f188bb35f21057e5a696a014891508e5aeffeba8948d7a6530a9"
+      },
+      "phase": "test.Only_completed_successful_reads_count_as_quiet_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence"
+      ],
+      "baselineSeconds": 0.0003458
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "e3dc03c8ccf24e34a3aaf98abcc837921ef67de794f1e9d8aa059de3543649c5"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Only_completed_successful_reads_count_as_quiet_evidence",
+        "displaySha256": "e3dc03c8ccf24e34a3aaf98abcc837921ef67de794f1e9d8aa059de3543649c5"
+      },
+      "phase": "test.Only_completed_successful_reads_count_as_quiet_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Only_completed_successful_reads_count_as_quiet_evidence"
+      ],
+      "baselineSeconds": 1.06e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Recovery_must_finish_and_does_not_hide_an_older_pending_read",
+        "displaySha256": "9549bf02ad757261ffc3741337ec0f20483a59d69c27fe83cb49d18ad5d2ab3f"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Recovery_must_finish_and_does_not_hide_an_older_pending_read",
+        "displaySha256": "9549bf02ad757261ffc3741337ec0f20483a59d69c27fe83cb49d18ad5d2ab3f"
+      },
+      "phase": "test.Recovery_must_finish_and_does_not_hide_an_older_pending_read",
+      "guarantees": [
+        "RealtimeJournalTests.Recovery_must_finish_and_does_not_hide_an_older_pending_read"
+      ],
+      "baselineSeconds": 0.0003515
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Replaced_resource_interests_do_not_keep_previous_resource_coverage",
+        "displaySha256": "8d50ddcfb88e2247241538d63e956bcdcb8f53007bd0b60e7eb50441c37c6b45"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Replaced_resource_interests_do_not_keep_previous_resource_coverage",
+        "displaySha256": "8d50ddcfb88e2247241538d63e956bcdcb8f53007bd0b60e7eb50441c37c6b45"
+      },
+      "phase": "test.Replaced_resource_interests_do_not_keep_previous_resource_coverage",
+      "guarantees": [
+        "RealtimeJournalTests.Replaced_resource_interests_do_not_keep_previous_resource_coverage"
+      ],
+      "baselineSeconds": 0.0004058
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+        "displaySha256": "2bc9fea0310de13bf6dc67bfde7355f29740c6bf432a20c6bec84afa770675e3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+        "displaySha256": "2bc9fea0310de13bf6dc67bfde7355f29740c6bf432a20c6bec84afa770675e3"
+      },
+      "phase": "test.Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_document_reads_cannot_block_current_success_or_restore_evidence"
+      ],
+      "baselineSeconds": 0.0083581
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+        "displaySha256": "cea0796426475b38c04fbae0a6b1a40992be55f1869f6fa309fd117aeb5d3f85"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+        "displaySha256": "cea0796426475b38c04fbae0a6b1a40992be55f1869f6fa309fd117aeb5d3f85"
+      },
+      "phase": "test.Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_document_reads_cannot_block_current_success_or_restore_evidence"
+      ],
+      "baselineSeconds": 0.0005338
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+        "displaySha256": "e9b5e9998f94860b3a011266c95e61be849c78de4a1200bf54c92ccb63aa18b4"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+        "displaySha256": "e9b5e9998f94860b3a011266c95e61be849c78de4a1200bf54c92ccb63aa18b4"
+      },
+      "phase": "test.Retired_document_reads_cannot_block_current_success_or_restore_evidence",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_document_reads_cannot_block_current_success_or_restore_evidence"
+      ],
+      "baselineSeconds": 2.65e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "1713ab3afba24abb0931b2c3130bd2d4ab7918b2bc0b81764c8a639b9d34fce9"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "1713ab3afba24abb0931b2c3130bd2d4ab7918b2bc0b81764c8a639b9d34fce9"
+      },
+      "phase": "test.Retired_scope_cannot_be_resurrected_by_late_completion",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion"
+      ],
+      "baselineSeconds": 0.0007797
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "43b6d6e76daa8734c88a5253c24b9b939fb29497c6c4612dc86a127489344d28"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "43b6d6e76daa8734c88a5253c24b9b939fb29497c6c4612dc86a127489344d28"
+      },
+      "phase": "test.Retired_scope_cannot_be_resurrected_by_late_completion",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion"
+      ],
+      "baselineSeconds": 0.0001346
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "4e9baec47940cd2cd02406b1ec419ae18c8337b27d34e603837e5828aa8eb44d"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "4e9baec47940cd2cd02406b1ec419ae18c8337b27d34e603837e5828aa8eb44d"
+      },
+      "phase": "test.Retired_scope_cannot_be_resurrected_by_late_completion",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion"
+      ],
+      "baselineSeconds": 2.36e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "5f7af6d2f0114d539272b09e313f12df400cb39207cce06f7e2303aa939fda23"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "5f7af6d2f0114d539272b09e313f12df400cb39207cce06f7e2303aa939fda23"
+      },
+      "phase": "test.Retired_scope_cannot_be_resurrected_by_late_completion",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion"
+      ],
+      "baselineSeconds": 2.95e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "728715b52baccab2639fad096aa9706c9b9d127d155791d921d087cc102fb306"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeJournalTests",
+        "method": "Retired_scope_cannot_be_resurrected_by_late_completion",
+        "displaySha256": "728715b52baccab2639fad096aa9706c9b9d127d155791d921d087cc102fb306"
+      },
+      "phase": "test.Retired_scope_cannot_be_resurrected_by_late_completion",
+      "guarantees": [
+        "RealtimeJournalTests.Retired_scope_cannot_be_resurrected_by_late_completion"
+      ],
+      "baselineSeconds": 0.0004832
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeMembershipE2ETests",
+        "method": "Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation",
+        "displaySha256": "96924eb1c6cfead258da489dccd94fae21553151cb1d20ca5c50a085445fbfc4"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TenantAccessRealtimeJourney",
+        "method": "Tenant_tabs_and_membership_changes_preserve_realtime_workspace_isolation",
+        "displaySha256": "02e0b4bb5f67972330db9d3c49abdac20225e52520b3dfd6285e4415029c71fc"
+      },
+      "phase": "e2e.tenant-access.membership",
+      "guarantees": [
+        "RealtimeMembershipE2ETests.Own_user_notifications_revalidate_roles_and_restore_removed_membership_without_token_rotation"
+      ],
+      "baselineSeconds": 57.3275525,
+      "merge": "TenantAccessRealtimeJourney"
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeObservationBrowserE2ETests",
+        "method": "Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget",
+        "displaySha256": "5e6a56af9d03120909456a1c71a62c42b714fe31c512cf4728b7596490328916"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeObservationBrowserE2ETests",
+        "method": "Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget",
+        "displaySha256": "5e6a56af9d03120909456a1c71a62c42b714fe31c512cf4728b7596490328916"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeObservationBrowserE2ETests.Owned_native_pod_deletions_reach_current_visible_diagnostics_within_observation_budget"
+      ],
+      "baselineSeconds": 185.5171952
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimePortReservationTests",
+        "method": "Reserved_listener_port_is_unavailable_to_both_localhost_address_families",
+        "displaySha256": "d2acf64323db31ca7e5eb78e2c3b175b0e8681dc5a14c0d75b105346920b7029"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimePortReservationTests",
+        "method": "Reserved_listener_port_is_unavailable_to_both_localhost_address_families",
+        "displaySha256": "d2acf64323db31ca7e5eb78e2c3b175b0e8681dc5a14c0d75b105346920b7029"
+      },
+      "phase": "test.Reserved_listener_port_is_unavailable_to_both_localhost_address_families",
+      "guarantees": [
+        "RealtimePortReservationTests.Reserved_listener_port_is_unavailable_to_both_localhost_address_families"
+      ],
+      "baselineSeconds": 0.0123366
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeProviderBrowserE2ETests",
+        "method": "Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current",
+        "displaySha256": "588822570c7fd0453eb90e16b81cd1b368bc4b7952858678a689d1c6e2358687"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeProviderBrowserE2ETests",
+        "method": "Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current",
+        "displaySha256": "588822570c7fd0453eb90e16b81cd1b368bc4b7952858678a689d1c6e2358687"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeProviderBrowserE2ETests.Native_storage_hints_preserve_dirty_draft_coalesce_slow_reads_and_keep_quiet_inventory_current"
+      ],
+      "baselineSeconds": 103.10059050000001
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RealtimeStorageObservationE2ETests",
+        "method": "Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users",
+        "displaySha256": "565482eb076195d9552f19296b09b6d74d4e7142c79487b8188e11f86e54ec48"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RealtimeStorageObservationE2ETests",
+        "method": "Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users",
+        "displaySha256": "565482eb076195d9552f19296b09b6d74d4e7142c79487b8188e11f86e54ec48"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RealtimeStorageObservationE2ETests.Admin_native_storage_changes_publish_sanitized_coherent_snapshots_and_deny_regular_users"
+      ],
+      "baselineSeconds": 2.9678641
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.ReleaseBrowserE2ETests",
+        "method": "Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release",
+        "displaySha256": "88be962f6eb31324c185860f3e9f15943abc4627a4a9dcc9278214a082354dea"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.ReleaseBrowserE2ETests",
+        "method": "Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release",
+        "displaySha256": "88be962f6eb31324c185860f3e9f15943abc4627a4a9dcc9278214a082354dea"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "ReleaseBrowserE2ETests.Redeploy_pending_survives_reload_and_rollback_restores_spec_with_a_new_ready_release"
+      ],
+      "baselineSeconds": 104.0109386
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.RuntimeLogsBrowserE2ETests",
+        "method": "Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage",
+        "displaySha256": "b2f603094e67453d3d20890673fcde11a806242ee1492e4c9437989a2ec1b928"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.RuntimeLogsBrowserE2ETests",
+        "method": "Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage",
+        "displaySha256": "b2f603094e67453d3d20890673fcde11a806242ee1492e4c9437989a2ec1b928"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "RuntimeLogsBrowserE2ETests.Runtime_logs_select_owned_containers_stop_on_replacement_and_isolate_transport_outage"
+      ],
+      "baselineSeconds": 129.9095665
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.SecretBrowserE2ETests",
+        "method": "User_can_create_rotate_bind_inspect_and_detach_write_only_Secret_projections",
+        "displaySha256": "2ccb3f8f2b6453f317de502e14af97ab7c70ce5aed7dbca105464942c7b1d228"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.PublicServiceBindingsJourney",
+        "method": "Secret_projection_and_domain_bindings_share_one_public_service",
+        "displaySha256": "77c5a69933779351385cfac8684f84338dbf2de7d0a0b6e04ab549094f561631"
+      },
+      "phase": "e2e.public-bindings.secret",
+      "guarantees": [
+        "SecretBrowserE2ETests.User_can_create_rotate_bind_inspect_and_detach_write_only_Secret_projections"
+      ],
+      "baselineSeconds": 45.9585643,
+      "merge": "PublicServiceBindingsJourney"
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.SourceBuildE2ETests",
+        "method": "Browser_git_creation_and_global_search_reach_the_same_source_built_resource",
+        "displaySha256": "113f3a6ffcdf287091294f9c59c4c54c35079b8136b76cb9cb8a2f2ae3e41cf1"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.SourceBuildE2ETests",
+        "method": "Browser_git_creation_and_global_search_reach_the_same_source_built_resource",
+        "displaySha256": "113f3a6ffcdf287091294f9c59c4c54c35079b8136b76cb9cb8a2f2ae3e41cf1"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "SourceBuildE2ETests.Browser_git_creation_and_global_search_reach_the_same_source_built_resource"
+      ],
+      "baselineSeconds": 137.1361779
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.SourceBuildE2ETests",
+        "method": "Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance",
+        "displaySha256": "b1819229380e6b2bb059dae6b50c0290666efc1345848935ba4db287e2bbe2e2"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.SourceBuildE2ETests",
+        "method": "Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance",
+        "displaySha256": "b1819229380e6b2bb059dae6b50c0290666efc1345848935ba4db287e2bbe2e2"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "SourceBuildE2ETests.Source_build_uses_the_exact_repository_commit_pushes_an_artifact_and_records_release_provenance"
+      ],
+      "baselineSeconds": 67.0745788
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.StorageBrowserE2ETests",
+        "method": "Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile",
+        "displaySha256": "0f64ef30c7491120bf73a433443bef05cd7bf95a37e670ee98906043d520789b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.StorageBrowserE2ETests",
+        "method": "Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile",
+        "displaySha256": "0f64ef30c7491120bf73a433443bef05cd7bf95a37e670ee98906043d520789b"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "StorageBrowserE2ETests.Platform_administrator_reads_target_inventory_and_creates_and_updates_a_revisioned_profile"
+      ],
+      "baselineSeconds": 19.3489422
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TenantWorkspaceBrowserE2ETests",
+        "method": "Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads",
+        "displaySha256": "70274107c1507e71d61404f713c3d65def742828159a35532f6659f0552d14d8"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TenantWorkspaceBrowserE2ETests",
+        "method": "Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads",
+        "displaySha256": "70274107c1507e71d61404f713c3d65def742828159a35532f6659f0552d14d8"
+      },
+      "phase": "e2e.case",
+      "guarantees": [
+        "TenantWorkspaceBrowserE2ETests.Viewer_reads_real_workloads_and_tenant_switch_discards_only_confirmed_drafts_and_old_reads"
+      ],
+      "baselineSeconds": 60.8504456
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Body_and_cleanup_failures_are_preserved_and_later_cleanup_still_runs",
+        "displaySha256": "a76ce1805eb049fd6bf1eb93e703573bbafa5486d9f9310566eb22ec7e2d46c3"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Body_and_cleanup_failures_are_preserved_and_later_cleanup_still_runs",
+        "displaySha256": "a76ce1805eb049fd6bf1eb93e703573bbafa5486d9f9310566eb22ec7e2d46c3"
+      },
+      "phase": "test.Body_and_cleanup_failures_are_preserved_and_later_cleanup_still_runs",
+      "guarantees": [
+        "TestLifecycleTests.Body_and_cleanup_failures_are_preserved_and_later_cleanup_still_runs"
+      ],
+      "baselineSeconds": 0.0027095
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Cleanup_runs_after_a_partially_completed_mutation_fails",
+        "displaySha256": "8a888650ec707a073d69958cf23b39a546290087a9c1e200ffc494ed394f90ba"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Cleanup_runs_after_a_partially_completed_mutation_fails",
+        "displaySha256": "8a888650ec707a073d69958cf23b39a546290087a9c1e200ffc494ed394f90ba"
+      },
+      "phase": "test.Cleanup_runs_after_a_partially_completed_mutation_fails",
+      "guarantees": [
+        "TestLifecycleTests.Cleanup_runs_after_a_partially_completed_mutation_fails"
+      ],
+      "baselineSeconds": 0.0016072
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Local_deadline_bounds_a_stalled_probe_and_cancels_its_token",
+        "displaySha256": "c0ebea9bcc7002b6ea99ce43ff1603493c1cc18ccded5056295c32ad934cf244"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Local_deadline_bounds_a_stalled_probe_and_cancels_its_token",
+        "displaySha256": "c0ebea9bcc7002b6ea99ce43ff1603493c1cc18ccded5056295c32ad934cf244"
+      },
+      "phase": "test.Local_deadline_bounds_a_stalled_probe_and_cancels_its_token",
+      "guarantees": [
+        "TestLifecycleTests.Local_deadline_bounds_a_stalled_probe_and_cancels_its_token"
+      ],
+      "baselineSeconds": 0.0524987
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Only_not_found_completes_deletion",
+        "displaySha256": "677f23ce4b7a614ff4b380ffc61fcdd603e39c450c0d8a3e3504a066199e9659"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Only_not_found_completes_deletion",
+        "displaySha256": "677f23ce4b7a614ff4b380ffc61fcdd603e39c450c0d8a3e3504a066199e9659"
+      },
+      "phase": "test.Only_not_found_completes_deletion",
+      "guarantees": ["TestLifecycleTests.Only_not_found_completes_deletion"],
+      "baselineSeconds": 0.0002058
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Startup_cancellation_does_not_stop_running_port_forward_pipe_readers",
+        "displaySha256": "4cf3197c2821b57aec548254b1481a290207402cc2551b5b0f31656cb9796c04"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Startup_cancellation_does_not_stop_running_port_forward_pipe_readers",
+        "displaySha256": "4cf3197c2821b57aec548254b1481a290207402cc2551b5b0f31656cb9796c04"
+      },
+      "phase": "test.Startup_cancellation_does_not_stop_running_port_forward_pipe_readers",
+      "guarantees": [
+        "TestLifecycleTests.Startup_cancellation_does_not_stop_running_port_forward_pipe_readers"
+      ],
+      "baselineSeconds": 0.2639015
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Unexpected_deletion_status_is_an_immediate_safe_failure",
+        "displaySha256": "5e82262ddecec92d5695cdc3b16ba976033c5eae02aa22c30c20b9f022637880"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Unexpected_deletion_status_is_an_immediate_safe_failure",
+        "displaySha256": "5e82262ddecec92d5695cdc3b16ba976033c5eae02aa22c30c20b9f022637880"
+      },
+      "phase": "test.Unexpected_deletion_status_is_an_immediate_safe_failure",
+      "guarantees": [
+        "TestLifecycleTests.Unexpected_deletion_status_is_an_immediate_safe_failure"
+      ],
+      "baselineSeconds": 1.76e-5
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Unexpected_deletion_status_is_an_immediate_safe_failure",
+        "displaySha256": "7d246177ddcbac32879c65ea733065fb66d171520426794c46c1200af6ae0e05"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Unexpected_deletion_status_is_an_immediate_safe_failure",
+        "displaySha256": "7d246177ddcbac32879c65ea733065fb66d171520426794c46c1200af6ae0e05"
+      },
+      "phase": "test.Unexpected_deletion_status_is_an_immediate_safe_failure",
+      "guarantees": [
+        "TestLifecycleTests.Unexpected_deletion_status_is_an_immediate_safe_failure"
+      ],
+      "baselineSeconds": 0.0006387
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Unexpected_deletion_status_is_an_immediate_safe_failure",
+        "displaySha256": "914339df7423be7f1ab4cea8d3fb606005c2944a7a015c4e367dedb8e8e0c149"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestLifecycleTests",
+        "method": "Unexpected_deletion_status_is_an_immediate_safe_failure",
+        "displaySha256": "914339df7423be7f1ab4cea8d3fb606005c2944a7a015c4e367dedb8e8e0c149"
+      },
+      "phase": "test.Unexpected_deletion_status_is_an_immediate_safe_failure",
+      "guarantees": [
+        "TestLifecycleTests.Unexpected_deletion_status_is_an_immediate_safe_failure"
+      ],
+      "baselineSeconds": 0.0217958
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestPhaseJournalTests",
+        "method": "Bounds_records_and_does_not_replace_a_scenario_failure_when_storage_disappears",
+        "displaySha256": "dbbbff78972f2c00b177f1cab4b7eb4111e6eec2b220d84f9a2c1bfc8f30d057"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestPhaseJournalTests",
+        "method": "Bounds_records_and_does_not_replace_a_scenario_failure_when_storage_disappears",
+        "displaySha256": "dbbbff78972f2c00b177f1cab4b7eb4111e6eec2b220d84f9a2c1bfc8f30d057"
+      },
+      "phase": "test.Bounds_records_and_does_not_replace_a_scenario_failure_when_storage_disappears",
+      "guarantees": [
+        "TestPhaseJournalTests.Bounds_records_and_does_not_replace_a_scenario_failure_when_storage_disappears"
+      ],
+      "baselineSeconds": 0.0037188
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestPhaseJournalTests",
+        "method": "Failed_kubernetes_call_records_only_status_and_preserves_original_exception",
+        "displaySha256": "93d7b30a16b671cd655ea8055553838c0eb6dd71707035dfd969bbea67919157"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestPhaseJournalTests",
+        "method": "Failed_kubernetes_call_records_only_status_and_preserves_original_exception",
+        "displaySha256": "93d7b30a16b671cd655ea8055553838c0eb6dd71707035dfd969bbea67919157"
+      },
+      "phase": "test.Failed_kubernetes_call_records_only_status_and_preserves_original_exception",
+      "guarantees": [
+        "TestPhaseJournalTests.Failed_kubernetes_call_records_only_status_and_preserves_original_exception"
+      ],
+      "baselineSeconds": 0.0524649
+    },
+    {
+      "source": {
+        "owner": "Pole.Tests.E2E.TestPhaseJournalTests",
+        "method": "Records_only_hashed_identifiers_and_typed_phase_metadata",
+        "displaySha256": "543b44d1773d4d4dc82a010f97624eb4fecc6e3544a1240da28bf5f63fe9665b"
+      },
+      "target": {
+        "owner": "Pole.Tests.E2E.TestPhaseJournalTests",
+        "method": "Records_only_hashed_identifiers_and_typed_phase_metadata",
+        "displaySha256": "543b44d1773d4d4dc82a010f97624eb4fecc6e3544a1240da28bf5f63fe9665b"
+      },
+      "phase": "test.Records_only_hashed_identifiers_and_typed_phase_metadata",
+      "guarantees": [
+        "TestPhaseJournalTests.Records_only_hashed_identifiers_and_typed_phase_metadata"
+      ],
+      "baselineSeconds": 0.0010954
+    }
+  ]
+}
