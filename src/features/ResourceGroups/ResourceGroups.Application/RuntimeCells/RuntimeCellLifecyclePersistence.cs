@@ -96,7 +96,12 @@ public sealed class RuntimeCellLifecyclePersistence(
             if (namespaceOutcome is RuntimeCellNamespaceDeletionPending)
             {
                 var checkedAt = timeProvider.GetUtcNow().UtcDateTime;
-                var pending = runtimeCell.ScheduleDeletionCheck(generation, checkedAt, checkedAt.AddSeconds(5));
+                // BSON dates retain milliseconds. State and JSON event must carry the same canonical due time.
+                var due = checkedAt.AddSeconds(5);
+                var remainder = due.Ticks % TimeSpan.TicksPerMillisecond;
+                if (remainder != 0)
+                    due = due.AddTicks(TimeSpan.TicksPerMillisecond - remainder);
+                var pending = runtimeCell.ScheduleDeletionCheck(generation, checkedAt, due);
                 var pendingWrite = await runtimeCells.ReplaceOneAsync(
                     transaction.Session,
                     RuntimeCellFilters.AtDeletionCheck(runtimeCell),

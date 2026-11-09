@@ -124,6 +124,32 @@ public sealed class RuntimeCellDeletionProgressTests(MongoReplicaSetFixture fixt
     }
 
     [Fact]
+    public async Task FractionalClock_UsesOneCanonicalDueForBsonStateAndSerializedScheduledEvent()
+    {
+        var deleting = (await InsertCellAsync()).RequestDeletion(InitialTime.AddMinutes(1));
+        await DbContext.RuntimeCells.ReplaceOneAsync(cell => cell.Id == deleting.Id, deleting);
+        var fractionalNow = InitialTime.AddMinutes(2).AddTicks(1234);
+        await CreateLifecyclePersistence(fractionalNow).PersistDeletionAsync(deleting, deleting.DesiredGeneration,
+            new RuntimeCellNamespaceDeletionPending(deleting.KubernetesNamespace));
+        var saved = await DbContext.RuntimeCells.Find(cell => cell.Id == deleting.Id).SingleAsync();
+        var state = Assert.IsType<DeletingRuntimeCellState>(saved.State);
+        var row = await DbContext.OutboxMessages.Find(row => row.TenantId == Data.TenantId &&
+            row.EventType == "pole.resource-groups/v1/runtime-cell-deletion-requested").SingleAsync();
+        var message = System.Text.Json.JsonSerializer.Deserialize<RuntimeCellDeletionRequestedEvent>(row.PayloadJson, EventJson.SerializerOptions)!;
+        Assert.Equal(state.NextCheckAtUtc, message.NotBeforeUtc);
+        Assert.Equal(0, message.NotBeforeUtc!.Value.Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.True(message.NotBeforeUtc.Value >= fractionalNow.AddSeconds(5));
+        var manager = new RecordingNamespaceManager(Unit.Value, Unit.Value);
+        var admission = new RecordingReferenceAdmission();
+
+        await Progress(message.NotBeforeUtc.Value, manager, admission).HandleAsync(message);
+
+        Assert.Equal(1, manager.DeleteCallCount);
+        Assert.Equal(1, admission.UnregisterCallCount);
+        Assert.IsType<DeletedRuntimeCellState>((await DbContext.RuntimeCells.Find(cell => cell.Id == deleting.Id).SingleAsync()).State);
+    }
+
+    [Fact]
     public async Task OutboxFailure_RollsBackPendingState()
     {
         var deleting = (await InsertCellAsync()).RequestDeletion(InitialTime.AddMinutes(1));
