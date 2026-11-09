@@ -16,23 +16,23 @@ public sealed class LifecycleEvidenceTests
     private const string Instant = "2026-11-09T12:00:00.1234567Z";
     private const string RuntimeIdentity = $"TenantId={Tenant}, RuntimeCellId={Resource}, Generation=2, CheckSequence=1";
     private static readonly DateTimeOffset RecordedAt = new(2026, 11, 9, 12, 0, 1, TimeSpan.Zero);
-    public static TheoryData<string, string, string> OwnedMessages => new()
+    public static TheoryData<string, string, string, string> OwnedMessages => new()
     {
-        { $"RuntimeCell deletion check scheduled: {RuntimeIdentity}, NotBeforeUtc={Instant}", "runtime-cell", "scheduled" },
-        { $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc={Instant}, StartedAtUtc={Instant}", "runtime-cell", "started" },
-        { $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc=(null), StartedAtUtc={Instant}", "runtime-cell", "started" },
-        { $"RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}", "runtime-cell", "native-absent" },
-        { $"RuntimeCell deletion finalized and target reference released: {RuntimeIdentity}, CommittedAtUtc={Instant}", "runtime-cell", "finalized" },
-        { $"GitOps work scheduled for source {Source}; notBeforeUtc={Instant}, scheduledAtUtc={Instant}", "gitops", "scheduled" },
-        { $"GitOps attempt started for source {Source}, run {Run}, attempt 1; startedAtUtc={Instant}", "gitops", "started" },
-        { $"GitOps lifecycle action completed for run {Run}, operation WebService/{Resource}, action Remove; completedAtUtc={Instant}", "gitops", "action-completed" }
+        { "runtime-scheduled", $"RuntimeCell deletion check scheduled: {RuntimeIdentity}, NotBeforeUtc={Instant}", "runtime-cell", "scheduled" },
+        { "runtime-started-delayed", $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc={Instant}, StartedAtUtc={Instant}", "runtime-cell", "started" },
+        { "runtime-started-immediate", $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc=(null), StartedAtUtc={Instant}", "runtime-cell", "started" },
+        { "runtime-native-absent", $"RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}", "runtime-cell", "native-absent" },
+        { "runtime-finalized", $"RuntimeCell deletion finalized and target reference released: {RuntimeIdentity}, CommittedAtUtc={Instant}", "runtime-cell", "finalized" },
+        { "gitops-scheduled", $"GitOps work scheduled for source {Source}; notBeforeUtc={Instant}, scheduledAtUtc={Instant}", "gitops", "scheduled" },
+        { "gitops-started", $"GitOps attempt started for source {Source}, run {Run}, attempt 1; startedAtUtc={Instant}", "gitops", "started" },
+        { "gitops-action-completed", $"GitOps lifecycle action completed for run {Run}, operation WebService/{Resource}, action Remove; completedAtUtc={Instant}", "gitops", "action-completed" }
     };
 
     [Theory]
     [MemberData(nameof(OwnedMessages))]
-    public void ExactOwnedMessages_BecomeScalarEvidenceWithHashedIdentities(string message, string component, string phase)
+    public void ExactOwnedMessages_BecomeScalarEvidenceWithHashedIdentities(string scenario, string message, string component, string phase)
     {
-        Assert.True(LifecycleEvidence.TryParse("      " + message, RecordedAt, out var record));
+        Assert.True(LifecycleEvidence.TryParse("      " + message, RecordedAt, out var record), scenario);
         Assert.NotNull(record);
         Assert.Equal(component, record.Component);
         Assert.Equal(phase, record.Phase);
