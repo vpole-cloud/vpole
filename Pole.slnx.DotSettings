@@ -1,0 +1,4 @@
+<wpf:ResourceDictionary xml:space="preserve" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:s="clr-namespace:System;assembly=mscorlib" xmlns:wpf="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+    <!-- Format and optimize usings without rewriting named arguments or other syntax styles. -->
+    <s:String x:Key="/Default/CodeStyle/CodeCleanup/Profiles/=Pole_0020Formatting/@EntryIndexedValue">&lt;Profile name="Pole Formatting"&gt;&lt;CSReformatCode&gt;True&lt;/CSReformatCode&gt;&lt;CSOptimizeUsings&gt;&lt;OptimizeUsings&gt;True&lt;/OptimizeUsings&gt;&lt;/CSOptimizeUsings&gt;&lt;CSCodeStyleAttributes ArrangeArgumentsStyle="False" /&gt;&lt;CSRemoveCodeRedundancies&gt;False&lt;/CSRemoveCodeRedundancies&gt;&lt;RemoveCodeRedundancies&gt;False&lt;/RemoveCodeRedundancies&gt;&lt;CSReorderTypeMembers&gt;False&lt;/CSReorderTypeMembers&gt;&lt;/Profile&gt;</s:String>
+</wpf:ResourceDictionary>
