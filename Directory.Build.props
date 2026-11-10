@@ -1,28 +1,29 @@
 <Project>
-  <PropertyGroup>
-    <PoleArchitectureRole Condition="'$(PoleArchitectureRole)' == '' And
+    <PropertyGroup>
+        <PoleArchitectureRole Condition="'$(PoleArchitectureRole)' == '' And
         ('$(MSBuildProjectName)' == 'Migrations' Or
-         $([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Migrations')))">Migration</PoleArchitectureRole>
-    <PoleArchitectureRole Condition="'$(PoleArchitectureRole)' == ''">Production</PoleArchitectureRole>
-  </PropertyGroup>
+         $([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Migrations')))">Migration
+        </PoleArchitectureRole>
+        <PoleArchitectureRole Condition="'$(PoleArchitectureRole)' == ''">Production</PoleArchitectureRole>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <CompilerVisibleProperty Include="PoleArchitectureRole" />
-    <CompilerVisibleProperty Include="IsTestProject" />
-  </ItemGroup>
+    <ItemGroup>
+        <CompilerVisibleProperty Include="PoleArchitectureRole"/>
+        <CompilerVisibleProperty Include="IsTestProject"/>
+    </ItemGroup>
 
-  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
-    <LangVersion>preview</LangVersion>
-    <Nullable>enable</Nullable>
-    <WarningsAsErrors>$(WarningsAsErrors);nullable;AD0001</WarningsAsErrors>
-  </PropertyGroup>
+    <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+        <LangVersion>preview</LangVersion>
+        <Nullable>enable</Nullable>
+        <WarningsAsErrors>$(WarningsAsErrors);nullable;AD0001</WarningsAsErrors>
+    </PropertyGroup>
 
-  <ItemGroup Condition="'$(MSBuildProjectExtension)' == '.csproj' And
+    <ItemGroup Condition="'$(MSBuildProjectExtension)' == '.csproj' And
                         '$(MSBuildProjectName)' != 'Pole.ArchitectureAnalyzers' And
                         '$(MSBuildProjectName)' != 'Pole.Tests.Architecture'">
-    <ProjectReference Include="$(MSBuildThisFileDirectory)src/shared/ArchitectureAnalyzers/Pole.ArchitectureAnalyzers.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false"
-                      IsAspireProjectResource="false" />
-  </ItemGroup>
+        <ProjectReference Include="$(MSBuildThisFileDirectory)src/shared/ArchitectureAnalyzers/Pole.ArchitectureAnalyzers.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="false"
+                          IsAspireProjectResource="false"/>
+    </ItemGroup>
 </Project>
