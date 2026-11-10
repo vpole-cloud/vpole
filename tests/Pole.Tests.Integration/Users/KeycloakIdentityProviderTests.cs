@@ -1,11 +1,14 @@
 using Pole.Features.Users.Application.Identity;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Users;
 
 [Collection(KeycloakIntegrationTestCollection.Name)]
-public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixture)
+public sealed class KeycloakIdentityProviderTests(
+    KeycloakContainerFixture fixture
+)
 {
     [Fact]
     public async Task CreateUserAsync_CreatesUserInKeycloakAndReturnsId()
@@ -83,7 +86,9 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
     [Fact]
     public async Task DeleteUserAsync_WhenUserDoesNotExist_ReturnsTrue()
     {
-        var deleted = await fixture.IdentityProvider.DeleteUserAsync(Guid.NewGuid().ToString("N"), CancellationToken.None);
+        var deleted = await fixture.IdentityProvider.DeleteUserAsync(
+            Guid.NewGuid().ToString("N"),
+            CancellationToken.None);
 
         Assert.True(deleted);
     }
@@ -103,13 +108,11 @@ public sealed class KeycloakIdentityProviderTests(KeycloakContainerFixture fixtu
         Assert.Null(user);
     }
 
-    private static string AssertCreated(CreateIdentityUserOutcome result) =>
-        result switch
-        {
-            IdentityUserCreated success => success.UserId,
-            IdentityUserCreationFailed => throw new Xunit.Sdk.XunitException(
-                "Expected Keycloak user creation to succeed.")
-        };
+    private static string AssertCreated(CreateIdentityUserOutcome result) => result switch
+    {
+        IdentityUserCreated success => success.UserId,
+        IdentityUserCreationFailed => throw new XunitException("Expected Keycloak user creation to succeed."),
+    };
 
     private static string CreateEmail() => $"pole-it-{Guid.NewGuid():N}@example.test";
 }

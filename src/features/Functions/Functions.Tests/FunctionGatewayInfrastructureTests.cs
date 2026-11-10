@@ -14,8 +14,7 @@ public sealed class FunctionGatewayInfrastructureTests
         var result = new FunctionGatewayOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains("distinct", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Failures, failure => failure.Contains("distinct", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -53,7 +52,7 @@ public sealed class FunctionGatewayInfrastructureTests
         var options = new FunctionGatewayOptions
         {
             MaxPendingRequests = 1,
-            MaxPendingRequestsPerRevision = 1
+            MaxPendingRequestsPerRevision = 1,
         };
         var limiter = new FunctionPendingAdmissionLimiter(options);
         var lease = limiter.TryAcquire("tenant/app/revision", "webhook", 10);

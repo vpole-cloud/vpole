@@ -9,8 +9,7 @@ public class FromClaimBinderProvider : IModelBinderProvider
         ArgumentNullException.ThrowIfNull(context);
 
         // Check if this is a property that could have our attribute
-        if (context.Metadata.ModelType == typeof(string) && 
-            context.Metadata.ContainerType != null && 
+        if (context.Metadata.ModelType == typeof(string) && context.Metadata.ContainerType != null &&
             !string.IsNullOrEmpty(context.Metadata.PropertyName))
         {
             // Get the property
@@ -20,11 +19,9 @@ public class FromClaimBinderProvider : IModelBinderProvider
                 // Check if it has our attribute
                 var attributes = propertyInfo.GetCustomAttributes(true);
                 var hasFromClaimAttribute = attributes.Any(a => a.GetType() == typeof(FromClaimAttribute));
-                
+
                 if (hasFromClaimAttribute)
-                {
                     return new FromClaimBinder();
-                }
             }
         }
 

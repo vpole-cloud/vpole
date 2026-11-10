@@ -2,8 +2,8 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ResourceGroups.Testing;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceGroups.Testing;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -16,19 +16,21 @@ using Xunit;
 namespace Pole.Features.WebServices.Tests.Integration;
 
 [Collection(nameof(WebServicesMongoCollection))]
-public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : IAsyncLifetime
+public sealed class WebServiceMutationTests(
+    WebServicesMongoFixture fixture
+) : IAsyncLifetime
 {
-    private ServiceProvider _services = null!;
-    private IServiceScope _scope = null!;
-    private CreateWebServicePlatform _platform = null!;
     private TestResourceGroup _group = null!;
+    private CreateWebServicePlatform _platform = null!;
+    private IServiceScope _scope = null!;
+    private ServiceProvider _services = null!;
     private IMediator Mediator => _scope.ServiceProvider.GetRequiredService<IMediator>();
 
     public async Task InitializeAsync()
     {
         await fixture.ResetDatabaseAsync();
         _group = await new ResourceGroupTestData(fixture.Database).CreateAsync(TestPlatformDefaults.TenantId);
-        _platform = new(_group);
+        _platform = new CreateWebServicePlatform(_group);
         _services = WebServicesTestHost.Create(fixture, _platform);
         _scope = _services.CreateScope();
     }
@@ -46,7 +48,10 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
     [InlineData("another.test", "tenant/application", "built", false)]
     [InlineData("registry.test", "tenant/another", "built", false)]
     public async Task SharedUpdate_preserves_provider_owned_pull_reference_only_for_the_same_repository(
-        string server, string name, string tag, bool retainPullReference)
+        string server,
+        string name,
+        string tag,
+        bool retainPullReference)
     {
         var group = _group;
         var created = (await Mediator.Send(CreateRequest(group.Id))).AssertSuccess();
@@ -56,8 +61,8 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
         {
             Spec = current.Spec with
             {
-                Image = new ImageInfo("registry.test", "tenant/application", "built", "managed-pull")
-            }
+                Image = new ImageInfo("registry.test", "tenant/application", "built", "managed-pull"),
+            },
         };
         await services.ReplaceOneAsync(item => item.Id == current.Id, current);
         var dto = current.Spec.ToDto() with
@@ -65,14 +70,15 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
             Image = new ImageInfoDto(server, name, tag),
             Config = current.Spec.Config.ToDto() with
             {
-                EnvironmentVariables = current.Spec.Config.EnvironmentVariables.SetItem("APP_MODE", "production")
-            }
+                EnvironmentVariables = current.Spec.Config.EnvironmentVariables.SetItem("APP_MODE", "production"),
+            },
         };
 
-        var updated = (await Mediator.Send(new UpdateWebServiceRequest(
-            current.Id,
-            new UpdateWebServiceRequestBody(dto, current.Tags, current.Exposure.Mode, current.ActiveRevision),
-            current.TenantId))).AssertSuccess();
+        var updated = (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                current.Id,
+                new UpdateWebServiceRequestBody(dto, current.Tags, current.Exposure.Mode, current.ActiveRevision),
+                current.TenantId))).AssertSuccess();
 
         var saved = await services.Find(item => item.Id == current.Id).SingleAsync();
         var release = await fixture.Releases
@@ -92,10 +98,20 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
         var group = _group;
         var created = (await Mediator.Send(CreateRequest(group.Id))).AssertSuccess();
         var current = await fixture.WebServices.Find(item => item.Id == created.WebServiceId).SingleAsync();
-        var result = await Mediator.Send(new UpdateWebServiceRequest(current.Id, new UpdateWebServiceRequestBody(current.Spec.ToDto(), current.Tags, current.Exposure.Mode, ExpectedRevision: 99), current.TenantId));
+        var result = await Mediator.Send(
+            new UpdateWebServiceRequest(
+                current.Id,
+                new UpdateWebServiceRequestBody(
+                    current.Spec.ToDto(),
+                    current.Tags,
+                    current.Exposure.Mode,
+                    ExpectedRevision: 99),
+                current.TenantId));
         var error = Assert.IsType<UpdateWebServiceError>(result.AssertHandlerOutcome().Value);
         Assert.IsType<WebServiceUpdateConflict>(error.Value);
-        Assert.Equal(current.ActiveRevision, (await fixture.WebServices.Find(item => item.Id == current.Id).SingleAsync()).ActiveRevision);
+        Assert.Equal(
+            current.ActiveRevision,
+            (await fixture.WebServices.Find(item => item.Id == current.Id).SingleAsync()).ActiveRevision);
         Assert.Equal(0, await CountEventsAsync("pole.web-services/v1/web-service-updated"));
     }
 
@@ -104,37 +120,37 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
     {
         var group = _group;
         var template = CreateRequest(group.Id);
-        var created = (await Mediator.Send(template with
-        {
-            Body = template.Body with { Exposure = WebServiceExposureMode.Private }
-        })).AssertSuccess();
+        var created = (await Mediator.Send(
+            template with
+            {
+                Body = template.Body with { Exposure = WebServiceExposureMode.Private },
+            })).AssertSuccess();
         await fixture.Releases.UpdateOneAsync(
-            release => release.WebServiceId == created.WebServiceId &&
-                       release.ResourceRevision == 1,
+            release => release.WebServiceId == created.WebServiceId && release.ResourceRevision == 1,
             Builders<WebServiceRelease>.Update
                 .Set(release => release.Outcome, WebServiceReleaseOutcome.Succeeded)
                 .Set(release => release.CompletedAtUtc, DateTime.UtcNow));
         var updatedSpec = WebServiceTestData.Spec() with
         {
-            Image = new ImageInfoDto("docker.io", "nginx", "1.28")
+            Image = new ImageInfoDto("docker.io", "nginx", "1.28"),
         };
-        (await Mediator.Send(new UpdateWebServiceRequest(
-            created.WebServiceId,
-            new UpdateWebServiceRequestBody(updatedSpec, [], WebServiceExposureMode.Public),
-            TestPlatformDefaults.TenantId))).AssertSuccess();
+        (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                created.WebServiceId,
+                new UpdateWebServiceRequestBody(updatedSpec, [], WebServiceExposureMode.Public),
+                TestPlatformDefaults.TenantId))).AssertSuccess();
 
-        var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
-            created.WebServiceId,
-            new RollbackWebServiceRequestBody(1, 2),
-            TestPlatformDefaults.TenantId))).AssertSuccess();
+        var rollback = (await Mediator.Send(
+            new RollbackWebServiceRequest(
+                created.WebServiceId,
+                new RollbackWebServiceRequestBody(1, 2),
+                TestPlatformDefaults.TenantId))).AssertSuccess();
 
         Assert.Equal(3, rollback.ResourceRevision);
-        var saved = await fixture.WebServices
-            .Find(service => service.Id == created.WebServiceId).SingleAsync();
+        var saved = await fixture.WebServices.Find(service => service.Id == created.WebServiceId).SingleAsync();
         Assert.Equal("1.27", saved.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(WebServiceExposureMode.Public, saved.Exposure.Mode);
-        var release = await fixture.Releases
-            .Find(item => item.Id == rollback.ReleaseId).SingleAsync();
+        var release = await fixture.Releases.Find(item => item.Id == rollback.ReleaseId).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
         Assert.Equal("1.27", release.Spec.Image.ResolvedImage!.Tag);
     }
@@ -148,56 +164,53 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
         {
             Config = WebServiceTestData.Spec().Config with
             {
-                PortMappings = [new Pole.Features.WebServices.Application.Common.PortMappingDto(
-                    80, "http", "UDP", "datagram")]
-            }
+                PortMappings = [new PortMappingDto(80, "http", "UDP", "datagram")],
+            },
         };
-        var created = (await Mediator.Send(template with
-        {
-            Body = template.Body with
+        var created = (await Mediator.Send(
+            template with
             {
-                Exposure = WebServiceExposureMode.Private,
-                Spec = privateSpec
-            }
-        })).AssertSuccess();
+                Body = template.Body with
+                {
+                    Exposure = WebServiceExposureMode.Private,
+                    Spec = privateSpec,
+                },
+            })).AssertSuccess();
         await fixture.Releases.UpdateOneAsync(
-            release => release.WebServiceId == created.WebServiceId &&
-                       release.ResourceRevision == 1,
+            release => release.WebServiceId == created.WebServiceId && release.ResourceRevision == 1,
             Builders<WebServiceRelease>.Update
                 .Set(release => release.Outcome, WebServiceReleaseOutcome.Succeeded)
                 .Set(release => release.CompletedAtUtc, DateTime.UtcNow));
-        (await Mediator.Send(new UpdateWebServiceRequest(
-            created.WebServiceId,
-            new UpdateWebServiceRequestBody(
-                WebServiceTestData.Spec(), [], WebServiceExposureMode.Public),
-            TestPlatformDefaults.TenantId))).AssertSuccess();
+        (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                created.WebServiceId,
+                new UpdateWebServiceRequestBody(WebServiceTestData.Spec(), [], WebServiceExposureMode.Public),
+                TestPlatformDefaults.TenantId))).AssertSuccess();
 
-        var beforeService = await fixture.WebServices
-            .Find(service => service.Id == created.WebServiceId).SingleAsync();
+        var beforeService = await fixture.WebServices.Find(service => service.Id == created.WebServiceId).SingleAsync();
         var beforeApplyCount = _platform.ApplyRequests.Count;
-        var beforeReleaseCount = await fixture.Releases
-            .CountDocumentsAsync(release => release.WebServiceId == created.WebServiceId);
-        var beforeUpdatedEvents = await CountEventsAsync(
-            "pole.web-services/v1/web-service-updated");
+        var beforeReleaseCount
+            = await fixture.Releases.CountDocumentsAsync(release => release.WebServiceId == created.WebServiceId);
+        var beforeUpdatedEvents = await CountEventsAsync("pole.web-services/v1/web-service-updated");
 
-        var result = await Mediator.Send(new RollbackWebServiceRequest(
-            created.WebServiceId,
-            new RollbackWebServiceRequestBody(1, 2),
-            TestPlatformDefaults.TenantId));
+        var result = await Mediator.Send(
+            new RollbackWebServiceRequest(
+                created.WebServiceId,
+                new RollbackWebServiceRequestBody(1, 2),
+                TestPlatformDefaults.TenantId));
 
         var incompatible = Assert.IsType<RollbackWebServicePublicSpecIncompatible>(
             Assert.IsType<RollbackWebServiceOutcome>(result.Value).Value);
         Assert.Equal(created.WebServiceId, incompatible.WebServiceId);
         Assert.Equal(1, incompatible.TargetRevision);
-        var afterService = await fixture.WebServices
-            .Find(service => service.Id == created.WebServiceId).SingleAsync();
+        var afterService = await fixture.WebServices.Find(service => service.Id == created.WebServiceId).SingleAsync();
         Assert.Equal(beforeService.ActiveRevision, afterService.ActiveRevision);
         Assert.Equal(beforeService.Revision, afterService.Revision);
         Assert.Equal(beforeApplyCount, _platform.ApplyRequests.Count);
-        Assert.Equal(beforeReleaseCount, await fixture.Releases
-            .CountDocumentsAsync(release => release.WebServiceId == created.WebServiceId));
-        Assert.Equal(beforeUpdatedEvents, await CountEventsAsync(
-            "pole.web-services/v1/web-service-updated"));
+        Assert.Equal(
+            beforeReleaseCount,
+            await fixture.Releases.CountDocumentsAsync(release => release.WebServiceId == created.WebServiceId));
+        Assert.Equal(beforeUpdatedEvents, await CountEventsAsync("pole.web-services/v1/web-service-updated"));
     }
 
     [Fact]
@@ -209,37 +222,36 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
         {
             Config = WebServiceTestData.Spec().Config with
             {
-                PortMappings = [new Pole.Features.WebServices.Application.Common.PortMappingDto(
-                    80, "http", "UDP", "datagram")]
-            }
+                PortMappings = [new PortMappingDto(80, "http", "UDP", "datagram")],
+            },
         };
-        var created = (await Mediator.Send(template with
-        {
-            Body = template.Body with
+        var created = (await Mediator.Send(
+            template with
             {
-                Exposure = WebServiceExposureMode.Private,
-                Spec = privateSpec
-            }
-        })).AssertSuccess();
+                Body = template.Body with
+                {
+                    Exposure = WebServiceExposureMode.Private,
+                    Spec = privateSpec,
+                },
+            })).AssertSuccess();
         await fixture.Releases.UpdateOneAsync(
-            release => release.WebServiceId == created.WebServiceId &&
-                       release.ResourceRevision == 1,
+            release => release.WebServiceId == created.WebServiceId && release.ResourceRevision == 1,
             Builders<WebServiceRelease>.Update
                 .Set(release => release.Outcome, WebServiceReleaseOutcome.Succeeded)
                 .Set(release => release.CompletedAtUtc, DateTime.UtcNow));
-        (await Mediator.Send(new UpdateWebServiceRequest(
-            created.WebServiceId,
-            new UpdateWebServiceRequestBody(
-                WebServiceTestData.Spec(), [], WebServiceExposureMode.Private),
-            TestPlatformDefaults.TenantId))).AssertSuccess();
+        (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                created.WebServiceId,
+                new UpdateWebServiceRequestBody(WebServiceTestData.Spec(), [], WebServiceExposureMode.Private),
+                TestPlatformDefaults.TenantId))).AssertSuccess();
 
-        var rollback = (await Mediator.Send(new RollbackWebServiceRequest(
-            created.WebServiceId,
-            new RollbackWebServiceRequestBody(1, 2),
-            TestPlatformDefaults.TenantId))).AssertSuccess();
+        var rollback = (await Mediator.Send(
+            new RollbackWebServiceRequest(
+                created.WebServiceId,
+                new RollbackWebServiceRequestBody(1, 2),
+                TestPlatformDefaults.TenantId))).AssertSuccess();
 
-        var service = await fixture.WebServices
-            .Find(item => item.Id == created.WebServiceId).SingleAsync();
+        var service = await fixture.WebServices.Find(item => item.Id == created.WebServiceId).SingleAsync();
         Assert.Equal(WebServiceExposureMode.Private, service.Exposure.Mode);
         Assert.Equal("UDP", service.Spec.Config.PortMappings.Single().Protocol);
         Assert.Equal(3, rollback.ResourceRevision);
@@ -250,52 +262,57 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
     {
         const string otherTenantId = "507f1f77bcf86cd799439022";
         var group = _group;
-        var created = (await Mediator.Send(CreateRequest(group.Id)))
-            .AssertSuccess();
+        var created = (await Mediator.Send(CreateRequest(group.Id))).AssertSuccess();
         var placement = Assert.Single(created.Deployments);
         var foreign = WebServiceReleaseFactory.CreatePending(
-            otherTenantId,
-            created.WebServiceId,
-            7,
-            WebServiceReleaseAction.Update,
-            null,
-            null,
-            WebServiceTestData.Spec().ToDomain(),
-            [new WebServiceReleaseDeployment(
-                placement.DeploymentId,
-                placement.DeploymentTargetId,
+                otherTenantId,
+                created.WebServiceId,
                 7,
-                placement.DesiredGeneration,
-                WebServiceReleaseDeploymentOperation.Apply,
-                WebServiceReleaseDeploymentOutcome.Succeeded,
-                DateTime.UtcNow,
+                WebServiceReleaseAction.Update,
                 null,
-                null)],
-            null,
-            null,
-            new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
-            WebServiceExposure.Create(WebServiceExposureMode.Public)) with
-        {
-            Outcome = WebServiceReleaseOutcome.Succeeded,
-            CompletedAtUtc = DateTime.UtcNow
-        };
+                null,
+                WebServiceTestData.Spec().ToDomain(),
+                [
+                    new WebServiceReleaseDeployment(
+                        placement.DeploymentId,
+                        placement.DeploymentTargetId,
+                        7,
+                        placement.DesiredGeneration,
+                        WebServiceReleaseDeploymentOperation.Apply,
+                        WebServiceReleaseDeploymentOutcome.Succeeded,
+                        DateTime.UtcNow,
+                        null,
+                        null),
+                ],
+                null,
+                null,
+                new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
+                WebServiceExposure.Create(WebServiceExposureMode.Public)) with
+            {
+                Outcome = WebServiceReleaseOutcome.Succeeded,
+                CompletedAtUtc = DateTime.UtcNow,
+            };
         await fixture.Releases.InsertOneAsync(foreign);
 
-        var rollback = await Mediator.Send(new RollbackWebServiceRequest(
-            created.WebServiceId,
-            new RollbackWebServiceRequestBody(7, 1),
-            TestPlatformDefaults.TenantId));
+        var rollback = await Mediator.Send(
+            new RollbackWebServiceRequest(
+                created.WebServiceId,
+                new RollbackWebServiceRequestBody(7, 1),
+                TestPlatformDefaults.TenantId));
         var rollbackError = rollback.AssertFailure();
         var rollbackState = Assert.IsType<RollbackWebServiceStateError>(rollbackError.Value);
         Assert.IsType<WebServiceReleaseNotFound>(rollbackState.Value);
-        _scope.ServiceProvider.GetRequiredService<ITenantContextAccessor>().Current =
-            new(otherTenantId, "Other tenant", TenantRole.Member, false);
-        var history = await Mediator.Send(new GetWebServiceReleasesRequest
-        {
-            Id = created.WebServiceId,
-            TenantId = otherTenantId
-        });
+        _scope.ServiceProvider.GetRequiredService<ITenantContextAccessor>().Current = new TenantContext(
+            otherTenantId,
+            "Other tenant",
+            TenantRole.Member,
+            false);
+        var history = await Mediator.Send(
+            new GetWebServiceReleasesRequest
+            {
+                Id = created.WebServiceId,
+                TenantId = otherTenantId,
+            });
         Assert.IsType<WebServiceNotFound>(history.AssertFailure());
     }
 
@@ -305,9 +322,15 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
         var created = (await Mediator.Send(WebServiceTestData.Create(_group.Id))).AssertSuccess();
         var service = await fixture.WebServices.Find(item => item.Id == created.WebServiceId).SingleAsync();
         var before = await fixture.OutboxMessages.CountDocumentsAsync(_ => true);
-        var accepted = (await Mediator.Send(new UpdateWebServiceRequest(service.Id,
-            new UpdateWebServiceRequestBody(service.Spec.ToDto(), service.Tags, service.Exposure.Mode, service.ActiveRevision),
-            service.TenantId))).AssertSuccess();
+        var accepted = (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                service.Id,
+                new UpdateWebServiceRequestBody(
+                    service.Spec.ToDto(),
+                    service.Tags,
+                    service.Exposure.Mode,
+                    service.ActiveRevision),
+                service.TenantId))).AssertSuccess();
         Assert.Equal(service.ActiveRevision, accepted.ResourceRevision);
         var stored = await fixture.WebServices.Find(item => item.Id == service.Id).SingleAsync();
         Assert.Equal(service.Revision, stored.Revision);
@@ -323,10 +346,18 @@ public sealed class WebServiceMutationTests(WebServicesMongoFixture fixture) : I
         var service = await fixture.WebServices.Find(item => item.Id == created.WebServiceId).SingleAsync();
         var placement = Assert.Single(created.Deployments);
         var spec = service.Spec.ToDto();
-        spec = spec with { Config = spec.Config with { EnvironmentVariables = spec.Config.EnvironmentVariables.SetItem("MODE", "changed") } };
-        var accepted = (await Mediator.Send(new UpdateWebServiceRequest(service.Id,
-            new UpdateWebServiceRequestBody(spec, service.Tags, service.Exposure.Mode, service.ActiveRevision),
-            service.TenantId))).AssertSuccess();
+        spec = spec with
+        {
+            Config = spec.Config with
+            {
+                EnvironmentVariables = spec.Config.EnvironmentVariables.SetItem("MODE", "changed"),
+            },
+        };
+        var accepted = (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                service.Id,
+                new UpdateWebServiceRequestBody(spec, service.Tags, service.Exposure.Mode, service.ActiveRevision),
+                service.TenantId))).AssertSuccess();
         Assert.Equal(service.ActiveRevision + 1, accepted.ResourceRevision);
         Assert.Equal(placement.DesiredGeneration + 1, Assert.Single(accepted.Deployments).DesiredGeneration);
         Assert.Equal(accepted.ResourceRevision, Assert.Single(_platform.ApplyRequests).ResourceRevision);

@@ -1,5 +1,3 @@
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Gateway;
 using Pole.Features.Functions.Domain;
 
@@ -8,7 +6,8 @@ namespace Pole.Features.Functions.Runtime.Gateway;
 public sealed record ResolvedFunctionHttpRoute(
     FunctionApp App,
     FunctionRevision Revision,
-    FunctionHttpRouteBinding Route);
+    FunctionHttpRouteBinding Route
+);
 
 public interface IFunctionRuntimeRouteResolver
 {
@@ -21,8 +20,8 @@ public interface IFunctionRuntimeRouteResolver
 }
 
 public sealed class FunctionRuntimeRouteResolver(
-    LoadFunctionRuntimeRouteTarget loadRouteTarget)
-    : IFunctionRuntimeRouteResolver
+    LoadFunctionRuntimeRouteTarget loadRouteTarget
+) : IFunctionRuntimeRouteResolver
 {
     public async Task<ResolvedFunctionHttpRoute?> ResolveAsync(
         string functionRoute,
@@ -39,12 +38,7 @@ public sealed class FunctionRuntimeRouteResolver(
         // transient miss if a read happens while the transaction is becoming visible.
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var resolved = await TryResolveAsync(
-                normalizedRoute,
-                handlerPath,
-                method,
-                exposure,
-                cancellationToken);
+            var resolved = await TryResolveAsync(normalizedRoute, handlerPath, method, exposure, cancellationToken);
             if (resolved is not null)
                 return resolved;
         }

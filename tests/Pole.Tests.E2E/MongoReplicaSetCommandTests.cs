@@ -12,7 +12,9 @@ public sealed class MongoReplicaSetCommandTests
     public void Typed_commands_keep_the_replica_set_wire_shapes()
     {
         var registry = BsonSerializer.SerializerRegistry;
-        var initiate = new ObjectCommand<ReplicaSetCommandResult>(new InitiateReplicaSetCommand(new()));
+        var initiate
+            = new ObjectCommand<ReplicaSetCommandResult>(
+                new InitiateReplicaSetCommand(new ReplicaSetInitializationOptions()));
         var primary = new ObjectCommand<ReplicaSetPrimaryResult>(new ReadReplicaSetPrimaryCommand(1));
 
         Assert.Equal(new BsonDocument("replSetInitiate", new BsonDocument()), initiate.Render(registry).Document);

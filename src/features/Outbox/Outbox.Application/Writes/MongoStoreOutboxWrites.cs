@@ -1,7 +1,6 @@
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Contracts;
 using Pole.Observability;
@@ -9,17 +8,18 @@ using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Outbox.Application.Writes;
 
-internal sealed class MongoStoreOutboxWrites(IMongoCollection<OutboxMessage> _outboxMessages)
+internal sealed class MongoStoreOutboxWrites(
+    IMongoCollection<OutboxMessage> _outboxMessages
+)
 {
     public Task InvokeAsync(
         IClientSessionHandle session,
         IReadOnlyCollection<OutboxWrite> writes,
-        CancellationToken cancellationToken = default) =>
-        MongoOutboxPersistence.StoreAsync(
-            _outboxMessages,
-            session,
-            writes,
-            cancellationToken);
+        CancellationToken cancellationToken = default) => MongoOutboxPersistence.StoreAsync(
+        _outboxMessages,
+        session,
+        writes,
+        cancellationToken);
 }
 
 internal static class MongoOutboxPersistence
@@ -34,18 +34,13 @@ internal static class MongoOutboxPersistence
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(writes);
 
-        var messages = writes
-            .Select(CreateOutboxMessage)
-            .ToArray();
+        var messages = writes.Select(CreateOutboxMessage).ToArray();
         if (messages.Length == 0)
             return;
 
         if (messages.Length == 1 && messages[0].PendingKey is null)
         {
-            await outboxMessages.InsertOneAsync(
-                session,
-                messages[0],
-                cancellationToken: cancellationToken);
+            await outboxMessages.InsertOneAsync(session, messages[0], cancellationToken: cancellationToken);
             return;
         }
 
@@ -59,9 +54,7 @@ internal static class MongoOutboxPersistence
             return;
         }
 
-        var writeModels = messages
-            .Select(CreateWriteModel)
-            .ToArray();
+        var writeModels = messages.Select(CreateWriteModel).ToArray();
         await outboxMessages.BulkWriteAsync(
             session,
             writeModels,
@@ -69,8 +62,7 @@ internal static class MongoOutboxPersistence
             cancellationToken);
     }
 
-    private static WriteModel<OutboxMessage> CreateWriteModel(
-        OutboxMessage message)
+    private static WriteModel<OutboxMessage> CreateWriteModel(OutboxMessage message)
     {
         if (message.PendingKey is null)
             return new InsertOneModel<OutboxMessage>(message);
@@ -87,11 +79,9 @@ internal static class MongoOutboxPersistence
             .SetOnInsert(item => item.PendingKey, message.PendingKey)
             .SetOnInsert(item => item.State, message.State);
 
-        return new UpdateOneModel<OutboxMessage>(
-            OutboxMessageFilters.ByPendingKey(message.PendingKey),
-            update)
+        return new UpdateOneModel<OutboxMessage>(OutboxMessageFilters.ByPendingKey(message.PendingKey), update)
         {
-            IsUpsert = true
+            IsUpsert = true,
         };
     }
 
@@ -100,13 +90,8 @@ internal static class MongoOutboxPersistence
         var @event = write.Event;
         var eventType = @event.GetType();
         var eventTypeName = EventTypeIdentity.GetRequiredName(eventType);
-        var payloadJson = JsonSerializer.Serialize(
-            @event,
-            eventType,
-            EventExtensions.SerializerOptions);
-        var traceContext = TraceContext.Create(
-            @event.EventCore.TraceId,
-            @event.EventCore.CorrelationId);
+        var payloadJson = JsonSerializer.Serialize(@event, eventType, EventExtensions.SerializerOptions);
+        var traceContext = TraceContext.Create(@event.EventCore.TraceId, @event.EventCore.CorrelationId);
 
         return OutboxMessage.Create(
             eventTypeName,

@@ -4,13 +4,9 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
 using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Lifecycle;
@@ -26,28 +22,31 @@ public sealed record BeginWebServiceDeletionRequest(
     WebService Current,
     WebService Replacement,
     GitLifecycleAuthority? Lifecycle = null,
-    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null);
+    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null
+);
 
-public delegate Task<BeginWebServiceDeletionResult>
-    BeginWebServiceDeletionOutcome(
-        IClientSessionHandle session,
-        WebService current,
-        WebService replacement,
-        CancellationToken cancellationToken = default);
+public delegate Task<BeginWebServiceDeletionResult> BeginWebServiceDeletionOutcome(
+    IClientSessionHandle session,
+    WebService current,
+    WebService replacement,
+    CancellationToken cancellationToken = default);
 
 internal sealed class MongoBeginWebServiceDeletion(
     FenceRegisteredResource fenceRegisteredResource,
     CascadeConnectionsForResourceDeletion cascadeConnections,
     LoadHostnameBindingsForResourceInTransaction loadBindings,
     IMongoCollection<WebService> webServices,
-    IGitOpsMutations git)
+    IGitOpsMutations git
+)
 {
     public Task<BeginWebServiceDeletionResult> InvokeOutcomeAsync(
         IClientSessionHandle session,
         WebService current,
         WebService replacement,
-        CancellationToken cancellationToken = default) =>
-        ExecuteAsync(new(current, replacement), session, cancellationToken);
+        CancellationToken cancellationToken = default) => ExecuteAsync(
+        new BeginWebServiceDeletionRequest(current, replacement),
+        session,
+        cancellationToken);
 
     internal async Task<BeginWebServiceDeletionResult> ExecuteAsync(
         BeginWebServiceDeletionRequest request,
@@ -59,23 +58,28 @@ internal sealed class MongoBeginWebServiceDeletion(
         WebServicePersistenceGuards.EnsureTransaction(session, "Web service deletion start");
         WebServicePersistenceGuards.EnsureSameIdentity(current, replacement);
         if (!await git.AuthorizeAsync(
-            new AuthorizeGitResourceMutationRequest(
-                TenantId: current.TenantId,
-                Kind: "WebService",
-                ResourceId: current.Id,
-                Lifecycle: request.Lifecycle,
-                LifecycleEffect: GitLifecycleMutationEffect.Remove),
-            session: session,
-            ct: cancellationToken))
+                new AuthorizeGitResourceMutationRequest(
+                    TenantId: current.TenantId,
+                    Kind: "WebService",
+                    ResourceId: current.Id,
+                    Lifecycle: request.Lifecycle,
+                    LifecycleEffect: GitLifecycleMutationEffect.Remove),
+                session: session,
+                ct: cancellationToken))
             return new WebServiceUpdateConflict(current.Id, WebServiceUpdateConflictReason.GitOwnedConfiguration);
-        var bindings = await loadBindings(new(current.TenantId, WebServiceResourceDeployment.ResourceType,
-            current.Id), session, cancellationToken);
+        var bindings = await loadBindings(
+            new LoadHostnameBindingsForResourceInTransactionRequest(
+                current.TenantId,
+                WebServiceResourceDeployment.ResourceType,
+                current.Id),
+            session,
+            cancellationToken);
         foreach (var binding in bindings.Where(item => item.Kind == HostnameBindingKinds.Custom))
-        {
             if (request.Lifecycle is not null || !await git.AuthorizeAsync(
-                new(current.TenantId, "HostnameBinding", binding.Id), session, cancellationToken))
+                    new AuthorizeGitResourceMutationRequest(current.TenantId, "HostnameBinding", binding.Id),
+                    session,
+                    cancellationToken))
                 return new WebServiceHostnameAttachmentRemovalRequired(current.Id, binding.Id);
-        }
 
         var registration = await fenceRegisteredResource(
             new FenceRegisteredResourceRequest(
@@ -94,10 +98,10 @@ internal sealed class MongoBeginWebServiceDeletion(
                 ReviewedConnections: request.ReviewedConnections),
             session: session,
             cancellationToken: cancellationToken);
-        WebServiceUpdateConflict? cascadeConflict = cascade switch
+        var cascadeConflict = cascade switch
         {
             ResourceConnectionsCascaded => null,
-            ResourceConnectionCascadeConflict => new WebServiceUpdateConflict(current.Id)
+            ResourceConnectionCascadeConflict => new WebServiceUpdateConflict(current.Id),
         };
         if (cascadeConflict is not null)
             return cascadeConflict;
@@ -107,8 +111,6 @@ internal sealed class MongoBeginWebServiceDeletion(
             WebServiceFilters.AtPlanningVersion(current),
             replacement,
             cancellationToken: cancellationToken);
-        return result.ModifiedCount == 1
-            ? new WebServiceDeletionAccepted()
-            : new WebServiceUpdateConflict(current.Id);
+        return result.ModifiedCount == 1 ? new WebServiceDeletionAccepted() : new WebServiceUpdateConflict(current.Id);
     }
 }

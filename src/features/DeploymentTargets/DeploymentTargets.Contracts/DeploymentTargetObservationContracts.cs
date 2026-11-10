@@ -4,7 +4,8 @@ namespace Pole.Features.DeploymentTargets.Contracts;
 
 public sealed record DeploymentTargetObservationFenceRequest(
     string DeploymentTargetId,
-    long ExpectedConnectionVersion);
+    long ExpectedConnectionVersion
+);
 
 public sealed record DeploymentTargetObservationFenced;
 

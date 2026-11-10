@@ -3,14 +3,9 @@ using k8s.Autorest;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Observation;
-using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Application.Observation;
 
@@ -19,33 +14,37 @@ public sealed class ObserveResourceDeployment(
     IServiceProvider services,
     TimeProvider clock,
     ResourceDeploymentSharedObservationReader shared,
-    IObservationReadBudget reads)
+    IObservationReadBudget reads
+)
 {
-    public async Task<ResourceDeploymentObservationDto> InvokeAsync(ResourceDeployment deployment,
+    public async Task<ResourceDeploymentObservationDto> InvokeAsync(
+        ResourceDeployment deployment,
         CancellationToken cancellationToken)
     {
         var read = await shared.BeginAsync(deployment, cancellationToken);
         if (read is SharedObservationRead cached)
-            return new(deployment.Id,
-                    deployment.Revision,
-                    deployment.DesiredGeneration,
-                    cached.Snapshot.CheckedAtUtc,
-                    cached.Snapshot.Observation)
+            return new ResourceDeploymentObservationDto(
+                deployment.Id,
+                deployment.Revision,
+                deployment.DesiredGeneration,
+                cached.Snapshot.CheckedAtUtc,
+                cached.Snapshot.Observation)
             {
-                ObservationVersion = cached.Snapshot.ObservationVersion
+                ObservationVersion = cached.Snapshot.ObservationVersion,
             };
         var version = read switch
         {
             LiveObservationRead live => live.ObservationVersion,
             UnavailableObservationRead unavailable => unavailable.ObservationVersion,
-            SharedObservationRead => throw new InvalidOperationException("Shared observation was already returned.")
+            SharedObservationRead => throw new InvalidOperationException("Shared observation was already returned."),
         };
         WorkloadObservation observation;
         try
         {
             observation = read is UnavailableObservationRead unavailable
                 ? new UnavailableWorkloadObservation(unavailable.Reason)
-                : await reads.ReadAsync(async token =>
+                : await reads.ReadAsync(
+                    async token =>
                     {
                         var descriptor = catalog.Find(deployment.ResourceType);
                         return descriptor is null
@@ -83,13 +82,14 @@ public sealed class ObserveResourceDeployment(
 
         if (!await shared.IsCurrentAsync(deployment, (read as LiveObservationRead)?.Context, cancellationToken))
             observation = new UnavailableWorkloadObservation("Superseded");
-        return new ResourceDeploymentObservationDto(deployment.Id,
-                deployment.Revision,
-                deployment.DesiredGeneration,
-                clock.GetUtcNow().UtcDateTime,
-                observation)
+        return new ResourceDeploymentObservationDto(
+            deployment.Id,
+            deployment.Revision,
+            deployment.DesiredGeneration,
+            clock.GetUtcNow().UtcDateTime,
+            observation)
         {
-            ObservationVersion = version
+            ObservationVersion = version,
         };
     }
 }

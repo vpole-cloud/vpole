@@ -1,7 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -16,7 +14,8 @@ public delegate Task<FunctionRevisionLifecycleOutcome> MarkFunctionRevisionReady
 internal sealed class MongoMarkFunctionRevisionReady(
     IMongoCollection<FunctionRevision> functionRevisions,
     MongoFunctionRevisionLifecycleStore lifecycleStore,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<FunctionRevisionLifecycleOutcome> InvokeAsync(
         string tenantId,
@@ -24,11 +23,7 @@ internal sealed class MongoMarkFunctionRevisionReady(
         string revisionId,
         CancellationToken cancellationToken = default)
     {
-        var loaded = await lifecycleStore.LoadAsync(
-            tenantId,
-            functionAppId,
-            revisionId,
-            cancellationToken);
+        var loaded = await lifecycleStore.LoadAsync(tenantId, functionAppId, revisionId, cancellationToken);
         FunctionRevisionLifecycleState state;
         switch (loaded)
         {
@@ -42,6 +37,7 @@ internal sealed class MongoMarkFunctionRevisionReady(
             default:
                 throw new InvalidOperationException("Unsupported Function revision lifecycle state.");
         }
+
         if (state.Revision.Status is ReadyFunctionRevisionStatus)
             return new FunctionRevisionLifecycleCompleted();
         if (state.Revision.Status is not ProvisioningFunctionRevisionStatus)
@@ -63,10 +59,7 @@ internal sealed class MongoMarkFunctionRevisionReady(
             return new FunctionRevisionLifecycleCompleted();
 
         var current = await functionRevisions.Find(
-                FunctionRevisionLifecycleFilters.RevisionByOwner(
-                    tenantId,
-                    functionAppId,
-                    revisionId))
+                FunctionRevisionLifecycleFilters.RevisionByOwner(tenantId, functionAppId, revisionId))
             .FirstOrDefaultAsync(cancellationToken);
         return current?.Status is ReadyFunctionRevisionStatus or ActiveFunctionRevisionStatus
             ? new FunctionRevisionLifecycleCompleted()

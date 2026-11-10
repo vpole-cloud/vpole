@@ -13,7 +13,7 @@ public enum ResourceDeploymentStatus
     Applied,
     DeleteFailed,
     Failed,
-    Deleted
+    Deleted,
 }
 
 [JsonConverter(typeof(ResourceDeploymentDesiredOperationJsonConverter))]
@@ -22,5 +22,6 @@ public enum ResourceDeploymentDesiredOperation { Apply, Delete }
 // These are HTTP boundary converters; in-process contract consumers retain typed values.
 public sealed class ResourceDeploymentStatusJsonConverter()
     : JsonStringEnumConverter<ResourceDeploymentStatus>(allowIntegerValues: false);
+
 public sealed class ResourceDeploymentDesiredOperationJsonConverter()
     : JsonStringEnumConverter<ResourceDeploymentDesiredOperation>(allowIntegerValues: false);

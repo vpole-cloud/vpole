@@ -3,11 +3,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.StorageProfiles.Application.Catalog;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Application.Catalog;
 using Pole.Features.StorageProfiles.Application.Validation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
@@ -28,23 +27,23 @@ public sealed record UpdateStorageProfileRequestBody(
     IReadOnlyCollection<string> AllowedResourceTypes,
     StorageProfileTenantAccessDto TenantAccess,
     StorageProfileSizeLimitsDto? SizeLimits,
-    long Revision)
-    : StorageProfileMutationRequestBody(
-        DisplayName,
-        Description,
-        MediaType,
-        PerformanceTier,
-        IsEnabled,
-        IsDefault,
-        TargetMappings,
-        AllowedResourceTypes,
-        TenantAccess,
-        SizeLimits);
+    long Revision
+) : StorageProfileMutationRequestBody(
+    DisplayName,
+    Description,
+    MediaType,
+    PerformanceTier,
+    IsEnabled,
+    IsDefault,
+    TargetMappings,
+    AllowedResourceTypes,
+    TenantAccess,
+    SizeLimits);
 
 public sealed record UpdateStorageProfileRequest(
     [FromRoute] string Id,
-    [FromBody] UpdateStorageProfileRequestBody Body)
-    : IMediatorRequest<UpdateStorageProfileOutcome>;
+    [FromBody] UpdateStorageProfileRequestBody Body
+) : IMediatorRequest<UpdateStorageProfileOutcome>;
 
 public union UpdateStorageProfileOutcome(
     StorageProfileDto,
@@ -57,8 +56,8 @@ public sealed class UpdateStorageProfileHandler(
     LoadStorageProfileById loadStorageProfileById,
     ValidateStorageProfileTargetMappings validateTargetMappings,
     PersistUpdatedStorageProfile persistUpdatedStorageProfile,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<UpdateStorageProfileRequest, UpdateStorageProfileOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<UpdateStorageProfileRequest, UpdateStorageProfileOutcome>
 {
     public async Task<UpdateStorageProfileOutcome> HandleAsync(
         UpdateStorageProfileRequest request,
@@ -86,59 +85,50 @@ public sealed class UpdateStorageProfileHandler(
                 return error;
         }
 
-        var persisted = await persistUpdatedStorageProfile(
-            existing,
-            updated,
-            cancellationToken);
+        var persisted = await persistUpdatedStorageProfile(existing, updated, cancellationToken);
         return persisted switch
         {
             StorageProfile profile => profile.ToDto(),
-            StorageProfileRevisionConflict error => error
+            StorageProfileRevisionConflict error => error,
         };
     }
 }
 
-public sealed class UpdateStorageProfileRequestValidator
-    : AbstractValidator<UpdateStorageProfileRequest>
+public sealed class UpdateStorageProfileRequestValidator : AbstractValidator<UpdateStorageProfileRequest>
 {
     public UpdateStorageProfileRequestValidator()
     {
-        RuleFor(request => request.Id)
-            .MongoObjectId("Storage profile ID");
-        RuleFor(request => request.Body)
-            .NotNull()
-            .SetValidator(new UpdateStorageProfileRequestBodyValidator());
+        RuleFor(request => request.Id).MongoObjectId("Storage profile ID");
+        RuleFor(request => request.Body).NotNull().SetValidator(new UpdateStorageProfileRequestBodyValidator());
     }
 }
 
 public sealed class UpdateStorageProfileRequestBodyValidator
     : StorageProfileMutationRequestBodyValidator<UpdateStorageProfileRequestBody>
 {
-    public UpdateStorageProfileRequestBodyValidator() =>
-        RuleFor(body => body.Revision)
-            .GreaterThan(0);
+    public UpdateStorageProfileRequestBodyValidator() => RuleFor(body => body.Revision).GreaterThan(0);
 }
 
 public static class UpdateStorageProfileEndpoint
 {
-    public static IEndpointRouteBuilder MapUpdateStorageProfileEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapUpdateStorageProfileEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/profiles/{Id}", async (
-                IMediator mediator,
-                [AsParameters] UpdateStorageProfileRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPut(
+                "/profiles/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateStorageProfileRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    StorageProfileDto profile => Results.Ok(profile),
-                    StorageProfileNotFound error => MapNotFound(error),
-                    StorageProfileRevisionConflict error => MapRevisionConflict(error),
-                    StorageProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
-                    KubernetesStorageDiscoveryUnavailable error => MapDiscoveryUnavailable(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        StorageProfileDto profile => Results.Ok(profile),
+                        StorageProfileNotFound error => MapNotFound(error),
+                        StorageProfileRevisionConflict error => MapRevisionConflict(error),
+                        StorageProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                        KubernetesStorageDiscoveryUnavailable error => MapDiscoveryUnavailable(error),
+                    });
+                })
             .WithName("UpdateStorageProfile")
             .RequireAuthorization(Policy.Admin)
             .Produces<StorageProfileDto>()

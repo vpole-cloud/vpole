@@ -1,11 +1,5 @@
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Domain;
 
 namespace Pole.Features.ResourceConnections.Application.Reconciliation;
@@ -17,7 +11,8 @@ public sealed class ResourceConnectionReconciler(
     RecordResourceConnectionReverificationFailure recordReverificationFailure,
     RecordResourceConnectionCleanup recordCleanup,
     RecordResourceConnectionCleanupVerificationFailure recordCleanupVerificationFailure,
-    PurgeResourceConnectionIfComplete purgeIfComplete)
+    PurgeResourceConnectionIfComplete purgeIfComplete
+)
 {
     public async Task ReconcileAsync(
         string tenantId,
@@ -32,32 +27,26 @@ public sealed class ResourceConnectionReconciler(
         if (connection.Lifecycle is ActiveResourceConnection active)
         {
             foreach (var target in active.RetiringTargets)
-            {
                 await CleanupAsync(
                     connection,
                     target.Snapshot,
                     target.Status is CompletedConnectionCleanup,
                     cancellationToken);
-            }
             foreach (var target in active.Targets)
-            {
                 await ApplyAsync(
                     connection,
                     target.Snapshot,
                     target.Status is AppliedConnectionApply,
                     cancellationToken);
-            }
         }
         else if (connection.Lifecycle is DeletingResourceConnection deleting)
         {
             foreach (var target in deleting.Targets)
-            {
                 await CleanupAsync(
                     connection,
                     target.Snapshot,
                     target.Status is CompletedConnectionCleanup,
                     cancellationToken);
-            }
             await purgeIfComplete(connection, cancellationToken);
         }
     }
@@ -73,7 +62,6 @@ public sealed class ResourceConnectionReconciler(
             return;
         var failureCode = result.FailureCode();
         if (failureCode is null)
-        {
             await recordApply(
                 connection.TenantId,
                 connection.Id,
@@ -81,9 +69,7 @@ public sealed class ResourceConnectionReconciler(
                 connection.Generation,
                 failureReason: null,
                 cancellationToken);
-        }
         else if (wasApplied)
-        {
             await recordReverificationFailure(
                 connection.TenantId,
                 connection.Id,
@@ -92,9 +78,7 @@ public sealed class ResourceConnectionReconciler(
                 connection.Revision,
                 failureCode,
                 cancellationToken);
-        }
         else
-        {
             await recordApply(
                 connection.TenantId,
                 connection.Id,
@@ -102,7 +86,6 @@ public sealed class ResourceConnectionReconciler(
                 connection.Generation,
                 failureCode,
                 cancellationToken);
-        }
     }
 
     private async Task CleanupAsync(
@@ -116,7 +99,6 @@ public sealed class ResourceConnectionReconciler(
             return;
         var failureCode = result.FailureCode();
         if (failureCode is null)
-        {
             await recordCleanup(
                 connection.TenantId,
                 connection.Id,
@@ -124,9 +106,7 @@ public sealed class ResourceConnectionReconciler(
                 connection.Generation,
                 failureReason: null,
                 cancellationToken);
-        }
         else if (wasCompleted)
-        {
             await recordCleanupVerificationFailure(
                 connection.TenantId,
                 connection.Id,
@@ -135,9 +115,7 @@ public sealed class ResourceConnectionReconciler(
                 connection.Revision,
                 failureCode,
                 cancellationToken);
-        }
         else
-        {
             await recordCleanup(
                 connection.TenantId,
                 connection.Id,
@@ -145,6 +123,5 @@ public sealed class ResourceConnectionReconciler(
                 connection.Generation,
                 failureCode,
                 cancellationToken);
-        }
     }
 }

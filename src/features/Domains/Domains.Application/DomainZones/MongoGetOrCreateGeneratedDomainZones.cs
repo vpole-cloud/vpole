@@ -1,18 +1,13 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Dns;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.Tenants.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Domains.Application.DomainZones;
 
@@ -22,7 +17,8 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
     FenceDeploymentTargetWorkloadConfigurations fenceDeploymentTargetWorkloadConfigurations,
     LoadTenantIdentity loadTenantIdentity,
     TimeProvider timeProvider,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox
+)
 {
     public async Task<GetOrCreateGeneratedDomainZonesOutcome> InvokeAsync(
         IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests,
@@ -37,21 +33,14 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
         var tenant = identity switch
         {
             TenantIdentitySnapshot success => success,
-            TenantIdentityNotFound => null
+            TenantIdentityNotFound => null,
         };
         if (tenant is null)
-        {
-            return new GeneratedDomainZoneError(
-                new GeneratedDomainZoneTenantUnavailable(tenantId));
-        }
+            return new GeneratedDomainZoneError(new GeneratedDomainZoneTenantUnavailable(tenantId));
 
-        var candidates = requests
-            .Select(request => CreateGeneratedZone(request, tenant.DisplayName))
-            .ToArray();
+        var candidates = requests.Select(request => CreateGeneratedZone(request, tenant.DisplayName)).ToArray();
         var targetIds = requests.Select(request => request.DeploymentTargetId).ToArray();
-        var existing = await zones.Find(
-                session,
-                DomainFilters.GeneratedZonesForTargets(tenantId, targetIds))
+        var existing = await zones.Find(session, DomainFilters.GeneratedZonesForTargets(tenantId, targetIds))
             .ToListAsync(cancellationToken);
         var existingByTarget = existing.ToDictionary(
             zone => CanonicalObjectId(zone.DeploymentTargetId),
@@ -61,29 +50,19 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
             StringComparer.Ordinal);
 
         foreach (var candidate in candidates)
-        {
-            if (existingByTarget.TryGetValue(
-                    CanonicalObjectId(candidate.DeploymentTargetId),
-                    out var persisted) &&
+            if (existingByTarget.TryGetValue(CanonicalObjectId(candidate.DeploymentTargetId), out var persisted) &&
                 !string.Equals(candidate.Domain, persisted.Domain, StringComparison.Ordinal))
-            {
-                return new GeneratedDomainZoneError(
-                    new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId));
-            }
-        }
+                return new GeneratedDomainZoneError(new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId));
 
         var missing = candidates
-            .Where(candidate => !existingByTarget.ContainsKey(
-                CanonicalObjectId(candidate.DeploymentTargetId)))
+            .Where(candidate => !existingByTarget.ContainsKey(CanonicalObjectId(candidate.DeploymentTargetId)))
             .ToArray();
         if (missing.Length > 0)
         {
             var fence = await fenceDeploymentTargetWorkloadConfigurations(
-                missing
-                    .Select(candidate =>
+                missing.Select(candidate =>
                     {
-                        var request = requestsByTarget[
-                            CanonicalObjectId(candidate.DeploymentTargetId)];
+                        var request = requestsByTarget[CanonicalObjectId(candidate.DeploymentTargetId)];
                         return new DeploymentTargetWorkloadConfigurationFenceRequest(
                             candidate.DeploymentTargetId,
                             request.ExpectedWorkloadConfigurationRevision);
@@ -92,11 +71,9 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 session,
                 cancellationToken);
             if (fence is DeploymentTargetWorkloadConfigurationFenceRejected)
-            {
                 return new GeneratedDomainZoneError(
                     new GeneratedDomainZoneTargetChanged(
                         missing.Select(candidate => candidate.DeploymentTargetId).ToArray()));
-            }
 
             try
             {
@@ -106,13 +83,14 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                     new InsertManyOptions { IsOrdered = true },
                     cancellationToken);
             }
-            catch (MongoWriteException exception) when (
-                exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
+            catch (MongoWriteException exception) when (exception.WriteError.Category ==
+                                                        ServerErrorCategory.DuplicateKey)
             {
                 return GeneratedZoneConflict(missing);
             }
-            catch (MongoBulkWriteException<TenantDomainZone> exception) when (
-                exception.WriteErrors.Any(error => error.Category == ServerErrorCategory.DuplicateKey))
+            catch (MongoBulkWriteException<TenantDomainZone> exception) when (exception.WriteErrors.Any(error =>
+                                                                                  error.Category ==
+                                                                                  ServerErrorCategory.DuplicateKey))
             {
                 return GeneratedZoneConflict(missing);
             }
@@ -122,36 +100,30 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 var registered = await applyDeploymentTargetReferenceChanges(
                     new ApplyDeploymentTargetReferenceChangesRequest(
                         Owner: new DeploymentTargetReferenceOwner(
-                        DeploymentTargetReferenceOwnerTypes.DomainZone,
-                        candidate.Id),
+                            DeploymentTargetReferenceOwnerTypes.DomainZone,
+                            candidate.Id),
                         AddedDeploymentTargetIds: [candidate.DeploymentTargetId],
                         RemovedDeploymentTargetIds: []),
                     session: session,
                     cancellationToken: cancellationToken);
                 if (registered is DeploymentTargetReferenceChangeRejected)
-                {
                     return new GeneratedDomainZoneError(
-                        new GeneratedDomainZoneTargetChanged(
-                            [candidate.DeploymentTargetId]));
-                }
+                        new GeneratedDomainZoneTargetChanged([candidate.DeploymentTargetId]));
 
                 existingByTarget.Add(CanonicalObjectId(candidate.DeploymentTargetId), candidate);
             }
 
-            await outbox(session,
+            await outbox(
+                session,
                 missing.Select(zone => OutboxWrite.Create(zone.ToChangedEvent())).ToArray(),
                 cancellationToken);
         }
 
-        return requests
-            .Select(request => existingByTarget[
-                CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
+        return requests.Select(request => existingByTarget[CanonicalObjectId(request.DeploymentTargetId)].ToSnapshot())
             .ToArray();
     }
 
-    private TenantDomainZone CreateGeneratedZone(
-        GetOrCreateGeneratedZoneRequest request,
-        string tenantDisplayName) =>
+    private TenantDomainZone CreateGeneratedZone(GetOrCreateGeneratedZoneRequest request, string tenantDisplayName) =>
         TenantDomainZoneFactory.CreateGenerated(
             request.TenantId,
             request.DeploymentTargetId,
@@ -161,28 +133,24 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
 
-    private static GeneratedDomainZoneError GeneratedZoneConflict(
-        IReadOnlyList<TenantDomainZone> zones) =>
-        new GeneratedDomainZoneConflict(
-            zones.Select(zone => zone.DeploymentTargetId).ToArray());
+    private static GeneratedDomainZoneError GeneratedZoneConflict(IReadOnlyList<TenantDomainZone> zones) =>
+        new GeneratedDomainZoneConflict(zones.Select(zone => zone.DeploymentTargetId).ToArray());
 
     private static string GeneratedZoneLabel(string displayName, string tenantId)
     {
         if (!ObjectId.TryParse(tenantId, out var parsedTenantId))
             throw new ArgumentException("A MongoDB ObjectId is required.", nameof(tenantId));
 
-        var slug = new string(displayName.Trim().ToLowerInvariant()
-                .Select(character => character is >= 'a' and <= 'z' or >= '0' and <= '9'
-                    ? character
-                    : '-')
-                .ToArray())
-            .Trim('-');
+        var slug = new string(
+            displayName.Trim()
+                .ToLowerInvariant()
+                .Select(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' ? character : '-')
+                .ToArray()).Trim('-');
         slug = string.IsNullOrEmpty(slug) ? "tenant" : slug;
         var canonicalTenantId = parsedTenantId.ToString();
         var tenantIdWithSeparatorLength = canonicalTenantId.Length + 1;
-        var maximumSlugLength = DnsLabel.MaximumLength -
-                                TenantDomainZoneLabelPolicy.GeneratedPrefix.Length -
-                                tenantIdWithSeparatorLength;
+        var maximumSlugLength = DnsLabel.MaximumLength - TenantDomainZoneLabelPolicy.GeneratedPrefix.Length -
+            tenantIdWithSeparatorLength;
         return
             $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}{slug[..Math.Min(slug.Length, maximumSlugLength)].TrimEnd('-')}-{canonicalTenantId}";
     }
@@ -191,46 +159,32 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
     {
         ArgumentNullException.ThrowIfNull(requests);
         if (requests.Count is < 1 or > DomainCapabilityLimits.MaximumSetSize)
-        {
             throw new ArgumentException(
                 $"Between 1 and {DomainCapabilityLimits.MaximumSetSize} generated-zone requests are required.",
                 nameof(requests));
-        }
 
-        if (requests.Any(request =>
-                request is null ||
-                !ObjectId.TryParse(request.TenantId, out _) ||
+        if (requests.Any(request => request is null || !ObjectId.TryParse(request.TenantId, out _) ||
                 !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
                 request.ExpectedWorkloadConfigurationRevision < 1 ||
                 !DnsName.TryCreate(request.PublicBaseDomain, out _)))
-        {
             throw new ArgumentException(
                 "Each generated-zone request requires valid tenant, target, revision, and public-domain values.",
                 nameof(requests));
-        }
 
         var tenantId = CanonicalObjectId(requests[0].TenantId);
-        if (requests.Any(request =>
-                !string.Equals(
-                    CanonicalObjectId(request.TenantId),
-                    tenantId,
-                    StringComparison.Ordinal)))
-        {
+        if (requests.Any(request => !string.Equals(
+                CanonicalObjectId(request.TenantId),
+                tenantId,
+                StringComparison.Ordinal)))
             throw new ArgumentException(
                 "All generated-zone requests in a set must belong to one tenant.",
                 nameof(requests));
-        }
 
-        if (requests
-            .GroupBy(
-                request => CanonicalObjectId(request.DeploymentTargetId),
-                StringComparer.Ordinal)
+        if (requests.GroupBy(request => CanonicalObjectId(request.DeploymentTargetId), StringComparer.Ordinal)
             .Any(group => group.Skip(1).Any()))
-        {
             throw new ArgumentException(
                 "A generated-zone set may contain each deployment target only once.",
                 nameof(requests));
-        }
     }
 
     private static string CanonicalObjectId(string value) => ObjectId.Parse(value).ToString();

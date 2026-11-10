@@ -1,98 +1,74 @@
 using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.RegularExpressions;
-using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Domains.Contracts;
-using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Releases;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
-using Pole.Workloads;
 using static Pole.Features.WebServices.Application.Declarations.WebServiceDeclarationRules;
 
 namespace Pole.Features.WebServices.Application.Declarations;
 
 internal static class WebServicePlanning
 {
-    internal sealed record PlanningPlacement(
-        string ResourceGroupId,
-        string IsolationScopeId,
-        string DeploymentTargetId,
-        string? SourceBuildConfigurationId = null);
-
-    internal sealed record PlanningCompute(
-        string ProfileId,
-        long Revision,
-        int Replicas,
-        JsonElement Resolution);
-
     internal static DeclarationProjection Project(
         WebServiceSpec spec,
         IEnumerable<string> tags,
         string exposure,
         PlanningPlacement placement,
         PlanningCompute compute,
-        PlanningIngress? ingress) => new(DeclarationJson.Write(placement with
-        { SourceBuildConfigurationId = spec.Image.SourceBuildConfigurationId }), DeclarationJson.Write(new
-        {
-            image = ImageProjection(spec.Image),
-            ports = spec.Config.PortMappings.OrderBy(port => port.Name, StringComparer.Ordinal).ToArray(),
-            environment = spec.Config.EnvironmentVariables,
-            secretEnvironment = spec.Config.SecretEnvironmentReferences,
-            connectionEnvironment = spec.Config.ConnectionEnvironmentReferences,
-            probes = spec.Probes,
-            autoscaling = spec.Autoscaling,
-            tags = tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray(),
-            exposure,
-            ingress,
-            compute
-        }));
+        PlanningIngress? ingress) => new(
+        DeclarationJson.Write(
+            placement with
+            {
+                SourceBuildConfigurationId = spec.Image.SourceBuildConfigurationId,
+            }),
+        DeclarationJson.Write(
+            new
+            {
+                image = ImageProjection(spec.Image),
+                ports = spec.Config.PortMappings.OrderBy(port => port.Name, StringComparer.Ordinal).ToArray(),
+                environment = spec.Config.EnvironmentVariables,
+                secretEnvironment = spec.Config.SecretEnvironmentReferences,
+                connectionEnvironment = spec.Config.ConnectionEnvironmentReferences,
+                probes = spec.Probes,
+                autoscaling = spec.Autoscaling,
+                tags = tags.Select(tag => tag.Trim()).Distinct().Order(StringComparer.Ordinal).ToArray(),
+                exposure,
+                ingress,
+                compute,
+            }));
 
     internal static JsonElement ImageProjection(WebServiceImage image) => image switch
     {
         ImageInfo direct => DeclarationJson.Write(new { direct.Server, direct.Name, direct.Tag }),
-        PendingSourceBuildImage or DeliveredSourceBuildImage =>
-            DeclarationJson.Write(new { sourceBuildConfigurationId = image.SourceBuildConfigurationId }),
-        UnboundSourceBuildImage => DeclarationJson.Write(new { awaitingConfiguration = true })
+        PendingSourceBuildImage or DeliveredSourceBuildImage => DeclarationJson.Write(
+            new { sourceBuildConfigurationId = image.SourceBuildConfigurationId }),
+        UnboundSourceBuildImage => DeclarationJson.Write(new { awaitingConfiguration = true }),
     };
 
-    internal sealed record PlanningIngress(
-        string ClassName,
-        string ClusterIssuer,
-        string? PublicBaseDomain);
-
     internal static PlanningIngress? IngressProjection(ResourceDeploymentIngressConfiguration? ingress) =>
-        ingress is null ? null : new(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain);
+        ingress is null
+            ? null
+            : new PlanningIngress(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain);
 
     internal static PlanningIngress? DesiredIngress(WebServiceDeclaration spec, DeploymentTargetLookupDto target) =>
-        spec.Exposure == WebServiceDeclarationRules.PublicExposure &&
-        target.WorkloadConfiguration.Ingress is { } ingress
-            ? new(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain) : null;
+        spec.Exposure == PublicExposure && target.WorkloadConfiguration.Ingress is { } ingress
+            ? new PlanningIngress(ingress.IngressClassName, ingress.ClusterIssuerName, ingress.PublicBaseDomain)
+            : null;
 
     internal static DeclarationReadBlocked PlanningBlocked(WebServiceDeclarationError reason) =>
         new(new WebServiceDeclarationRejected(reason));
 
     internal static DeploymentTargetRequiredCapabilities RequiredCapabilities(WebServiceDeclaration spec) =>
-        spec.Exposure == WebServiceDeclarationRules.PublicExposure
+        spec.Exposure == PublicExposure
             ? DeploymentTargetRequiredCapabilities.PublicIngress
             : DeploymentTargetRequiredCapabilities.None;
 
@@ -104,58 +80,70 @@ internal static class WebServicePlanning
         new(
             ResourceGroupVersionKeys.IsolationScopeRevision(dependencies.Scope.IsolationScopeId),
             dependencies.Scope.ScopeRevision),
+        new(DeploymentTargetVersionKeys.Revision(dependencies.Target.Target.Id), dependencies.Target.Target.Revision),
         new(
-            DeploymentTargetVersionKeys.Revision(dependencies.Target.Target.Id),
-            dependencies.Target.Target.Revision),
-        new(DeploymentTargetVersionKeys.WorkloadConfiguration(dependencies.Target.Target.Id),
+            DeploymentTargetVersionKeys.WorkloadConfiguration(dependencies.Target.Target.Id),
             dependencies.Target.Target.WorkloadConfiguration.Revision),
-        new(ComputeProfileVersionKeys.Policy(dependencies.Compute.Request.ComputeProfileId),
+        new(
+            ComputeProfileVersionKeys.Policy(dependencies.Compute.Request.ComputeProfileId),
             dependencies.Compute.PolicyRevision),
-        .. (dependencies.Placements?.Items ?? []).Select(item =>
-            new DeclarationDocumentVersion(
-                ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision)),
-        .. dependencies.BuildConfiguration is { } build ? new DeclarationDocumentVersion[]
-            { new(SourceBuildConfigurationVersionKeys.Revision(build.Id), build.Revision) } : [],
+        .. (dependencies.Placements?.Items ?? []).Select(item => new DeclarationDocumentVersion(
+            ResourceDeploymentVersionKeys.Revision(item.DeploymentId),
+            item.Revision)),
+        .. dependencies.BuildConfiguration is { } build
+            ? new DeclarationDocumentVersion[]
+                { new(SourceBuildConfigurationVersionKeys.Revision(build.Id), build.Revision) }
+            : [],
         .. (dependencies.Connections?.Connections ?? []).SelectMany(item => new DeclarationDocumentVersion[]
         {
             new(ResourceConnectionPlanningVersion.RevisionDocumentId(item.ConnectionId), item.Revision),
-            new(ConnectionReferenceFenceVersionKey(item.ConnectionId), item.ReferenceFence)
+            new(ConnectionReferenceFenceVersionKey(item.ConnectionId), item.ReferenceFence),
         }),
-        .. (dependencies.Connections?.Destinations ?? []).Select(item =>
-            new DeclarationDocumentVersion(
-                ResourceGroupVersionKeys.RegistrationReferenceFence(item.RegistrationId), item.ReferenceFence)),
+        .. (dependencies.Connections?.Destinations ?? []).Select(item => new DeclarationDocumentVersion(
+            ResourceGroupVersionKeys.RegistrationReferenceFence(item.RegistrationId),
+            item.ReferenceFence)),
         .. (dependencies.Secrets?.Secrets ?? []).SelectMany(item => new DeclarationDocumentVersion[]
         {
             new(SecretVersionKeys.Revision(item.SecretId), item.Revision),
-            new(SecretVersionKeys.ReferenceFence(item.SecretId), item.ReferenceFence)
-        })
+            new(SecretVersionKeys.ReferenceFence(item.SecretId), item.ReferenceFence),
+        }),
     ];
 
     internal static JsonElement ComputeProjection(ResourceDeploymentComputeConfiguration compute) =>
-        DeclarationJson.Write(new
-        {
-            compute.Requests,
-            compute.Limits,
-            compute.Architecture,
-            compute.RuntimeClassName,
-            extendedResources = compute.ExtendedResources.OrderBy(item => item.Name, StringComparer.Ordinal),
-            nodeSelector = compute.NodeSelector.OrderBy(item => item.Key, StringComparer.Ordinal),
-            requiredNodeAffinity = compute.RequiredNodeAffinity.Select(NormalizeTerm)
-                .OrderBy(item => DeclarationJson.Write(item).GetRawText(), StringComparer.Ordinal),
-            preferredNodeAffinity = compute.PreferredNodeAffinity.Select(item =>
-                    item with { Term = NormalizeTerm(item.Term) })
-                .OrderBy(item => DeclarationJson.Write(item).GetRawText(), StringComparer.Ordinal),
-            tolerations = compute.Tolerations.OrderBy(item => item.Key, StringComparer.Ordinal)
-                .ThenBy(item => item.Operator).ThenBy(item => item.Value, StringComparer.Ordinal)
-                .ThenBy(item => item.Effect).ThenBy(item => item.TolerationSeconds)
-        });
+        DeclarationJson.Write(
+            new
+            {
+                compute.Requests,
+                compute.Limits,
+                compute.Architecture,
+                compute.RuntimeClassName,
+                extendedResources = compute.ExtendedResources.OrderBy(item => item.Name, StringComparer.Ordinal),
+                nodeSelector = compute.NodeSelector.OrderBy(item => item.Key, StringComparer.Ordinal),
+                requiredNodeAffinity = compute.RequiredNodeAffinity
+                    .Select(NormalizeTerm)
+                    .OrderBy(item => DeclarationJson.Write(item).GetRawText(), StringComparer.Ordinal),
+                preferredNodeAffinity = compute.PreferredNodeAffinity
+                    .Select(item => item with { Term = NormalizeTerm(item.Term) })
+                    .OrderBy(item => DeclarationJson.Write(item).GetRawText(), StringComparer.Ordinal),
+                tolerations = compute.Tolerations
+                    .OrderBy(item => item.Key, StringComparer.Ordinal)
+                    .ThenBy(item => item.Operator)
+                    .ThenBy(item => item.Value, StringComparer.Ordinal)
+                    .ThenBy(item => item.Effect)
+                    .ThenBy(item => item.TolerationSeconds),
+            });
 
-    internal static ResourceDeploymentNodeAffinityTerm NormalizeTerm(ResourceDeploymentNodeAffinityTerm term) =>
-        term with
+    internal static ResourceDeploymentNodeAffinityTerm NormalizeTerm(ResourceDeploymentNodeAffinityTerm term) => term
+        with
         {
-            Expressions = term.Expressions.Select(item => item with
-            { Values = item.Values.Order(StringComparer.Ordinal).ToImmutableList() })
-                .OrderBy(item => item.Key, StringComparer.Ordinal).ThenBy(item => item.Operator).ToImmutableList()
+            Expressions = term.Expressions
+                .Select(item => item with
+                {
+                    Values = item.Values.Order(StringComparer.Ordinal).ToImmutableList(),
+                })
+                .OrderBy(item => item.Key, StringComparer.Ordinal)
+                .ThenBy(item => item.Operator)
+                .ToImmutableList(),
         };
 
     internal static WebServiceSpec ToSpec(
@@ -163,48 +151,52 @@ internal static class WebServicePlanning
         ImmutableDictionary<string, SecretEnvironmentReference> references,
         WebServiceSpec? previous,
         ImmutableDictionary<string, ConnectionEnvironmentReference>? connections = null,
-        string? buildConfigurationId = null) =>
-        new(value.Image switch
+        string? buildConfigurationId = null) => new(
+        value.Image switch
         {
-            DeclaredContainerImage image => new ImageInfo(image.Server, image.Name, image.Tag,
+            DeclaredContainerImage image => new ImageInfo(
+                image.Server,
+                image.Name,
+                image.Tag,
                 previous?.Image.ResolvedImage?.SecretName),
             DeclaredSourceBuildImage when previous?.Image is { } prior &&
                 prior.SourceBuildConfigurationId == buildConfigurationId &&
                 prior is PendingSourceBuildImage or DeliveredSourceBuildImage => prior,
-            DeclaredSourceBuildImage => WebServiceImageFactory.Pending(buildConfigurationId!)
+            DeclaredSourceBuildImage => WebServiceImageFactory.Pending(buildConfigurationId!),
         },
-            new WebServiceConfig()
-            {
-                EnvironmentVariables = value.Environment,
-                PortMappings = value.Ports.Select(port => new PortMapping(
-                    port.ServicePort,
-                    port.TargetPort,
-                    port.Protocol,
-                    port.Name)).ToImmutableList(),
-                ConnectionEnvironmentReferences = connections ?? previous?.Config.ConnectionEnvironmentReferences ??
-                    ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
-                SecretEnvironmentReferences = references
-            },
-            value.Autoscaling?.ToDomain(),
-            value.Probes.ToDomain());
+        new WebServiceConfig
+        {
+            EnvironmentVariables = value.Environment,
+            PortMappings = value.Ports
+                .Select(port => new PortMapping(port.ServicePort, port.TargetPort, port.Protocol, port.Name))
+                .ToImmutableList(),
+            ConnectionEnvironmentReferences = connections ?? previous?.Config.ConnectionEnvironmentReferences ??
+                ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
+            SecretEnvironmentReferences = references,
+        },
+        value.Autoscaling?.ToDomain(),
+        value.Probes.ToDomain());
 
     internal static GitPreviewResolvedReference? PreviewReference(
-        IReadOnlyList<GitPreviewResolvedReference> references, ResourceAddress address) =>
-        references.SingleOrDefault(item => item.Address == address);
+        IReadOnlyList<GitPreviewResolvedReference> references,
+        ResourceAddress address) => references.SingleOrDefault(item => item.Address == address);
 
     private static string ManagedVersionKey(string id, string hash) => $"WebService/{id}/Managed/{hash}";
 
-    internal static DeclarationDocumentVersion[] LifecycleVersions(WebService current,
+    internal static DeclarationDocumentVersion[] LifecycleVersions(
+        WebService current,
         IReadOnlyList<ResourceDeploymentPlanningItem> placements) =>
     [
         new(WebServiceDeclarations.VersionKey(current.Id), current.Revision),
         new(DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id), current.PlanningFence),
         new(ManagedVersionKey(current.Id, LifecycleConfigurationHash(current, placements)), 0),
-        .. placements.SelectMany(item => LifecyclePlacementVersions(item,
-            current.Lifecycle is DeletingWebServiceLifecycle))
+        .. placements.SelectMany(item => LifecyclePlacementVersions(
+            item,
+            current.Lifecycle is DeletingWebServiceLifecycle)),
     ];
 
-    internal static string LifecycleConfigurationHash(WebService current,
+    internal static string LifecycleConfigurationHash(
+        WebService current,
         IReadOnlyList<ResourceDeploymentPlanningItem> placements)
     {
         var value = new
@@ -214,11 +206,19 @@ internal static class WebServicePlanning
             current.DeclaredPlacement,
             image = ImageProjection(current.Spec.Image),
             ports = current.Spec.Config.PortMappings.OrderBy(item => item.Name, StringComparer.Ordinal),
-            environment = current.Spec.Config.EnvironmentVariables.OrderBy(item => item.Key, StringComparer.Ordinal)
+            environment = current.Spec
+                .Config
+                .EnvironmentVariables
+                .OrderBy(item => item.Key, StringComparer.Ordinal)
                 .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal),
-            secrets = current.Spec.Config.SecretEnvironmentReferences.OrderBy(item => item.Key, StringComparer.Ordinal)
+            secrets = current.Spec
+                .Config
+                .SecretEnvironmentReferences
+                .OrderBy(item => item.Key, StringComparer.Ordinal)
                 .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal),
-            connections = current.Spec.Config.ConnectionEnvironmentReferences
+            connections = current.Spec
+                .Config
+                .ConnectionEnvironmentReferences
                 .OrderBy(item => item.Key, StringComparer.Ordinal)
                 .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal),
             current.Spec.Probes,
@@ -226,26 +226,35 @@ internal static class WebServicePlanning
             tags = current.Tags.Order(StringComparer.Ordinal),
             current.Exposure.Mode,
             lifecycle = current.Lifecycle.GetType().Name,
-            placements = placements.OrderBy(item => item.DeploymentId, StringComparer.Ordinal).Select(item => new
-            {
-                item.DeploymentId,
-                item.ResourceGroupId,
-                item.IsolationScopeId,
-                item.DeploymentTargetId,
-                item.FixedReplicas,
-                compute = ComputeProjection(item.Compute),
-                ingress = IngressProjection(item.Ingress)
-            })
+            placements = placements.OrderBy(item => item.DeploymentId, StringComparer.Ordinal)
+                .Select(item => new
+                {
+                    item.DeploymentId,
+                    item.ResourceGroupId,
+                    item.IsolationScopeId,
+                    item.DeploymentTargetId,
+                    item.FixedReplicas,
+                    compute = ComputeProjection(item.Compute),
+                    ingress = IngressProjection(item.Ingress),
+                }),
         };
         return Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
     }
 
     internal static IReadOnlyList<DeclarationDocumentVersion> LifecyclePlacementVersions(
-        ResourceDeploymentPlanningItem item, bool deleting)
+        ResourceDeploymentPlanningItem item,
+        bool deleting)
     {
         if (!deleting || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new(ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId), item.DesiredGeneration),
-                new(ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId), item.ResourceRevision)];
+            return
+            [
+                new DeclarationDocumentVersion(
+                    ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId),
+                    item.DesiredGeneration),
+                new DeclarationDocumentVersion(
+                    ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId),
+                    item.ResourceRevision),
+            ];
         var intent = new
         {
             item.ResourceGroupId,
@@ -256,28 +265,56 @@ internal static class WebServicePlanning
             item.Compute.ComputeProfileRevision,
             compute = ComputeProjection(item.Compute),
             item.Storage,
-            ingress = item.Ingress is { } ingress ? new
-            {
-                ingress.IngressClassName,
-                ingress.ClusterIssuerName,
-                ingress.PublicBaseDomain,
-                hostnames = ingress.Hostnames.Order(StringComparer.Ordinal)
-            } : null,
+            ingress = item.Ingress is { } ingress
+                ? new
+                {
+                    ingress.IngressClassName,
+                    ingress.ClusterIssuerName,
+                    ingress.PublicBaseDomain,
+                    hostnames = ingress.Hostnames.Order(StringComparer.Ordinal),
+                }
+                : null,
             item.DeploymentTargetConfigurationRevision,
             item.DesiredGeneration,
-            item.ResourceRevision
+            item.ResourceRevision,
         };
         var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)));
-        return [new(ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
+        return
+        [
+            new DeclarationDocumentVersion(
+                ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash),
+                item.DesiredGeneration),
+        ];
     }
 
-    internal static bool SameLifecycleVersions(IEnumerable<DeclarationDocumentVersion> current,
-        IEnumerable<DeclarationDocumentVersion> expected) =>
-        current.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
-            .SequenceEqual(expected.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+    internal static bool SameLifecycleVersions(
+        IEnumerable<DeclarationDocumentVersion> current,
+        IEnumerable<DeclarationDocumentVersion> expected) => current
+        .OrderBy(item => item.DocumentId, StringComparer.Ordinal)
+        .SequenceEqual(expected.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
 
     private static string ConnectionReferenceFenceVersionKey(string id) =>
         $"{ResourceConnectionPlanningVersion.RevisionDocumentId(id)}/ReferenceFence";
+
+    internal sealed record PlanningPlacement(
+        string ResourceGroupId,
+        string IsolationScopeId,
+        string DeploymentTargetId,
+        string? SourceBuildConfigurationId = null
+    );
+
+    internal sealed record PlanningCompute(
+        string ProfileId,
+        long Revision,
+        int Replicas,
+        JsonElement Resolution
+    );
+
+    internal sealed record PlanningIngress(
+        string ClassName,
+        string ClusterIssuer,
+        string? PublicBaseDomain
+    );
 }
 
 internal sealed record WebServicePlanningDependencies(
@@ -291,15 +328,15 @@ internal sealed record WebServicePlanningDependencies(
     ResourceConnectionReferencePlanningSnapshot? Connections,
     ImmutableDictionary<string, ConnectionEnvironmentReference>? ConnectionReferences,
     string? BuildConfigurationId,
-    SourceBuildConfigurationSnapshot? BuildConfiguration);
+    SourceBuildConfigurationSnapshot? BuildConfiguration
+);
 
-internal union ReadWebServicePlanningOutcome(
-    WebServicePlanningDependencies,
-    DeclarationReadBlocked);
+internal union ReadWebServicePlanningOutcome(WebServicePlanningDependencies, DeclarationReadBlocked);
 
 internal sealed record WebServicePlanningInput(
     string TenantId,
     string ResourceId,
     CompiledDeclaration Declaration,
     DeclarationPhase Phase,
-    Func<ResourceAddress, Task<string?>> Reference);
+    Func<ResourceAddress, Task<string?>> Reference
+);

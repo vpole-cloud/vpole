@@ -1,20 +1,16 @@
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Placements;
 
 /// <summary>
-/// Owns the caller-session placement protocol: lifecycle fences, runtime-cell
-/// creation, target-reference registration, and the reconciliation outbox write.
+///     Owns the caller-session placement protocol: lifecycle fences, runtime-cell
+///     creation, target-reference registration, and the reconciliation outbox write.
 /// </summary>
 internal sealed class MongoResourcePlacementResolver(
     IMongoCollection<ResourceGroup> resourceGroups,
@@ -27,7 +23,8 @@ internal sealed class MongoResourcePlacementResolver(
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     GenerateRuntimeCellNamespaceName generateNamespaceName,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<ResolveResourceGroupPlacementOutcome> InvokeAsync(
         ResolveResourceGroupPlacementRequest request,
@@ -44,18 +41,13 @@ internal sealed class MongoResourcePlacementResolver(
         if (context.Error is not null)
             return context.Error.Value;
 
-        var requested = await ResolveRequestedTargetAsync(
-            request.DeploymentTargetId,
-            cancellationToken);
+        var requested = await ResolveRequestedTargetAsync(request.DeploymentTargetId, cancellationToken);
         if (requested.Error is not null)
             return requested.Error.Value;
 
-        var existing = await runtimeCells
-            .Find(
+        var existing = await runtimeCells.Find(
                 session,
-                RuntimeCellFilters.ByScopeAndDeploymentTarget(
-                    context.Scope!.Id,
-                    requested.Target!.Id))
+                RuntimeCellFilters.ByScopeAndDeploymentTarget(context.Scope!.Id, requested.Target!.Id))
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
         {
@@ -65,9 +57,7 @@ internal sealed class MongoResourcePlacementResolver(
                 timeProvider.GetUtcNow().UtcDateTime,
                 session,
                 cancellationToken);
-            return fenceError is null
-                ? existing.ToPlacement()
-                : fenceError.Value;
+            return fenceError is null ? existing.ToPlacement() : fenceError.Value;
         }
 
         var admitted = await AdmitTargetAsync(request.DeploymentTargetId, cancellationToken);
@@ -76,12 +66,9 @@ internal sealed class MongoResourcePlacementResolver(
 
         if (!string.Equals(admitted.Target!.Id, requested.Target!.Id, StringComparison.Ordinal))
         {
-            existing = await runtimeCells
-                .Find(
+            existing = await runtimeCells.Find(
                     session,
-                    RuntimeCellFilters.ByScopeAndDeploymentTarget(
-                        context.Scope.Id,
-                        admitted.Target.Id))
+                    RuntimeCellFilters.ByScopeAndDeploymentTarget(context.Scope.Id, admitted.Target.Id))
                 .FirstOrDefaultAsync(cancellationToken);
             if (existing is not null)
             {
@@ -91,19 +78,12 @@ internal sealed class MongoResourcePlacementResolver(
                     timeProvider.GetUtcNow().UtcDateTime,
                     session,
                     cancellationToken);
-                return fenceError is null
-                    ? existing.ToPlacement()
-                    : fenceError.Value;
+                return fenceError is null ? existing.ToPlacement() : fenceError.Value;
             }
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var fence = await FenceParentsAsync(
-            context.ResourceGroup!,
-            context.Scope!,
-            now,
-            session,
-            cancellationToken);
+        var fence = await FenceParentsAsync(context.ResourceGroup!, context.Scope!, now, session, cancellationToken);
         if (fence is not null)
             return fence.Value;
 
@@ -120,32 +100,28 @@ internal sealed class MongoResourcePlacementResolver(
         var reference = await applyDeploymentTargetReferenceChanges(
             new ApplyDeploymentTargetReferenceChangesRequest(
                 Owner: new DeploymentTargetReferenceOwner(
-                ResourcePlacementReferenceOwnerTypes.RuntimeCell,
-                runtimeCell.Cell.Id),
+                    ResourcePlacementReferenceOwnerTypes.RuntimeCell,
+                    runtimeCell.Cell.Id),
                 AddedDeploymentTargetIds: [runtimeCell.Cell.DeploymentTargetId],
                 RemovedDeploymentTargetIds: []),
             session: session,
             cancellationToken: cancellationToken);
         if (reference is DeploymentTargetReferenceChangeRejected)
-        {
             return new ResourceGroupPlacementError(
-                    new ResourceGroupPlacementDeploymentTargetReferenceRejected(
-                        runtimeCell.Cell.DeploymentTargetId));
-        }
+                new ResourceGroupPlacementDeploymentTargetReferenceRejected(runtimeCell.Cell.DeploymentTargetId));
 
         await storeOutboxWrites(
             session,
-            [OutboxWrite.Create(
-                runtimeCell.Cell.ToReconciliationRequestedEvent(),
-                RuntimeCellPendingKey.Reconciliation(
-                    runtimeCell.Cell.Id,
-                    runtimeCell.Cell.DesiredGeneration))],
+            [
+                OutboxWrite.Create(
+                    runtimeCell.Cell.ToReconciliationRequestedEvent(),
+                    RuntimeCellPendingKey.Reconciliation(runtimeCell.Cell.Id, runtimeCell.Cell.DesiredGeneration)),
+            ],
             cancellationToken);
         return runtimeCell.Cell.ToPlacement();
     }
 
-    public async Task<ResolveResourceGroupPlacementsOutcome>
-        InvokeManyAsync(
+    public async Task<ResolveResourceGroupPlacementsOutcome> InvokeManyAsync(
         ResolveResourceGroupPlacementsRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
@@ -153,19 +129,13 @@ internal sealed class MongoResourcePlacementResolver(
         EnsureTransaction(session);
         ArgumentNullException.ThrowIfNull(request.DeploymentTargetIds);
         var normalizedTargetIds = request.DeploymentTargetIds
-            .Select(targetId => string.IsNullOrWhiteSpace(targetId)
-                ? string.Empty
-                : targetId.Trim())
+            .Select(targetId => string.IsNullOrWhiteSpace(targetId) ? "" : targetId.Trim())
             .ToArray();
-        if (normalizedTargetIds.Length == 0 ||
-            normalizedTargetIds.Any(string.IsNullOrEmpty) ||
-            normalizedTargetIds.Distinct(StringComparer.Ordinal).Count() !=
-            normalizedTargetIds.Length)
-        {
+        if (normalizedTargetIds.Length == 0 || normalizedTargetIds.Any(string.IsNullOrEmpty) ||
+            normalizedTargetIds.Distinct(StringComparer.Ordinal).Count() != normalizedTargetIds.Length)
             throw new ArgumentException(
                 "At least one unique deployment target ID is required.",
                 nameof(request.DeploymentTargetIds));
-        }
 
         var context = await LoadContextAsync(
             request.TenantId,
@@ -176,8 +146,7 @@ internal sealed class MongoResourcePlacementResolver(
         if (context.Error is not null)
             return context.Error.Value;
 
-        var existing = await runtimeCells
-            .Find(
+        var existing = await runtimeCells.Find(
                 session,
                 RuntimeCellFilters.ByTenantScopeAndDeploymentTargets(
                     request.TenantId,
@@ -185,12 +154,8 @@ internal sealed class MongoResourcePlacementResolver(
                     context.Scope!.Id,
                     normalizedTargetIds))
             .ToListAsync(cancellationToken);
-        var byTarget = existing.ToDictionary(
-            cell => cell.DeploymentTargetId,
-            StringComparer.Ordinal);
-        var missingTargetIds = normalizedTargetIds
-            .Where(targetId => !byTarget.ContainsKey(targetId))
-            .ToArray();
+        var byTarget = existing.ToDictionary(cell => cell.DeploymentTargetId, StringComparer.Ordinal);
+        var missingTargetIds = normalizedTargetIds.Where(targetId => !byTarget.ContainsKey(targetId)).ToArray();
 
         foreach (var targetId in missingTargetIds)
         {
@@ -198,21 +163,12 @@ internal sealed class MongoResourcePlacementResolver(
             if (admitted.Error is not null)
                 return admitted.Error.Value;
             if (!string.Equals(admitted.Target!.Id, targetId, StringComparison.Ordinal))
-            {
                 return new ResourceGroupPlacementError(
-                        new ResourceGroupPlacementTargetResolutionChanged(
-                            targetId,
-                            admitted.Target.Id));
-            }
+                    new ResourceGroupPlacementTargetResolutionChanged(targetId, admitted.Target.Id));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var fence = await FenceParentsAsync(
-            context.ResourceGroup!,
-            context.Scope!,
-            now,
-            session,
-            cancellationToken);
+        var fence = await FenceParentsAsync(context.ResourceGroup!, context.Scope!, now, session, cancellationToken);
         if (fence is not null)
             return fence.Value;
 
@@ -232,33 +188,28 @@ internal sealed class MongoResourcePlacementResolver(
             var reference = await applyDeploymentTargetReferenceChanges(
                 new ApplyDeploymentTargetReferenceChangesRequest(
                     Owner: new DeploymentTargetReferenceOwner(
-                    ResourcePlacementReferenceOwnerTypes.RuntimeCell,
-                    runtimeCell.Cell.Id),
+                        ResourcePlacementReferenceOwnerTypes.RuntimeCell,
+                        runtimeCell.Cell.Id),
                     AddedDeploymentTargetIds: [runtimeCell.Cell.DeploymentTargetId],
                     RemovedDeploymentTargetIds: []),
                 session: session,
                 cancellationToken: cancellationToken);
             if (reference is DeploymentTargetReferenceChangeRejected)
-            {
                 return new ResourceGroupPlacementError(
-                        new ResourceGroupPlacementDeploymentTargetReferenceRejected(
-                            runtimeCell.Cell.DeploymentTargetId));
-            }
+                    new ResourceGroupPlacementDeploymentTargetReferenceRejected(runtimeCell.Cell.DeploymentTargetId));
 
             await storeOutboxWrites(
                 session,
-                [OutboxWrite.Create(
-                    runtimeCell.Cell.ToReconciliationRequestedEvent(),
-                    RuntimeCellPendingKey.Reconciliation(
-                        runtimeCell.Cell.Id,
-                        runtimeCell.Cell.DesiredGeneration))],
+                [
+                    OutboxWrite.Create(
+                        runtimeCell.Cell.ToReconciliationRequestedEvent(),
+                        RuntimeCellPendingKey.Reconciliation(runtimeCell.Cell.Id, runtimeCell.Cell.DesiredGeneration)),
+                ],
                 cancellationToken);
         }
 
         return new ResourcePlacements(
-            normalizedTargetIds
-                .Select(targetId => byTarget[targetId].ToPlacement())
-                .ToArray());
+            normalizedTargetIds.Select(targetId => byTarget[targetId].ToPlacement()).ToArray());
     }
 
     private async Task<PlacementContext> LoadContextAsync(
@@ -272,59 +223,38 @@ internal sealed class MongoResourcePlacementResolver(
             .Find(session, ResourceGroupFilters.ByTenantAndId(tenantId, resourceGroupId))
             .FirstOrDefaultAsync(cancellationToken);
         if (resourceGroup is null)
-        {
             return new PlacementContext(
                 null,
                 null,
-                new ResourceGroupPlacementError(
-                    new ResourceGroupPlacementResourceGroupNotFound(resourceGroupId)));
-        }
+                new ResourceGroupPlacementError(new ResourceGroupPlacementResourceGroupNotFound(resourceGroupId)));
         if (resourceGroup.Lifecycle is DeletingResourceGroupLifecycleState)
-        {
             return new PlacementContext(
                 null,
                 null,
-                new ResourceGroupPlacementError(
-                    new ResourceGroupPlacementResourceGroupDeleting(resourceGroupId)));
-        }
+                new ResourceGroupPlacementError(new ResourceGroupPlacementResourceGroupDeleting(resourceGroupId)));
         if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState)
-        {
             throw new InvalidOperationException(
                 $"Resource group '{resourceGroup.Id}' has an unsupported lifecycle state.");
-        }
 
         var resolvedScopeId = string.IsNullOrWhiteSpace(isolationScopeId)
             ? resourceGroup.DefaultIsolationScopeId
             : isolationScopeId.Trim();
-        var scope = await isolationScopes
-            .Find(
+        var scope = await isolationScopes.Find(
                 session,
-                IsolationScopeFilters.ByTenantResourceGroupAndId(
-                    tenantId,
-                    resourceGroup.Id,
-                    resolvedScopeId))
+                IsolationScopeFilters.ByTenantResourceGroupAndId(tenantId, resourceGroup.Id, resolvedScopeId))
             .FirstOrDefaultAsync(cancellationToken);
         if (scope is null)
-        {
             return new PlacementContext(
                 null,
                 null,
-                new ResourceGroupPlacementError(
-                    new ResourceGroupPlacementIsolationScopeNotFound(resolvedScopeId)));
-        }
+                new ResourceGroupPlacementError(new ResourceGroupPlacementIsolationScopeNotFound(resolvedScopeId)));
         if (scope.Lifecycle is DeletingIsolationScopeLifecycleState)
-        {
             return new PlacementContext(
                 null,
                 null,
-                new ResourceGroupPlacementError(
-                    new ResourceGroupPlacementIsolationScopeDeleting(scope.Id)));
-        }
+                new ResourceGroupPlacementError(new ResourceGroupPlacementIsolationScopeDeleting(scope.Id)));
         if (scope.Lifecycle is not ActiveIsolationScopeLifecycleState)
-        {
-            throw new InvalidOperationException(
-                $"Isolation scope '{scope.Id}' has an unsupported lifecycle state.");
-        }
+            throw new InvalidOperationException($"Isolation scope '{scope.Id}' has an unsupported lifecycle state.");
 
         return new PlacementContext(resourceGroup, scope, null);
     }
@@ -339,7 +269,7 @@ internal sealed class MongoResourcePlacementResolver(
             return defaultTarget switch
             {
                 DeploymentTargetLookupDto success => new TargetResolution(success, null),
-                DefaultDeploymentTargetLookupError => RejectedTarget(null)
+                DefaultDeploymentTargetLookupError => RejectedTarget(null),
             };
         }
 
@@ -348,7 +278,7 @@ internal sealed class MongoResourcePlacementResolver(
         return target switch
         {
             DeploymentTargetLookupDto success => new TargetResolution(success, null),
-            DeploymentTargetLookupError => RejectedTarget(requestedTargetId)
+            DeploymentTargetLookupError => RejectedTarget(requestedTargetId),
         };
     }
 
@@ -362,7 +292,7 @@ internal sealed class MongoResourcePlacementResolver(
             return defaultTarget switch
             {
                 DeploymentTargetLookupDto success => new TargetResolution(success, null),
-                DefaultDeploymentTargetWorkloadAdmissionError => RejectedTarget(null)
+                DefaultDeploymentTargetWorkloadAdmissionError => RejectedTarget(null),
             };
         }
 
@@ -371,7 +301,7 @@ internal sealed class MongoResourcePlacementResolver(
         return target switch
         {
             DeploymentTargetLookupDto success => new TargetResolution(success, null),
-            DeploymentTargetWorkloadAdmissionError => RejectedTarget(requestedTargetId)
+            DeploymentTargetWorkloadAdmissionError => RejectedTarget(requestedTargetId),
         };
     }
 
@@ -408,7 +338,7 @@ internal sealed class MongoResourcePlacementResolver(
             new FindOneAndUpdateOptions<RuntimeCell>
             {
                 IsUpsert = true,
-                ReturnDocument = ReturnDocument.After
+                ReturnDocument = ReturnDocument.After,
             },
             cancellationToken);
         return new UpsertedRuntimeCell(
@@ -425,64 +355,49 @@ internal sealed class MongoResourcePlacementResolver(
     {
         var resourceGroupFence = await resourceGroups.UpdateOneAsync(
             session,
-            ResourceGroupFilters.ActiveAtRevision(
-                resourceGroup.TenantId,
-                resourceGroup.Id,
-                resourceGroup.Revision),
+            ResourceGroupFilters.ActiveAtRevision(resourceGroup.TenantId, resourceGroup.Id, resourceGroup.Revision),
             Builders<ResourceGroup>.Update
                 .Inc(group => group.Revision, 1)
                 .Set(group => group.UpdatedAtUtc, fencedAtUtc),
             cancellationToken: cancellationToken);
         if (resourceGroupFence.ModifiedCount != 1)
-        {
-            return new ResourceGroupPlacementError(
-                new ResourceGroupPlacementChanged(resourceGroup.Id));
-        }
+            return new ResourceGroupPlacementError(new ResourceGroupPlacementChanged(resourceGroup.Id));
 
         var scopeFence = await isolationScopes.UpdateOneAsync(
             session,
-            IsolationScopeFilters.ActiveAtRevision(
-                resourceGroup.TenantId,
-                resourceGroup.Id,
-                scope.Id,
-                scope.Revision),
-            Builders<IsolationScope>.Update
-                .Inc(item => item.Revision, 1)
-                .Set(item => item.UpdatedAtUtc, fencedAtUtc),
+            IsolationScopeFilters.ActiveAtRevision(resourceGroup.TenantId, resourceGroup.Id, scope.Id, scope.Revision),
+            Builders<IsolationScope>.Update.Inc(item => item.Revision, 1).Set(item => item.UpdatedAtUtc, fencedAtUtc),
             cancellationToken: cancellationToken);
         if (scopeFence.ModifiedCount == 1)
             return null;
 
-        return new ResourceGroupPlacementError(
-            new ResourceGroupPlacementChanged(resourceGroup.Id));
+        return new ResourceGroupPlacementError(new ResourceGroupPlacementChanged(resourceGroup.Id));
     }
 
-    private static TargetResolution RejectedTarget(string? deploymentTargetId) =>
-        new(
-            null,
-            new ResourceGroupPlacementError(
-                new ResourceGroupPlacementDeploymentTargetRejected(deploymentTargetId)));
+    private static TargetResolution RejectedTarget(string? deploymentTargetId) => new(
+        null,
+        new ResourceGroupPlacementError(new ResourceGroupPlacementDeploymentTargetRejected(deploymentTargetId)));
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!session.IsInTransaction)
-        {
-            throw new InvalidOperationException(
-                "Resource placement must run inside the caller's MongoDB transaction.");
-        }
+            throw new InvalidOperationException("Resource placement must run inside the caller's MongoDB transaction.");
     }
 
     private sealed record PlacementContext(
         ResourceGroup? ResourceGroup,
         IsolationScope? Scope,
-        ResourceGroupPlacementError? Error);
+        ResourceGroupPlacementError? Error
+    );
 
     private sealed record TargetResolution(
         DeploymentTargetLookupDto? Target,
-        ResourceGroupPlacementError? Error);
+        ResourceGroupPlacementError? Error
+    );
 
     private sealed record UpsertedRuntimeCell(
         RuntimeCell Cell,
-        bool Created);
+        bool Created
+    );
 }

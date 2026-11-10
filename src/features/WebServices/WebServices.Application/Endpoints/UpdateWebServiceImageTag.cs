@@ -3,25 +3,18 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Connections;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Application.Queries;
 using Pole.Features.WebServices.Application.Releases;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Application.Tokens;
 using Pole.Features.WebServices.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
 
 namespace Pole.Features.WebServices.Application.Endpoints;
@@ -30,20 +23,19 @@ public static class UpdateWebServiceImageTag
 {
     public static IEndpointRouteBuilder MapUpdateWebServiceImageTagEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPatch("/{Id}/image-tag", async (
-                IMediator mediator,
-                [AsParameters] UpdateWebServiceImageTagRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPatch(
+                "/{Id}/image-tag",
+                async (
+                    IMediator mediator, [AsParameters] UpdateWebServiceImageTagRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    UpdateWebServiceImageTagResponse response =>
-                        Results.Accepted(value: response),
-                    UpdateWebServiceImageTagError error =>
-                        MapError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        UpdateWebServiceImageTagResponse response => Results.Accepted(value: response),
+                        UpdateWebServiceImageTagError error => MapError(error),
+                    });
+                })
             .WithName("UpdateWebServiceImageTag")
             .AllowAnonymous()
             .WithMetadata(new TenantCredentialMetadata(WebServiceDeploymentTokenFactory.RawTokenPrefix))
@@ -67,18 +59,18 @@ public sealed record UpdateWebServiceImageTagRequestBody(
     string Source,
     string? CommitSha = null,
     string? BuildUrl = null,
-    string? ImageDigest = null);
+    string? ImageDigest = null
+);
 
 public sealed record UpdateWebServiceImageTagResponse(
     string Id,
     long ResourceRevision,
     string ReleaseId,
     string Tag,
-    IReadOnlyList<PlacementSummaryDto> Deployments);
+    IReadOnlyList<PlacementSummaryDto> Deployments
+);
 
-public union UpdateWebServiceImageTagOutcome(
-    UpdateWebServiceImageTagResponse,
-    UpdateWebServiceImageTagError);
+public union UpdateWebServiceImageTagOutcome(UpdateWebServiceImageTagResponse, UpdateWebServiceImageTagError);
 
 public sealed class UpdateWebServiceImageTagHandler(
     LoadWebServiceById loadWebServiceById,
@@ -90,10 +82,8 @@ public sealed class UpdateWebServiceImageTagHandler(
     ITenantContextAccessor tenantContextAccessor,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
     RequestResourceDeploymentSetApply requestResourceDeploymentSetApply,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<
-        UpdateWebServiceImageTagRequest,
-        UpdateWebServiceImageTagOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<UpdateWebServiceImageTagRequest, UpdateWebServiceImageTagOutcome>
 {
     public async Task<UpdateWebServiceImageTagOutcome> HandleAsync(
         UpdateWebServiceImageTagRequest request,
@@ -101,27 +91,18 @@ public sealed class UpdateWebServiceImageTagHandler(
     {
         var authorizationResult = await AuthorizeAsync(request, cancellationToken);
         if (authorizationResult is WebServiceImageTagAuthorizationError authorizationError)
-        {
-            return Error(new WebServiceImageTagStateError(
-                authorizationError));
-        }
+            return Error(new WebServiceImageTagStateError(authorizationError));
 
         var authorization = (ImageTagUpdateAuthorization)authorizationResult.Value;
-        var webService = await loadWebServiceById(
-            authorization.TenantId,
-            request.Id,
-            cancellationToken);
+        var webService = await loadWebServiceById(authorization.TenantId, request.Id, cancellationToken);
 
         if (webService is null)
-            return Error(new WebServiceImageTagStateError(
-                new WebServiceNotFound(request.Id)));
+            return Error(new WebServiceImageTagStateError(new WebServiceNotFound(request.Id)));
         if (webService.Lifecycle is not ActiveWebServiceLifecycle)
-            return Error(new WebServiceImageTagStateError(
-                new WebServiceUpdateUnavailable(webService.Id)));
+            return Error(new WebServiceImageTagStateError(new WebServiceUpdateUnavailable(webService.Id)));
 
         if (webService.Spec.Image is not ImageInfo directImage)
-            return Error(new WebServiceImageTagStateError(
-                new WebServiceUpdateUnavailable(webService.Id)));
+            return Error(new WebServiceImageTagStateError(new WebServiceUpdateUnavailable(webService.Id)));
 
         var deploymentInventory = await loadResourceDeploymentSet(
             new LoadResourceDeploymentSetRequest(
@@ -129,103 +110,95 @@ public sealed class UpdateWebServiceImageTagHandler(
                 ResourceType: WebServiceResourceDeployment.ResourceType,
                 ResourceId: webService.Id),
             cancellationToken: cancellationToken);
-        var deployments = deploymentInventory
-            .Where(WebServiceDeploymentWorkflow.IsDesiredPlacement)
-            .ToArray();
+        var deployments = deploymentInventory.Where(WebServiceDeploymentWorkflow.IsDesiredPlacement).ToArray();
         if (deployments.Length == 0)
-            return Error(new WebServiceImageTagStateError(
-                new WebServiceHasNoActiveDeployments(webService.Id)));
+            return Error(new WebServiceImageTagStateError(new WebServiceHasNoActiveDeployments(webService.Id)));
 
-        return await runMongoTransaction(async (transaction, ct) =>
-        {
-            var nextSpec = webService.Spec with
+        return await runMongoTransaction(
+            async (transaction, ct) =>
             {
-                Image = directImage with
+                var nextSpec = webService.Spec with
                 {
-                    Tag = request.Body.Tag
-                }
-            };
-            var updatedWebService = webService.UpdateDesiredState(
-                nextSpec,
-                webService.Tags);
-            var applied = await requestResourceDeploymentSetApply(
-                new ResourceDeploymentSetApplyRequest(
-                    webService.TenantId,
-                    WebServiceResourceDeployment.ResourceType,
-                    webService.Id,
-                    updatedWebService.ActiveRevision,
-                    deployments.Select(deployment =>
-                        WebServiceDeploymentWorkflow.ToSetApplyItem(deployment)).ToArray()),
-                transaction.Session,
-                ct);
-            if (applied is ResourceDeploymentMutationError applyFailure)
-                return transaction.Abort(Error(
-                    new UpdateWebServiceImageTagError(applyFailure)));
-            var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
-
-            var persisted = await persistUpdatedWebService(
-                transaction.Session, webService, updatedWebService,
-                updatedWebService.ToUpdatedEvent(
-                    WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)), ct);
-            if (persisted is WebServiceUpdateConflict persistenceError)
-                return transaction.Abort(Error(
-                    new UpdateWebServiceImageTagError(persistenceError)));
-            if (persisted is WebServiceConnectionConflict connectionConflict)
-                return transaction.Abort(Error(
-                    new UpdateWebServiceImageTagError(connectionConflict)));
-            if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
-                return transaction.Abort(Error(
-                    new UpdateWebServiceImageTagError(dependencyUnavailable)));
-
-            if (authorization.DeploymentTokenId is not null)
-            {
-                await touchDeploymentToken(
+                    Image = directImage with
+                    {
+                        Tag = request.Body.Tag,
+                    },
+                };
+                var updatedWebService = webService.UpdateDesiredState(nextSpec, webService.Tags);
+                var applied = await requestResourceDeploymentSetApply(
+                    new ResourceDeploymentSetApplyRequest(
+                        webService.TenantId,
+                        WebServiceResourceDeployment.ResourceType,
+                        webService.Id,
+                        updatedWebService.ActiveRevision,
+                        deployments.Select(deployment => WebServiceDeploymentWorkflow.ToSetApplyItem(deployment))
+                            .ToArray()),
                     transaction.Session,
-                    authorization.TenantId,
-                    webService.Id,
-                    authorization.DeploymentTokenId,
-                    timeProvider.GetUtcNow().UtcDateTime,
-                    request.Body.Source,
                     ct);
-            }
+                if (applied is ResourceDeploymentMutationError applyFailure)
+                    return transaction.Abort(Error(new UpdateWebServiceImageTagError(applyFailure)));
+                var updatedDeployments = ((MutatedResourceDeployments)applied.Value).Placements;
 
-            var release = WebServiceReleaseFactory.CreatePending(
-                webService.TenantId,
-                webService.Id,
-                updatedWebService.ActiveRevision,
-                WebServiceReleaseAction.ImageTagUpdate,
-                authorization.ActorUserId,
-                authorization.ActorEmail,
-                nextSpec,
-                WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
-                traceId: null,
-                correlationId: null,
-                new WebServiceReleaseFactory.CreateOptions(
-                    MongoDB.Bson.ObjectId.GenerateNewId().ToString(),
-                    timeProvider.GetUtcNow().UtcDateTime),
-                updatedWebService.Exposure,
-                new ExternalImageTagUpdateProvenance(
-                    request.Body.Source,
-                    request.Body.CommitSha,
-                    request.Body.BuildUrl,
-                    request.Body.ImageDigest,
-                    directImage.Tag,
-                    request.Body.Tag,
-                    authorization.ActorType,
-                    authorization.DeploymentTokenId,
-                    authorization.DeploymentTokenName));
-            await persistCurrentWebServiceRelease(
-                transaction.Session,
-                release,
-                ct);
-            return transaction.Commit(new UpdateWebServiceImageTagOutcome(
-                new UpdateWebServiceImageTagResponse(
+                var persisted = await persistUpdatedWebService(
+                    transaction.Session,
+                    webService,
+                    updatedWebService,
+                    updatedWebService.ToUpdatedEvent(
+                        WebServiceDeploymentWorkflow.ToEventDeployments(updatedDeployments)),
+                    ct);
+                if (persisted is WebServiceUpdateConflict persistenceError)
+                    return transaction.Abort(Error(new UpdateWebServiceImageTagError(persistenceError)));
+                if (persisted is WebServiceConnectionConflict connectionConflict)
+                    return transaction.Abort(Error(new UpdateWebServiceImageTagError(connectionConflict)));
+                if (persisted is WebServiceDependencyUnavailable dependencyUnavailable)
+                    return transaction.Abort(Error(new UpdateWebServiceImageTagError(dependencyUnavailable)));
+
+                if (authorization.DeploymentTokenId is not null)
+                    await touchDeploymentToken(
+                        transaction.Session,
+                        authorization.TenantId,
+                        webService.Id,
+                        authorization.DeploymentTokenId,
+                        timeProvider.GetUtcNow().UtcDateTime,
+                        request.Body.Source,
+                        ct);
+
+                var release = WebServiceReleaseFactory.CreatePending(
+                    webService.TenantId,
                     webService.Id,
                     updatedWebService.ActiveRevision,
-                    release.Id,
-                    request.Body.Tag,
-                    updatedDeployments)));
-        }, cancellationToken);
+                    WebServiceReleaseAction.ImageTagUpdate,
+                    authorization.ActorUserId,
+                    authorization.ActorEmail,
+                    nextSpec,
+                    WebServiceDeploymentWorkflow.ToReleaseDeployments(updatedDeployments),
+                    traceId: null,
+                    correlationId: null,
+                    new WebServiceReleaseFactory.CreateOptions(
+                        ObjectId.GenerateNewId().ToString(),
+                        timeProvider.GetUtcNow().UtcDateTime),
+                    updatedWebService.Exposure,
+                    new ExternalImageTagUpdateProvenance(
+                        request.Body.Source,
+                        request.Body.CommitSha,
+                        request.Body.BuildUrl,
+                        request.Body.ImageDigest,
+                        directImage.Tag,
+                        request.Body.Tag,
+                        authorization.ActorType,
+                        authorization.DeploymentTokenId,
+                        authorization.DeploymentTokenName));
+                await persistCurrentWebServiceRelease(transaction.Session, release, ct);
+                return transaction.Commit(
+                    new UpdateWebServiceImageTagOutcome(
+                        new UpdateWebServiceImageTagResponse(
+                            webService.Id,
+                            updatedWebService.ActiveRevision,
+                            release.Id,
+                            request.Body.Tag,
+                            updatedDeployments)));
+            },
+            cancellationToken);
     }
 
     private async Task<ImageTagAuthorizationOutcome> AuthorizeAsync(
@@ -234,21 +207,14 @@ public sealed class UpdateWebServiceImageTagHandler(
     {
         var bearerToken = ExtractBearerToken(request.Authorization);
         if (WebServiceDeploymentTokenFactory.IsRawDeploymentToken(bearerToken))
-        {
-            return await AuthorizeDeploymentTokenAsync(
-                request,
-                bearerToken!,
-                cancellationToken);
-        }
+            return await AuthorizeDeploymentTokenAsync(request, bearerToken!, cancellationToken);
 
         var tenantContext = tenantContextAccessor.Current;
         if (tenantContext is null)
-            return new WebServiceImageTagAuthorizationError(
-                new WebServiceImageTagUnauthorized());
+            return new WebServiceImageTagAuthorizationError(new WebServiceImageTagUnauthorized());
 
         if (!tenantContext.IsPlatformAdmin && !tenantContext.Role.CanWrite())
-            return new WebServiceImageTagAuthorizationError(
-                new WebServiceImageTagForbidden());
+            return new WebServiceImageTagAuthorizationError(new WebServiceImageTagForbidden());
 
         return new ImageTagUpdateAuthorization(
             tenantContext.TenantId,
@@ -268,23 +234,19 @@ public sealed class UpdateWebServiceImageTagHandler(
         var token = await loadDeploymentTokenByHash(tokenHash, cancellationToken);
 
         if (token is null || token.RevokedAtUtc is not null)
-            return new WebServiceImageTagAuthorizationError(
-                new WebServiceImageTagUnauthorized());
+            return new WebServiceImageTagAuthorizationError(new WebServiceImageTagUnauthorized());
 
         if (token.WebServiceId != request.Id)
-            return new WebServiceImageTagAuthorizationError(
-                new WebServiceImageTagForbidden());
+            return new WebServiceImageTagAuthorizationError(new WebServiceImageTagForbidden());
 
-        if (!string.IsNullOrWhiteSpace(request.TenantId) &&
-            !string.Equals(request.TenantId, token.TenantId, StringComparison.Ordinal))
-        {
-            return new WebServiceImageTagAuthorizationError(
-                new WebServiceImageTagForbidden());
-        }
+        if (!string.IsNullOrWhiteSpace(request.TenantId) && !string.Equals(
+                request.TenantId,
+                token.TenantId,
+                StringComparison.Ordinal))
+            return new WebServiceImageTagAuthorizationError(new WebServiceImageTagForbidden());
 
         if (!token.AllowedOperations.Contains(WebServiceDeploymentTokenOperations.UpdateImageTag))
-            return new WebServiceImageTagAuthorizationError(
-                new WebServiceImageTagForbidden());
+            return new WebServiceImageTagAuthorizationError(new WebServiceImageTagForbidden());
 
         return new ImageTagUpdateAuthorization(
             token.TenantId,
@@ -303,21 +265,18 @@ public sealed class UpdateWebServiceImageTagHandler(
             : null;
     }
 
+    private static UpdateWebServiceImageTagOutcome Error(UpdateWebServiceImageTagError error) => new(error);
+
     private sealed record ImageTagUpdateAuthorization(
         string TenantId,
         string ActorType,
         string? ActorUserId,
         string? ActorEmail,
         string? DeploymentTokenId,
-        string? DeploymentTokenName);
+        string? DeploymentTokenName
+    );
 
-    private union ImageTagAuthorizationOutcome(
-        ImageTagUpdateAuthorization,
-        WebServiceImageTagAuthorizationError);
-
-    private static UpdateWebServiceImageTagOutcome Error(
-        UpdateWebServiceImageTagError error) =>
-        new(error);
+    private union ImageTagAuthorizationOutcome(ImageTagUpdateAuthorization, WebServiceImageTagAuthorizationError);
 }
 
 public sealed class UpdateWebServiceImageTagValidator : AbstractValidator<UpdateWebServiceImageTagRequest>
@@ -329,10 +288,9 @@ public sealed class UpdateWebServiceImageTagValidator : AbstractValidator<Update
             .NotEmpty()
             .MaximumLength(100)
             .Matches("^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
-            .WithMessage("Image tag must start with a letter, number, or underscore and contain only letters, numbers, underscores, periods, or dashes.");
-        RuleFor(x => x.Body.Source)
-            .NotEmpty()
-            .MaximumLength(100);
+            .WithMessage(
+                "Image tag must start with a letter, number, or underscore and contain only letters, numbers, underscores, periods, or dashes.");
+        RuleFor(x => x.Body.Source).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Body.CommitSha)
             .Matches("^[a-fA-F0-9]{7,64}$")
             .When(x => !string.IsNullOrWhiteSpace(x.Body.CommitSha))
@@ -341,7 +299,6 @@ public sealed class UpdateWebServiceImageTagValidator : AbstractValidator<Update
             .MaximumLength(2048)
             .Must(url => string.IsNullOrWhiteSpace(url) || Uri.TryCreate(url, UriKind.Absolute, out _))
             .WithMessage("Build URL must be an absolute URL.");
-        RuleFor(x => x.Body.ImageDigest)
-            .MaximumLength(255);
+        RuleFor(x => x.Body.ImageDigest).MaximumLength(255);
     }
 }

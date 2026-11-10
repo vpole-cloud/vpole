@@ -8,29 +8,31 @@ public sealed record ResourceDeploymentIngressConfiguration(
     string IngressClassName,
     string ClusterIssuerName,
     string? PublicBaseDomain,
-    ImmutableList<string> Hostnames)
+    ImmutableList<string> Hostnames
+)
 {
     public static ResourceDeploymentIngressConfiguration Create(
         string ingressClassName,
         string clusterIssuerName,
         string? publicBaseDomain,
-        IEnumerable<string>? hostnames) =>
-        new(
-            ingressClassName,
-            clusterIssuerName,
-            publicBaseDomain,
-            (hostnames ?? []).ToImmutableList());
+        IEnumerable<string>? hostnames) => new(
+        ingressClassName,
+        clusterIssuerName,
+        publicBaseDomain,
+        (hostnames ?? []).ToImmutableList());
 }
 
 public sealed record ResourceDeploymentStorageConfiguration(
     string StorageProfileId,
     long StorageProfileRevision,
-    string StorageClassName);
+    string StorageClassName
+);
 
 public sealed record ResolvedResourceDeploymentTarget(
     string DeploymentTargetId,
     long WorkloadConfigurationRevision,
-    ResourceDeploymentIngressConfiguration? Ingress);
+    ResourceDeploymentIngressConfiguration? Ingress
+);
 
 public sealed record CreateResourceDeploymentRequest(
     string DeploymentId,
@@ -47,25 +49,36 @@ public sealed record CreateResourceDeploymentRequest(
     long ResourceRevision = 1,
     bool DeferredActivation = false,
     bool PinnedCompute = false,
-    long? StoragePolicyRevision = null);
+    long? StoragePolicyRevision = null
+);
 
 public sealed record CreateResourceDeploymentSetRequest(
-    IReadOnlyList<CreateResourceDeploymentRequest> Deployments);
+    IReadOnlyList<CreateResourceDeploymentRequest> Deployments
+);
 
 public sealed record ResourceDeploymentTargetConfigurationChanged(
-    IReadOnlyList<string> DeploymentTargetIds);
+    IReadOnlyList<string> DeploymentTargetIds
+);
 
 public sealed record ResourceDeploymentComputeConfigurationChanged(
-    IReadOnlyList<string> ComputeProfileIds);
+    IReadOnlyList<string> ComputeProfileIds
+);
 
 public sealed record ResourceDeploymentStorageConfigurationChanged(
-    string StorageProfileId);
+    string StorageProfileId
+);
 
-public sealed record ResourcePlacementUnavailable(string ResourceGroupId);
+public sealed record ResourcePlacementUnavailable(
+    string ResourceGroupId
+);
 
-public sealed record ResourcePlacementResourceGroupNotFound(string ResourceGroupId);
+public sealed record ResourcePlacementResourceGroupNotFound(
+    string ResourceGroupId
+);
 
-public sealed record ResourcePlacementDeleting(string DeploymentTargetId);
+public sealed record ResourcePlacementDeleting(
+    string DeploymentTargetId
+);
 
 public union CreateResourceDeploymentError(
     ResourceDeploymentConnectionConflict,
@@ -76,17 +89,15 @@ public union CreateResourceDeploymentError(
     ResourcePlacementUnavailable,
     ResourcePlacementDeleting);
 
-public union CreateResourceDeploymentOutcome(
-    PlacementSummaryDto,
-    CreateResourceDeploymentError);
+public union CreateResourceDeploymentOutcome(PlacementSummaryDto, CreateResourceDeploymentError);
 
-public sealed record CreatedResourceDeployments(IReadOnlyList<PlacementSummaryDto> Placements);
-public union CreateResourceDeploymentSetOutcome(
-    CreatedResourceDeployments,
-    CreateResourceDeploymentError);
+public sealed record CreatedResourceDeployments(
+    IReadOnlyList<PlacementSummaryDto> Placements
+);
 
-public delegate Task<CreateResourceDeploymentOutcome>
-    CreateResourceDeployment(
+public union CreateResourceDeploymentSetOutcome(CreatedResourceDeployments, CreateResourceDeploymentError);
+
+public delegate Task<CreateResourceDeploymentOutcome> CreateResourceDeployment(
     CreateResourceDeploymentRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);

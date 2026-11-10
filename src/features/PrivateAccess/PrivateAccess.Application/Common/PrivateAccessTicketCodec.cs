@@ -10,23 +10,20 @@ internal static class PrivateAccessTicketCodec
 
     public static (string Ticket, string Hash) Issue()
     {
-        var ticket = Prefix + Convert.ToHexStringLower(
-            RandomNumberGenerator.GetBytes(RandomByteCount));
+        var ticket = Prefix + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(RandomByteCount));
         return (ticket, Hash(ticket));
     }
 
     public static bool TryHash(string? ticket, out string hash)
     {
-        hash = string.Empty;
+        hash = "";
         if (ticket is null || ticket.Length != Prefix.Length + 2 * RandomByteCount ||
             !ticket.StartsWith(Prefix, StringComparison.Ordinal))
             return false;
 
         foreach (var character in ticket.AsSpan(Prefix.Length))
-        {
             if (character is not (>= '0' and <= '9' or >= 'a' and <= 'f'))
                 return false;
-        }
 
         hash = Hash(ticket);
         return true;

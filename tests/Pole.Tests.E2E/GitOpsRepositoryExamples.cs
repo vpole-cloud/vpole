@@ -5,7 +5,8 @@ namespace Pole.Tests.E2E;
 internal sealed record GitOpsExampleImage(
     string Server,
     string Name,
-    string Tag);
+    string Tag
+);
 
 internal sealed record GitOpsExampleEnvironment(
     string Target,
@@ -13,7 +14,8 @@ internal sealed record GitOpsExampleEnvironment(
     string Connection,
     string ApplicationRepositoryId,
     string ApplicationBranch,
-    GitOpsExampleImage FunctionImage);
+    GitOpsExampleImage FunctionImage
+);
 
 internal static class GitOpsRepositoryExamples
 {
@@ -30,8 +32,7 @@ internal static class GitOpsRepositoryExamples
             .Replace("demo-storage", environment.Profile, StringComparison.Ordinal);
 
         if (file.Path.EndsWith("/source-repository.yaml", StringComparison.Ordinal))
-            content = content
-                .Replace("github-demo", environment.Connection, StringComparison.Ordinal)
+            content = content.Replace("github-demo", environment.Connection, StringComparison.Ordinal)
                 .Replace("123456789", environment.ApplicationRepositoryId, StringComparison.Ordinal)
                 .Replace("branch: main", $"branch: {environment.ApplicationBranch}", StringComparison.Ordinal);
 

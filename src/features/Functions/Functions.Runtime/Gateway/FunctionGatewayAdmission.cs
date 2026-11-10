@@ -2,13 +2,17 @@ namespace Pole.Features.Functions.Runtime.Gateway;
 
 public interface IFunctionPendingAdmissionLimiter
 {
-    FunctionPendingAdmissionLease? TryAcquire(string revisionId, string handlerName, long reservedBytes);
+    FunctionPendingAdmissionLease? TryAcquire(
+        string revisionId,
+        string handlerName,
+        long reservedBytes);
 }
 
 public sealed record FunctionPendingAdmissionSnapshot(
     int Requests,
     long Bytes,
-    IReadOnlyDictionary<string, int> HandlerRequests)
+    IReadOnlyDictionary<string, int> HandlerRequests
+)
 {
     public static readonly FunctionPendingAdmissionSnapshot Empty = new(
         0,
@@ -16,20 +20,15 @@ public sealed record FunctionPendingAdmissionSnapshot(
         new Dictionary<string, int>(StringComparer.Ordinal));
 }
 
-public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions options)
-    : IFunctionPendingAdmissionLimiter
+public sealed class FunctionPendingAdmissionLimiter(
+    FunctionGatewayOptions options
+) : IFunctionPendingAdmissionLimiter
 {
-    private sealed class RevisionCounters
-    {
-        public int Requests;
-        public long Bytes;
-        public Dictionary<string, int> HandlerRequests { get; } = new(StringComparer.Ordinal);
-    }
+    private readonly Dictionary<string, RevisionCounters> revisions = new(StringComparer.Ordinal);
 
     private readonly object sync = new();
-    private readonly Dictionary<string, RevisionCounters> revisions = new(StringComparer.Ordinal);
-    private int requests;
     private long bytes;
+    private int requests;
 
     public FunctionPendingAdmissionLease? TryAcquire(
         string revisionId,
@@ -42,8 +41,7 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
         {
             if (!revisions.TryGetValue(revisionId, out var revision))
                 revision = new RevisionCounters();
-            if (requests >= options.MaxPendingRequests ||
-                revision.Requests >= options.MaxPendingRequestsPerRevision ||
+            if (requests >= options.MaxPendingRequests || revision.Requests >= options.MaxPendingRequestsPerRevision ||
                 bytes + reservedBytes > options.MaxPendingBytes ||
                 revision.Bytes + reservedBytes > options.MaxPendingBytesPerRevision)
                 return null;
@@ -61,15 +59,20 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
     public FunctionPendingAdmissionSnapshot GetSnapshot(string revisionId)
     {
         lock (sync)
+        {
             return revisions.TryGetValue(revisionId, out var revision)
                 ? new FunctionPendingAdmissionSnapshot(
                     revision.Requests,
                     revision.Bytes,
                     new Dictionary<string, int>(revision.HandlerRequests, StringComparer.Ordinal))
                 : FunctionPendingAdmissionSnapshot.Empty;
+        }
     }
 
-    private void Release(string revisionId, string handlerName, long reservedBytes)
+    private void Release(
+        string revisionId,
+        string handlerName,
+        long reservedBytes)
     {
         lock (sync)
         {
@@ -88,9 +91,18 @@ public sealed class FunctionPendingAdmissionLimiter(FunctionGatewayOptions optio
                 revisions.Remove(revisionId);
         }
     }
+
+    private sealed class RevisionCounters
+    {
+        public long Bytes;
+        public int Requests;
+        public Dictionary<string, int> HandlerRequests { get; } = new(StringComparer.Ordinal);
+    }
 }
 
-public sealed class FunctionPendingAdmissionLease(Action release) : IDisposable
+public sealed class FunctionPendingAdmissionLease(
+    Action release
+) : IDisposable
 {
     private Action? release = release;
     public void Dispose() => Interlocked.Exchange(ref release, null)?.Invoke();
@@ -101,18 +113,15 @@ public interface IFunctionPublicRateLimiter
     bool TryAcquire(string functionRoute);
 }
 
-public sealed class FunctionPublicRateLimiter(FunctionGatewayOptions options, TimeProvider timeProvider)
-    : IFunctionPublicRateLimiter
+public sealed class FunctionPublicRateLimiter(
+    FunctionGatewayOptions options,
+    TimeProvider timeProvider
+) : IFunctionPublicRateLimiter
 {
     private static readonly TimeSpan BucketRetention = TimeSpan.FromMinutes(10);
-    private sealed class Bucket(double tokens, long timestamp)
-    {
-        public double Tokens = tokens;
-        public long Timestamp = timestamp;
-    }
+    private readonly Dictionary<string, Bucket> buckets = new(StringComparer.Ordinal);
 
     private readonly object sync = new();
-    private readonly Dictionary<string, Bucket> buckets = new(StringComparer.Ordinal);
     private int acquisitions;
 
     public bool TryAcquire(string functionRoute)
@@ -122,13 +131,11 @@ public sealed class FunctionPublicRateLimiter(FunctionGatewayOptions options, Ti
             var now = timeProvider.GetTimestamp();
             acquisitions++;
             if ((acquisitions & 1023) == 0)
-            {
                 foreach (var stale in buckets
                              .Where(entry => timeProvider.GetElapsedTime(entry.Value.Timestamp, now) > BucketRetention)
                              .Select(entry => entry.Key)
                              .ToArray())
                     buckets.Remove(stale);
-            }
             if (!buckets.TryGetValue(functionRoute, out var bucket))
                 bucket = new Bucket(options.PublicBurst, now);
             var elapsed = timeProvider.GetElapsedTime(bucket.Timestamp, now).TotalSeconds;
@@ -144,5 +151,14 @@ public sealed class FunctionPublicRateLimiter(FunctionGatewayOptions options, Ti
             buckets[functionRoute] = bucket;
             return true;
         }
+    }
+
+    private sealed class Bucket(
+        double tokens,
+        long timestamp
+    )
+    {
+        public long Timestamp = timestamp;
+        public double Tokens = tokens;
     }
 }

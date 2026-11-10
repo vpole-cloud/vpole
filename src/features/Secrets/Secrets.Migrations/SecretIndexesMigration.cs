@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.Secrets.Migrations;
 
@@ -12,47 +12,44 @@ public sealed class SecretIndexesMigration : IMigration
 
     public string Description => "Tenant-scoped inventory and immutable version identity.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         // BSON field names define the current persisted schema independently of live domain types.
-        await context.GetCollection<BsonDocument>("Secrets").Indexes.CreateManyAsync([
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("NormalizedName"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "UX_Secrets_Tenant_NormalizedName"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("_id")),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("ResourceGroupId")
-                    .Ascending("IsolationScopeId")),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("Bindings.Consumer.ResourceType")
-                    .Ascending("Bindings.Consumer.ResourceId"))
-        ], cancellationToken);
+        await context.GetCollection<BsonDocument>("Secrets")
+            .Indexes
+            .CreateManyAsync(
+                [
+                    new CreateIndexModel<BsonDocument>(
+                        Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("NormalizedName"),
+                        new CreateIndexOptions
+                        {
+                            Unique = true,
+                            Name = "UX_Secrets_Tenant_NormalizedName",
+                        }),
+                    new CreateIndexModel<BsonDocument>(
+                        Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("_id")),
+                    new CreateIndexModel<BsonDocument>(
+                        Builders<BsonDocument>.IndexKeys
+                            .Ascending("TenantId")
+                            .Ascending("ResourceGroupId")
+                            .Ascending("IsolationScopeId")),
+                    new CreateIndexModel<BsonDocument>(
+                        Builders<BsonDocument>.IndexKeys
+                            .Ascending("TenantId")
+                            .Ascending("Bindings.Consumer.ResourceType")
+                            .Ascending("Bindings.Consumer.ResourceId")),
+                ],
+                cancellationToken);
 
-        await context.GetCollection<BsonDocument>("SecretVersions").Indexes.CreateOneAsync(
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("SecretId")
-                    .Ascending("Version"),
-                new CreateIndexOptions
-                {
-                    Unique = true
-                }),
-            cancellationToken: cancellationToken);
+        await context.GetCollection<BsonDocument>("SecretVersions")
+            .Indexes
+            .CreateOneAsync(
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("SecretId").Ascending("Version"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                    }),
+                cancellationToken: cancellationToken);
     }
 }

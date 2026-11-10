@@ -25,7 +25,9 @@ public static class GatewaySession
             try
             {
                 using var identity = X509CertificateLoader.LoadPkcs12FromFile(
-                    identityFile, string.Empty, X509KeyStorageFlags.EphemeralKeySet);
+                    identityFile,
+                    "",
+                    X509KeyStorageFlags.EphemeralKeySet);
                 if (!identity.HasPrivateKey)
                     throw new IOException("Gateway identity lacks a private key.");
                 await RunControlAsync(origin, identity, cancellationToken);
@@ -35,12 +37,13 @@ public static class GatewaySession
                 // A stale control lease or connection timeout requires fresh admission.
                 ReportRetry(nameof(OperationCanceledException));
             }
-            catch (Exception exception) when (exception is WebSocketException or IOException or
-                InvalidDataException or AuthenticationException or InvalidOperationException or
-                CryptographicException)
+            catch (Exception exception) when (exception is WebSocketException or IOException or InvalidDataException
+                                                  or AuthenticationException or InvalidOperationException
+                                                  or CryptographicException)
             {
                 ReportRetry(exception.GetType().Name);
             }
+
             await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(300, 1200)), cancellationToken);
         }
 
@@ -87,10 +90,15 @@ public static class GatewaySession
         {
             await lifetime.CancelAsync();
             socket.Abort();
-            try { await receiving; }
-            catch (Exception exception) when (exception is OperationCanceledException or IOException or
-                WebSocketException or InvalidDataException)
-            { }
+            try
+            {
+                await receiving;
+            }
+            catch (Exception exception) when (exception is OperationCanceledException or IOException
+                                                  or WebSocketException or InvalidDataException)
+            {
+            }
+
             await Task.WhenAll(streams.Values);
         }
 
@@ -114,16 +122,17 @@ public static class GatewaySession
                             var id = Guid.NewGuid();
                             var stream = RunStreamAsync(origin, identity, ticket, lifetime.Token);
                             streams[id] = stream;
-                            _ = stream.ContinueWith(completed =>
-                            {
-                                if (completed.Exception is not null)
+                            _ = stream.ContinueWith(
+                                completed =>
                                 {
-                                    // Observe unexpected faults; a stream is isolated from control.
-                                    _ = completed.Exception;
-                                }
-                                streams.TryRemove(id, out _);
-                                slots.Release();
-                            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                                    if (completed.Exception is not null)
+                                        // Observe unexpected faults; a stream is isolated from control.
+                                        _ = completed.Exception;
+                                    streams.TryRemove(id, out _);
+                                    slots.Release();
+                                },
+                                CancellationToken.None,
+                                TaskContinuationOptions.ExecuteSynchronously,
                                 TaskScheduler.Default);
                             break;
                         default:
@@ -154,15 +163,18 @@ public static class GatewaySession
         {
             using var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             connect.CancelAfter(TimeSpan.FromSeconds(10));
-            await socket.ConnectAsync(origin.WebSocketPath("/private-access/gateway-streams"),
-                invoker, connect.Token);
+            await socket.ConnectAsync(origin.WebSocketPath("/private-access/gateway-streams"), invoker, connect.Token);
             var frame = await PrivateAccessFrames.ReceiveAsync(socket, connect.Token);
             var destination = PrivateAccessGatewayProtocol.ReadDestination(frame);
             await new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(
-                socket, destination.ServiceDns, destination.ServicePort, cancellationToken);
+                socket,
+                destination.ServiceDns,
+                destination.ServicePort,
+                cancellationToken);
         }
-        catch (Exception exception) when (exception is OperationCanceledException or IOException or
-            WebSocketException or InvalidDataException or AuthenticationException or InvalidOperationException)
+        catch (Exception exception) when (exception is OperationCanceledException or IOException or WebSocketException
+                                              or InvalidDataException or AuthenticationException
+                                              or InvalidOperationException)
         {
             socket.Abort();
         }

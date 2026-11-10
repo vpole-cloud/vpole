@@ -1,13 +1,4 @@
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 
@@ -16,7 +7,8 @@ namespace Pole.Features.Secrets.Application.Managed;
 internal sealed class ReconcileManagedSecretProjection(
     LoadManagedSecret loadSecret,
     LoadSecretProjections loadProjections,
-    SecretProjectionReconciler reconcile)
+    SecretProjectionReconciler reconcile
+)
 {
     public async Task<EnsureManagedSecretProjectionOutcome> InvokeAsync(
         EnsureManagedSecretProjectionRequest request,
@@ -29,14 +21,14 @@ internal sealed class ReconcileManagedSecretProjection(
         var latest = await loadSecret(request.TenantId, request.Owner, ct);
         if (latest is null || latest.Id != secret.Id)
             return new ManagedSecretUnavailable();
-        var projection = (await loadProjections(secret.TenantId, secret.Id,
-            ct)).SingleOrDefault(x => x.DeploymentId == request.DeploymentId);
+        var projection
+            = (await loadProjections(secret.TenantId, secret.Id, ct)).SingleOrDefault(x =>
+                x.DeploymentId == request.DeploymentId);
         var management = (ProviderManagedSecret)latest.Management;
         return projection is { State: ReadySecretProjection } && projection.ConsumerType == management.ResourceType &&
-               projection.ConsumerId == management.ResourceId && projection.BindingId == management.BindingId &&
-               projection.DesiredRevision == latest.Revision &&
-               projection.AppliedVersion == latest.CurrentVersion
-            ? new SecretProjectionReference(secret.Id, projection.KubernetesName, latest.CurrentVersion)
-            : new ManagedSecretUnavailable();
+            projection.ConsumerId == management.ResourceId && projection.BindingId == management.BindingId &&
+            projection.DesiredRevision == latest.Revision && projection.AppliedVersion == latest.CurrentVersion
+                ? new SecretProjectionReference(secret.Id, projection.KubernetesName, latest.CurrentVersion)
+                : new ManagedSecretUnavailable();
     }
 }

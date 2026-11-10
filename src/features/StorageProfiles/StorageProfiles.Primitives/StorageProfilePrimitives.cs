@@ -6,7 +6,7 @@ public enum StorageMediaType
     HDD = 1,
     SSD = 2,
     NVMe = 3,
-    Network = 4
+    Network = 4,
 }
 
 public enum StoragePerformanceTier
@@ -14,11 +14,11 @@ public enum StoragePerformanceTier
     Standard = 0,
     Bulk = 1,
     Fast = 2,
-    Ultra = 3
+    Ultra = 3,
 }
 
 public enum StorageProfileTenantAccessMode
 {
     AllTenants = 0,
-    SelectedTenants = 1
+    SelectedTenants = 1,
 }

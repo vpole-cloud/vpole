@@ -7,10 +7,8 @@ namespace Pole.Features.WebServices.Application.Search;
 
 public static class WebServiceSearchProjection
 {
-    public static SearchSourceType SourceType { get; } = new(
-        ResourceTypeId.Create("pole/web-service"),
-        "WebService",
-        1);
+    public static SearchSourceType SourceType { get; }
+        = new(ResourceTypeId.Create("pole/web-service"), "WebService", 1);
 
     public static SearchProjectionSnapshot Snapshot(
         string tenantId,
@@ -19,36 +17,38 @@ public static class WebServiceSearchProjection
         string resourceGroupId,
         IEnumerable<string> hostnames,
         string? image,
-        long resourceRevision) =>
-        new(
-            new SearchProjectionIdentity(tenantId, SourceType.ResourceTypeId, webServiceId),
-            name,
-            resourceGroupId,
-            null,
-            new[]
-                {
-                    new SearchProjectionField(SearchProjectionFieldType.SourceId, webServiceId),
-                    new SearchProjectionField(SearchProjectionFieldType.Name, name)
-                }
-                .Concat(image is null ? [] : new[]
-                {
-                    new SearchProjectionField(SearchProjectionFieldType.Image, image)
-                })
-                .Concat(hostnames.Distinct().Select(hostname =>
-                    new SearchProjectionField(SearchProjectionFieldType.Domain, hostname)))
-                .ToArray(),
-            resourceRevision);
+        long resourceRevision) => new(
+        new SearchProjectionIdentity(tenantId, SourceType.ResourceTypeId, webServiceId),
+        name,
+        resourceGroupId,
+        null,
+        new[]
+            {
+                new SearchProjectionField(SearchProjectionFieldType.SourceId, webServiceId),
+                new SearchProjectionField(SearchProjectionFieldType.Name, name),
+            }.Concat(
+                image is null
+                    ? []
+                    : new[]
+                    {
+                        new SearchProjectionField(SearchProjectionFieldType.Image, image),
+                    })
+            .Concat(
+                hostnames.Distinct()
+                    .Select(hostname => new SearchProjectionField(SearchProjectionFieldType.Domain, hostname)))
+            .ToArray(),
+        resourceRevision);
 }
 
 public sealed class AddWebServiceToSearchOnWebServiceCreatedConsumer(
-    CreateSearchProjection createSearchProjection)
-    : IConsumer<WebServiceCreatedEvent>
+    CreateSearchProjection createSearchProjection
+) : IConsumer<WebServiceCreatedEvent>
 {
-    public Task Handle(WebServiceCreatedEvent message, CancellationToken cancellationToken) =>
-        createSearchProjection(Snapshot(message), cancellationToken);
-
     public Task Consume(ConsumeContext<WebServiceCreatedEvent> context) =>
         Handle(context.Message, context.CancellationToken);
+
+    public Task Handle(WebServiceCreatedEvent message, CancellationToken cancellationToken) =>
+        createSearchProjection(Snapshot(message), cancellationToken);
 
     private static SearchProjectionSnapshot Snapshot(WebServiceCreatedEvent message) =>
         WebServiceSearchProjection.Snapshot(
@@ -62,46 +62,40 @@ public sealed class AddWebServiceToSearchOnWebServiceCreatedConsumer(
 }
 
 public sealed class UpdateWebServiceInSearchOnWebServiceUpdatedConsumer(
-    UpdateSearchProjection updateSearchProjection)
-    : IConsumer<WebServiceUpdatedEvent>
+    UpdateSearchProjection updateSearchProjection
+) : IConsumer<WebServiceUpdatedEvent>
 {
-    public Task Handle(WebServiceUpdatedEvent message, CancellationToken cancellationToken) =>
-        updateSearchProjection(
-            WebServiceSearchProjection.Snapshot(
-                message.EventCore.TenantId,
-                message.WebServiceId,
-                message.Name,
-                message.ResourceGroupId,
-                message.Deployments.SelectMany(deployment => deployment.Hostnames),
-                message.Spec.Image.ResolvedImageReference,
-                message.ResourceRevision),
-            cancellationToken);
-
     public Task Consume(ConsumeContext<WebServiceUpdatedEvent> context) =>
         Handle(context.Message, context.CancellationToken);
+
+    public Task Handle(WebServiceUpdatedEvent message, CancellationToken cancellationToken) => updateSearchProjection(
+        WebServiceSearchProjection.Snapshot(
+            message.EventCore.TenantId,
+            message.WebServiceId,
+            message.Name,
+            message.ResourceGroupId,
+            message.Deployments.SelectMany(deployment => deployment.Hostnames),
+            message.Spec.Image.ResolvedImageReference,
+            message.ResourceRevision),
+        cancellationToken);
 }
 
 public sealed class RemoveWebServiceFromSearchOnWebServiceDeletedConsumer(
-    DeleteSearchProjection deleteSearchProjection)
-    : IConsumer<WebServiceDeletedEvent>
+    DeleteSearchProjection deleteSearchProjection
+) : IConsumer<WebServiceDeletedEvent>
 {
+    public Task Consume(ConsumeContext<WebServiceDeletedEvent> context) => Handle(
+        context.Message.EventCore.TenantId,
+        context.Message.WebServiceId,
+        context.Message.ResourceRevision,
+        context.CancellationToken);
+
     public Task Handle(
         string tenantId,
         string webServiceId,
         long resourceRevision,
-        CancellationToken cancellationToken) =>
-        deleteSearchProjection(
-            new SearchProjectionIdentity(
-                tenantId,
-                WebServiceSearchProjection.SourceType.ResourceTypeId,
-                webServiceId),
-            resourceRevision,
-            cancellationToken);
-
-    public Task Consume(ConsumeContext<WebServiceDeletedEvent> context) =>
-        Handle(
-            context.Message.EventCore.TenantId,
-            context.Message.WebServiceId,
-            context.Message.ResourceRevision,
-            context.CancellationToken);
+        CancellationToken cancellationToken) => deleteSearchProjection(
+        new SearchProjectionIdentity(tenantId, WebServiceSearchProjection.SourceType.ResourceTypeId, webServiceId),
+        resourceRevision,
+        cancellationToken);
 }

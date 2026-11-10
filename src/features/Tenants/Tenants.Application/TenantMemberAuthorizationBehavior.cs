@@ -9,8 +9,8 @@ namespace Pole.Features.Tenants.Application;
 
 public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
     LoadTenant loadTenant,
-    IHttpContextAccessor httpContextAccessor)
-    : IPipelineBehavior<TRequest, TResponse>
+    IHttpContextAccessor httpContextAccessor
+) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
@@ -48,27 +48,22 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
         if (request is ITenantMemberManageOperation && !currentMember.Role.CanManageMembers())
             return Reject(new TenantRoleRequired(TenantRole.Admin));
 
-        if (request is ITenantMemberRoleOperation roleOperation &&
-            roleOperation.Role == TenantRole.Owner &&
+        if (request is ITenantMemberRoleOperation roleOperation && roleOperation.Role == TenantRole.Owner &&
             !currentMember.Role.CanManageTenant())
-        {
             return Reject(new TenantRoleRequired(TenantRole.Owner));
-        }
 
         var targetMemberId = request switch
         {
             ITenantMemberTargetOperation targetOperation => targetOperation.MemberId,
             ITenantMemberRoleOperation { MemberId: not null } roleTargetOperation => roleTargetOperation.MemberId,
-            _ => null
+            _ => null,
         };
 
         if (targetMemberId is not null)
         {
             var targetMember = tenant.Members.FirstOrDefault(m => m.Id == targetMemberId);
             if (targetMember is null)
-                return Reject(new TenantMemberNotFound(
-                    tenantOperation.TenantId,
-                    targetMemberId));
+                return Reject(new TenantMemberNotFound(tenantOperation.TenantId, targetMemberId));
 
             if (targetMember.Role == TenantRole.Owner && !currentMember.Role.CanManageTenant())
                 return Reject(new TenantRoleRequired(TenantRole.Owner));
@@ -77,7 +72,5 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
         return await next();
     }
 
-    private static MediatorResult<TResponse> Reject(
-        IMediatorRejection rejection) =>
-        new PipelineRejected(rejection);
+    private static MediatorResult<TResponse> Reject(IMediatorRejection rejection) => new PipelineRejected(rejection);
 }

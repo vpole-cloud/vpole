@@ -8,7 +8,7 @@ namespace Pole.Features.WebServices.Domain;
 public enum WebServiceReleaseAction
 {
     Create, Update, Redeploy, Rollback, ImageTagUpdate, SourceBuild, AddDeployment, UpdateDeployment, RemoveDeployment,
-    RetryDeployment, HostnameChanged
+    RetryDeployment, HostnameChanged,
 }
 
 public enum WebServiceReleaseOutcome { Pending, Succeeded, PartiallyFailed, Failed, Superseded }
@@ -28,7 +28,8 @@ public sealed record WebServiceReleaseDeployment(
     WebServiceReleaseDeploymentOutcome Outcome,
     DateTime? CompletedAtUtc,
     string? FailureCode,
-    string? FailureMessage)
+    string? FailureMessage
+)
 {
     public bool IsTerminal => Outcome is not WebServiceReleaseDeploymentOutcome.Pending;
 }
@@ -54,10 +55,12 @@ public sealed record WebServiceRelease(
     WebServiceReleaseProvenance? Provenance,
     ImmutableList<WebServiceReleaseDeployment> Deployments,
     WebServiceSpec Spec,
-    WebServiceExposure Exposure) : ITenantOwned;
+    WebServiceExposure Exposure
+) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(ExternalImageTagUpdateProvenance),
+[BsonKnownTypes(
+    typeof(ExternalImageTagUpdateProvenance),
     typeof(SourceBuildReleaseProvenance),
     typeof(GitOpsReleaseProvenance))]
 public abstract record WebServiceReleaseProvenance;
@@ -71,7 +74,8 @@ public sealed record ExternalImageTagUpdateProvenance(
     string NewImageTag,
     string ActorType,
     string? DeploymentTokenId,
-    string? DeploymentTokenName) : WebServiceReleaseProvenance;
+    string? DeploymentTokenName
+) : WebServiceReleaseProvenance;
 
 public sealed record SourceBuildReleaseProvenance(
     string BuildJobId,
@@ -79,21 +83,19 @@ public sealed record SourceBuildReleaseProvenance(
     string CommitSha,
     string ImageDigest,
     string? PreviousImageReference,
-    string NewImageReference) : WebServiceReleaseProvenance;
+    string NewImageReference
+) : WebServiceReleaseProvenance;
 
 public sealed record GitOpsReleaseProvenance(
     string SourceId,
     string RunId,
     string CommitSha,
     string? PreviousImageTag,
-    string NewImageTag) : WebServiceReleaseProvenance;
+    string NewImageTag
+) : WebServiceReleaseProvenance;
 
 public static class WebServiceReleaseFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime RequestedAtUtc);
-
     public static WebServiceRelease CreatePending(
         string tenantId,
         string webServiceId,
@@ -120,7 +122,8 @@ public static class WebServiceReleaseFactory
             throw new ArgumentException("A release may contain each deployment once.", nameof(deployments));
         var requestedAtUtc = WebServiceFactory.Utc(options.RequestedAtUtc);
         var outcome = Aggregate(entries);
-        return new WebServiceRelease(options.Id,
+        return new WebServiceRelease(
+            options.Id,
             tenantId,
             webServiceId,
             resourceRevision,
@@ -168,7 +171,7 @@ public static class WebServiceReleaseFactory
                 : WebServiceReleaseDeploymentOutcome.Failed,
             CompletedAtUtc = WebServiceFactory.Utc(completedAtUtc),
             FailureCode = succeeded ? null : failureCode,
-            FailureMessage = succeeded ? null : failureMessage
+            FailureMessage = succeeded ? null : failureMessage,
         };
         var deployments = release.Deployments.Replace(entry, completed);
         var outcome = Aggregate(deployments);
@@ -184,7 +187,7 @@ public static class WebServiceReleaseFactory
             CompletedAtUtc = outcome is WebServiceReleaseOutcome.Pending ? null : completed.CompletedAtUtc,
             FailureMessage = outcome is WebServiceReleaseOutcome.Failed or WebServiceReleaseOutcome.PartiallyFailed
                 ? aggregateFailureMessage
-                : null
+                : null,
         };
     }
 
@@ -194,7 +197,7 @@ public static class WebServiceReleaseFactory
             {
                 Outcome = WebServiceReleaseOutcome.Superseded,
                 CompletedAtUtc = WebServiceFactory.Utc(atUtc),
-                FailureMessage = null
+                FailureMessage = null,
             }
             : release;
 
@@ -204,8 +207,12 @@ public static class WebServiceReleaseFactory
         if (values.Any(entry => entry.Outcome == WebServiceReleaseDeploymentOutcome.Pending))
             return WebServiceReleaseOutcome.Pending;
         var failures = values.Count(entry => entry.Outcome == WebServiceReleaseDeploymentOutcome.Failed);
-        return failures == 0 ? WebServiceReleaseOutcome.Succeeded
-            : failures == values.Length ? WebServiceReleaseOutcome.Failed
-            : WebServiceReleaseOutcome.PartiallyFailed;
+        return failures == 0 ? WebServiceReleaseOutcome.Succeeded :
+            failures == values.Length ? WebServiceReleaseOutcome.Failed : WebServiceReleaseOutcome.PartiallyFailed;
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime RequestedAtUtc
+    );
 }

@@ -1,10 +1,12 @@
 using System.Collections.Immutable;
+using System.Security.Cryptography;
 using System.Text.Json;
 using k8s.Models;
 using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Primitives;
 using Xunit;
 
 namespace Pole.Features.Secrets.Tests;
@@ -17,10 +19,13 @@ public sealed class SecretProjectionReconciliationTests
         var fixture = new Fixture();
         fixture.Secret = fixture.Secret with
         {
-            Bindings = fixture.Secret.Bindings.Select(binding => binding with
-            {
-                Usage = Pole.Features.Secrets.Primitives.SecretBindingUsage.Bootstrap
-            }).ToImmutableArray()
+            Bindings = fixture.Secret
+                .Bindings
+                .Select(binding => binding with
+                {
+                    Usage = SecretBindingUsage.Bootstrap,
+                })
+                .ToImmutableArray(),
         };
         await fixture.Run();
         Assert.Empty(fixture.Rows);
@@ -101,8 +106,9 @@ public sealed class SecretProjectionReconciliationTests
         fixture.Encryption.Fail = true;
         await fixture.Run();
         Assert.Empty(fixture.Target.Manifests);
-        Assert.All(fixture.Rows.Values, row =>
-            Assert.Equal("DecryptionUnavailable", Assert.IsType<FailedSecretProjection>(row.State).FailureCode));
+        Assert.All(
+            fixture.Rows.Values,
+            row => Assert.Equal("DecryptionUnavailable", Assert.IsType<FailedSecretProjection>(row.State).FailureCode));
         fixture.Encryption.Fail = false;
         await fixture.Run();
         Assert.All(fixture.Rows.Values, row => Assert.IsType<ReadySecretProjection>(row.State));
@@ -110,45 +116,96 @@ public sealed class SecretProjectionReconciliationTests
 
     private sealed class Fixture
     {
-        public Secret Secret = SecretFactory.Create("secret", "tenant", "group", "scope", "credentials", "tests", ["password"], DateTime.UtcNow)
-            .Bind(SecretBinding.Create("binding-a", "pole/postgresql", "resource-a", new AllSecretDeployments(), []), DateTime.UtcNow)
-            .Bind(SecretBinding.Create("binding-b", "pole/postgresql", "resource-b", new AllSecretDeployments(), []), DateTime.UtcNow);
-        public readonly Dictionary<string, SecretProjection> Rows = [];
-        public readonly HashSet<string> Removed = [];
-        public readonly HashSet<string> ForeignScope = [];
-        public readonly Target Target = new();
         public readonly Encryption Encryption = new();
+        public readonly HashSet<string> ForeignScope = [];
+        public readonly HashSet<string> Removed = [];
+        public readonly Dictionary<string, SecretProjection> Rows = [];
+        public readonly Target Target = new();
+
+        public Secret Secret = SecretFactory
+            .Create("secret", "tenant", "group", "scope", "credentials", "tests", ["password"], DateTime.UtcNow)
+            .Bind(
+                SecretBinding.Create("binding-a", "pole/postgresql", "resource-a", new AllSecretDeployments(), []),
+                DateTime.UtcNow)
+            .Bind(
+                SecretBinding.Create("binding-b", "pole/postgresql", "resource-b", new AllSecretDeployments(), []),
+                DateTime.UtcNow);
 
         public Task Run() => new SecretProjectionReconciler(
-            (_, _, _) => Task.FromResult<Secret?>(Secret),
-            (_, _, version, _) => Task.FromResult<SecretVersion?>(new("version", "tenant", "secret", version, null!, DateTime.UtcNow)),
-            (_, _, _) => Task.FromResult<IReadOnlyList<SecretProjection>>(Rows.Values.ToArray()),
-(request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([
-                new("deployment-" + request.ResourceId[^1], "scope", "cell", "target-" + request.ResourceId[^1], 1, 0,
-                    ResourceDeploymentStatus.Pending, null, null!, [], ResourceRevision: 1, FixedReplicas: 1,
-                    Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
-                    Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired",
-                    "EnforcementNotEstablished", null))]),
-(request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(Removed.Contains(request.DeploymentId) ? null :
-                new(request.DeploymentId, request.ResourceId, "cell", "target-" + request.ResourceId[^1],
-                    "namespace-" + request.ResourceId[^1], 1, 1, null!, ResourceDeploymentStatus.Pending,
-                    ResourceDeploymentDesiredOperation.Apply,
-                    ForeignScope.Contains(request.DeploymentId) ? "foreign" : "scope")),
-            (desired, claim, now, _) => Task.FromResult<SecretProjection?>(desired.Claim(claim, now)),
-            (row, _) => { Rows[row.DeploymentId] = row; return Task.CompletedTask; },
-            Encryption, Target, TimeProvider.System).ReconcileAsync("tenant", "secret", default);
+            (
+                _, _,
+                _) => Task.FromResult<Secret?>(Secret),
+            (
+                    _, _,
+                    version, _) =>
+                Task.FromResult<SecretVersion?>(
+                    new SecretVersion("version", "tenant", "secret", version, null!, DateTime.UtcNow)),
+            (
+                _, _,
+                _) => Task.FromResult<IReadOnlyList<SecretProjection>>(Rows.Values.ToArray()),
+            (request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>(
+            [
+                new PlacementSummaryDto(
+                    "deployment-" + request.ResourceId[^1],
+                    "scope",
+                    "cell",
+                    "target-" + request.ResourceId[^1],
+                    1,
+                    0,
+                    ResourceDeploymentStatus.Pending,
+                    null,
+                    null!,
+                    [],
+                    ResourceRevision: 1,
+                    FixedReplicas: 1,
+                    Ingress: null,
+                    DeploymentRevision: 1,
+                    DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
+                    Isolation:
+                    new ResourceDeploymentIsolationDto(
+                        "Unknown",
+                        "EnforcementRequired",
+                        "EnforcementNotEstablished",
+                        null)),
+            ]),
+            (request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+                Removed.Contains(request.DeploymentId)
+                    ? null
+                    : new ResourceDeploymentRuntimePlacementDto(
+                        request.DeploymentId,
+                        request.ResourceId,
+                        "cell",
+                        "target-" + request.ResourceId[^1],
+                        "namespace-" + request.ResourceId[^1],
+                        1,
+                        1,
+                        null!,
+                        ResourceDeploymentStatus.Pending,
+                        ResourceDeploymentDesiredOperation.Apply,
+                        ForeignScope.Contains(request.DeploymentId) ? "foreign" : "scope")),
+            (
+                desired, claim,
+                now, _) => Task.FromResult<SecretProjection?>(desired.Claim(claim, now)),
+            (row, _) =>
+            {
+                Rows[row.DeploymentId] = row;
+                return Task.CompletedTask;
+            },
+            Encryption,
+            Target,
+            TimeProvider.System).ReconcileAsync("tenant", "secret", default);
     }
 
     private sealed class Target : ISecretProjectionTarget
     {
-        public readonly HashSet<string> Unavailable = [];
         public readonly Dictionary<string, V1Secret> Manifests = [];
+        public readonly HashSet<string> Unavailable = [];
         public Action<SecretProjection>? AfterApply;
 
         public async Task<SecretProjectionTargetOutcome> ApplyAsync(
-        SecretProjection projection,
-        Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
-        CancellationToken ct)
+            SecretProjection projection,
+            Func<CancellationToken, Task<SecretProjectionManifestOutcome>> createManifest,
+            CancellationToken ct)
         {
             if (Unavailable.Contains(projection.DeploymentTargetId))
                 return new SecretProjectionTargetUnavailable();
@@ -159,7 +216,7 @@ public sealed class SecretProjectionReconciliationTests
             Manifests[projection.DeploymentId] = manifest;
             AfterApply?.Invoke(projection);
             foreach (var bytes in manifest.Data.Values)
-                System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+                CryptographicOperations.ZeroMemory(bytes);
             return new SecretProjectionTargetSucceeded();
         }
 
@@ -176,13 +233,33 @@ public sealed class SecretProjectionReconciliationTests
     {
         public bool Fail;
         public EnvelopeEncryptionKeyReference ActiveKey => throw new NotSupportedException();
-        public ValueTask<EnvelopeDecryptionOutcome> DecryptAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) =>
-            ValueTask.FromResult<EnvelopeDecryptionOutcome>(Fail
+
+        public ValueTask<EnvelopeDecryptionOutcome> DecryptAsync(
+            EncryptedValue value,
+            EnvelopeEncryptionContext context,
+            CancellationToken ct = default) => ValueTask.FromResult(
+            Fail
                 ? new EnvelopeDecryptionOutcome(new EnvelopeDecryptionFailed("sensitive internal detail"))
                 : JsonSerializer.SerializeToUtf8Bytes(new { password = "private-value" }));
-        public ValueTask<EnvelopeEncryptionOutcome> EncryptAsync(ReadOnlyMemory<byte> value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<EnvelopeEncryptionOutcome> EncryptStringAsync(string value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<EnvelopeStringDecryptionOutcome> DecryptStringAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<EnvelopeRewrapOutcome> RewrapAsync(EncryptedValue value, EnvelopeEncryptionContext context, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public ValueTask<EnvelopeEncryptionOutcome> EncryptAsync(
+            ReadOnlyMemory<byte> value,
+            EnvelopeEncryptionContext context,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public ValueTask<EnvelopeEncryptionOutcome> EncryptStringAsync(
+            string value,
+            EnvelopeEncryptionContext context,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public ValueTask<EnvelopeStringDecryptionOutcome> DecryptStringAsync(
+            EncryptedValue value,
+            EnvelopeEncryptionContext context,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public ValueTask<EnvelopeRewrapOutcome> RewrapAsync(
+            EncryptedValue value,
+            EnvelopeEncryptionContext context,
+            CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

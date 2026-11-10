@@ -18,9 +18,9 @@ public sealed record SecretMetadata(
     DateTime UpdatedAtUtc,
     string[] MissingValueKeys,
     GitResourceStatus? GitOps = null,
-    SecretManagedOwnerMetadata? ManagedBy = null)
+    SecretManagedOwnerMetadata? ManagedBy = null
+)
 {
-
     public static SecretMetadata From(Secret secret) => new(
         secret.Id,
         secret.TenantId,
@@ -36,11 +36,12 @@ public sealed record SecretMetadata(
         secret.UpdatedAtUtc,
         secret.KeyNames.Where(key => !secret.HasValue(key)).ToArray(),
         ManagedBy: secret.Management is ProviderManagedSecret owner
-            ? new(owner.ResourceType, owner.ResourceId, owner.BindingId)
+            ? new SecretManagedOwnerMetadata(owner.ResourceType, owner.ResourceId, owner.BindingId)
             : null);
 }
 
 public sealed record SecretManagedOwnerMetadata(
     string ResourceType,
     string ResourceId,
-    string BindingId);
+    string BindingId
+);

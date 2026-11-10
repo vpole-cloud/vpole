@@ -3,22 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
 using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Primitives;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
@@ -34,33 +23,66 @@ public sealed partial class ManagedSecretIntegrationTests
         session.StartTransaction();
         await StageConsumer(group, owner, session);
         await session.CommitTransactionAsync();
-        var binding = SecretBinding.Create(Id(), owner.ResourceType, owner.ResourceId, new AllSecretDeployments(), [],
+        var binding = SecretBinding.Create(
+            Id(),
+            owner.ResourceType,
+            owner.ResourceId,
+            new AllSecretDeployments(),
+            [],
             SecretBindingUsage.Bootstrap);
-        var secret = SecretFactory.CreateMetadata(Id(), group.TenantId, group.Id, group.DefaultIsolationScopeId,
-            "source-password", "bootstrap", ["password"], DateTime.UtcNow).Bind(binding, DateTime.UtcNow);
+        var secret = SecretFactory.CreateMetadata(
+                Id(),
+                group.TenantId,
+                group.Id,
+                group.DefaultIsolationScopeId,
+                "source-password",
+                "bootstrap",
+                ["password"],
+                DateTime.UtcNow)
+            .Bind(binding, DateTime.UtcNow);
         var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
         await secrets.InsertOneAsync(secret);
-        var declaration = new CompiledDeclaration(new("SecretBinding", "adopted-access"), DeclarationJson.Write(new
-        {
-            secret = secret.Name,
-            consumer = new { kind = "PostgresCluster", name = "database" },
-            usage = "Bootstrap",
-            keyMappings = new Dictionary<string, string>()
-        }), "hash", [], "secret.yaml", 1);
-        var request = new PreviewLifecycleAdoptionRequest(group.TenantId, declaration, binding.Id,
-            [new(new("Secret", secret.Name), secret.Id), new(new("PostgresCluster", "database"), owner.ResourceId)]);
-        var provider = Assert.IsAssignableFrom<IDeclarativeAdoptionPreviewProvider>(Services
-            .GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "SecretBinding"));
+        var declaration = new CompiledDeclaration(
+            new ResourceAddress("SecretBinding", "adopted-access"),
+            DeclarationJson.Write(
+                new
+                {
+                    secret = secret.Name,
+                    consumer = new { kind = "PostgresCluster", name = "database" },
+                    usage = "Bootstrap",
+                    keyMappings = new Dictionary<string, string>(),
+                }),
+            "hash",
+            [],
+            "secret.yaml",
+            1);
+        var request = new PreviewLifecycleAdoptionRequest(
+            group.TenantId,
+            declaration,
+            binding.Id,
+            [
+                new GitPreviewResolvedReference(new ResourceAddress("Secret", secret.Name), secret.Id),
+                new GitPreviewResolvedReference(new ResourceAddress("PostgresCluster", "database"), owner.ResourceId),
+            ]);
+        var provider = Assert.IsAssignableFrom<IDeclarativeAdoptionPreviewProvider>(
+            Services.GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "SecretBinding"));
         session.StartTransaction();
         var preview = Assert.IsType<GitLifecycleAdoptionPreview>(
             (await provider.PreviewAdoptionAsync(request, session, default)).Value);
         Assert.Equal(binding.Id, preview.Current.ResourceId);
         Assert.Equal(2, preview.ResolvedReferences.Count);
-        Assert.IsType<DeclarationReadBlocked>((await provider.PreviewAdoptionAsync(request with
-        { ResourceId = Id() }, session, default)).Value);
+        Assert.IsType<DeclarationReadBlocked>(
+            (await provider.PreviewAdoptionAsync(
+                request with
+                {
+                    ResourceId = Id(),
+                },
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(secret.ToBsonDocument(), (await secrets.Find(item => item.Id == secret.Id).SingleAsync())
-            .ToBsonDocument());
+        Assert.Equal(
+            secret.ToBsonDocument(),
+            (await secrets.Find(item => item.Id == secret.Id).SingleAsync()).ToBsonDocument());
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
 
@@ -69,30 +91,51 @@ public sealed partial class ManagedSecretIntegrationTests
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
-        var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            new(group.TenantId, Id(), owner, "adoption-credentials", 1,
-                new Dictionary<string, string> { ["username"] = "application", ["password"] = "protected-password" },
-                ManagedSecretKubernetesType.BasicAuthentication), default)).Value);
+        var prepared = Assert.IsType<PreparedManagedSecret>(
+            (await Services.GetRequiredService<PrepareManagedSecret>()(
+                new PrepareManagedSecretRequest(
+                    group.TenantId,
+                    Id(),
+                    owner,
+                    "adoption-credentials",
+                    1,
+                    new Dictionary<string, string>
+                        { ["username"] = "application", ["password"] = "protected-password" },
+                    ManagedSecretKubernetesType.BasicAuthentication),
+                default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
-        Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            new(prepared, group.Id, group.DefaultIsolationScopeId, deployment.Id), session, default)).Value);
+        Assert.IsType<ManagedSecretMutationSucceeded>(
+            (await Services.GetRequiredService<CreateBoundManagedSecret>()(
+                new CreateBoundManagedSecretRequest(prepared, group.Id, group.DefaultIsolationScopeId, deployment.Id),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
 
-        var request = new ReadManagedSecretAdoptionRequest(group.TenantId, owner, group.Id,
-            group.DefaultIsolationScopeId, new("username", "application"));
+        var request = new ReadManagedSecretAdoptionRequest(
+            group.TenantId,
+            owner,
+            group.Id,
+            group.DefaultIsolationScopeId,
+            new ManagedSecretIdentityExpectation("username", "application"));
         session.StartTransaction();
         var snapshot = Assert.IsType<ManagedSecretAdoptionSnapshot>(
             (await Services.GetRequiredService<ReadManagedSecretAdoption>()(request, session, default)).Value);
         Assert.Equal(prepared.SecretId, snapshot.SecretId);
         Assert.DoesNotContain("protected-password", JsonSerializer.Serialize(snapshot));
-        Assert.IsType<ManagedSecretIdentityMismatch>((await Services.GetRequiredService<ReadManagedSecretAdoption>()(
-            request with { Identity = new("username", "different") }, session, default)).Value);
-        Assert.IsType<ManagedSecretUnavailable>((await Services.GetRequiredService<ReadManagedSecretAdoption>()(
-            request with { TenantId = Id() }, session, default)).Value);
-        Assert.IsType<ManagedSecretAdoptionFenced>((await Services.GetRequiredService<FenceManagedSecretAdoption>()(
-            snapshot, session, default)).Value);
+        Assert.IsType<ManagedSecretIdentityMismatch>(
+            (await Services.GetRequiredService<ReadManagedSecretAdoption>()(
+                request with { Identity = new ManagedSecretIdentityExpectation("username", "different") },
+                session,
+                default)).Value);
+        Assert.IsType<ManagedSecretUnavailable>(
+            (await Services.GetRequiredService<ReadManagedSecretAdoption>()(
+                request with { TenantId = Id() },
+                session,
+                default)).Value);
+        Assert.IsType<ManagedSecretAdoptionFenced>(
+            (await Services.GetRequiredService<FenceManagedSecretAdoption>()(snapshot, session, default)).Value);
         await session.AbortTransactionAsync();
 
         var secret = (await Services.GetRequiredService<LoadManagedSecret>()(group.TenantId, owner, default))!;
@@ -107,29 +150,47 @@ public sealed partial class ManagedSecretIntegrationTests
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var owner = new ManagedSecretOwner("pole/postgresql", Id());
-        var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            new(group.TenantId, Id(), owner, "adoption-rotation", 1,
-                new Dictionary<string, string> { ["username"] = "application", ["password"] = "old-password" },
-                ManagedSecretKubernetesType.BasicAuthentication), default)).Value);
+        var prepared = Assert.IsType<PreparedManagedSecret>(
+            (await Services.GetRequiredService<PrepareManagedSecret>()(
+                new PrepareManagedSecretRequest(
+                    group.TenantId,
+                    Id(),
+                    owner,
+                    "adoption-rotation",
+                    1,
+                    new Dictionary<string, string> { ["username"] = "application", ["password"] = "old-password" },
+                    ManagedSecretKubernetesType.BasicAuthentication),
+                default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var deployment = await StageConsumer(group, owner, session);
-        Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<CreateBoundManagedSecret>()(
-            new(prepared, group.Id, group.DefaultIsolationScopeId, deployment.Id), session, default)).Value);
+        Assert.IsType<ManagedSecretMutationSucceeded>(
+            (await Services.GetRequiredService<CreateBoundManagedSecret>()(
+                new CreateBoundManagedSecretRequest(prepared, group.Id, group.DefaultIsolationScopeId, deployment.Id),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
 
         session.StartTransaction();
-        var snapshot = Assert.IsType<ManagedSecretAdoptionSnapshot>((await Services
-            .GetRequiredService<ReadManagedSecretAdoption>()(new(group.TenantId, owner, group.Id,
-                group.DefaultIsolationScopeId, new("username", "application")), session, default)).Value);
+        var snapshot = Assert.IsType<ManagedSecretAdoptionSnapshot>(
+            (await Services.GetRequiredService<ReadManagedSecretAdoption>()(
+                new ReadManagedSecretAdoptionRequest(
+                    group.TenantId,
+                    owner,
+                    group.Id,
+                    group.DefaultIsolationScopeId,
+                    new ManagedSecretIdentityExpectation("username", "application")),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
-        await Services.GetRequiredService<IMongoCollection<Secret>>().UpdateOneAsync(
-            item => item.Id == prepared.SecretId,
-            Builders<Secret>.Update.Inc(item => item.CurrentVersion, 1));
+        await Services.GetRequiredService<IMongoCollection<Secret>>()
+            .UpdateOneAsync(
+                item => item.Id == prepared.SecretId,
+                Builders<Secret>.Update.Inc(item => item.CurrentVersion, 1));
 
         session.StartTransaction();
-        Assert.IsType<ManagedSecretChanged>((await Services.GetRequiredService<FenceManagedSecretAdoption>()(
-            snapshot, session, default)).Value);
+        Assert.IsType<ManagedSecretChanged>(
+            (await Services.GetRequiredService<FenceManagedSecretAdoption>()(snapshot, session, default)).Value);
         await session.AbortTransactionAsync();
     }
 }

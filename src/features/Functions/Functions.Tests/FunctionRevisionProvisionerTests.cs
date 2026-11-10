@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
@@ -45,7 +44,7 @@ public sealed class FunctionRevisionProvisionerTests
         var provisioning = CreateSubject();
         var subject = provisioning with
         {
-            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow)
+            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow),
         };
         var endpoint = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
         var manager = new RecordingManager();
@@ -72,13 +71,13 @@ public sealed class FunctionRevisionProvisionerTests
         var provisioning = CreateSubject();
         var subject = provisioning with
         {
-            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow)
+            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow),
         };
         var endpoint = new FunctionEndpoint("10.0.0.1", 8080, "pod-1");
         var manager = new RecordingManager();
         var lifecycle = new RecordingLifecycle
         {
-            PromoteOutcome = new FunctionRevisionNotReady(subject.Revision.Id)
+            PromoteOutcome = new FunctionRevisionNotReady(subject.Revision.Id),
         };
         var provisioner = new FunctionRevisionProvisioner(
             new ReadyActivator(endpoint, subject),
@@ -156,8 +155,7 @@ public sealed class FunctionRevisionProvisionerTests
         var manager = new RecordingManager
         {
             ScaleResult = new FunctionRevisionKubernetesOperationError(
-                new FunctionRevisionGatewaySourceUnavailable(
-                    "The Function gateway source is not configured."))
+                new FunctionRevisionGatewaySourceUnavailable("The Function gateway source is not configured.")),
         };
         var lifecycle = new RecordingLifecycle();
         var provisioner = new FunctionRevisionProvisioner(
@@ -175,9 +173,7 @@ public sealed class FunctionRevisionProvisionerTests
         Assert.Null(lifecycle.MarkedReadyRevisionId);
     }
 
-    private static FunctionAgentMetadataResponse Metadata(
-        FunctionRevisionInKubernetes subject,
-        string instanceId) =>
+    private static FunctionAgentMetadataResponse Metadata(FunctionRevisionInKubernetes subject, string instanceId) =>
         new(
             PoleFunctionProtocol.Version,
             "test-runtime",
@@ -195,19 +191,13 @@ public sealed class FunctionRevisionProvisionerTests
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
                 ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
+            new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
             new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
             [
                 new FunctionHandlerSpec(
                     "webhook",
                     4,
-                    new HttpFunctionTriggerSpec(
-                        string.Empty,
-                        "orders",
-                        ["POST"],
-                        FunctionExposure.Public))
+                    new HttpFunctionTriggerSpec("", "orders", ["POST"], FunctionExposure.Public)),
             ]);
         var created = FunctionAppFactory.Create(
             "tenant-1",
@@ -225,7 +215,7 @@ public sealed class FunctionRevisionProvisionerTests
         var revision = created.Revision with
         {
             Id = "507f1f77bcf86cd799439012",
-            FunctionAppId = app.Id
+            FunctionAppId = app.Id,
         };
         return new FunctionRevisionInKubernetes(
             app,
@@ -240,33 +230,31 @@ public sealed class FunctionRevisionProvisionerTests
 
     private sealed class ReadyActivator(
         FunctionEndpoint endpoint,
-        FunctionRevisionInKubernetes subject) : IFunctionRevisionActivator
+        FunctionRevisionInKubernetes subject
+    ) : IFunctionRevisionActivator
     {
         public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default,
-            bool forceScaleFence = false) =>
-            Task.FromResult<FunctionRevisionActivationOutcome>(
-                new FunctionEndpointSnapshot(
-                new FunctionServiceKey(
-                    subject.Placement.DeploymentTargetId,
-                    subject.Namespace,
-                    subject.ServiceName),
+            bool forceScaleFence = false) => Task.FromResult<FunctionRevisionActivationOutcome>(
+            new FunctionEndpointSnapshot(
+                new FunctionServiceKey(subject.Placement.DeploymentTargetId, subject.Namespace, subject.ServiceName),
                 [endpoint],
                 DateTimeOffset.UtcNow));
     }
 
     private sealed class RecoveringGatewayActivator(
         FunctionEndpoint endpoint,
-        FunctionRevisionInKubernetes subject) : IFunctionRevisionActivator
+        FunctionRevisionInKubernetes subject
+    ) : IFunctionRevisionActivator
     {
         public bool GatewaySourceAvailable { get; set; }
 
         public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default,
-            bool forceScaleFence = false) =>
-            Task.FromResult<FunctionRevisionActivationOutcome>(GatewaySourceAvailable
+            bool forceScaleFence = false) => Task.FromResult<FunctionRevisionActivationOutcome>(
+            GatewaySourceAvailable
                 ? new FunctionEndpointSnapshot(
                     new FunctionServiceKey(
                         subject.Placement.DeploymentTargetId,
@@ -280,17 +268,16 @@ public sealed class FunctionRevisionProvisionerTests
                             "The Function gateway source is not configured."))));
     }
 
-    private sealed class MetadataClient(FunctionAgentMetadataResponse metadata) : IFunctionAgentClient
+    private sealed class MetadataClient(
+        FunctionAgentMetadataResponse metadata
+    ) : IFunctionAgentClient
     {
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
             FunctionEndpoint endpoint,
             FunctionApp app,
             FunctionRevision revision,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>(
-                HttpStatusCode.OK,
-                metadata,
-                null));
+            CancellationToken cancellationToken) => Task.FromResult(
+            new FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>(HttpStatusCode.OK, metadata, null));
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
             FunctionEndpoint endpoint,
@@ -325,17 +312,20 @@ public sealed class FunctionRevisionProvisionerTests
     private sealed class RecordingManager : IFunctionRevisionKubernetesManager
     {
         public List<int> ScaleRequests { get; } = [];
-        public FunctionRevisionKubernetesMutationOutcome ScaleResult { get; set; } =
-            new FunctionRevisionKubernetesMutationCompleted();
+
+        public FunctionRevisionKubernetesMutationOutcome ScaleResult { get; set; }
+            = new FunctionRevisionKubernetesMutationCompleted();
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ApplyAsync(
             FunctionRevisionInKubernetes revision,
-            CancellationToken cancellationToken = default) => Task.FromResult<FunctionRevisionKubernetesMutationOutcome>(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<FunctionRevisionKubernetesMutationOutcome>(
                 new FunctionRevisionKubernetesMutationCompleted());
 
         public Task<FunctionRevisionKubernetesMutationOutcome> DeleteAsync(
             FunctionRevisionInKubernetes revision,
-            CancellationToken cancellationToken = default) => Task.FromResult<FunctionRevisionKubernetesMutationOutcome>(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<FunctionRevisionKubernetesMutationOutcome>(
                 new FunctionRevisionKubernetesMutationCompleted());
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ScaleProvisioningAsync(
@@ -351,22 +341,21 @@ public sealed class FunctionRevisionProvisionerTests
             FunctionRevisionInKubernetes revision,
             int replicas,
             long coordinationGeneration,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<FunctionReplicaStateOutcome> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<FunctionReplicaStateOutcome>(
-                new FunctionReplicaState(0, 0, 0, 0));
+            Task.FromResult<FunctionReplicaStateOutcome>(new FunctionReplicaState(0, 0, 0));
     }
 
     private sealed class RecordingLifecycle
     {
         public string? MarkedReadyRevisionId { get; private set; }
         public string? PromotedRevisionId { get; private set; }
-        public FunctionRevisionLifecycleOutcome PromoteOutcome { get; init; } =
-            new FunctionRevisionLifecycleCompleted();
+
+        public FunctionRevisionLifecycleOutcome PromoteOutcome { get; init; }
+            = new FunctionRevisionLifecycleCompleted();
 
         public Task<FunctionRevisionLifecycleOutcome> MarkReadyAsync(
             string tenantId,
@@ -375,8 +364,7 @@ public sealed class FunctionRevisionProvisionerTests
             CancellationToken cancellationToken = default)
         {
             MarkedReadyRevisionId = revisionId;
-            return Task.FromResult<FunctionRevisionLifecycleOutcome>(
-                new FunctionRevisionLifecycleCompleted());
+            return Task.FromResult<FunctionRevisionLifecycleOutcome>(new FunctionRevisionLifecycleCompleted());
         }
 
         public Task<FunctionRevisionLifecycleOutcome> PromoteAsync(

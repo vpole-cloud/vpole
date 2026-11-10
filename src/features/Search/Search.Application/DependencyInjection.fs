@@ -4,7 +4,6 @@ open System
 open Microsoft.Extensions.DependencyInjection
 open Pole.Features.Realtime.Contracts
 open Pole.Features.Search.Application.Common
-open Pole.Features.Search.Application.Mongo
 open Pole.Features.Search.Application.Projection
 open Pole.Features.Search.Application.Queries
 open Pole.Features.Search.Contracts

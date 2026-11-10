@@ -1,11 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
-using Pole.Features.ResourceConnections.Application.Common;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
 using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
@@ -17,7 +13,8 @@ using Pole.Workloads;
 namespace Pole.Features.ResourceConnections.Application.Connections;
 
 internal sealed record ConnectionResolvedSnapshots(
-    IReadOnlyList<ConnectionTargetSnapshot> Snapshots);
+    IReadOnlyList<ConnectionTargetSnapshot> Snapshots
+);
 
 internal union ResolveConnectionSnapshotsOutcome(
     ConnectionResolvedSnapshots,
@@ -27,9 +24,7 @@ internal union ResolveConnectionSnapshotsOutcome(
     ResourceConnectionEndpointMissing,
     ResourceConnectionDestinationDeletingConflict);
 
-internal union RefreshConnectionOutcome(
-    ResourceConnectionTopologyValid,
-    ResourceConnectionConcurrentMutation);
+internal union RefreshConnectionOutcome(ResourceConnectionTopologyValid, ResourceConnectionConcurrentMutation);
 
 internal sealed class MongoResourceConnectionMutationProvider(
     IMongoCollection<ResourceConnection> connections,
@@ -38,7 +33,8 @@ internal sealed class MongoResourceConnectionMutationProvider(
     LoadResourceRegistrationPlanningSnapshot loadRegistration,
     FenceResourceRegistrationPlanningSnapshot fenceRegistration,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<ReconcileConnectionsForResourceOutcome> ReconcileAsync(
         ReconcileConnectionsForResourceRequest request,
@@ -60,25 +56,32 @@ internal sealed class MongoResourceConnectionMutationProvider(
             var resolved = await ResolveSnapshotsAsync(current, session, cancellationToken);
             ReconcileConnectionsForResourceOutcome resolution = resolved switch
             {
-                ConnectionResolvedSnapshots found => (await RefreshAsync(
-                    current, active, found.Snapshots, session, outbox, cancellationToken)) switch
-                {
-                    ResourceConnectionTopologyValid refreshed => refreshed,
-                    ResourceConnectionConcurrentMutation error => error
-                },
+                ConnectionResolvedSnapshots found => await RefreshAsync(
+                        current,
+                        active,
+                        found.Snapshots,
+                        session,
+                        outbox,
+                        cancellationToken) switch
+                    {
+                        ResourceConnectionTopologyValid refreshed => refreshed,
+                        ResourceConnectionConcurrentMutation error => error,
+                    },
                 ResourceConnectionSourceHasNoPlacements error => error,
                 ResourceConnectionDestinationTargetMissing error => error,
                 ResourceConnectionDestinationTargetAmbiguous error => error,
                 ResourceConnectionEndpointMissing error => error,
-                ResourceConnectionDestinationDeletingConflict error => error
+                ResourceConnectionDestinationDeletingConflict error => error,
             };
             if (resolution is ResourceConnectionTopologyValid valid)
             {
                 refreshedCount += valid.RefreshedCount;
                 continue;
             }
+
             return resolution;
         }
+
         if (outbox.Count > 0)
             await storeOutboxWrites(session, outbox, cancellationToken);
         return new ResourceConnectionTopologyValid(refreshedCount);
@@ -92,8 +95,8 @@ internal sealed class MongoResourceConnectionMutationProvider(
         List<OutboxWrite> outbox,
         CancellationToken cancellationToken)
     {
-        if (active.Targets.Count == snapshots.Count &&
-            active.Targets.Select(item => item.Snapshot)
+        if (active.Targets.Count == snapshots.Count && active.Targets
+                .Select(item => item.Snapshot)
                 .Zip(snapshots)
                 .All(pair => pair.First.HasSameResolvedValues(pair.Second)))
             return new ResourceConnectionTopologyValid(0);
@@ -101,21 +104,18 @@ internal sealed class MongoResourceConnectionMutationProvider(
         var updated = current.RefreshResolvedTargets(snapshots);
         var result = await connections.ReplaceOneAsync(
             session,
-            ResourceConnectionFilters.AtRevision(
-                current.TenantId,
-                current.Id,
-                current.Revision),
+            ResourceConnectionFilters.AtRevision(current.TenantId, current.Id, current.Revision),
             updated,
             cancellationToken: cancellationToken);
         if (result.ModifiedCount != 1)
             return new ResourceConnectionConcurrentMutation(current.Id);
 
-        outbox.Add(OutboxWrite.Create(new ResourceConnectionReconciliationRequestedEvent(
-            current.Id,
-            updated.Generation)
-        {
-            EventCore = EventCore.Create(current.TenantId)
-        }));
+        outbox.Add(
+            OutboxWrite.Create(
+                new ResourceConnectionReconciliationRequestedEvent(current.Id, updated.Generation)
+                {
+                    EventCore = EventCore.Create(current.TenantId),
+                }));
         return new ResourceConnectionTopologyValid(1);
     }
 
@@ -125,10 +125,12 @@ internal sealed class MongoResourceConnectionMutationProvider(
         CancellationToken cancellationToken)
     {
         RequireTransaction(session);
-        return await connections.Find(session,
+        return await connections
+            .Find(
+                session,
                 ResourceConnectionFilters.ByResource(request.TenantId, request.ResourceType, request.ResourceId))
-            .SortBy(item => item.Id).Project(item =>
-                new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence))
+            .SortBy(item => item.Id)
+            .Project(item => new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence))
             .ToListAsync(cancellationToken);
     }
 
@@ -147,7 +149,8 @@ internal sealed class MongoResourceConnectionMutationProvider(
         {
             var expected = reviewed.OrderBy(item => item.ConnectionId, StringComparer.Ordinal).ToArray();
             var actual = affected.Select(item =>
-                new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence)).ToArray();
+                    new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence))
+                .ToArray();
             if (!actual.SequenceEqual(expected))
             {
                 var conflicting = actual.FirstOrDefault(item => !expected.Contains(item)) ??
@@ -157,10 +160,13 @@ internal sealed class MongoResourceConnectionMutationProvider(
 
             // Both connection admission and parent deletion write this registration, preventing an
             // unreviewed connection from appearing between the set read and the parent commit.
-            var registration = await loadRegistration(new(request.TenantId, request.ResourceType,
-                request.ResourceId), session, cancellationToken);
-            if (registration is not null && await fenceRegistration(registration, session, cancellationToken)
-                is not ResourceRegistrationSnapshotFenced)
+            var registration = await loadRegistration(
+                new LoadRegisteredResourceRequest(request.TenantId, request.ResourceType, request.ResourceId),
+                session,
+                cancellationToken);
+            if (registration is not null &&
+                await fenceRegistration(registration, session, cancellationToken) is not
+                    ResourceRegistrationSnapshotFenced)
                 return new ResourceConnectionCascadeConflict(request.ResourceId);
         }
 
@@ -172,9 +178,14 @@ internal sealed class MongoResourceConnectionMutationProvider(
             {
                 if (request.ReviewedConnections is not null)
                 {
-                    var fence = await connections.UpdateOneAsync(session,
-                        ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
-                            new(current.Id, current.Revision, current.ReferenceFence)),
+                    var fence = await connections.UpdateOneAsync(
+                        session,
+                        ResourceConnectionFilters.AtPlanningVersion(
+                            request.TenantId,
+                            new ResourceConnectionPlanningVersion(
+                                current.Id,
+                                current.Revision,
+                                current.ReferenceFence)),
                         Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1),
                         cancellationToken: cancellationToken);
                     if (fence.ModifiedCount != 1)
@@ -187,20 +198,22 @@ internal sealed class MongoResourceConnectionMutationProvider(
             var updated = current.BeginDeletion(timeProvider.GetUtcNow().UtcDateTime);
             var result = await connections.ReplaceOneAsync(
                 session,
-                ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
-                    new(current.Id, current.Revision, current.ReferenceFence)),
+                ResourceConnectionFilters.AtPlanningVersion(
+                    request.TenantId,
+                    new ResourceConnectionPlanningVersion(current.Id, current.Revision, current.ReferenceFence)),
                 updated,
                 cancellationToken: cancellationToken);
             if (result.ModifiedCount != 1)
                 return new ResourceConnectionCascadeConflict(current.Id);
             cascaded++;
-            outbox.Add(OutboxWrite.Create(new ResourceConnectionDeletionRequestedEvent(
-                current.Id,
-                updated.Generation)
-            {
-                EventCore = EventCore.Create(request.TenantId)
-            }));
+            outbox.Add(
+                OutboxWrite.Create(
+                    new ResourceConnectionDeletionRequestedEvent(current.Id, updated.Generation)
+                    {
+                        EventCore = EventCore.Create(request.TenantId),
+                    }));
         }
+
         if (outbox.Count > 0)
             await storeOutboxWrites(session, outbox, cancellationToken);
         return new ResourceConnectionsCascaded(cascaded);
@@ -223,10 +236,15 @@ internal sealed class MongoResourceConnectionMutationProvider(
         return endpointResult switch
         {
             ResolvedConnectionEndpoint endpoint => await ResolvePlacementsAsync(
-                connection, sourceType, destinationType, endpoint, session, cancellationToken),
+                connection,
+                sourceType,
+                destinationType,
+                endpoint,
+                session,
+                cancellationToken),
             ConnectionDestinationDeleting => new ResourceConnectionDestinationDeletingConflict(connection.Id),
             ConnectionEndpointMissing => new ResourceConnectionEndpointMissing(connection.Id),
-            ConnectionEndpointUnsupportedByProvider => new ResourceConnectionEndpointMissing(connection.Id)
+            ConnectionEndpointUnsupportedByProvider => new ResourceConnectionEndpointMissing(connection.Id),
         };
     }
 
@@ -239,49 +257,56 @@ internal sealed class MongoResourceConnectionMutationProvider(
         CancellationToken cancellationToken)
     {
         var sourcePlacements = (await loadPlacements(
-            new LoadResourceDeploymentConnectionPlacementsRequest(
-                TenantId: connection.TenantId,
-                ResourceType: sourceType,
-                ResourceId: connection.SourceResourceId),
-            session: session,
-            cancellationToken: cancellationToken))
-            .Where(item => !item.DeletionRequested)
+                new LoadResourceDeploymentConnectionPlacementsRequest(
+                    TenantId: connection.TenantId,
+                    ResourceType: sourceType,
+                    ResourceId: connection.SourceResourceId),
+                session: session,
+                cancellationToken: cancellationToken)).Where(item => !item.DeletionRequested)
             .ToArray();
         var destinationPlacements = (await loadPlacements(
-            new LoadResourceDeploymentConnectionPlacementsRequest(
-                TenantId: connection.TenantId,
-                ResourceType: destinationType,
-                ResourceId: connection.DestinationResourceId),
-            session: session,
-            cancellationToken: cancellationToken))
-            .Where(item => !item.DeletionRequested)
+                new LoadResourceDeploymentConnectionPlacementsRequest(
+                    TenantId: connection.TenantId,
+                    ResourceType: destinationType,
+                    ResourceId: connection.DestinationResourceId),
+                session: session,
+                cancellationToken: cancellationToken)).Where(item => !item.DeletionRequested)
             .ToArray();
 
-        var topology = ResourceConnectionTopology.Evaluate(sourcePlacements.Select(item => item.DeploymentTargetId), destinationPlacements.Select(item => item.DeploymentTargetId));
+        var topology = ResourceConnectionTopology.Evaluate(
+            sourcePlacements.Select(item => item.DeploymentTargetId),
+            destinationPlacements.Select(item => item.DeploymentTargetId));
         switch (topology.Kind)
         {
-            case ConnectionTopologyKind.SourceHasNoPlacements: return new ResourceConnectionSourceHasNoPlacements(connection.Id);
-            case ConnectionTopologyKind.DestinationTargetMissing: return new ResourceConnectionDestinationTargetMissing(connection.Id);
-            case ConnectionTopologyKind.DestinationTargetAmbiguous: return new ResourceConnectionDestinationTargetAmbiguous(connection.Id);
+            case ConnectionTopologyKind.SourceHasNoPlacements:
+                return new ResourceConnectionSourceHasNoPlacements(connection.Id);
+            case ConnectionTopologyKind.DestinationTargetMissing:
+                return new ResourceConnectionDestinationTargetMissing(connection.Id);
+            case ConnectionTopologyKind.DestinationTargetAmbiguous:
+                return new ResourceConnectionDestinationTargetAmbiguous(connection.Id);
         }
+
         var snapshots = new List<ConnectionTargetSnapshot>();
-        foreach (var sourcesOnTarget in sourcePlacements
-            .GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal))
+        foreach (var sourcesOnTarget in sourcePlacements.GroupBy(
+                     item => item.DeploymentTargetId,
+                     StringComparer.Ordinal))
         {
             var destination = destinationPlacements.Single(item => item.DeploymentTargetId == sourcesOnTarget.Key);
-            snapshots.Add(ConnectionTargetSnapshot.Create(
-                sourcesOnTarget.Key,
-                destination.DeploymentId,
-                destination.RuntimeCellId,
-                destination.KubernetesNamespace,
-                endpoint.ServiceName,
-                endpoint.ServicePort.Value,
-                endpoint.TargetPort.Value,
-                sourcesOnTarget.Select(source => new ConnectionSourcePlacement(
-                    source.DeploymentId,
-                    source.RuntimeCellId,
-                    source.KubernetesNamespace))));
+            snapshots.Add(
+                ConnectionTargetSnapshot.Create(
+                    sourcesOnTarget.Key,
+                    destination.DeploymentId,
+                    destination.RuntimeCellId,
+                    destination.KubernetesNamespace,
+                    endpoint.ServiceName,
+                    endpoint.ServicePort.Value,
+                    endpoint.TargetPort.Value,
+                    sourcesOnTarget.Select(source => new ConnectionSourcePlacement(
+                        source.DeploymentId,
+                        source.RuntimeCellId,
+                        source.KubernetesNamespace))));
         }
+
         return new ConnectionResolvedSnapshots(
             snapshots.OrderBy(snapshot => snapshot.TargetId, StringComparer.Ordinal).ToArray());
     }

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -16,19 +17,12 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
     private readonly IContainer _container;
     private readonly HttpClient _httpClient = new();
 
-    public string BaseUrl { get; private set; } = string.Empty;
-    public string Realm { get; } = "pole.control-plane";
-    public string AdminClientId { get; } = "pole.control-plane.admin";
-    public string AdminClientSecret { get; } = "dev-admin-secret";
-    public KeycloakIdentityProvider IdentityProvider { get; private set; } = null!;
-
     public KeycloakContainerFixture()
     {
         var realmFile = ResolveRealmFile();
         var identity = TestRunIdentity.Create();
 
-        _container = new ContainerBuilder("quay.io/keycloak/keycloak:26.4.7")
-            .WithTestOwnership(identity)
+        _container = new ContainerBuilder("quay.io/keycloak/keycloak:26.4.7").WithTestOwnership(identity)
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
             .WithResourceMapping(new FileInfo(realmFile), "/opt/keycloak/data/import/")
@@ -37,6 +31,12 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
             .WithCommand("start-dev", "--import-realm")
             .Build();
     }
+
+    public string BaseUrl { get; private set; } = "";
+    public string Realm { get; } = "pole.control-plane";
+    public string AdminClientId { get; } = "pole.control-plane.admin";
+    public string AdminClientSecret { get; } = "dev-admin-secret";
+    public KeycloakIdentityProvider IdentityProvider { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -56,13 +56,14 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
 
     public KeycloakIdentityProvider CreateIdentityProvider(string adminClientSecret)
     {
-        var options = Options.Create(new KeycloakOptions
-        {
-            BaseUrl = BaseUrl,
-            Realm = Realm,
-            AdminClientId = AdminClientId,
-            AdminClientSecret = adminClientSecret
-        });
+        var options = Options.Create(
+            new KeycloakOptions
+            {
+                BaseUrl = BaseUrl,
+                Realm = Realm,
+                AdminClientId = AdminClientId,
+                AdminClientSecret = adminClientSecret,
+            });
 
         return new KeycloakIdentityProvider(new HttpClient(), options);
     }
@@ -73,30 +74,31 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
         return result.Token;
     }
 
-    private async Task<(string? Token, System.Net.HttpStatusCode StatusCode)> ProbeAdminAccessTokenAsync(
+    private async Task<(string? Token, HttpStatusCode StatusCode)> ProbeAdminAccessTokenAsync(
         CancellationToken cancellationToken)
     {
-        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "client_credentials",
-            ["client_id"] = AdminClientId,
-            ["client_secret"] = AdminClientSecret
-        });
+        using var content = new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = AdminClientId,
+                ["client_secret"] = AdminClientSecret,
+            });
 
         using var response = await _httpClient.PostAsync(
             $"{BaseUrl}/realms/{Uri.EscapeDataString(Realm)}/protocol/openid-connect/token",
             content,
             cancellationToken);
         if (!response.IsSuccessStatusCode)
-        {
             return (null, response.StatusCode);
-        }
 
         var token = await response.Content.ReadFromJsonAsync<KeycloakTokenResponse>(cancellationToken);
         return (token?.AccessToken, response.StatusCode);
     }
 
-    public async Task<KeycloakAdminUser?> FindUserByUsernameAsync(string username, CancellationToken cancellationToken = default)
+    public async Task<KeycloakAdminUser?> FindUserByUsernameAsync(
+        string username,
+        CancellationToken cancellationToken = default)
     {
         var users = await FindUsersByUsernameAsync(username, cancellationToken);
         return users.FirstOrDefault();
@@ -106,15 +108,13 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
     {
         var users = await FindUsersByUsernameAsync(username, cancellationToken);
         foreach (var user in users)
-        {
             await DeleteUserByIdAsync(user.Id, cancellationToken);
-        }
     }
 
     public async Task DeleteUserByIdAsync(string userId, CancellationToken cancellationToken = default)
     {
-        var token = await GetAdminAccessTokenAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Unable to get Keycloak admin token.");
+        var token = await GetAdminAccessTokenAsync(cancellationToken) ??
+            throw new InvalidOperationException("Unable to get Keycloak admin token.");
 
         using var request = new HttpRequestMessage(
             HttpMethod.Delete,
@@ -125,10 +125,12 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task<KeycloakAdminUser[]> FindUsersByUsernameAsync(string username, CancellationToken cancellationToken)
+    private async Task<KeycloakAdminUser[]> FindUsersByUsernameAsync(
+        string username,
+        CancellationToken cancellationToken)
     {
-        var token = await GetAdminAccessTokenAsync(cancellationToken)
-            ?? throw new InvalidOperationException("Unable to get Keycloak admin token.");
+        var token = await GetAdminAccessTokenAsync(cancellationToken) ??
+            throw new InvalidOperationException("Unable to get Keycloak admin token.");
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
@@ -145,7 +147,7 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
     {
         var timeoutAt = DateTime.UtcNow.AddMinutes(2);
         Exception? lastError = null;
-        System.Net.HttpStatusCode? lastStatusCode = null;
+        HttpStatusCode? lastStatusCode = null;
 
         while (DateTime.UtcNow < timeoutAt)
         {
@@ -154,9 +156,7 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
                 var result = await ProbeAdminAccessTokenAsync(CancellationToken.None);
                 lastStatusCode = result.StatusCode;
                 if (!string.IsNullOrWhiteSpace(result.Token))
-                {
                     return;
-                }
             }
             catch (Exception ex)
             {
@@ -167,7 +167,7 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
         }
 
         throw new TimeoutException(
-            $"Keycloak realm did not become ready in time. Last token endpoint status: " +
+            "Keycloak realm did not become ready in time. Last token endpoint status: " +
             (lastStatusCode is { } status ? ((int)status).ToString() : "no response"),
             lastError);
     }
@@ -184,9 +184,7 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
                 "realms",
                 "pole.control-plane.realm.json");
             if (File.Exists(candidate))
-            {
                 return candidate;
-            }
 
             directory = directory.Parent;
         }
@@ -194,14 +192,23 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
         throw new FileNotFoundException("Unable to find infrastructure/keycloak/realms/pole.control-plane.realm.json.");
     }
 
-    private sealed record KeycloakTokenResponse([property: JsonPropertyName("access_token")] string AccessToken);
+    private sealed record KeycloakTokenResponse(
+        [property: JsonPropertyName("access_token")]
+        string AccessToken
+    );
 }
 
 public sealed record KeycloakAdminUser(
     [property: JsonPropertyName("id")] string Id,
-    [property: JsonPropertyName("username")] string Username,
+    [property: JsonPropertyName("username")]
+    string Username,
     [property: JsonPropertyName("email")] string? Email,
-    [property: JsonPropertyName("firstName")] string? FirstName,
-    [property: JsonPropertyName("lastName")] string? LastName,
-    [property: JsonPropertyName("enabled")] bool Enabled,
-    [property: JsonPropertyName("requiredActions")] IReadOnlyCollection<string>? RequiredActions);
+    [property: JsonPropertyName("firstName")]
+    string? FirstName,
+    [property: JsonPropertyName("lastName")]
+    string? LastName,
+    [property: JsonPropertyName("enabled")]
+    bool Enabled,
+    [property: JsonPropertyName("requiredActions")]
+    IReadOnlyCollection<string>? RequiredActions
+);

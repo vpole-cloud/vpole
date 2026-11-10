@@ -11,6 +11,6 @@ internal static class WebServicePublicIngressPort
     {
         port = default;
         return string.Equals(protocol, "TCP", StringComparison.OrdinalIgnoreCase) &&
-               NetworkPort.TryParse(targetPort, out port);
+            NetworkPort.TryParse(targetPort, out port);
     }
 }

@@ -1,7 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -10,7 +8,8 @@ namespace Pole.Features.Functions.Application.Lifecycle;
 internal sealed class MongoFunctionRevisionLifecycleStore(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRevision> functionRevisions,
-    IMongoCollection<FunctionTimerState> functionTimerStates)
+    IMongoCollection<FunctionTimerState> functionTimerStates
+)
 {
     public async Task<FunctionRevisionLifecycleStateOutcome> LoadAsync(
         string tenantId,
@@ -18,17 +17,13 @@ internal sealed class MongoFunctionRevisionLifecycleStore(
         string revisionId,
         CancellationToken cancellationToken)
     {
-        var app = await functionApps.Find(
-                FunctionRevisionLifecycleFilters.AppByOwner(tenantId, functionAppId))
+        var app = await functionApps.Find(FunctionRevisionLifecycleFilters.AppByOwner(tenantId, functionAppId))
             .FirstOrDefaultAsync(cancellationToken);
         if (app is null)
             return new FunctionAppNotFound(functionAppId);
 
         var revision = await functionRevisions.Find(
-                FunctionRevisionLifecycleFilters.RevisionByOwner(
-                    tenantId,
-                    functionAppId,
-                    revisionId))
+                FunctionRevisionLifecycleFilters.RevisionByOwner(tenantId, functionAppId, revisionId))
             .FirstOrDefaultAsync(cancellationToken);
         if (revision is null)
             return new FunctionRevisionNotFound(functionAppId, revisionId);
@@ -37,16 +32,10 @@ internal sealed class MongoFunctionRevisionLifecycleStore(
         if (app.ActiveRevisionId is not null)
         {
             activeRevision = await functionRevisions.Find(
-                    FunctionRevisionLifecycleFilters.RevisionByOwner(
-                        tenantId,
-                        functionAppId,
-                        app.ActiveRevisionId))
+                    FunctionRevisionLifecycleFilters.RevisionByOwner(tenantId, functionAppId, app.ActiveRevisionId))
                 .FirstOrDefaultAsync(cancellationToken);
             if (activeRevision is null)
-            {
-                throw new InvalidOperationException(
-                    "Function App references an active revision that does not exist.");
-            }
+                throw new InvalidOperationException("Function App references an active revision that does not exist.");
         }
 
         return new FunctionRevisionLifecycleState(app, revision, activeRevision);
@@ -59,9 +48,7 @@ internal sealed class MongoFunctionRevisionLifecycleStore(
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        var existing = await functionTimerStates.Find(
-                session,
-                FunctionRevisionLifecycleFilters.TimersForApp(app))
+        var existing = await functionTimerStates.Find(session, FunctionRevisionLifecycleFilters.TimersForApp(app))
             .ToListAsync(cancellationToken);
         var existingByTrigger = existing.ToDictionary(timer => timer.TriggerId, StringComparer.Ordinal);
         var activeTriggerIds = new List<string>();
@@ -129,7 +116,8 @@ internal sealed class MongoFunctionRevisionLifecycleStore(
 internal sealed record FunctionRevisionLifecycleState(
     FunctionApp App,
     FunctionRevision Revision,
-    FunctionRevision? ActiveRevision);
+    FunctionRevision? ActiveRevision
+);
 
 internal union FunctionRevisionLifecycleStateOutcome(
     FunctionRevisionLifecycleState,

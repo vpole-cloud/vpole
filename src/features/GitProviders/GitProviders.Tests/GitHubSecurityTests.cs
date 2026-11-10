@@ -47,7 +47,7 @@ public sealed class GitHubSecurityTests
                 ClientSecret = "not-used-for-jwt",
                 AppSlug = "pole-test",
                 PrivateKeyPath = keyPath,
-                PublicBaseUrl = "https://pole.test"
+                PublicBaseUrl = "https://pole.test",
             };
             var jwtFactory = new GitHubAppJwtFactory(options, new FixedTimeProvider(now));
             var token = jwtFactory.Invoke();
@@ -64,17 +64,21 @@ public sealed class GitHubSecurityTests
             Assert.Equal(now.AddSeconds(-60).ToUnixTimeSeconds(), payload.RootElement.GetProperty("iat").GetInt64());
             Assert.Equal(now.AddMinutes(8).ToUnixTimeSeconds(), payload.RootElement.GetProperty("exp").GetInt64());
             Assert.False(payload.RootElement.TryGetProperty("nbf", out _));
-            Assert.True(payload.RootElement.GetProperty("exp").GetInt64() - payload.RootElement.GetProperty("iat").GetInt64() < 600);
-            Assert.True(rsa.VerifyData(
-                Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}"),
-                Decode(parts[2]),
-                HashAlgorithmName.SHA256,
-                RSASignaturePadding.Pkcs1));
-            Assert.True(rsa.VerifyData(
-                Encoding.ASCII.GetBytes($"{repeatedParts[0]}.{repeatedParts[1]}"),
-                Decode(repeatedParts[2]),
-                HashAlgorithmName.SHA256,
-                RSASignaturePadding.Pkcs1));
+            Assert.True(
+                payload.RootElement.GetProperty("exp").GetInt64() - payload.RootElement.GetProperty("iat").GetInt64() <
+                600);
+            Assert.True(
+                rsa.VerifyData(
+                    Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}"),
+                    Decode(parts[2]),
+                    HashAlgorithmName.SHA256,
+                    RSASignaturePadding.Pkcs1));
+            Assert.True(
+                rsa.VerifyData(
+                    Encoding.ASCII.GetBytes($"{repeatedParts[0]}.{repeatedParts[1]}"),
+                    Decode(repeatedParts[2]),
+                    HashAlgorithmName.SHA256,
+                    RSASignaturePadding.Pkcs1));
         }
         finally
         {
@@ -90,12 +94,11 @@ public sealed class GitHubSecurityTests
     }
 
     private static string Base64Url(byte[] value) =>
-        Convert.ToBase64String(value)
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+        Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }

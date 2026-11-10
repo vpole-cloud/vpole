@@ -8,8 +8,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.ResourceRegistrations;
 using Pole.Mediator;
@@ -19,24 +17,24 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 
 public static class GetResourceGroupResources
 {
-    public static IEndpointRouteBuilder MapGetResourceGroupResourcesEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapGetResourceGroupResourcesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{ResourceGroupId}/resources", async (
-                IMediator mediator,
-                [AsParameters] GetResourceGroupResourcesRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{ResourceGroupId}/resources",
+                async (
+                    IMediator mediator, [AsParameters] GetResourceGroupResourcesRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    PaginatedResponse<ResourceRegistrationDto> page => Results.Ok(page),
-                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        PaginatedResponse<ResourceRegistrationDto> page => Results.Ok(page),
+                        ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("GetResourceGroupResources")
             .WithSummary("Retrieves resources registered in a resource group.")
-            .Produces<PaginatedResponse<ResourceRegistrationDto>>(StatusCodes.Status200OK)
+            .Produces<PaginatedResponse<ResourceRegistrationDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
@@ -45,27 +43,22 @@ public static class GetResourceGroupResources
 public sealed record GetResourceGroupResourcesRequest(
     [FromRoute] string ResourceGroupId,
     [FromTenantHeader] string TenantId,
-    [FromQuery, DefaultValue(1)] int PageNumber = 1,
-    [FromQuery, DefaultValue(20)] int PageSize = 20)
-    : IMediatorRequest<GetResourceGroupResourcesOutcome>, ITenantReadOperation;
+    [FromQuery] [DefaultValue(1)] int PageNumber = 1,
+    [FromQuery] [DefaultValue(20)] int PageSize = 20
+) : IMediatorRequest<GetResourceGroupResourcesOutcome>, ITenantReadOperation;
 
-public union GetResourceGroupResourcesOutcome(
-    PaginatedResponse<ResourceRegistrationDto>,
-    ResourceGroupNotFound);
+public union GetResourceGroupResourcesOutcome(PaginatedResponse<ResourceRegistrationDto>, ResourceGroupNotFound);
 
 public sealed class GetResourceGroupResourcesHandler(
     LoadResourceGroup loadResourceGroup,
-    LoadResourceRegistrationPage loadResourceRegistrationPage)
-    : IMediatorOutcomeHandler<GetResourceGroupResourcesRequest, GetResourceGroupResourcesOutcome>
+    LoadResourceRegistrationPage loadResourceRegistrationPage
+) : IMediatorOutcomeHandler<GetResourceGroupResourcesRequest, GetResourceGroupResourcesOutcome>
 {
     public async Task<GetResourceGroupResourcesOutcome> HandleAsync(
         GetResourceGroupResourcesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var group = await loadResourceGroup(
-            request.TenantId,
-            request.ResourceGroupId,
-            cancellationToken);
+        var group = await loadResourceGroup(request.TenantId, request.ResourceGroupId, cancellationToken);
         if (group is null)
             return new ResourceGroupNotFound(request.ResourceGroupId);
 
@@ -84,8 +77,7 @@ public sealed class GetResourceGroupResourcesHandler(
     }
 }
 
-public sealed class GetResourceGroupResourcesRequestValidator
-    : AbstractValidator<GetResourceGroupResourcesRequest>
+public sealed class GetResourceGroupResourcesRequestValidator : AbstractValidator<GetResourceGroupResourcesRequest>
 {
     public GetResourceGroupResourcesRequestValidator()
     {

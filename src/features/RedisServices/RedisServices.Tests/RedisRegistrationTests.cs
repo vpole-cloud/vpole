@@ -34,7 +34,8 @@ public sealed class RedisRegistrationTests
     [Fact]
     public void Metadata_ReportsPersistedLifecycleAndRevisionWithoutPlacement()
     {
-        var redis = RedisFactory.Create("tenant",
+        var redis = RedisFactory.Create(
+            "tenant",
             "cache",
             "group",
             new RedisSpec(new Storage(1, "disk")),
@@ -48,11 +49,13 @@ public sealed class RedisRegistrationTests
 
     private sealed class OtherAdapter : IResourceDeploymentAdapter
     {
-        public Task<ResourceDeploymentAdapterResult> ApplyAsync(ResourceDeploymentReconciliationContext context,
+        public Task<ResourceDeploymentAdapterResult> ApplyAsync(
+            ResourceDeploymentReconciliationContext context,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
 
-        public Task<ResourceDeploymentAdapterResult> DeleteAsync(ResourceDeploymentReconciliationContext context,
+        public Task<ResourceDeploymentAdapterResult> DeleteAsync(
+            ResourceDeploymentReconciliationContext context,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
     }

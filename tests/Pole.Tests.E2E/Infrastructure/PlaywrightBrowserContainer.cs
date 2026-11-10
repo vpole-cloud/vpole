@@ -19,38 +19,34 @@ internal sealed class PlaywrightBrowserContainer : IAsyncDisposable
             .WithTestOwnership(identity)
             .WithImagePullPolicy(PullPolicy.Missing)
             .WithEntrypoint("/bin/sh", "-c")
-            .WithCommand(
-                $"npx -y playwright@{PlaywrightVersion} run-server --port {PlaywrightPort} --host 0.0.0.0")
+            .WithCommand($"npx -y playwright@{PlaywrightVersion} run-server --port {PlaywrightPort} --host 0.0.0.0")
             .WithPortBinding(PlaywrightPort, assignRandomHostPort: true)
             .WithCreateParameterModifier(parameters => parameters.HostConfig!.IpcMode = "host")
-            .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilHttpRequestIsSucceeded(request => request
-                    .ForPort(PlaywrightPort)
-                    .ForPath("/json")))
+            .WithWaitStrategy(
+                Wait.ForUnixContainer()
+                    .UntilHttpRequestIsSucceeded(request => request.ForPort(PlaywrightPort).ForPath("/json")))
             .Build();
     }
 
-    public string WebSocketEndpoint =>
-        $"ws://{_container.Hostname}:{_container.GetMappedPublicPort(PlaywrightPort)}/";
+    public string WebSocketEndpoint => $"ws://{_container.Hostname}:{_container.GetMappedPublicPort(PlaywrightPort)}/";
+
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         const int maximumAttempts = 3;
-        for (var attempt = 1; ; attempt++)
-        {
+        for (var attempt = 1;; attempt++)
             try
             {
                 await _container.StartAsync(cancellationToken);
                 return;
             }
-            catch (DockerApiException exception) when (
-                attempt < maximumAttempts &&
-                !cancellationToken.IsCancellationRequested &&
-                IsTransientImagePullFailure(exception))
+            catch (DockerApiException exception) when (attempt < maximumAttempts &&
+                                                       !cancellationToken.IsCancellationRequested &&
+                                                       IsTransientImagePullFailure(exception))
             {
                 await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
             }
-        }
     }
 
     private static bool IsTransientImagePullFailure(DockerApiException exception) =>
@@ -58,6 +54,4 @@ internal sealed class PlaywrightBrowserContainer : IAsyncDisposable
         exception.Message.Contains("i/o timeout", StringComparison.OrdinalIgnoreCase) ||
         exception.Message.Contains("connection reset", StringComparison.OrdinalIgnoreCase) ||
         exception.Message.Contains("unexpected EOF", StringComparison.OrdinalIgnoreCase);
-
-    public ValueTask DisposeAsync() => _container.DisposeAsync();
 }

@@ -1,9 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Metering;
-using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Timers;
 
 namespace Pole.Features.Functions.Runtime.Metering;
@@ -17,13 +14,13 @@ public sealed class FunctionUsageAggregator(
     LoadUnaggregatedFunctionMeterEvents loadUnaggregated,
     AggregateFunctionMeterEvent aggregateMeter,
     FunctionTimerOptions options,
-    ILogger<FunctionUsageAggregator> logger) : IFunctionUsageAggregator
+    ILogger<FunctionUsageAggregator> logger
+) : IFunctionUsageAggregator
 {
     public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         var events = await loadUnaggregated(options.BatchSize, cancellationToken);
         foreach (var meter in events)
-        {
             try
             {
                 await aggregateMeter(meter, cancellationToken);
@@ -39,16 +36,15 @@ public sealed class FunctionUsageAggregator(
                     "[function-meter-aggregate-failed] Failed to aggregate meter event {MeterEventId}",
                     meter.Id);
             }
-        }
     }
-
 }
 
 public sealed class FunctionUsageAggregatorWorker(
     IFunctionUsageAggregator aggregator,
     FunctionTimerOptions options,
     TimeProvider timeProvider,
-    ILogger<FunctionUsageAggregatorWorker> logger) : BackgroundService
+    ILogger<FunctionUsageAggregatorWorker> logger
+) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

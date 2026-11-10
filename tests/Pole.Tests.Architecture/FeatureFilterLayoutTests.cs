@@ -9,16 +9,15 @@ public sealed class FeatureFilterLayoutTests
     [Fact]
     public void ApplicationWorkflows_HaveNoPersistenceOrNestedMongoFolders()
     {
-        var paths = ArchitectureSources.ProductionCSharp().Select(source => source.RelativePath)
+        var paths = ArchitectureSources.ProductionCSharp()
+            .Select(source => source.RelativePath)
             .Concat(ArchitectureSources.ProductionFSharp().Select(source => source.RelativePath))
             .Where(IsFeatureApplication)
             .ToArray();
 
         Assert.NotEmpty(paths);
-        Assert.DoesNotContain(paths, path => path.Split('/')[4..]
-            .Any(segment => segment == "Persistence"));
-        Assert.DoesNotContain(paths, path => path.Split('/')[5..]
-            .Any(segment => segment == "Mongo"));
+        Assert.DoesNotContain(paths, path => path.Split('/')[4..].Any(segment => segment == "Persistence"));
+        Assert.DoesNotContain(paths, path => path.Split('/')[5..].Any(segment => segment == "Mongo"));
     }
 
     [Fact]
@@ -26,9 +25,12 @@ public sealed class FeatureFilterLayoutTests
     {
         var helpers = ArchitectureSources.ProductionCSharp()
             .Where(source => IsFeatureApplication(source.RelativePath))
-            .SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                .Where(type => type.Identifier.ValueText.EndsWith("Filters", StringComparison.Ordinal))
-                .Select(type => source.RelativePath))
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<ClassDeclarationSyntax>()
+                    .Where(type => type.Identifier.ValueText.EndsWith("Filters", StringComparison.Ordinal))
+                    .Select(type => source.RelativePath))
             .ToArray();
 
         Assert.NotEmpty(helpers);
@@ -40,8 +42,10 @@ public sealed class FeatureFilterLayoutTests
     {
         var helpers = ArchitectureSources.ProductionFSharp()
             .Where(source => IsFeatureApplication(source.RelativePath))
-            .Where(source => Regex.IsMatch(source.Text,
-                @"^(?:module|type)\s+(?:(?:internal|private)\s+)?\w*Filters\b", RegexOptions.Multiline))
+            .Where(source => Regex.IsMatch(
+                source.Text,
+                @"^(?:module|type)\s+(?:(?:internal|private)\s+)?\w*Filters\b",
+                RegexOptions.Multiline))
             .Select(source => source.RelativePath)
             .ToArray();
 

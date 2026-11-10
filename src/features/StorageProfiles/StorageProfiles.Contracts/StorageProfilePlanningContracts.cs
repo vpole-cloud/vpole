@@ -9,14 +9,18 @@ public sealed record StorageProfilePlanningRequest(
     string StorageProfileId,
     string DeploymentTargetId,
     int SizeGb,
-    long Revision);
+    long Revision
+);
 
 public sealed record StorageProfilePlanningSnapshot(
     StorageProfilePlanningRequest Request,
     long PolicyRevision,
-    ResolvedStorageProfile Storage);
+    ResolvedStorageProfile Storage
+);
 
-public sealed record StorageProfilePlanningUnavailable(StorageProfileResolutionError Error);
+public sealed record StorageProfilePlanningUnavailable(
+    StorageProfileResolutionError Error
+);
 
 public sealed record StorageProfilePlanningFenced;
 
@@ -36,8 +40,8 @@ public delegate Task<ResolveStorageProfilePlanningSnapshotOutcome> ResolveStorag
     CancellationToken cancellationToken);
 
 /// <summary>
-/// Takes real write fences without changing business revisions. A rejected guard requires
-/// the caller to abort the entire transaction, including any preceding guards.
+///     Takes real write fences without changing business revisions. A rejected guard requires
+///     the caller to abort the entire transaction, including any preceding guards.
 /// </summary>
 public delegate Task<FenceStorageProfilePlanningSnapshotOutcome> FenceStorageProfilePlanningSnapshot(
     StorageProfilePlanningSnapshot request,

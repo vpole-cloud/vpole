@@ -5,10 +5,10 @@ namespace Pole.Testing;
 
 public sealed class TestResourceScope : IAsyncDisposable
 {
-    private readonly Lock _lock = new();
     private readonly List<CleanupAction> _cleanupActions = [];
-    private readonly string _description;
     private readonly TimeSpan _cleanupTimeout;
+    private readonly string _description;
+    private readonly Lock _lock = new();
     private readonly TestTimings? _timings;
     private bool _disposeStarted;
 
@@ -24,6 +24,32 @@ public sealed class TestResourceScope : IAsyncDisposable
         _description = description;
         _cleanupTimeout = cleanupTimeout ?? TimeSpan.FromMinutes(3);
         _timings = timings;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        CleanupAction[] cleanupActions;
+        lock (_lock)
+        {
+            if (_disposeStarted)
+                return;
+
+            _disposeStarted = true;
+            cleanupActions = _cleanupActions.AsEnumerable().Reverse().ToArray();
+        }
+
+        using var timeout = new CancellationTokenSource(_cleanupTimeout);
+        using var timing = _timings?.Measure("cleanup.total");
+        var failures = new List<Exception>();
+        foreach (var cleanupAction in cleanupActions)
+        {
+            var failure = await ExecuteCleanupAsync(cleanupAction, timeout.Token, _timings);
+            if (failure is not null)
+                failures.Add(failure);
+        }
+
+        if (failures.Count > 0)
+            throw new AggregateException($"Cleanup for '{_description}' failed.", failures);
     }
 
     public async Task<T> CreateAsync<T>(
@@ -85,7 +111,10 @@ public sealed class TestResourceScope : IAsyncDisposable
         try
         {
             using (_timings?.Measure("test.body"))
+            {
                 await body();
+            }
+
             journal.Record(TestPhase.BodyCompleted);
         }
         catch (Exception exception)
@@ -100,12 +129,14 @@ public sealed class TestResourceScope : IAsyncDisposable
             {
                 journal.Record(TestPhase.Cleanup);
                 await DisposeAsync();
-                if (primaryFailure is null) journal.Record(TestPhase.Completed);
+                if (primaryFailure is null)
+                    journal.Record(TestPhase.Completed);
             }
             catch (Exception cleanupFailure)
             {
                 journal.Record(TestPhase.Failed, status: FailureStatus(cleanupFailure));
-                if (primaryFailure is null) throw;
+                if (primaryFailure is null)
+                    throw;
                 throw new AggregateException(
                     "The test body and resource cleanup both failed.",
                     primaryFailure,
@@ -118,34 +149,8 @@ public sealed class TestResourceScope : IAsyncDisposable
     {
         HttpOperationException { Response: { } response } => (int)response.StatusCode,
         HttpRequestException { StatusCode: { } status } => (int)status,
-        _ => null
+        _ => null,
     };
-
-    public async ValueTask DisposeAsync()
-    {
-        CleanupAction[] cleanupActions;
-        lock (_lock)
-        {
-            if (_disposeStarted)
-                return;
-
-            _disposeStarted = true;
-            cleanupActions = _cleanupActions.AsEnumerable().Reverse().ToArray();
-        }
-
-        using var timeout = new CancellationTokenSource(_cleanupTimeout);
-        using var timing = _timings?.Measure("cleanup.total");
-        var failures = new List<Exception>();
-        foreach (var cleanupAction in cleanupActions)
-        {
-            var failure = await ExecuteCleanupAsync(cleanupAction, timeout.Token, _timings);
-            if (failure is not null)
-                failures.Add(failure);
-        }
-
-        if (failures.Count > 0)
-            throw new AggregateException($"Cleanup for '{_description}' failed.", failures);
-    }
 
     internal static async Task<Exception?> ExecuteCleanupAsync(
         CleanupAction cleanupAction,
@@ -160,16 +165,9 @@ public sealed class TestResourceScope : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            return new InvalidOperationException(
-                $"Cleanup action '{cleanupAction.Description}' failed.",
-                exception);
+            return new InvalidOperationException($"Cleanup action '{cleanupAction.Description}' failed.", exception);
         }
     }
-
-    internal sealed record CleanupAction(
-        string Description,
-        Func<CancellationToken, Task> Cleanup,
-        string TimingPhase);
 
     internal static void ValidateDescription(string description) =>
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
@@ -189,7 +187,9 @@ public sealed class TestResourceScope : IAsyncDisposable
     private void ThrowIfDisposeStarted()
     {
         lock (_lock)
+        {
             ObjectDisposedException.ThrowIf(_disposeStarted, this);
+        }
     }
 
     private async Task ThrowRegistrationRaceAsync(CleanupAction cleanupAction)
@@ -207,16 +207,22 @@ public sealed class TestResourceScope : IAsyncDisposable
             disposed,
             cleanupFailure);
     }
+
+    internal sealed record CleanupAction(
+        string Description,
+        Func<CancellationToken, Task> Cleanup,
+        string TimingPhase
+    );
 }
 
 public sealed class TestResourceCleanupGroup
 {
-    private readonly Lock _lock = new();
     private readonly List<TestResourceScope.CleanupAction> _cleanupActions = [];
-    private readonly string _description;
     private readonly TimeSpan _cleanupTimeout;
-    private readonly TestTimings? _timings;
+    private readonly string _description;
+    private readonly Lock _lock = new();
     private readonly int _maxConcurrency;
+    private readonly TestTimings? _timings;
     private bool _cleanupStarted;
 
     internal TestResourceCleanupGroup(
@@ -285,20 +291,20 @@ public sealed class TestResourceCleanupGroup
         if (_maxConcurrency > 1)
         {
             using var slots = new SemaphoreSlim(_maxConcurrency);
-            failures = (await Task.WhenAll(cleanupActions.Select(async action =>
-                {
-                    // Pass an expired budget into queued actions too; earlier failures must not skip them.
-                    await slots.WaitAsync();
-                    try
+            failures = (await Task.WhenAll(
+                    cleanupActions.Select(async action =>
                     {
-                        return await TestResourceScope.ExecuteCleanupAsync(action, cancellationToken, _timings);
-                    }
-                    finally
-                    {
-                        slots.Release();
-                    }
-                })))
-                .OfType<Exception>()
+                        // Pass an expired budget into queued actions too; earlier failures must not skip them.
+                        await slots.WaitAsync();
+                        try
+                        {
+                            return await TestResourceScope.ExecuteCleanupAsync(action, cancellationToken, _timings);
+                        }
+                        finally
+                        {
+                            slots.Release();
+                        }
+                    }))).OfType<Exception>()
                 .ToArray();
         }
         else
@@ -306,10 +312,7 @@ public sealed class TestResourceCleanupGroup
             var sequentialFailures = new List<Exception>();
             foreach (var cleanupAction in cleanupActions)
             {
-                var failure = await TestResourceScope.ExecuteCleanupAsync(
-                    cleanupAction,
-                    cancellationToken,
-                    _timings);
+                var failure = await TestResourceScope.ExecuteCleanupAsync(cleanupAction, cancellationToken, _timings);
                 if (failure is not null)
                     sequentialFailures.Add(failure);
             }
@@ -336,7 +339,9 @@ public sealed class TestResourceCleanupGroup
     private void ThrowIfCleanupStarted()
     {
         lock (_lock)
+        {
             ObjectDisposedException.ThrowIf(_cleanupStarted, this);
+        }
     }
 
     private async Task ThrowRegistrationRaceAsync(TestResourceScope.CleanupAction cleanupAction)

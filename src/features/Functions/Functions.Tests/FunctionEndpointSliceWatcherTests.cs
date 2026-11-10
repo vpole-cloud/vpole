@@ -3,6 +3,7 @@ using k8s;
 using k8s.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Functions.Runtime.Endpoints;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Features.Functions.Tests;
@@ -18,8 +19,7 @@ public sealed class FunctionEndpointSliceWatcherTests
         var staleService = new FunctionServiceKey(TargetId, "functions", "fn-stale-r1-agent");
         var currentService = new FunctionServiceKey(TargetId, "functions", "fn-current-r2-agent");
         registry.ApplySlice(TargetId, Slice("stale", staleService, "10.0.0.1", "1"));
-        var source = new FakeEndpointSliceSource(
-            [Slice("current", currentService, "10.0.0.2", "7")]);
+        var source = new FakeEndpointSliceSource([Slice("current", currentService, "10.0.0.2", "7")]);
         var watcher = new FunctionEndpointSliceWatcher(
             source,
             registry,
@@ -77,8 +77,8 @@ public sealed class FunctionEndpointSliceWatcherTests
             ResourceVersion = resourceVersion,
             Labels = new Dictionary<string, string>
             {
-                ["kubernetes.io/service-name"] = service.ServiceName
-            }
+                ["kubernetes.io/service-name"] = service.ServiceName,
+            },
         },
         AddressType = "IPv4",
         Ports = [new Discoveryv1EndpointPort { Name = "agent", Protocol = "TCP", Port = 8080 }],
@@ -88,26 +88,23 @@ public sealed class FunctionEndpointSliceWatcherTests
             {
                 Addresses = [address],
                 Conditions = new V1EndpointConditions { Ready = true, Terminating = false },
-                TargetRef = new V1ObjectReference { Kind = "Pod", Uid = $"pod-{address}" }
-            }
-        ]
+                TargetRef = new V1ObjectReference { Kind = "Pod", Uid = $"pod-{address}" },
+            },
+        ],
     };
 
     private static Task<IReadOnlyList<string>> LoadTargetIds(
-        Pole.Workloads.ResourceTypeId resourceType,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<string>>([TargetId]);
+        ResourceTypeId resourceType,
+        CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>([TargetId]);
 
     private sealed class FakeEndpointSliceSource(
         IList<V1EndpointSlice> initial,
-        params (WatchEventType Type, V1EndpointSlice Slice)[] events)
-        : IFunctionEndpointSliceSource
+        params (WatchEventType Type, V1EndpointSlice Slice)[] events
+    ) : IFunctionEndpointSliceSource
     {
-        public TaskCompletionSource WatchStarted { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource WatchStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource EventsDelivered { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource EventsDelivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public string? WatchedResourceVersion { get; private set; }
         public string? ListedTargetId { get; private set; }

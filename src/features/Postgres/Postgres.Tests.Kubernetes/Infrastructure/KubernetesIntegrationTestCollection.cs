@@ -1,4 +1,3 @@
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;

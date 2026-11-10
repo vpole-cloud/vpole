@@ -6,9 +6,7 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc
 open Microsoft.AspNetCore.Routing
-open MongoDB.Driver
 open Pole.ASP.Helpers
-open Pole.Database
 open Pole.Features.Core.Multitenancy
 open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Domain
@@ -24,75 +22,75 @@ type GetPostgresClusterByIdOutcome =
 
 type GetPostgresClusterByIdRequest =
     { [<FromRoute>]
-      ClusterId : string
+      ClusterId: string
       [<Pole.ASP.Helpers.FromTenantHeader>]
-      TenantId : string }
+      TenantId: string }
+
     interface IMediatorRequest<GetPostgresClusterByIdOutcome>
+
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
 
-type GetPostgresClusterHandler(
-    loadCluster : LoadPostgresClusterById,
-    loadDeployment : LoadResourceDeployment,
-    git : IGitOpsMutations) =
+type GetPostgresClusterHandler
+    (loadCluster: LoadPostgresClusterById, loadDeployment: LoadResourceDeployment, git: IGitOpsMutations) =
     interface IMediatorOutcomeHandler<GetPostgresClusterByIdRequest, GetPostgresClusterByIdOutcome> with
         member this.HandleAsync(request, cancellationToken) =
             task {
-                let! postgresCluster =
-                    loadCluster.Invoke(
-                        request.TenantId,
-                        request.ClusterId,
-                        cancellationToken)
+                let! postgresCluster = loadCluster.Invoke(request.TenantId, request.ClusterId, cancellationToken)
 
                 match postgresCluster with
-                | None ->
-                    return
-                        GetPostgresClusterByIdRejected(
-                            PostgresClusterNotFound request.ClusterId)
+                | None -> return GetPostgresClusterByIdRejected(PostgresClusterNotFound request.ClusterId)
                 | Some cluster ->
                     let! placement =
                         loadDeployment.Invoke(
                             LoadResourceDeploymentRequest(
                                 cluster.TenantId,
                                 PostgresResourceDeployment.ResourceType,
-                                cluster.Id),
-                            cancellationToken)
+                                cluster.Id
+                            ),
+                            cancellationToken
+                        )
 
                     if isNull placement then
-                        return
-                            GetPostgresClusterByIdRejected(
-                                PostgresClusterDeploymentUnavailable cluster.Id)
+                        return GetPostgresClusterByIdRejected(PostgresClusterDeploymentUnavailable cluster.Id)
                     else
                         let! status =
                             git.StatusAsync(
                                 LoadGitResourceStatusRequest(cluster.TenantId, "PostgresCluster", cluster.Id),
-                                cancellationToken)
+                                cancellationToken
+                            )
 
-                        return
-                            PostgresClusterDto.create cluster placement status
-                            |> PostgresClusterFound
+                        return PostgresClusterDto.create cluster placement status |> PostgresClusterFound
             }
 
 type GetPostgresClusterByIdRequestValidator() as this =
     inherit AbstractValidator<GetPostgresClusterByIdRequest>()
-    do
-        this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
+    do this.RuleFor(_.ClusterId).MongoObjectId("PostgreSQL cluster ID") |> ignore
 
 [<AbstractClass; Sealed>]
 type GetPostgresClusterById =
     [<Extension>]
     static member MapGetByIdPostgresClusterEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<GetPostgresClusterById>("/{ClusterId}", nameof GetPostgresClusterById.Handle, EndpointHttpMethod.Get)
+        endpoints
+            .MapMethod<GetPostgresClusterById>(
+                "/{ClusterId}",
+                nameof GetPostgresClusterById.Handle,
+                EndpointHttpMethod.Get
+            )
             .WithName("GetPostgresClusterById")
-            |> ignore
+        |> ignore
+
         endpoints
 
-    static member Handle(
-        [<AsParameters>] request: GetPostgresClusterByIdRequest,
-        [<FromServices>] mediator: IMediator,
-        cancellationToken: System.Threading.CancellationToken) =
+    static member Handle
+        (
+            [<AsParameters>] request: GetPostgresClusterByIdRequest,
+            [<FromServices>] mediator: IMediator,
+            cancellationToken: System.Threading.CancellationToken
+        ) =
         task {
             let! result = mediator.Send(request, cancellationToken)
+
             return
                 result.ToHttpResult(fun outcome ->
                     match outcome with

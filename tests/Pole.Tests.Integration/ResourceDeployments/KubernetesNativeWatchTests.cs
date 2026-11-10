@@ -13,7 +13,9 @@ public sealed class KubernetesNativeWatchTests
     public async Task Quiet_actual_SDK_watch_is_ready_before_first_frame_and_cancels_only_its_response()
     {
         using var stream = new NativeWatchTestStream();
-        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("opaque-list"), _ => stream);
+        using var handler = new NativeWatchTestHandler(
+            _ => NativeWatchTestClient.DeploymentList("opaque-list"),
+            _ => stream);
         using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Changes(client, "first", cancellation.Token).GetAsyncEnumerator(cancellation.Token);
@@ -28,7 +30,10 @@ public sealed class KubernetesNativeWatchTests
         // Neither the cached client nor a nonwatch request is disposed/marked ready.
         var opened = 0;
         using (KubernetesWatchHeaders.Begin(() => opened++, CancellationToken.None))
+        {
             await client.AppsV1.ListNamespacedDeploymentAsync("other");
+        }
+
         Assert.Equal(0, opened);
     }
 
@@ -37,9 +42,9 @@ public sealed class KubernetesNativeWatchTests
     {
         using var first = new NativeWatchTestStream();
         using var second = new NativeWatchTestStream();
-        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list"),
-            request =>
-                request.RequestUri!.AbsolutePath.Contains("/first/", StringComparison.Ordinal) ? first : second);
+        using var handler = new NativeWatchTestHandler(
+            _ => NativeWatchTestClient.DeploymentList("list"),
+            request => request.RequestUri!.AbsolutePath.Contains("/first/", StringComparison.Ordinal) ? first : second);
         using var client = NativeWatchTestClient.Create(handler);
         using var firstCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var secondCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -71,7 +76,8 @@ public sealed class KubernetesNativeWatchTests
         using var healthy = new NativeWatchTestStream();
         var lists = 0;
         var watches = 0;
-        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList($"list-{Interlocked.Increment(ref lists)}"),
+        using var handler = new NativeWatchTestHandler(
+            _ => NativeWatchTestClient.DeploymentList($"list-{Interlocked.Increment(ref lists)}"),
             _ => Interlocked.Increment(ref watches) == 1 ? bad : healthy);
         using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -79,9 +85,10 @@ public sealed class KubernetesNativeWatchTests
         await changes.MoveNextAsync();
         await changes.MoveNextAsync();
         Assert.Equal(KubernetesListWatchChangeKind.Ready, changes.Current.Kind);
-        bad.Write(malformed
-            ? "{invalid-json\n"
-            : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"secret-native-canary\"}}\n");
+        bad.Write(
+            malformed
+                ? "{invalid-json\n"
+                : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"secret-native-canary\"}}\n");
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Unavailable, changes.Current.Kind);
         Assert.True(bad.Disposed); // No server EOF was supplied.
@@ -98,12 +105,13 @@ public sealed class KubernetesNativeWatchTests
         using var first = new NativeWatchTestStream();
         using var second = new NativeWatchTestStream();
         var watches = 0;
-        using var handler = new NativeWatchTestHandler(request =>
-                request.RequestUri!.Query.Contains("continue=", StringComparison.Ordinal)
-                    ? NativeWatchTestClient.DeploymentList("opaque/collection",
-                        null,
-                        new V1Deployment { Metadata = new V1ObjectMeta { ResourceVersion = "item-version" } })
-                    : NativeWatchTestClient.DeploymentList("opaque/collection", "next-page"),
+        using var handler = new NativeWatchTestHandler(
+            request => request.RequestUri!.Query.Contains("continue=", StringComparison.Ordinal)
+                ? NativeWatchTestClient.DeploymentList(
+                    "opaque/collection",
+                    null,
+                    new V1Deployment { Metadata = new V1ObjectMeta { ResourceVersion = "item-version" } })
+                : NativeWatchTestClient.DeploymentList("opaque/collection", "next-page"),
             _ => Interlocked.Increment(ref watches) == 1 ? first : second);
         using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -114,7 +122,8 @@ public sealed class KubernetesNativeWatchTests
         first.Write(Frame("BOOKMARK", "opaque/bookmark"));
         first.Complete();
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Equal(KubernetesListWatchChangeKind.Unavailable,
+        Assert.Equal(
+            KubernetesListWatchChangeKind.Unavailable,
             changes.Current.Kind); // Bookmark is not an invalidation.
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Ready, changes.Current.Kind);
@@ -128,10 +137,10 @@ public sealed class KubernetesNativeWatchTests
     [Fact]
     public async Task Inconsistent_page_versions_do_not_open_a_watch_or_claim_coverage()
     {
-        using var handler = new NativeWatchTestHandler(request =>
-                request.RequestUri!.Query.Contains("continue=", StringComparison.Ordinal)
-                    ? NativeWatchTestClient.DeploymentList("different")
-                    : NativeWatchTestClient.DeploymentList("first", "next"),
+        using var handler = new NativeWatchTestHandler(
+            request => request.RequestUri!.Query.Contains("continue=", StringComparison.Ordinal)
+                ? NativeWatchTestClient.DeploymentList("different")
+                : NativeWatchTestClient.DeploymentList("first", "next"),
             _ => throw new InvalidOperationException("Incomplete lists cannot watch."));
         using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -189,7 +198,8 @@ public sealed class KubernetesNativeWatchTests
         using var second = new NativeWatchTestStream();
         using var third = new NativeWatchTestStream();
         var opened = 0;
-        using var handler = new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list"),
+        using var handler = new NativeWatchTestHandler(
+            _ => NativeWatchTestClient.DeploymentList("list"),
             _ => ++opened switch { 1 => first, 2 => second, _ => third });
         using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -224,21 +234,19 @@ public sealed class KubernetesNativeWatchTests
         var requestContent = new TrackingContent();
         using var request = new HttpRequestMessage(HttpMethod.Get, "http://native-watch.test/watch?watch=true")
         {
-            Content = requestContent
+            Content = requestContent,
         };
         using var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = original,
-            RequestMessage = request
+            RequestMessage = request,
         };
-        using var client = new HttpClient(new KubernetesWatchHeaders
-        {
-            InnerHandler = new FixedResponseHandler(response)
-        });
-        using var registration = KubernetesWatchHeaders.Begin(() =>
+        using var client = new HttpClient(
+            new KubernetesWatchHeaders
             {
-            },
-            CancellationToken.None);
+                InnerHandler = new FixedResponseHandler(response),
+            });
+        using var registration = KubernetesWatchHeaders.Begin(() => { }, CancellationToken.None);
         await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         response.Content = wrapper; // Equivalent ownership seam to the SDK's replacement wrapper.
         Assert.Throws<InvalidOperationException>(registration.CloseResponse);
@@ -247,7 +255,41 @@ public sealed class KubernetesNativeWatchTests
         Assert.True(requestContent.Disposed);
     }
 
-    private sealed class TrackingContent(bool throws = false) : StringContent("{}")
+    private static string Frame(string type, string version) =>
+        $"{{\"type\":\"{type}\",\"object\":{{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{{\"resourceVersion\":\"{version}\"}}}}}}\n";
+
+    private static IAsyncEnumerable<KubernetesListWatchChange<V1Deployment>> Changes(
+        IKubernetes client,
+        string namespaceName,
+        CancellationToken ct,
+        TimeProvider? clock = null) => KubernetesListWatch.WatchAsync<V1Deployment>(
+        async (continuation, token) =>
+        {
+            var page = await client.AppsV1.ListNamespacedDeploymentAsync(
+                namespaceName,
+                continueParameter: continuation,
+                limit: 100,
+                cancellationToken: token);
+            return new KubernetesListPage<V1Deployment>(
+                page.Items.ToArray(),
+                page.Metadata.ResourceVersion,
+                page.Metadata.ContinueProperty);
+        },
+        (
+            version, error,
+            token) => client.AppsV1.WatchListNamespacedDeploymentAsync(
+            namespaceName,
+            allowWatchBookmarks: true,
+            resourceVersion: version,
+            onError: error,
+            cancellationToken: token),
+        item => item.Metadata.ResourceVersion,
+        clock ?? TimeProvider.System,
+        cancellationToken: ct);
+
+    private sealed class TrackingContent(
+        bool throws = false
+    ) : StringContent("{}")
     {
         public bool Disposed { get; private set; }
 
@@ -260,9 +302,12 @@ public sealed class KubernetesNativeWatchTests
         }
     }
 
-    private sealed class FixedResponseHandler(HttpResponseMessage response) : DelegatingHandler
+    private sealed class FixedResponseHandler(
+        HttpResponseMessage response
+    ) : DelegatingHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
             CancellationToken cancellationToken) => Task.FromResult(response);
     }
 
@@ -270,9 +315,11 @@ public sealed class KubernetesNativeWatchTests
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource<bool> CancellationObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> CancellationObserved { get; }
+            = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             if (NativeWatchTestClient.IsWatch(request.RequestUri!))
@@ -288,35 +335,11 @@ public sealed class KubernetesNativeWatchTests
                 }
             }
 
-            return new(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 RequestMessage = request,
-                Content = new StringContent(NativeWatchTestClient.DeploymentList("list"))
+                Content = new StringContent(NativeWatchTestClient.DeploymentList("list")),
             };
         }
     }
-
-    private static string Frame(string type, string version) =>
-        $"{{\"type\":\"{type}\",\"object\":{{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{{\"resourceVersion\":\"{version}\"}}}}}}\n";
-
-    private static IAsyncEnumerable<KubernetesListWatchChange<V1Deployment>> Changes(IKubernetes client,
-        string namespaceName,
-        CancellationToken ct,
-        TimeProvider? clock = null) =>
-        KubernetesListWatch.WatchAsync<V1Deployment>(async (continuation, token) =>
-            {
-                var page = await client.AppsV1.ListNamespacedDeploymentAsync(namespaceName,
-                    continueParameter: continuation,
-                    limit: 100,
-                    cancellationToken: token);
-                return new(page.Items.ToArray(), page.Metadata.ResourceVersion, page.Metadata.ContinueProperty);
-            },
-            (version, error, token) => client.AppsV1.WatchListNamespacedDeploymentAsync(namespaceName,
-                allowWatchBookmarks: true,
-                resourceVersion: version,
-                onError: error,
-                cancellationToken: token),
-            item => item.Metadata.ResourceVersion,
-            clock ?? TimeProvider.System,
-            cancellationToken: ct);
 }

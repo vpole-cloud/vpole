@@ -10,7 +10,6 @@ using Pole.Features.GitOps.Application.Runs;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Events;
-using Pole.Features.Outbox.Contracts;
 using Pole.Observability;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -18,28 +17,37 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed class GitRunResumptionTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private const string WorkRequestedEvent = "pole.gitops/v1/source-work-requested";
+
     private readonly GitOpsWorkerOptions _workerOptions = new()
     {
         CleanupCheckSeconds = 7,
-        HeartbeatSeconds = 29
+        HeartbeatSeconds = 29,
     };
+
     private bool _rejectResumptionOutbox;
     private GitRunStore Store => Services.GetRequiredService<GitRunStore>();
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
+
     private IMongoCollection<GitReconciliationRun> Runs =>
         Services.GetRequiredService<IMongoCollection<GitReconciliationRun>>();
 
     protected override void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<IOptions<GitOpsWorkerOptions>>(Options.Create(_workerOptions));
-        services.AddScoped<StoreOutboxWrites>(_ => async (session, writes, token) =>
+        services.AddScoped<StoreOutboxWrites>(_ => async (
+            session, writes,
+            token) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, token);
-            if (_rejectResumptionOutbox &&
-                writes.Any(write => write.Event is GitSourceWorkRequested { NotBeforeUtc: not null }))
+            if (_rejectResumptionOutbox && writes.Any(write => write.Event is GitSourceWorkRequested
+                {
+                    NotBeforeUtc: not null,
+                }))
                 throw new ResumptionOutboxFailure();
         });
     }
@@ -53,7 +61,10 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
         var trace = TraceContext.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "gitops-resumption");
         var before = await ServerNow(claim.Source);
         using (TraceContext.Push(trace))
+        {
             Assert.True(await Suspend(claim.Handle, delayed));
+        }
+
         var after = await ServerNow(claim.Source);
 
         var run = await LoadRun(claim);
@@ -96,17 +107,28 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
     public async Task A_stale_lease_cannot_save_a_waiting_transition_or_publish_a_wake_up()
     {
         var first = await ClaimNewSource();
-        await Runs.UpdateOneAsync(item => item.Id == first.Run.Id,
-            Builders<GitReconciliationRun>.Update.Set(item => item.State,
-                new GitRunClaimed(new(first.Handle.Identity.WorkerId,
-                    first.Handle.Identity.Attempt, DateTime.UtcNow.AddMinutes(-1)))));
-        var next = Assert.IsType<GitWorkClaim>((await Store.ClaimAsync(first.Handle.Stamp.Source,
-            "replacement", default)).Value);
+        await Runs.UpdateOneAsync(
+            item => item.Id == first.Run.Id,
+            Builders<GitReconciliationRun>.Update.Set(
+                item => item.State,
+                new GitRunClaimed(
+                    new GitRunLease(
+                        first.Handle.Identity.WorkerId,
+                        first.Handle.Identity.Attempt,
+                        DateTime.UtcNow.AddMinutes(-1)))));
+        var next = Assert.IsType<GitWorkClaim>(
+            (await Store.ClaimAsync(first.Handle.Stamp.Source, "replacement", default)).Value);
 
         Assert.False(await Store.WaitCleanupAsync(first.Handle, default));
-        Assert.False(await Store.DelayAsync(first.Handle, new("TemporaryUnavailable", null, null, null), default));
+        Assert.False(
+            await Store.DelayAsync(
+                first.Handle,
+                new GitRunDiagnostic("TemporaryUnavailable", null, null, null),
+                default));
 
-        Assert.Equal(next.Handle.Identity.WorkerId, Assert.IsType<GitRunClaimed>((await LoadRun(next)).State).Lease.WorkerId);
+        Assert.Equal(
+            next.Handle.Identity.WorkerId,
+            Assert.IsType<GitRunClaimed>((await LoadRun(next)).State).Lease.WorkerId);
         Assert.Empty(await ResumptionMessages(first));
     }
 
@@ -142,8 +164,9 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
         Assert.True(await Store.WaitCleanupAsync(first.Handle, default));
         await MakeDue(first);
 
-        var claims = await Task.WhenAll(Enumerable.Range(0, 4).Select(index =>
-            Store.ClaimAsync(first.Handle.Stamp.Source, $"redelivery-{index}", default)));
+        var claims = await Task.WhenAll(
+            Enumerable.Range(0, 4)
+                .Select(index => Store.ClaimAsync(first.Handle.Stamp.Source, $"redelivery-{index}", default)));
 
         var next = Assert.Single(claims.Select(outcome => outcome.Value).OfType<GitWorkClaim>());
         Assert.Equal(first.Run.Id, next.Run.Id);
@@ -158,8 +181,10 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
         Assert.True(await Store.WaitCleanupAsync(first.Handle, default));
         await MakeDue(first);
         var dispatched = new List<GitSourceIdentity>();
-        var scanner = new GitSourceRecoveryScanner(Services.GetRequiredService<GitSourceScheduling>(),
-            dispatched.Add, NullLogger<GitSourceRecoveryScanner>.Instance);
+        var scanner = new GitSourceRecoveryScanner(
+            Services.GetRequiredService<GitSourceScheduling>(),
+            dispatched.Add,
+            NullLogger<GitSourceRecoveryScanner>.Instance);
 
         await scanner.ScanAsync(default);
 
@@ -168,36 +193,46 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
     }
 
     private Task<bool> Suspend(GitRunHandle handle, bool delayed) => delayed
-        ? Store.DelayAsync(handle, new("TemporaryUnavailable", null, null, null), default)
+        ? Store.DelayAsync(handle, new GitRunDiagnostic("TemporaryUnavailable", null, null, null), default)
         : Store.WaitCleanupAsync(handle, default);
 
     private static DateTime Due(GitRunState state, bool delayed) => delayed
         ? Assert.IsType<GitRunDelayed>(state).NextAttemptAtUtc
         : Assert.IsType<GitRunWaitingCleanup>(state).NextAttemptAtUtc;
 
-    private Task<GitReconciliationRun> LoadRun(GitWorkClaim claim) =>
-        Runs.Find(item => item.Id == claim.Run.Id && item.Stamp.Source == claim.Handle.Stamp.Source).SingleAsync();
+    private Task<GitReconciliationRun> LoadRun(GitWorkClaim claim) => Runs
+        .Find(item => item.Id == claim.Run.Id && item.Stamp.Source == claim.Handle.Stamp.Source)
+        .SingleAsync();
 
     private async Task<DateTime> ServerNow(RepositorySource source)
     {
         var sources = Services.GetRequiredService<IMongoCollection<RepositorySource>>();
         using var session = await sources.Database.Client.StartSessionAsync();
-        return await new GitDatabaseClock(sources).NowAsync(new(source.TenantId, source.Id), session, default);
+        return await new GitDatabaseClock(sources).NowAsync(
+            new GitSourceIdentity(source.TenantId, source.Id),
+            session,
+            default);
     }
 
     private async Task MakeDue(GitWorkClaim claim)
     {
         var waiting = Assert.IsType<GitRunWaitingCleanup>((await LoadRun(claim)).State);
-        await Runs.UpdateOneAsync(item => item.Id == claim.Run.Id,
-            Builders<GitReconciliationRun>.Update.Set(item => item.State,
+        await Runs.UpdateOneAsync(
+            item => item.Id == claim.Run.Id,
+            Builders<GitReconciliationRun>.Update.Set(
+                item => item.State,
                 waiting with { NextAttemptAtUtc = DateTime.UtcNow.AddMinutes(-1) }));
     }
 
     private async Task<GitSourceWorkRequested[]> ResumptionMessages(GitWorkClaim claim)
     {
-        var messages = await Fixture.DbContext.OutboxMessages.Find(message =>
-            message.TenantId == claim.Source.TenantId && message.EventType == WorkRequestedEvent).ToListAsync();
-        return messages.Select(message => JsonSerializer.Deserialize<GitSourceWorkRequested>(message.PayloadJson,
+        var messages = await Fixture.DbContext
+            .OutboxMessages
+            .Find(message => message.TenantId == claim.Source.TenantId && message.EventType == WorkRequestedEvent)
+            .ToListAsync();
+        return messages
+            .Select(message => JsonSerializer.Deserialize<GitSourceWorkRequested>(
+                message.PayloadJson,
                 EventExtensions.SerializerOptions)!)
             .Where(message => message.SourceId == claim.Source.Id && message.NotBeforeUtc is not null)
             .ToArray();
@@ -205,12 +240,18 @@ public sealed class GitRunResumptionTests(MongoReplicaSetFixture fixture) : Isol
 
     private async Task<GitWorkClaim> ClaimNewSource()
     {
-        var source = Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId,
-            Guid.NewGuid().ToString("D"), new("Example", "connection", "repository", "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow), "https://example.test/repository"),
-            default)).Value);
-        return Assert.IsType<GitWorkClaim>((await Store.ClaimAsync(new(source.TenantId, source.Id),
-            "original", default)).Value);
+        var source = Assert.IsType<RepositorySource>(
+            (await Sources.CreateAsync(
+                new CreateGitRepositorySource(
+                    Data.TenantId,
+                    Guid.NewGuid().ToString("D"),
+                    new GitRepositoryLocation("Example", "connection", "repository", "main", ""),
+                    new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+                    new GitSourceAudit(Data.UserId, DateTime.UtcNow),
+                    "https://example.test/repository"),
+                default)).Value);
+        return Assert.IsType<GitWorkClaim>(
+            (await Store.ClaimAsync(new GitSourceIdentity(source.TenantId, source.Id), "original", default)).Value);
     }
 
     private sealed class ResumptionOutboxFailure : Exception;

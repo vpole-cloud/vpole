@@ -18,4 +18,5 @@ public sealed record RedisServiceUpdatedEvent(
 
 public sealed record RedisServiceUpdatedEventChanges(
     UpdateLog<RedisServiceSpecSnapshot> RedisSpec,
-    UpdateLog<ImmutableHashSet<string>> Tags);
+    UpdateLog<ImmutableHashSet<string>> Tags
+);

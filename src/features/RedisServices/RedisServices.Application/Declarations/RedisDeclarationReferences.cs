@@ -1,18 +1,11 @@
-using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Primitives;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Mongo;
-using Pole.Features.RedisServices.Application.Services;
-using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.StorageProfiles.Contracts;
 using static Pole.Features.RedisServices.Application.Declarations.RedisDeclarations;
-using static Pole.Features.RedisServices.Application.Declarations.RedisPlanning;
 
 namespace Pole.Features.RedisServices.Application.Declarations;
 
@@ -23,7 +16,8 @@ internal sealed class RedisDeclarationReferences(
     ResolveNamedComputeProfile resolveComputeName,
     ResolveNamedStorageProfile resolveStorageName,
     ResolveComputeProfilePlanningSnapshot loadCompute,
-    ResolveStorageProfilePlanningSnapshot loadStorage)
+    ResolveStorageProfilePlanningSnapshot loadStorage
+)
 {
     public async Task<PrepareDeclarationReferencesOutcome> PrepareReferencesAsync(
         GitOperationInput operation,
@@ -33,27 +27,43 @@ internal sealed class RedisDeclarationReferences(
         var targetAddress = new ResourceAddress("DeploymentTarget", spec.Placement.DeploymentTarget);
         var computeAddress = new ResourceAddress("ComputeProfile", spec.Placement.ComputeProfile.Name);
         var storageAddress = new ResourceAddress("StorageProfile", spec.Storage.Profile.Name);
-        var pinned = await transactions.InvokeOutcomeAsync<RedisPlanningReferences>(async (tx, token) =>
-        {
-            var target = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId, targetAddress),
-                tx.Session, token);
-            var compute = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId, computeAddress),
-                tx.Session, token);
-            var storage = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId, storageAddress),
-                tx.Session, token);
-            return tx.Commit(new RedisPlanningReferences(target, compute, storage));
-        }, ct);
+        var pinned = await transactions.InvokeOutcomeAsync<RedisPlanningReferences>(
+            async (tx, token) =>
+            {
+                var target = await git.ResolveAcceptedAsync(
+                    new ResolveAcceptedGitReferenceRequest(operation.Context, operation.ResourceId, targetAddress),
+                    tx.Session,
+                    token);
+                var compute = await git.ResolveAcceptedAsync(
+                    new ResolveAcceptedGitReferenceRequest(operation.Context, operation.ResourceId, computeAddress),
+                    tx.Session,
+                    token);
+                var storage = await git.ResolveAcceptedAsync(
+                    new ResolveAcceptedGitReferenceRequest(operation.Context, operation.ResourceId, storageAddress),
+                    tx.Session,
+                    token);
+                return tx.Commit(new RedisPlanningReferences(target, compute, storage));
+            },
+            ct);
 
         var targetId = pinned.TargetId;
         if (targetId is null)
         {
-            var found = await resolveTargetName(new(operation.Context.TenantId,
-                RedisResourceDeployment.ResourceType, targetAddress.Name), ct);
+            var found = await resolveTargetName(
+                new NamedDeploymentTargetRequest(
+                    operation.Context.TenantId,
+                    RedisResourceDeployment.ResourceType,
+                    targetAddress.Name),
+                ct);
             if (found is not DeploymentTargetLookupDto target)
                 return Blocked(RedisDeclarationError.DeploymentTargetUnavailable);
 
-            var result = await git.PinReferenceAsync(new(operation.Context, operation.ResourceId,
-                new(targetAddress, target.Id)), ct);
+            var result = await git.PinReferenceAsync(
+                new PinGitReferenceRequest(
+                    operation.Context,
+                    operation.ResourceId,
+                    new GitReferenceTarget(targetAddress, target.Id)),
+                ct);
             if (result is StaleGitExecution stale)
                 return stale;
 
@@ -62,39 +72,53 @@ internal sealed class RedisDeclarationReferences(
 
         if (pinned.ComputeId is null)
         {
-            var found = await resolveComputeName(new(operation.Context.TenantId,
-                RedisResourceDeployment.ResourceType, computeAddress.Name, targetId,
-                spec.Placement.ComputeProfile.Revision), ct);
+            var found = await resolveComputeName(
+                new NamedComputeProfileRequest(
+                    operation.Context.TenantId,
+                    RedisResourceDeployment.ResourceType,
+                    computeAddress.Name,
+                    targetId,
+                    spec.Placement.ComputeProfile.Revision),
+                ct);
             if (found is not ResolvedComputeProfile compute)
                 return Blocked(RedisDeclarationError.ComputeProfileUnavailable);
 
-            var result = await git.PinReferenceAsync(new(operation.Context, operation.ResourceId,
-                new(computeAddress, compute.ComputeProfileId)), ct);
+            var result = await git.PinReferenceAsync(
+                new PinGitReferenceRequest(
+                    operation.Context,
+                    operation.ResourceId,
+                    new GitReferenceTarget(computeAddress, compute.ComputeProfileId)),
+                ct);
             if (result is StaleGitExecution stale)
                 return stale;
         }
 
         if (pinned.StorageId is null)
         {
-            var found = await resolveStorageName(new(operation.Context.TenantId,
-                RedisResourceDeployment.ResourceType, storageAddress.Name, targetId,
-                spec.Storage.SizeGb, spec.Storage.Profile.Revision), ct);
+            var found = await resolveStorageName(
+                new NamedStorageProfileRequest(
+                    operation.Context.TenantId,
+                    RedisResourceDeployment.ResourceType,
+                    storageAddress.Name,
+                    targetId,
+                    spec.Storage.SizeGb,
+                    spec.Storage.Profile.Revision),
+                ct);
             if (found is not ResolvedStorageProfile storage)
                 return Blocked(RedisDeclarationError.StorageProfileUnavailable);
 
-            var result = await git.PinReferenceAsync(new(operation.Context, operation.ResourceId,
-                new(storageAddress, storage.ProfileId)), ct);
+            var result = await git.PinReferenceAsync(
+                new PinGitReferenceRequest(
+                    operation.Context,
+                    operation.ResourceId,
+                    new GitReferenceTarget(storageAddress, storage.ProfileId)),
+                ct);
             if (result is StaleGitExecution stale)
                 return stale;
         }
 
         return new DeclarationReferencesPrepared();
     }
-
-    private sealed record RedisPlanningReferences(
-        string? TargetId,
-        string? ComputeId,
-        string? StorageId);
 
     public async Task<ReadPreviewReferencesOutcome> ReadPreviewReferencesAsync(
         ReadPreviewReferencesRequest request,
@@ -105,26 +129,60 @@ internal sealed class RedisDeclarationReferences(
         var targetAddress = new ResourceAddress("DeploymentTarget", spec.Placement.DeploymentTarget);
         var computeAddress = new ResourceAddress("ComputeProfile", spec.Placement.ComputeProfile.Name);
         var storageAddress = new ResourceAddress("StorageProfile", spec.Storage.Profile.Name);
-        var target = await resolveTargetName(new(request.TenantId, ResourceType, targetAddress.Name), ct);
+        var target = await resolveTargetName(
+            new NamedDeploymentTargetRequest(request.TenantId, ResourceType, targetAddress.Name),
+            ct);
         if (target is not DeploymentTargetLookupDto foundTarget ||
             !Matches(request.References, targetAddress, foundTarget.Id))
             return Blocked(RedisDeclarationError.DeploymentTargetUnavailable);
-        var compute = await resolveComputeName(new(request.TenantId, ResourceType, computeAddress.Name,
-            foundTarget.Id, spec.Placement.ComputeProfile.Revision), ct);
-        if (compute is not ResolvedComputeProfile foundCompute ||
-            !Matches(request.References, computeAddress, foundCompute.ComputeProfileId))
+        var compute = await resolveComputeName(
+            new NamedComputeProfileRequest(
+                request.TenantId,
+                ResourceType,
+                computeAddress.Name,
+                foundTarget.Id,
+                spec.Placement.ComputeProfile.Revision),
+            ct);
+        if (compute is not ResolvedComputeProfile foundCompute || !Matches(
+                request.References,
+                computeAddress,
+                foundCompute.ComputeProfileId))
             return Blocked(RedisDeclarationError.ComputeProfileUnavailable);
-        var storage = await resolveStorageName(new(request.TenantId, ResourceType, storageAddress.Name,
-            foundTarget.Id, spec.Storage.SizeGb, spec.Storage.Profile.Revision), ct);
-        if (storage is not ResolvedStorageProfile foundStorage ||
-            !Matches(request.References, storageAddress, foundStorage.ProfileId))
+        var storage = await resolveStorageName(
+            new NamedStorageProfileRequest(
+                request.TenantId,
+                ResourceType,
+                storageAddress.Name,
+                foundTarget.Id,
+                spec.Storage.SizeGb,
+                spec.Storage.Profile.Revision),
+            ct);
+        if (storage is not ResolvedStorageProfile foundStorage || !Matches(
+                request.References,
+                storageAddress,
+                foundStorage.ProfileId))
             return Blocked(RedisDeclarationError.StorageProfileUnavailable);
-        var computePolicy = await loadCompute(new(request.TenantId, ResourceType, foundCompute.ComputeProfileId,
-            foundTarget.Id, spec.Placement.ComputeProfile.Revision), session, ct);
+        var computePolicy = await loadCompute(
+            new ComputeProfilePlanningRequest(
+                request.TenantId,
+                ResourceType,
+                foundCompute.ComputeProfileId,
+                foundTarget.Id,
+                spec.Placement.ComputeProfile.Revision),
+            session,
+            ct);
         if (computePolicy is not ComputeProfilePlanningSnapshot pinnedCompute)
             return Blocked(RedisDeclarationError.ComputeProfileUnavailable);
-        var storagePolicy = await loadStorage(new(request.TenantId, ResourceType, foundStorage.ProfileId,
-            foundTarget.Id, spec.Storage.SizeGb, spec.Storage.Profile.Revision), session, ct);
+        var storagePolicy = await loadStorage(
+            new StorageProfilePlanningRequest(
+                request.TenantId,
+                ResourceType,
+                foundStorage.ProfileId,
+                foundTarget.Id,
+                spec.Storage.SizeGb,
+                spec.Storage.Profile.Revision),
+            session,
+            ct);
         if (storagePolicy is not StorageProfilePlanningSnapshot pinnedStorage)
             return Blocked(RedisDeclarationError.StorageProfileUnavailable);
 
@@ -132,21 +190,47 @@ internal sealed class RedisDeclarationReferences(
         [
             .. request.References.Where(item => item.Address != targetAddress && item.Address != computeAddress &&
                 item.Address != storageAddress),
-            new(targetAddress, foundTarget.Id,
-                new([new(DeploymentTargetVersionKeys.Revision(foundTarget.Id), foundTarget.Revision),
-                    new(DeploymentTargetVersionKeys.WorkloadConfiguration(foundTarget.Id),
-                        foundTarget.WorkloadConfiguration.Revision)])),
-            new(computeAddress, foundCompute.ComputeProfileId,
-                new([new(
-                    ComputeProfileVersionKeys.Policy(foundCompute.ComputeProfileId),
-                    pinnedCompute.PolicyRevision)])),
-            new(storageAddress, foundStorage.ProfileId,
-                new([new(
-                    StorageProfileVersionKeys.Policy(foundStorage.ProfileId),
-                    pinnedStorage.PolicyRevision)]))
+            new GitPreviewResolvedReference(
+                targetAddress,
+                foundTarget.Id,
+                new DeclarationVersionToken(
+                [
+                    new DeclarationDocumentVersion(
+                        DeploymentTargetVersionKeys.Revision(foundTarget.Id),
+                        foundTarget.Revision),
+                    new DeclarationDocumentVersion(
+                        DeploymentTargetVersionKeys.WorkloadConfiguration(foundTarget.Id),
+                        foundTarget.WorkloadConfiguration.Revision),
+                ])),
+            new GitPreviewResolvedReference(
+                computeAddress,
+                foundCompute.ComputeProfileId,
+                new DeclarationVersionToken(
+                [
+                    new DeclarationDocumentVersion(
+                        ComputeProfileVersionKeys.Policy(foundCompute.ComputeProfileId),
+                        pinnedCompute.PolicyRevision),
+                ])),
+            new GitPreviewResolvedReference(
+                storageAddress,
+                foundStorage.ProfileId,
+                new DeclarationVersionToken(
+                [
+                    new DeclarationDocumentVersion(
+                        StorageProfileVersionKeys.Policy(foundStorage.ProfileId),
+                        pinnedStorage.PolicyRevision),
+                ])),
         ]);
     }
 
-    private static bool Matches(IReadOnlyList<GitPreviewResolvedReference> references, ResourceAddress address,
+    private static bool Matches(
+        IReadOnlyList<GitPreviewResolvedReference> references,
+        ResourceAddress address,
         string id) => references.All(item => item.Address != address || item.ResourceId == id);
+
+    private sealed record RedisPlanningReferences(
+        string? TargetId,
+        string? ComputeId,
+        string? StorageId
+    );
 }

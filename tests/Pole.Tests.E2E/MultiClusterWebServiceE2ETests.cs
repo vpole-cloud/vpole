@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using k8s;
 using k8s.Autorest;
@@ -17,18 +16,21 @@ namespace Pole.Tests.E2E;
 [Trait("Concern", "MultiCluster")]
 [Trait("Feature", "WebServices")]
 [Trait("Scope", "FullE2E")]
-public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
+public sealed class MultiClusterWebServiceE2ETests(
+    PoleE2EFixture fixture
+)
 {
-    private readonly TestTimings _timings = new(typeof(MultiClusterWebServiceE2ETests));
-
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private readonly TestTimings _timings = new(typeof(MultiClusterWebServiceE2ETests));
 
     [KubernetesFact("multi-cluster", "monitoring")]
     public async Task Two_target_reconciliation_isolates_failure_and_retries_only_failed_target()
     {
         using var caseTiming = _timings.Measure("e2e.case");
         using var setupTiming = _timings.Measure("e2e.setup");
-        using var testEvidence = new TestPhaseJournal(nameof(Two_target_reconciliation_isolates_failure_and_retries_only_failed_target)).Activate();
+        using var testEvidence
+            = new TestPhaseJournal(nameof(Two_target_reconciliation_isolates_failure_and_retries_only_failed_target))
+                .Activate();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var cancellationToken = timeout.Token;
         var lab = fixture.LabState;
@@ -40,7 +42,6 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         var resources = new TestResourceScope("multi-cluster WebService E2E", timings: _timings);
         await resources.RunAsync(async () =>
         {
-
             var targetBEnabled = true;
             var serviceName = $"multi-{Guid.NewGuid():N}"[..24];
 
@@ -106,16 +107,20 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             var initialB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
             var initialBRelease = RequiredReleaseId(initialB.Spec.Template.Metadata.Annotations);
 
-            resources.Defer("re-enable workload-b deployment target", async token =>
-            {
-                if (!targetBEnabled)
+            resources.Defer(
+                "re-enable workload-b deployment target",
+                async token =>
                 {
-                    using var get = fixture.CreatePlatformAdminRequest(HttpMethod.Get, $"/api/v1/platform/deployment-targets/{targetB.Id}");
-                    var json = await SendJsonAsync(get, token);
-                    var current = targetB with { Revision = json.GetProperty("revision").GetInt64() };
-                    targetB = await UpdateTargetAsync(current, enabled: true, token);
-                }
-            });
+                    if (!targetBEnabled)
+                    {
+                        using var get = fixture.CreatePlatformAdminRequest(
+                            HttpMethod.Get,
+                            $"/api/v1/platform/deployment-targets/{targetB.Id}");
+                        var json = await SendJsonAsync(get, token);
+                        var current = targetB with { Revision = json.GetProperty("revision").GetInt64() };
+                        targetB = await UpdateTargetAsync(current, enabled: true, token);
+                    }
+                });
             targetBEnabled = false;
             targetB = await UpdateTargetAsync(targetB, enabled: false, cancellationToken);
             await SendAsync(
@@ -128,11 +133,10 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 
             var partial = await WaitForPlacementsAsync(
                 webServiceId,
-                placements =>
-                    placements.Any(item => IsTarget(item, targetA.Id) && IsApplied(item)) &&
+                placements => placements.Any(item => IsTarget(item, targetA.Id) && IsApplied(item)) &&
                     placements.Any(item => IsTarget(item, targetB.Id) &&
-                                           RequiredString(item, "status") == "Failed" &&
-                                           RequiredString(item, "failureCode") == "DeploymentTargetDisabled"),
+                        RequiredString(item, "status") == "Failed" &&
+                        RequiredString(item, "failureCode") == "DeploymentTargetDisabled"),
                 cancellationToken);
             var failedB = partial.Single(item => IsTarget(item, targetB.Id));
             var healthyPlacementBeforeRetry = partial.Single(item => IsTarget(item, targetA.Id));
@@ -143,9 +147,13 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
 
             string browserEndpoint;
             using (_timings.Measure("e2e.browser.acquire"))
+            {
                 browserEndpoint = await fixture.GetBrowserEndpointAsync(cancellationToken);
+            }
+
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(
+                browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
             setupTiming.Dispose();
@@ -154,28 +162,44 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true })
+                .ClickAsync();
             await page.GetByLabel("Username or email").FillAsync(fixture.Alpha.Email);
-            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(fixture.Alpha.Password);
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
-            await page.GotoAsync(new Uri(fixture.FrontendBaseAddress, $"?view=web-services&resourceType=pole%2Fweb-service&resource={webServiceId}&tenant={fixture.Alpha.DefaultTenantId}&section=operations").ToString());
+            await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true })
+                .FillAsync(fixture.Alpha.Password);
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true })
+                .ClickAsync();
+            await page.GotoAsync(
+                new Uri(
+                        fixture.FrontendBaseAddress,
+                        $"?view=web-services&resourceType=pole%2Fweb-service&resource={webServiceId}&tenant={fixture.Alpha.DefaultTenantId}&section=operations")
+                    .ToString());
             var failedTarget = page.GetByTestId($"operation-row-{RequiredString(failedB, "deploymentId")}");
             await Assertions.Expect(failedTarget).ToHaveCountAsync(1);
             await Assertions.Expect(failedTarget).ToContainTextAsync("DeploymentTargetDisabled");
             Assert.Equal(2, await page.Locator("[data-testid^='operation-row-']:visible").CountAsync());
 
-            await failedTarget.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true }).ClickAsync();
+            await failedTarget.GetByRole(
+                    AriaRole.Button,
+                    new LocatorGetByRoleOptions { Name = "Retry this apply", Exact = true })
+                .ClickAsync();
             var confirmation = page.GetByRole(AriaRole.Dialog);
             await Assertions.Expect(confirmation).ToContainTextAsync(RequiredString(failedB, "deploymentId"));
             await Assertions.Expect(confirmation).ToContainTextAsync(targetB.Id);
             targetB = await UpdateTargetAsync(targetB, enabled: true, cancellationToken);
             targetBEnabled = true;
             var retryResponse = await page.RunAndWaitForResponseAsync(
-                () => confirmation.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Retry selected operation", Exact = true }).ClickAsync(),
-                response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath == $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry");
+                () => confirmation.GetByRole(
+                        AriaRole.Button,
+                        new LocatorGetByRoleOptions { Name = "Retry selected operation", Exact = true })
+                    .ClickAsync(),
+                response => response.Request.Method == "POST" && new Uri(response.Url).AbsolutePath ==
+                    $"/api/v1/web-services/{webServiceId}/deployments/{RequiredString(failedB, "deploymentId")}/retry");
             Assert.True(retryResponse.Ok, $"Selected target retry returned HTTP {retryResponse.Status}.");
             using var retryBody = JsonDocument.Parse(retryResponse.Request.PostData!);
-            Assert.Equal(failedB.GetProperty("deploymentRevision").GetInt64(), retryBody.RootElement.GetProperty("expectedDeploymentRevision").GetInt64());
+            Assert.Equal(
+                failedB.GetProperty("deploymentRevision").GetInt64(),
+                retryBody.RootElement.GetProperty("expectedDeploymentRevision").GetInt64());
             Assert.Equal("Apply", RequiredString(retryBody.RootElement, "expectedOperation"));
 
             var retried = await WaitForPlacementsAsync(
@@ -187,8 +211,12 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             var retriedB = await clientB.AppsV1.ReadNamespacedDeploymentAsync(serviceName, namespaceB);
 
             var healthyPlacementAfterRetry = retried.Single(item => IsTarget(item, targetA.Id));
-            Assert.Equal(healthyDesiredGeneration, healthyPlacementAfterRetry.GetProperty("desiredGeneration").GetInt64());
-            Assert.Equal(healthyObservedGeneration, healthyPlacementAfterRetry.GetProperty("observedGeneration").GetInt64());
+            Assert.Equal(
+                healthyDesiredGeneration,
+                healthyPlacementAfterRetry.GetProperty("desiredGeneration").GetInt64());
+            Assert.Equal(
+                healthyObservedGeneration,
+                healthyPlacementAfterRetry.GetProperty("observedGeneration").GetInt64());
             Assert.Equal(healthyRelease, RequiredReleaseId(healthyAfterRetry.Spec.Template.Metadata.Annotations));
             Assert.NotEqual(initialBRelease, RequiredReleaseId(retriedB.Spec.Template.Metadata.Annotations));
             Assert.Equal(2, applied.Select(item => RequiredString(item, "deploymentTargetId")).Distinct().Count());
@@ -208,36 +236,33 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         Assert.Equal(fixture.Identity.RunId, namespaceResource.Metadata.Labels[TestRunIdentity.RunLabel]);
     }
 
-    private async Task<CreatedTarget> CreateTargetAsync(
-        KubernetesLabTarget target,
-        CancellationToken cancellationToken)
+    private async Task<CreatedTarget> CreateTargetAsync(KubernetesLabTarget target, CancellationToken cancellationToken)
     {
-        using var request = fixture.CreatePlatformAdminRequest(
-            HttpMethod.Post,
-            "/api/v1/platform/deployment-targets/");
-        request.Content = JsonContent.Create(new
-        {
-            technicalName = $"e2e-{target.Key}",
-            displayName = $"E2E {target.Key}",
-            enabled = true,
-            acceptsWorkloads = true,
-            workloadConfiguration = new
+        using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Post, "/api/v1/platform/deployment-targets/");
+        request.Content = JsonContent.Create(
+            new
             {
-                ingress = new
+                technicalName = $"e2e-{target.Key}",
+                displayName = $"E2E {target.Key}",
+                enabled = true,
+                acceptsWorkloads = true,
+                workloadConfiguration = new
                 {
-                    ingressClassName = "traefik",
-                    clusterIssuerName = "pole-lab",
-                    publicBaseDomain = target.PublicBaseDomain
+                    ingress = new
+                    {
+                        ingressClassName = "traefik",
+                        clusterIssuerName = "pole-lab",
+                        publicBaseDomain = target.PublicBaseDomain,
+                    },
+                    networkSources = LabNetworkSources(),
                 },
-                networkSources = LabNetworkSources()
-            },
-            connection = new
-            {
-                kind = "Kubeconfig",
-                kubeconfig = await File.ReadAllTextAsync(target.KubeconfigPath, cancellationToken),
-                contextName = target.Context
-            }
-        });
+                connection = new
+                {
+                    kind = "Kubeconfig",
+                    kubeconfig = await File.ReadAllTextAsync(target.KubeconfigPath, cancellationToken),
+                    contextName = target.Context,
+                },
+            });
         var json = await SendJsonAsync(request, cancellationToken);
         json = await fixture.AllowTargetWithoutEnforcementAsync(
             RequiredString(json, "id"),
@@ -258,23 +283,24 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         using var request = fixture.CreatePlatformAdminRequest(
             HttpMethod.Put,
             $"/api/v1/platform/deployment-targets/{target.Id}");
-        request.Content = JsonContent.Create(new
-        {
-            displayName = $"E2E {target.LabTarget.Key}",
-            enabled,
-            acceptsWorkloads = enabled,
-            workloadConfiguration = new
+        request.Content = JsonContent.Create(
+            new
             {
-                ingress = new
+                displayName = $"E2E {target.LabTarget.Key}",
+                enabled,
+                acceptsWorkloads = enabled,
+                workloadConfiguration = new
                 {
-                    ingressClassName = "traefik",
-                    clusterIssuerName = "pole-lab",
-                    publicBaseDomain = target.LabTarget.PublicBaseDomain
+                    ingress = new
+                    {
+                        ingressClassName = "traefik",
+                        clusterIssuerName = "pole-lab",
+                        publicBaseDomain = target.LabTarget.PublicBaseDomain,
+                    },
+                    networkSources = LabNetworkSources(),
                 },
-                networkSources = LabNetworkSources()
-            },
-            revision = target.Revision
-        });
+                revision = target.Revision,
+            });
         var json = await SendJsonAsync(request, cancellationToken);
         return target with { Revision = json.GetProperty("revision").GetInt64() };
     }
@@ -290,10 +316,10 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
                 podLabels = new Dictionary<string, string>
                 {
                     ["app.kubernetes.io/name"] = "traefik",
-                    ["app.kubernetes.io/instance"] = "traefik-kube-system"
-                }
-            }
-        }
+                    ["app.kubernetes.io/instance"] = "traefik-kube-system",
+                },
+            },
+        },
     };
 
     private async Task<CreatedComputeProfile> CreateComputeProfileAsync(
@@ -301,31 +327,28 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         string targetBId,
         CancellationToken cancellationToken)
     {
-        using var request = fixture.CreatePlatformAdminRequest(
-            HttpMethod.Post,
-            "/api/v1/platform/compute-profiles/");
-        request.Content = JsonContent.Create(new
-        {
-            technicalName = "e2e-multi-target",
-            displayName = "E2E multi-target",
-            description = "Aspire two-target WebService profile",
-            resources = new
+        using var request = fixture.CreatePlatformAdminRequest(HttpMethod.Post, "/api/v1/platform/compute-profiles/");
+        request.Content = JsonContent.Create(
+            new
             {
-                requests = new { cpuMillis = 50, memoryMi = 64 },
-                limits = new { cpuMillis = 250, memoryMi = 128 }
-            },
-            architecture = "Any",
-            extendedResources = Array.Empty<object>(),
-            allowedResourceTypes = new[] { "pole/web-service" },
-            tenantAccess = new { kind = "all-tenants", tenantIds = Array.Empty<string>() },
-            targetMappings = new[] { TargetMapping(targetAId), TargetMapping(targetBId) },
-            isEnabled = true,
-            isDefault = false
-        });
+                technicalName = "e2e-multi-target",
+                displayName = "E2E multi-target",
+                description = "Aspire two-target WebService profile",
+                resources = new
+                {
+                    requests = new { cpuMillis = 50, memoryMi = 64 },
+                    limits = new { cpuMillis = 250, memoryMi = 128 },
+                },
+                architecture = "Any",
+                extendedResources = Array.Empty<object>(),
+                allowedResourceTypes = new[] { "pole/web-service" },
+                tenantAccess = new { kind = "all-tenants", tenantIds = Array.Empty<string>() },
+                targetMappings = new[] { TargetMapping(targetAId), TargetMapping(targetBId) },
+                isEnabled = true,
+                isDefault = false,
+            });
         var json = await SendJsonAsync(request, cancellationToken);
-        return new CreatedComputeProfile(
-            RequiredString(json, "id"),
-            json.GetProperty("revision").GetInt64());
+        return new CreatedComputeProfile(RequiredString(json, "id"), json.GetProperty("revision").GetInt64());
     }
 
     private async Task<string> CreateResourceGroupAsync(CancellationToken cancellationToken)
@@ -335,12 +358,13 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             "/api/v1/resource-groups/",
             fixture.Alpha,
             fixture.Alpha.DefaultTenantId);
-        request.Content = JsonContent.Create(new
-        {
-            name = $"multi-{Guid.NewGuid():N}"[..20],
-            description = "Aspire multi-target E2E",
-            tags = new[] { "e2e", "multi-target" }
-        });
+        request.Content = JsonContent.Create(
+            new
+            {
+                name = $"multi-{Guid.NewGuid():N}"[..20],
+                description = "Aspire multi-target E2E",
+                tags = new[] { "e2e", "multi-target" },
+            });
         return RequiredString(await SendJsonAsync(request, cancellationToken), "id");
     }
 
@@ -357,33 +381,35 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             "/api/v1/web-services/",
             fixture.Alpha,
             fixture.Alpha.DefaultTenantId);
-        request.Content = JsonContent.Create(new
-        {
-            name,
-            resourceGroupId,
-            exposure = "Public",
-            spec = new
+        request.Content = JsonContent.Create(
+            new
             {
-                image = new { server = "docker.io", name = "library/nginx", tag = "1.27.5-alpine" },
-                config = new
+                name,
+                resourceGroupId,
+                exposure = "Public",
+                spec = new
                 {
-                    environmentVariables = new Dictionary<string, string>(),
-                    portMappings = new[] { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } }
+                    image = new { server = "docker.io", name = "library/nginx", tag = "1.27.5-alpine" },
+                    config = new
+                    {
+                        environmentVariables = new Dictionary<string, string>(),
+                        portMappings = new[]
+                            { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } },
+                    },
+                    autoscaling = (object?)null,
+                    probes = new { startup = Probe(), liveness = Probe(), readiness = Probe() },
                 },
-                autoscaling = (object?)null,
-                probes = new { startup = Probe(), liveness = Probe(), readiness = Probe() }
-            },
-            placement = new
-            {
-                isolationScopeId = (string?)null,
-                targets = new[]
+                placement = new
                 {
-                    new { deploymentTargetId = targetAId, fixedReplicas = 1, computeProfileId },
-                    new { deploymentTargetId = targetBId, fixedReplicas = 1, computeProfileId }
-                }
-            },
-            tags = new[] { "e2e", "multi-target" }
-        });
+                    isolationScopeId = (string?)null,
+                    targets = new[]
+                    {
+                        new { deploymentTargetId = targetAId, fixedReplicas = 1, computeProfileId },
+                        new { deploymentTargetId = targetBId, fixedReplicas = 1, computeProfileId },
+                    },
+                },
+                tags = new[] { "e2e", "multi-target" },
+            });
         return RequiredString(await SendJsonAsync(request, cancellationToken), "webServiceId");
     }
 
@@ -460,6 +486,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
             {
             }
+
             await Task.Delay(PollInterval, cancellationToken);
         }
     }
@@ -496,10 +523,8 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
                 return;
             if (response.StatusCode != HttpStatusCode.Conflict)
-            {
                 throw new HttpRequestException(
                     $"Pole API returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}.");
-            }
 
             await Task.Delay(PollInterval, cancellationToken);
         }
@@ -539,17 +564,17 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
             {
                 return;
             }
+
             await Task.Delay(PollInterval, cancellationToken);
         }
     }
 
-    private async Task<JsonElement> SendJsonAsync(
-        HttpRequestMessage request,
-        CancellationToken cancellationToken)
+    private async Task<JsonElement> SendJsonAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"Pole API returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}.");
+            throw new HttpRequestException(
+                $"Pole API returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}.");
         using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
         return document.RootElement.Clone();
     }
@@ -558,16 +583,17 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
     {
         using var response = await fixture.Api.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"Pole API returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}.");
+            throw new HttpRequestException(
+                $"Pole API returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}.");
     }
 
-    private static bool IsTarget(JsonElement placement, string targetId) =>
-        string.Equals(RequiredString(placement, "deploymentTargetId"), targetId, StringComparison.Ordinal);
+    private static bool IsTarget(JsonElement placement, string targetId) => string.Equals(
+        RequiredString(placement, "deploymentTargetId"),
+        targetId,
+        StringComparison.Ordinal);
 
-    private static bool IsApplied(JsonElement placement) =>
-        RequiredString(placement, "status") == "Applied" &&
-        placement.GetProperty("observedGeneration").GetInt64() >=
-        placement.GetProperty("desiredGeneration").GetInt64();
+    private static bool IsApplied(JsonElement placement) => RequiredString(placement, "status") == "Applied" &&
+        placement.GetProperty("observedGeneration").GetInt64() >= placement.GetProperty("desiredGeneration").GetInt64();
 
     private static string RequiredReleaseId(IDictionary<string, string>? annotations) =>
         annotations is not null && annotations.TryGetValue("pole.server/releaseId", out var releaseId)
@@ -587,7 +613,7 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         requiredNodeAffinity = Array.Empty<object>(),
         preferredNodeAffinity = Array.Empty<object>(),
         tolerations = Array.Empty<object>(),
-        runtimeClassName = (string?)null
+        runtimeClassName = (string?)null,
     };
 
     private static object Probe() => new
@@ -598,16 +624,18 @@ public sealed class MultiClusterWebServiceE2ETests(PoleE2EFixture fixture)
         periodSeconds = 5,
         timeoutSeconds = 3,
         failureThreshold = 3,
-        successThreshold = 1
+        successThreshold = 1,
     };
 
     private sealed record CreatedTarget(
         string Id,
         string ClusterIdentity,
         long Revision,
-        KubernetesLabTarget LabTarget);
+        KubernetesLabTarget LabTarget
+    );
 
     private sealed record CreatedComputeProfile(
         string Id,
-        long Revision);
+        long Revision
+    );
 }

@@ -19,59 +19,46 @@ public readonly record struct QuotaKey
 
 public sealed record QuotaValue(
     QuotaKey Key,
-    long Value);
+    long Value
+);
 
 public sealed record QuotaDelta
 {
-    private QuotaDelta(ImmutableList<QuotaValue> values)
-    {
-        Values = values;
-    }
+    private QuotaDelta(ImmutableList<QuotaValue> values) => Values = values;
 
     public static QuotaDelta Empty { get; } = new(ImmutableList<QuotaValue>.Empty);
 
     public ImmutableList<QuotaValue> Values { get; }
     public bool IsEmpty => Values.Count == 0;
 
-    public long this[QuotaKey key] =>
-        Values.FirstOrDefault(value => value.Key == key)?.Value ?? 0;
+    public long this[QuotaKey key] => Values.FirstOrDefault(value => value.Key == key)?.Value ?? 0;
 
-    public static QuotaDelta Create(IEnumerable<QuotaValue> values) =>
-        new(Normalize(values));
+    public static QuotaDelta Create(IEnumerable<QuotaValue> values) => new(Normalize(values));
 
-    public static QuotaDelta From(QuotaKey key, long value) =>
-        Create([new QuotaValue(key, value)]);
+    public static QuotaDelta From(QuotaKey key, long value) => Create([new QuotaValue(key, value)]);
 
-    public static QuotaDelta Difference(QuotaDelta newer, QuotaDelta older) =>
-        Create(
-            newer.Values.Select(value => value.Key)
-                .Concat(older.Values.Select(value => value.Key))
-                .Distinct()
-                .Select(key => new QuotaValue(key, checked(newer[key] - older[key]))));
+    public static QuotaDelta Difference(QuotaDelta newer, QuotaDelta older) => Create(
+        newer.Values
+            .Select(value => value.Key)
+            .Concat(older.Values.Select(value => value.Key))
+            .Distinct()
+            .Select(key => new QuotaValue(key, checked(newer[key] - older[key]))));
 
-    public static QuotaDelta PositivePart(QuotaDelta delta) =>
-        Create(delta.Values.Where(value => value.Value > 0));
+    public static QuotaDelta PositivePart(QuotaDelta delta) => Create(delta.Values.Where(value => value.Value > 0));
 
-    public static QuotaDelta NegativePart(QuotaDelta delta) =>
-        Create(delta.Values.Where(value => value.Value < 0));
+    public static QuotaDelta NegativePart(QuotaDelta delta) => Create(delta.Values.Where(value => value.Value < 0));
 
-    private static ImmutableList<QuotaValue> Normalize(IEnumerable<QuotaValue> values) =>
-        values
-            .GroupBy(value => value.Key)
-            .Select(group => new QuotaValue(
-                group.Key,
-                group.Aggregate(0L, (sum, value) => checked(sum + value.Value))))
-            .Where(value => value.Value != 0)
-            .OrderBy(value => value.Key.Value, StringComparer.Ordinal)
-            .ToImmutableList();
+    private static ImmutableList<QuotaValue> Normalize(IEnumerable<QuotaValue> values) => values
+        .GroupBy(value => value.Key)
+        .Select(group => new QuotaValue(group.Key, group.Aggregate(0L, (sum, value) => checked(sum + value.Value))))
+        .Where(value => value.Value != 0)
+        .OrderBy(value => value.Key.Value, StringComparer.Ordinal)
+        .ToImmutableList();
 }
 
 public readonly record struct QuotaResourceKey
 {
-    private QuotaResourceKey(string value)
-    {
-        Value = value;
-    }
+    private QuotaResourceKey(string value) => Value = value;
 
     public string Value { get; }
 

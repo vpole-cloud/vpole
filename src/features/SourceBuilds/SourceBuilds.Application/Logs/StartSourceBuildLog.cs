@@ -6,10 +6,11 @@ public delegate Task<SourceBuildLogWriteOutcome> StartSourceBuildLog(
     SourceBuildLog log,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoStartSourceBuildLog(SourceBuildLogPersistence persistence)
+internal sealed class MongoStartSourceBuildLog(
+    SourceBuildLogPersistence persistence
+)
 {
     public Task<SourceBuildLogWriteOutcome> InvokeAsync(
         SourceBuildLog log,
-        CancellationToken cancellationToken = default) =>
-        persistence.StartAsync(log, cancellationToken);
+        CancellationToken cancellationToken = default) => persistence.StartAsync(log, cancellationToken);
 }

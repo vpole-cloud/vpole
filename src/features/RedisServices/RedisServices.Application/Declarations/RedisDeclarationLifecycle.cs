@@ -4,7 +4,6 @@ using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Lifecycle;
 using Pole.Features.RedisServices.Application.Mongo;
@@ -27,7 +26,8 @@ internal sealed class RedisDeclarationLifecycle(
     IQuotaUsageRelease releaseQuota,
     IGitLifecyclePlanGuard lifecycleGuard,
     LoadResourceConnectionCascadePlanning loadCascade,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public string DependencyOwner => "RedisServices";
 
@@ -43,11 +43,16 @@ internal sealed class RedisDeclarationLifecycle(
         if (request.Resource.Address.Kind != Kind || current.Name != request.Resource.Address.Name)
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
-        var placements = await loadPlacements(new(request.TenantId, RedisResourceDeployment.ResourceType, current.Id),
-            session, ct);
-        return new GitLifecycleResourceSnapshot(request.Resource, LifecycleVersions(current, placements),
+        var placements = await loadPlacements(
+            new ResourceDeploymentPlanningRequest(request.TenantId, RedisResourceDeployment.ResourceType, current.Id),
+            session,
+            ct);
+        return new GitLifecycleResourceSnapshot(
+            request.Resource,
+            LifecycleVersions(current, placements),
             current.Lifecycle is DeletingRedisLifecycle ? GitLifecyclePresence.Deleting : GitLifecyclePresence.Active,
-            GitLifecycleProtection.ProtectedData, GitLifecycleVersionSemantics.ManagedConfiguration);
+            GitLifecycleProtection.ProtectedData,
+            GitLifecycleVersionSemantics.ManagedConfiguration);
     }
 
     public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(
@@ -55,7 +60,10 @@ internal sealed class RedisDeclarationLifecycle(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var read = await ReadLifecycleAsync(new(request.Authority.TenantId, request.Resource), session, ct);
+        var read = await ReadLifecycleAsync(
+            new ReadLifecycleResourceRequest(request.Authority.TenantId, request.Resource),
+            session,
+            ct);
         if (read is GitLifecycleResourceAbsent)
             return new GitLifecycleResourceRemoved();
         if (read is DeclarationReadBlocked blocked)
@@ -63,8 +71,15 @@ internal sealed class RedisDeclarationLifecycle(
         var snapshot = (GitLifecycleResourceSnapshot)read.Value;
         if (!SameLifecycleVersions(snapshot.Version, request.Expected))
             return new DeclarationPreconditionsChanged();
-        if (!await git.AuthorizeAsync(new(request.Authority.TenantId, Kind, request.Resource.ResourceId,
-                Lifecycle: request.Authority, LifecycleEffect: GitLifecycleMutationEffect.Remove), session, ct))
+        if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    request.Authority.TenantId,
+                    Kind,
+                    request.Resource.ResourceId,
+                    Lifecycle: request.Authority,
+                    LifecycleEffect: GitLifecycleMutationEffect.Remove),
+                session,
+                ct))
             return new StaleGitExecution();
         if (snapshot.Presence == GitLifecyclePresence.Deleting)
             return new GitLifecycleRemovalRequested();
@@ -75,27 +90,46 @@ internal sealed class RedisDeclarationLifecycle(
         var selected = ((GitLifecycleApprovedScope)scope.Value).Resources
             .Where(item => item.Resource.Address.Kind == "ResourceConnection" &&
                 item.Action is GitLifecycleAction.Remove or GitLifecycleAction.Replace)
-            .Select(item => ResourceConnectionPlanningVersion.FromDocuments(item.Resource.ResourceId,
-                item.Expected!.Documents.ToDictionary(value => value.DocumentId, value => value.Revision,
-                    StringComparer.Ordinal))).ToArray();
+            .Select(item => ResourceConnectionPlanningVersion.FromDocuments(
+                item.Resource.ResourceId,
+                item.Expected!.Documents.ToDictionary(
+                    value => value.DocumentId,
+                    value => value.Revision,
+                    StringComparer.Ordinal)))
+            .ToArray();
         if (selected.Any(item => item is null))
             return new DeclarationReadBlocked(new GitLifecycleApprovalStale());
-        var affected = await loadCascade(new(request.Authority.TenantId, ResourceType, request.Resource.ResourceId),
-            session, ct);
+        var affected = await loadCascade(
+            new LoadResourceConnectionCascadePlanningRequest(
+                request.Authority.TenantId,
+                ResourceType,
+                request.Resource.ResourceId),
+            session,
+            ct);
         if (affected.Any(item => !selected.Contains(item)))
             return new DeclarationReadBlocked(new GitLifecycleApprovalStale());
         var reviewed = affected;
-        var current = await resources.Find(session, RedisFilters.ById(request.Authority.TenantId,
-            request.Resource.ResourceId)).SingleAsync(ct);
-        var placements = await loadPlacements(new(current.TenantId, RedisResourceDeployment.ResourceType, current.Id),
-            session, ct);
+        var current = await resources.Find(
+                session,
+                RedisFilters.ById(request.Authority.TenantId, request.Resource.ResourceId))
+            .SingleAsync(ct);
+        var placements = await loadPlacements(
+            new ResourceDeploymentPlanningRequest(current.TenantId, RedisResourceDeployment.ResourceType, current.Id),
+            session,
+            ct);
         if (placements is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } placed)
             return Blocked(RedisDeclarationError.PlacementUnavailable);
         if (await fencePlacements(placed, session, ct) is not ResourceDeploymentPlanningFenced)
             return new DeclarationPreconditionsChanged();
 
-        var removed = await beginDeletion(new(current, current.BeginDeletion(clock.GetUtcNow().UtcDateTime),
-            request.Authority, reviewed), session, ct);
+        var removed = await beginDeletion(
+            new RedisDeletion(
+                current,
+                current.BeginDeletion(clock.GetUtcNow().UtcDateTime),
+                request.Authority,
+                reviewed),
+            session,
+            ct);
         if (removed is RedisSecretBindingRemovalRequired)
             return new DeclarationReadBlocked(new GitLifecycleDependencyRetained());
         if (removed is RedisGitOwnedConfiguration)
@@ -104,10 +138,20 @@ internal sealed class RedisDeclarationLifecycle(
             return new DeclarationPreconditionsChanged();
 
         var compute = placed.Items[0].Compute;
-        await releaseQuota.ReleaseAsync(new ReleaseQuotaUsageRequest<RedisQuotaInput>(current.TenantId,
-            RedisQuotaInput.Create(compute.Requests.CpuMillis, compute.Requests.MemoryMi)), session, ct);
-        var placement = await deletePlacement(new(current.TenantId, RedisResourceDeployment.ResourceType, current.Id,
-            new(compute.ComputeProfileId, compute.ComputeProfileRevision)), session, ct);
+        await releaseQuota.ReleaseAsync(
+            new ReleaseQuotaUsageRequest<RedisQuotaInput>(
+                current.TenantId,
+                RedisQuotaInput.Create(compute.Requests.CpuMillis, compute.Requests.MemoryMi)),
+            session,
+            ct);
+        var placement = await deletePlacement(
+            new ResourceDeploymentMutationRequest(
+                current.TenantId,
+                RedisResourceDeployment.ResourceType,
+                current.Id,
+                new ComputeProfileReference(compute.ComputeProfileId, compute.ComputeProfileRevision)),
+            session,
+            ct);
         return placement is PlacementSummaryDto
             ? new GitLifecycleRemovalRequested()
             : new DeclarationPreconditionsChanged();
@@ -120,20 +164,28 @@ internal sealed class RedisDeclarationLifecycle(
     {
         if (request.Resource.Address.Kind is not ("ResourceGroup" or "IsolationScope"))
             return [];
-        var filter = RedisFilters.LifecycleDependencies(request.TenantId,
+        var filter = RedisFilters.LifecycleDependencies(
+            request.TenantId,
             request.Resource.Address.Kind == "ResourceGroup" ? request.Resource.ResourceId : null);
         var current = await resources.Find(session, filter).SortBy(item => item.Id).ToListAsync(ct);
         var result = new List<GitLifecycleDependency>();
         foreach (var item in current)
         {
-            var placements = await loadPlacements(new(request.TenantId, RedisResourceDeployment.ResourceType, item.Id),
-                session, ct);
+            var placements = await loadPlacements(
+                new ResourceDeploymentPlanningRequest(request.TenantId, RedisResourceDeployment.ResourceType, item.Id),
+                session,
+                ct);
             if (request.Resource.Address.Kind == "IsolationScope" &&
                 (placements is not ResourceDeploymentPlanningSnapshot found || !found.Items.Any(placement =>
                     placement.IsolationScopeId == request.Resource.ResourceId)))
                 continue;
-            result.Add(new(new(new(Kind, item.Name), item.Id), request.Resource, LifecycleVersions(item, placements)));
+            result.Add(
+                new GitLifecycleDependency(
+                    new GitLifecycleResourceReference(new ResourceAddress(Kind, item.Name), item.Id),
+                    request.Resource,
+                    LifecycleVersions(item, placements)));
         }
+
         return result;
     }
 
@@ -142,7 +194,10 @@ internal sealed class RedisDeclarationLifecycle(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var current = await ReadDependenciesAsync(new(request.TenantId, request.Resource), session, ct);
+        var current = await ReadDependenciesAsync(
+            new ReadLifecycleDependenciesRequest(request.TenantId, request.Resource),
+            session,
+            ct);
         if (current.Count != request.Expected.Count || current.Any(item => !request.Expected.Any(expected =>
                 expected.Dependent == item.Dependent && expected.Target == item.Target &&
                 SameLifecycleVersions(item.Version, expected.Version))))
@@ -151,29 +206,42 @@ internal sealed class RedisDeclarationLifecycle(
         {
             var root = await resources.Find(session, RedisFilters.ById(request.TenantId, item.Dependent.ResourceId))
                 .SingleAsync(ct);
-            if ((await resources.UpdateOneAsync(session, RedisFilters.AtPlanningVersion(root),
+            if ((await resources.UpdateOneAsync(
+                    session,
+                    RedisFilters.AtPlanningVersion(root),
                     Builders<Redis>.Update.Inc(value => value.PlanningFence, 1),
                     cancellationToken: ct)).ModifiedCount != 1)
                 return new DeclarationPreconditionsChanged();
         }
+
         return new DeclarationFenced();
     }
 
-    private static DeclarationVersionToken LifecycleVersions(Redis resource,
+    private static DeclarationVersionToken LifecycleVersions(
+        Redis resource,
         LoadResourceDeploymentPlanningSnapshotOutcome placements) => new(
-        [new(DeclarationVersionKeys.Resource(RedisDeclarations.Kind, resource.Id), resource.Revision),
-            new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, resource.Id), resource.PlanningFence),
-            .. placements is ResourceDeploymentPlanningSnapshot found
-                ? found.Items.SelectMany(item => LifecyclePlacementVersions(item, resource))
-                : []]);
+    [
+        new DeclarationDocumentVersion(DeclarationVersionKeys.Resource(Kind, resource.Id), resource.Revision),
+        new DeclarationDocumentVersion(DeclarationVersionKeys.PlanningFence(Kind, resource.Id), resource.PlanningFence),
+        .. placements is ResourceDeploymentPlanningSnapshot found
+            ? found.Items.SelectMany(item => LifecyclePlacementVersions(item, resource))
+            : [],
+    ]);
 
     private static IReadOnlyList<DeclarationDocumentVersion> LifecyclePlacementVersions(
         ResourceDeploymentPlanningItem item,
         Redis resource)
     {
         if (resource.Lifecycle is not DeletingRedisLifecycle || item.State != ResourceDeploymentPlanningState.Deleting)
-            return [new(ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId), item.DesiredGeneration),
-                new(ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId), item.ResourceRevision)];
+            return
+            [
+                new DeclarationDocumentVersion(
+                    ResourceDeploymentVersionKeys.DesiredGeneration(item.DeploymentId),
+                    item.DesiredGeneration),
+                new DeclarationDocumentVersion(
+                    ResourceDeploymentVersionKeys.ResourceRevision(item.DeploymentId),
+                    item.ResourceRevision),
+            ];
         var intent = new
         {
             item.ResourceGroupId,
@@ -184,30 +252,38 @@ internal sealed class RedisDeclarationLifecycle(
             {
                 item.Compute.ComputeProfileId,
                 item.Compute.ComputeProfileRevision,
-                configuration = ComputeProjection(item.Compute)
+                configuration = ComputeProjection(item.Compute),
             },
             item.Storage,
-            ingress = item.Ingress is { } ingress ? new
-            {
-                ingress.IngressClassName,
-                ingress.ClusterIssuerName,
-                ingress.PublicBaseDomain,
-                hostnames = ingress.Hostnames.Order(StringComparer.Ordinal)
-            } : null,
+            ingress = item.Ingress is { } ingress
+                ? new
+                {
+                    ingress.IngressClassName,
+                    ingress.ClusterIssuerName,
+                    ingress.PublicBaseDomain,
+                    hostnames = ingress.Hostnames.Order(StringComparer.Ordinal),
+                }
+                : null,
             ownerGroupId = resource.ResourceGroupId,
             resource.Spec,
             tags = resource.Tags.Order(StringComparer.Ordinal),
             item.DeploymentTargetConfigurationRevision,
             item.DesiredGeneration,
-            item.ResourceRevision
+            item.ResourceRevision,
         };
         var hash = Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(intent)));
-        return [new(ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash), item.DesiredGeneration)];
+        return
+        [
+            new DeclarationDocumentVersion(
+                ResourceDeploymentVersionKeys.DeleteIntent(item.DeploymentId, hash),
+                item.DesiredGeneration),
+        ];
     }
 
-    private static bool SameLifecycleVersions(DeclarationVersionToken left, DeclarationVersionToken right) =>
-        left.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal)
-            .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
+    private static bool SameLifecycleVersions(DeclarationVersionToken left, DeclarationVersionToken right) => left
+        .Documents
+        .OrderBy(item => item.DocumentId, StringComparer.Ordinal)
+        .SequenceEqual(right.Documents.OrderBy(item => item.DocumentId, StringComparer.Ordinal));
 
     public async Task<IReadOnlyList<string>> ReadLifecycleWarningsAsync(
         ReadLifecycleWarningsRequest request,
@@ -217,8 +293,8 @@ internal sealed class RedisDeclarationLifecycle(
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Lifecycle warning reads require an active transaction.");
 
-        if (request.Action is not (GitLifecycleAction.Remove or GitLifecycleAction.Replace) ||
-            !await resources.Find(session, RedisFilters.ById(request.TenantId, request.ResourceId))
+        if (request.Action is not (GitLifecycleAction.Remove or GitLifecycleAction.Replace) || !await resources
+                .Find(session, RedisFilters.ById(request.TenantId, request.ResourceId))
                 .AnyAsync(cancellationToken))
             return [];
 

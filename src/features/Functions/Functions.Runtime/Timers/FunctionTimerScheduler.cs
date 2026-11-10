@@ -2,8 +2,6 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 
@@ -13,20 +11,15 @@ public sealed class FunctionTimerOptions
 {
     public const string SectionName = "Functions:Timers";
 
-    [Range(1, 60)]
-    public int SweepIntervalSeconds { get; set; } = 1;
+    [Range(1, 60)] public int SweepIntervalSeconds { get; set; } = 1;
 
-    [Range(5, 300)]
-    public int ScheduleLeaseSeconds { get; set; } = 30;
+    [Range(5, 300)] public int ScheduleLeaseSeconds { get; set; } = 30;
 
-    [Range(10, 3_600)]
-    public int DispatchLeaseSeconds { get; set; } = 960;
+    [Range(10, 3_600)] public int DispatchLeaseSeconds { get; set; } = 960;
 
-    [Range(1, 86_400)]
-    public int ExecutionTimeoutSeconds { get; set; } = 900;
+    [Range(1, 86_400)] public int ExecutionTimeoutSeconds { get; set; } = 900;
 
-    [Range(1, 500)]
-    public int BatchSize { get; set; } = 50;
+    [Range(1, 500)] public int BatchSize { get; set; } = 50;
 }
 
 public sealed class FunctionTimerOptionsValidator : IValidateOptions<FunctionTimerOptions>
@@ -35,16 +28,12 @@ public sealed class FunctionTimerOptionsValidator : IValidateOptions<FunctionTim
     {
         var failures = FunctionOptionsValidation.GetDataAnnotationFailures(options);
         if (options.DispatchLeaseSeconds <= options.ExecutionTimeoutSeconds)
-        {
             failures.Add(
                 $"{nameof(options.DispatchLeaseSeconds)} must exceed {nameof(options.ExecutionTimeoutSeconds)}.");
-        }
         if (options.DispatchLeaseSeconds <= FunctionScalingPolicy.MaximumActivationTimeoutSeconds)
-        {
             failures.Add(
                 $"{nameof(options.DispatchLeaseSeconds)} must exceed the maximum Function activation timeout " +
                 $"of {FunctionScalingPolicy.MaximumActivationTimeoutSeconds} seconds.");
-        }
 
         return FunctionOptionsValidation.ToValidateOptionsResult(failures);
     }
@@ -60,7 +49,8 @@ public sealed class FunctionTimerScheduler(
     MaterializeFunctionTimerOccurrence materializeOccurrence,
     ReleaseFunctionTimerLease releaseLease,
     FunctionTimerOptions options,
-    ILogger<FunctionTimerScheduler> logger) : IFunctionTimerScheduler
+    ILogger<FunctionTimerScheduler> logger
+) : IFunctionTimerScheduler
 {
     private readonly string ownerId = $"timer-scheduler-{Guid.NewGuid():N}";
 
@@ -68,10 +58,7 @@ public sealed class FunctionTimerScheduler(
     {
         for (var index = 0; index < options.BatchSize; index++)
         {
-            var claimed = await claimNext(
-                ownerId,
-                options.ScheduleLeaseSeconds,
-                cancellationToken);
+            var claimed = await claimNext(ownerId, options.ScheduleLeaseSeconds, cancellationToken);
             if (claimed is null)
                 return;
 
@@ -93,14 +80,14 @@ public sealed class FunctionTimerScheduler(
             }
         }
     }
-
 }
 
 public sealed class FunctionTimerSchedulerWorker(
     IFunctionTimerScheduler scheduler,
     FunctionTimerOptions options,
     TimeProvider timeProvider,
-    ILogger<FunctionTimerSchedulerWorker> logger) : BackgroundService
+    ILogger<FunctionTimerSchedulerWorker> logger
+) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

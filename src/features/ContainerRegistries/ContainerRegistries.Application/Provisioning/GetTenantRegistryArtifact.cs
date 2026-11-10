@@ -1,4 +1,3 @@
-using Pole.Features.ContainerRegistries.Application.Mongo;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
@@ -7,7 +6,8 @@ namespace Pole.Features.ContainerRegistries.Application.Provisioning;
 
 public sealed class TenantRegistryArtifactLookup(
     LoadTenantHarborRegistryProject loadProject,
-    IContainerRegistryClient registryClient)
+    IContainerRegistryClient registryClient
+)
 {
     public async Task<GetTenantRegistryArtifactOutcome> InvokeAsync(
         GetTenantRegistryArtifactRequest request,
@@ -15,15 +15,10 @@ public sealed class TenantRegistryArtifactLookup(
     {
         var project = await loadProject(request.TenantId, cancellationToken);
         if (project is null || project.Id != request.RegistryProjectId)
-        {
             return new GetTenantRegistryArtifactError(
                 new TenantContainerRegistryProjectNotFound(request.RegistryProjectId));
-        }
         if (project.State is not ReadyRegistryProject)
-        {
-            return new GetTenantRegistryArtifactError(
-                new TenantContainerRegistryNotReady(request.TenantId));
-        }
+            return new GetTenantRegistryArtifactError(new TenantContainerRegistryNotReady(request.TenantId));
 
         var artifact = await registryClient.GetArtifactAsync(
             new GetRegistryArtifactRequest(
@@ -34,7 +29,7 @@ public sealed class TenantRegistryArtifactLookup(
         return artifact switch
         {
             RegistryArtifact success => success,
-            ContainerRegistryArtifactLookupError error => new GetTenantRegistryArtifactError(error)
+            ContainerRegistryArtifactLookupError error => new GetTenantRegistryArtifactError(error),
         };
     }
 }

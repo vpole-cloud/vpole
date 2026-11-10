@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
@@ -17,7 +16,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant1)]
-public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
+public sealed class RepositoryInventoryApiTests(
+    MongoReplicaSetFixture fixture
+) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Inventory_pages_return_stable_metadata_and_the_source_inventory_stamp()
@@ -36,14 +37,16 @@ public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) 
         Assert.False(second.HasMore);
         Assert.Equal("alpha", Assert.Single(first.Items).Name);
         Assert.Equal("beta", Assert.Single(second.Items).Name);
-        Assert.All(first.Items.Concat(second.Items), item =>
-        {
-            Assert.Equal("ResourceGroup", item.Kind);
-            Assert.Equal("pole/resource-group", item.ResourceTypeId);
-            Assert.Equal(GitResourceMaterialization.Created, item.Materialization);
-            Assert.False(item.PendingRemoval);
-            Assert.Equal(current.Synchronization.LatestRunId, item.LastRunId);
-        });
+        Assert.All(
+            first.Items.Concat(second.Items),
+            item =>
+            {
+                Assert.Equal("ResourceGroup", item.Kind);
+                Assert.Equal("pole/resource-group", item.ResourceTypeId);
+                Assert.Equal(GitResourceMaterialization.Created, item.Materialization);
+                Assert.False(item.PendingRemoval);
+                Assert.Equal(current.Synchronization.LatestRunId, item.LastRunId);
+            });
         using var response = await Client.GetAsync($"{Root}/{source.Id}/resources");
         var json = await response.Content.ReadAsStringAsync();
         foreach (var field in new[] { "projections", "desiredHash", "appliedHash", "spec", "credentials" })
@@ -68,7 +71,8 @@ public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) 
         using var scope = ApiServices.CreateScope();
         var inventory = scope.ServiceProvider.GetRequiredService<IMongoCollection<ManagedDeclaration>>();
         var original = await inventory.Find(item => item.SourceId == source.Id).SingleAsync();
-        await inventory.ReplaceOneAsync(item => item.Id == original.Id,
+        await inventory.ReplaceOneAsync(
+            item => item.Id == original.Id,
             original with { PendingRemoval = true, Blocker = "DeclarationManagedResourceMissing" });
         var reserved = original with
         {
@@ -78,7 +82,7 @@ public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) 
             ResourceId = ObjectId.GenerateNewId().ToString(),
             Materialization = GitResourceMaterialization.Allocated,
             PendingRemoval = false,
-            Blocker = "AwaitingDependency"
+            Blocker = "AwaitingDependency",
         };
         await inventory.InsertOneAsync(reserved);
         var rows = (await Client.GetFromJsonAsync<RepositoryResourcePage>($"{Root}/{source.Id}/resources"))!.Items;
@@ -100,10 +104,14 @@ public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) 
         using var scope = ApiServices.CreateScope();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        await scope.ServiceProvider.GetRequiredService<IMongoCollection<ManagedDeclaration>>()
+        await scope.ServiceProvider
+            .GetRequiredService<IMongoCollection<ManagedDeclaration>>()
             .DeleteManyAsync(session, item => item.SourceId == source.Id);
-        await scope.ServiceProvider.GetRequiredService<IMongoCollection<GitSynchronizationState>>()
-            .UpdateOneAsync(session, item => item.Source.SourceId == source.Id,
+        await scope.ServiceProvider
+            .GetRequiredService<IMongoCollection<GitSynchronizationState>>()
+            .UpdateOneAsync(
+                session,
+                item => item.Source.SourceId == source.Id,
                 Builders<GitSynchronizationState>.Update.Inc(item => item.InventoryRevision, 1));
         await session.CommitTransactionAsync();
         var after = (await Client.GetFromJsonAsync<RepositoryResourcePage>($"{Root}/{source.Id}/resources"))!;
@@ -120,7 +128,8 @@ public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) 
     public async Task Inventory_rejects_unbounded_or_invalid_paging(string query)
     {
         var source = await Create();
-        Assert.Equal(HttpStatusCode.BadRequest,
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
             (await Client.GetAsync($"{Root}/{source.Id}/resources?{query}")).StatusCode);
     }
 
@@ -130,15 +139,17 @@ public sealed class RepositoryInventoryApiTests(MongoReplicaSetFixture fixture) 
         var source = await Create(files: [GroupManifest("private")]);
         await Run(source.Id);
         var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
-        await Fixture.DbContext.Tenants.ReplaceOneAsync(item => item.Id == tenant.Id, tenant with
-        {
-            Members = [TenantFactory.CreateMember(tenant.Id, Data.UserId, Data.UserEmail, TenantRole.Viewer)]
-        });
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(
+            item => item.Id == tenant.Id,
+            tenant with
+            {
+                Members = [TenantFactory.CreateMember(tenant.Id, Data.UserId, Data.UserEmail, TenantRole.Viewer)],
+            });
         Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync($"{Root}/{source.Id}/resources")).StatusCode);
         var foreign = TenantFactory.Create("Foreign", ObjectId.GenerateNewId().ToString());
         foreign = foreign with
         {
-            Members = [TenantFactory.CreateMember(foreign.Id, Data.UserId, Data.UserEmail, TenantRole.Owner)]
+            Members = [TenantFactory.CreateMember(foreign.Id, Data.UserId, Data.UserEmail, TenantRole.Owner)],
         };
         await Fixture.DbContext.Tenants.InsertOneAsync(foreign);
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);

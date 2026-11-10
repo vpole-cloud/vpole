@@ -22,7 +22,7 @@ internal static class DomainCollectionSchema
                 {
                     Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator),
                     ValidationLevel = DocumentValidationLevel.Strict,
-                    ValidationAction = DocumentValidationAction.Error
+                    ValidationAction = DocumentValidationAction.Error,
                 },
                 cancellationToken);
             return;
@@ -34,14 +34,12 @@ internal static class DomainCollectionSchema
                 ["collMod"] = collectionName,
                 ["validator"] = validator,
                 ["validationLevel"] = "strict",
-                ["validationAction"] = "error"
+                ["validationAction"] = "error",
             },
             cancellationToken: cancellationToken);
     }
 
-    public static BsonDocument Object(
-        BsonArray required,
-        params (string Name, BsonDocument Schema)[] properties)
+    public static BsonDocument Object(BsonArray required, params (string Name, BsonDocument Schema)[] properties)
     {
         var schemas = new BsonDocument();
         foreach (var (name, schema) in properties)
@@ -51,24 +49,30 @@ internal static class DomainCollectionSchema
             ["bsonType"] = "object",
             ["additionalProperties"] = false,
             ["required"] = required,
-            ["properties"] = schemas
+            ["properties"] = schemas,
         };
     }
 
-    public static BsonDocument Identity() => new("oneOf", new BsonArray
-    {
-        Object(["_t"], ("_t", Enum("GeneratedDomainIdentity"))),
-        Object(
-            ["_t", "TechnicalName"],
-            ("_t", Enum("NamedDomainIdentity")),
-            ("TechnicalName", String(1, 63, "^[a-z](?:[a-z0-9-]*[a-z0-9])?$")))
-    });
+    public static BsonDocument Identity() => new(
+        "oneOf",
+        new BsonArray
+        {
+            Object(["_t"], ("_t", Enum("GeneratedDomainIdentity"))),
+            Object(
+                ["_t", "TechnicalName"],
+                ("_t", Enum("NamedDomainIdentity")),
+                ("TechnicalName", String(1, 63, "^[a-z](?:[a-z0-9-]*[a-z0-9])?$"))),
+        });
 
     public static BsonDocument Type(string bsonType) => new("bsonType", bsonType);
 
-    public static BsonDocument String(int minimumLength, int maximumLength, string? pattern = null)
+    public static BsonDocument String(
+        int minimumLength,
+        int maximumLength,
+        string? pattern = null)
     {
-        var schema = new BsonDocument { ["bsonType"] = "string", ["minLength"] = minimumLength, ["maxLength"] = maximumLength };
+        var schema = new BsonDocument
+            { ["bsonType"] = "string", ["minLength"] = minimumLength, ["maxLength"] = maximumLength };
         if (pattern is not null)
             schema["pattern"] = pattern;
         return schema;
@@ -77,6 +81,5 @@ internal static class DomainCollectionSchema
     public static BsonDocument Integer(string bsonType, long minimum) =>
         new() { ["bsonType"] = bsonType, ["minimum"] = minimum };
 
-    public static BsonDocument Enum(params string[] values) =>
-        new("enum", new BsonArray(values));
+    public static BsonDocument Enum(params string[] values) => new("enum", new BsonArray(values));
 }

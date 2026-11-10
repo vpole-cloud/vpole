@@ -3,7 +3,6 @@ using Pole.Database;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Mongo;
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Members;
@@ -20,11 +19,13 @@ public delegate Task<PersistAddedTenantMemberOutcome> PersistAddedTenantMember(
 internal sealed class MongoPersistAddedTenantMember(
     IMongoCollection<Tenant> _tenants,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<PersistAddedTenantMemberOutcome> runTransaction)
+    RunMongoOutcomeTransaction<PersistAddedTenantMemberOutcome> runTransaction
+)
 {
     public Task<PersistAddedTenantMemberOutcome> InvokeAsync(
         TenantMember member,
-        CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runTransaction(
+        async (transaction, ct) =>
         {
             var updatedTenant = await _tenants.FindOneAndUpdateAsync(
                 transaction.Session,
@@ -34,14 +35,14 @@ internal sealed class MongoPersistAddedTenantMember(
                 ct);
             if (updatedTenant is not null)
             {
-                await storeOutboxWrites(transaction.Session,
+                await storeOutboxWrites(
+                    transaction.Session,
                     [TenantAccessEventExtensions.MembershipChanged(member.TenantId, member.UserId)],
                     ct);
                 return transaction.Commit(member);
             }
 
-            var tenant = await _tenants
-                .Find(transaction.Session, TenantFilters.ById(member.TenantId))
+            var tenant = await _tenants.Find(transaction.Session, TenantFilters.ById(member.TenantId))
                 .FirstOrDefaultAsync(ct);
             PersistAddedTenantMemberOutcome failure = tenant is null
                 ? new TenantNotFound(member.TenantId)

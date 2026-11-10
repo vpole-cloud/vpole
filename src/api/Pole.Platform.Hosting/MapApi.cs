@@ -1,4 +1,3 @@
-using Pole.Features.GitOps.Application;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -7,14 +6,15 @@ using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.Domains.Application.Common;
+using Pole.Features.GitOps.Application;
 using Pole.Features.GitProviders.Application.Common;
+using Pole.Features.PrivateAccess.Application;
 using Pole.Features.Quotas.Application.Common;
+using Pole.Features.Realtime.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Secrets.Application;
-using Pole.Features.PrivateAccess.Application;
-using Pole.Features.Realtime.Application;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.Tenants.Application.Common;
@@ -27,10 +27,10 @@ public static class MapApi
     public static IEndpointRouteBuilder MapPolePlatformEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapRealtimeEndpoints();
-        var group = app.MapGroup("/api/v1").RequireTenantContext()
-            .RequireAuthorization();
+        var group = app.MapGroup("/api/v1").RequireTenantContext().RequireAuthorization();
 
-        group.MapGitOpsEndpoints().MapSecretEndpoints()
+        group.MapGitOpsEndpoints()
+            .MapSecretEndpoints()
             .MapPrivateAccessEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
@@ -57,9 +57,7 @@ public static class MapApi
             .MapUpdateComputeProfileEndpoint()
             .MapDeleteComputeProfileEndpoint();
 
-        group.MapGroup("/compute-profiles")
-            .WithTags("ComputeProfiles")
-            .MapGetAvailableComputeProfilesEndpoint();
+        group.MapGroup("/compute-profiles").WithTags("ComputeProfiles").MapGetAvailableComputeProfilesEndpoint();
 
         return app;
     }

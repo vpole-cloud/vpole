@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Sources;
@@ -17,26 +16,32 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed partial class GitLifecyclePreviewProjectionTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private readonly Repository repository = new();
     private ProjectionProvider widgets = null!;
     private GitRepositorySources Sources => Services.GetRequiredService<GitRepositorySources>();
     private GitLifecyclePreviews Previews => Services.GetRequiredService<GitLifecyclePreviews>();
+
     private IMongoCollection<ManagedDeclaration> Inventory =>
         Services.GetRequiredService<IMongoCollection<ManagedDeclaration>>();
 
     protected override void ConfigureServices(IServiceCollection services)
     {
-        widgets = new("PreviewWidget", GitLifecycleProtection.ConfigurationOnly,
+        widgets = new ProjectionProvider(
+            "PreviewWidget",
+            GitLifecycleProtection.ConfigurationOnly,
             Fixture.Database.GetCollection<BsonDocument>("PreviewReviewWidgets"));
         services.RemoveAll<IDeclarativeResourceProvider>();
         services.AddSingleton<IDeclarativeResourceProvider>(widgets);
         foreach (var kind in new[] { "PostgresCluster", "RedisService", "Secret" })
-            services.AddSingleton<IDeclarativeResourceProvider>(new ProjectionProvider(kind,
-                GitLifecycleProtection.ProtectedData,
-                Fixture.Database.GetCollection<BsonDocument>("PreviewReview" + kind)));
+            services.AddSingleton<IDeclarativeResourceProvider>(
+                new ProjectionProvider(
+                    kind,
+                    GitLifecycleProtection.ProtectedData,
+                    Fixture.Database.GetCollection<BsonDocument>("PreviewReview" + kind)));
         services.AddSingleton<IRepositorySnapshotProvider>(repository);
     }
 
@@ -54,7 +59,8 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
         Assert.Equal(source.Repository, (await Sources.LoadAsync(source.TenantId, source.Id, default))!.Repository);
         Assert.Equal(original, (await widgets.Documents.Find(_ => true).SingleAsync())["_id"].AsString);
         await ConfirmAndRun(source, preview);
-        Assert.Equal(replacement.Replacement.ResourceId,
+        Assert.Equal(
+            replacement.Replacement.ResourceId,
             (await widgets.Documents.Find(_ => true).SingleAsync())["_id"].AsString);
         Assert.Equal("destination", (await Sources.LoadAsync(source.TenantId, source.Id, default))!.Repository.Branch);
     }
@@ -100,13 +106,17 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
     {
         var source = await Create();
         var original = await Own(source, widgets, "service");
-        repository.Files = [Manifest(widgets.Kind, "dependency"),
-            Manifest(widgets.Kind, "service", dependency: "dependency")];
+        repository.Files =
+        [
+            Manifest(widgets.Kind, "dependency"),
+            Manifest(widgets.Kind, "service", dependency: "dependency"),
+        ];
         var preview = await Relocate(source);
         Assert.True(widgets.SawPlannedReference);
         Assert.Equal(1, await widgets.Documents.CountDocumentsAsync(_ => true));
-        Assert.Contains("configuration.dependencyId", Assert.Single(preview.Operations,
-            item => item.Resource.ResourceId == original).ChangedFields);
+        Assert.Contains(
+            "configuration.dependencyId",
+            Assert.Single(preview.Operations, item => item.Resource.ResourceId == original).ChangedFields);
         await ConfirmAndRun(source, preview);
         var dependency = await widgets.Documents.Find(new BsonDocument("Name", "dependency")).SingleAsync();
         var consumer = await widgets.Documents.Find(new BsonDocument("_id", original)).SingleAsync();
@@ -117,126 +127,156 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
     {
         foreach (var provider in Services.GetServices<IDeclarativeResourceProvider>().Cast<ProjectionProvider>())
             provider.Git = Services.GetRequiredService<IGitOpsMutations>();
-        return Assert.IsType<RepositorySource>((await Sources.CreateAsync(new(Data.TenantId,
-            Guid.NewGuid().ToString("D"), new(repository.Provider, "connection", "repository", "main", ""),
-            new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow), "https://example.test/source"),
-            default)).Value);
+        return Assert.IsType<RepositorySource>(
+            (await Sources.CreateAsync(
+                new CreateGitRepositorySource(
+                    Data.TenantId,
+                    Guid.NewGuid().ToString("D"),
+                    new GitRepositoryLocation(repository.Provider, "connection", "repository", "main", ""),
+                    new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+                    new GitSourceAudit(Data.UserId, DateTime.UtcNow),
+                    "https://example.test/source"),
+                default)).Value);
     }
 
-    private async Task<string> Own(RepositorySource source, ProjectionProvider provider, string name,
+    private async Task<string> Own(
+        RepositorySource source,
+        ProjectionProvider provider,
+        string name,
         GitResourceMaterialization materialization = GitResourceMaterialization.Created)
     {
         var id = ObjectId.GenerateNewId().ToString();
         await provider.Documents.InsertOneAsync(Document(source.TenantId, id, name, "identity", "value", null, 1));
-        await Inventory.InsertOneAsync(new($"{source.TenantId}/{provider.Kind}/{name}", source.TenantId, provider.Kind,
-            name, source.Id, source.DisplayUrl, id, "old", "old", null, false, "previous", "Prepare", 0,
-            materialization, GitManagedProjectionsFactory.Empty()));
-        await Services.GetRequiredService<IMongoCollection<GitSynchronizationState>>().UpdateOneAsync(
-            item => item.Source.SourceId == source.Id,
-            Builders<GitSynchronizationState>.Update.Inc(item => item.InventoryRevision, 1));
+        await Inventory.InsertOneAsync(
+            new ManagedDeclaration(
+                $"{source.TenantId}/{provider.Kind}/{name}",
+                source.TenantId,
+                provider.Kind,
+                name,
+                source.Id,
+                source.DisplayUrl,
+                id,
+                "old",
+                "old",
+                null,
+                false,
+                "previous",
+                "Prepare",
+                0,
+                materialization,
+                GitManagedProjectionsFactory.Empty()));
+        await Services.GetRequiredService<IMongoCollection<GitSynchronizationState>>()
+            .UpdateOneAsync(
+                item => item.Source.SourceId == source.Id,
+                Builders<GitSynchronizationState>.Update.Inc(item => item.InventoryRevision, 1));
         return id;
     }
 
     private async Task<GitOperationPreview> Relocate(RepositorySource source) => Assert.IsType<GitOperationPreview>(
-        (await Previews.CreateAsync(new(new(source.TenantId, source.Id), source.Revision,
-            new GitPreviewRelocateSource(source.Repository with { Branch = "destination" })), default)).Value);
+        (await Previews.CreateAsync(
+            new CreateLifecyclePreview(
+                new GitSourceIdentity(source.TenantId, source.Id),
+                source.Revision,
+                new GitPreviewRelocateSource(source.Repository with { Branch = "destination" })),
+            default)).Value);
 
     private async Task ConfirmAndRun(RepositorySource source, GitOperationPreview preview)
     {
-        var scheduled = Assert.IsType<GitLifecycleScheduled>((await Previews.ConfirmAsync(new(
-            new(source.TenantId, source.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
-        await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(source.TenantId, source.Id), default);
+        var scheduled = Assert.IsType<GitLifecycleScheduled>(
+            (await Previews.ConfirmAsync(
+                new ConfirmLifecyclePreview(
+                    new GitSourceIdentity(source.TenantId, source.Id),
+                    preview.Id,
+                    preview.Revision,
+                    Data.UserId),
+                default)).Value);
+        await Services.GetRequiredService<RepositorySourceJob>()
+            .ProcessAsync(new GitSourceIdentity(source.TenantId, source.Id), default);
         var run = (await Sources.RunAsync(source.TenantId, source.Id, scheduled.RunId, default))!;
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);
     }
 
-    private static RepositoryManifestFile Manifest(string kind, string name, string identity = "identity",
-        string value = "value", string? dependency = null) => new(kind + "-" + name + ".yaml", $"""
-        apiVersion: {SnapshotSchema.ApiVersion}
-        kind: {kind}
-        metadata:
-          name: {name}
-        spec:
-          identity: {identity}
-          value: {value}
-          dependency: {(dependency is null ? "null" : dependency)}
-        """);
+    private static RepositoryManifestFile Manifest(
+        string kind,
+        string name,
+        string identity = "identity",
+        string value = "value",
+        string? dependency = null) => new(
+        kind + "-" + name + ".yaml",
+        $"""
+         apiVersion: {SnapshotSchema.ApiVersion}
+         kind: {kind}
+         metadata:
+           name: {name}
+         spec:
+           identity: {identity}
+           value: {value}
+           dependency: {(dependency is null ? "null" : dependency)}
+         """);
 
-    private static BsonDocument Document(string tenant, string id, string name, string identity, string value,
-        string? dependency, long revision) => new()
+    private static BsonDocument Document(
+        string tenant,
+        string id,
+        string name,
+        string identity,
+        string value,
+        string? dependency,
+        long revision) => new()
     {
         { "_id", id }, { "TenantId", tenant }, { "Name", name }, { "Identity", identity }, { "Value", value },
-        { "DependencyId", dependency is null ? BsonNull.Value : dependency }, { "Revision", revision }, { "Fence", 0L }
+        { "DependencyId", dependency is null ? BsonNull.Value : dependency }, { "Revision", revision }, { "Fence", 0L },
     };
 
     private sealed class Repository : IRepositorySnapshotProvider
     {
-        public string Provider => "PreviewReview";
         public IReadOnlyList<RepositoryManifestFile> Files { get; set; } = [];
-        public Task<CheckRepositoryAccessOutcome> CheckAccessAsync(RepositorySourceReference request,
+        public string Provider => "PreviewReview";
+
+        public Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
+            RepositorySourceReference request,
             CancellationToken ct) => Task.FromResult<CheckRepositoryAccessOutcome>(
             new RepositoryAccessGranted("https://example.test/destination"));
-        public Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(ResolveRepositoryCommitRequest request,
+
+        public Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
+            ResolveRepositoryCommitRequest request,
             CancellationToken ct) => Task.FromResult<ResolveRepositoryCommitOutcome>(
             new RepositoryCommitResolved(new string('a', 40)));
-        public Task<ReadRepositorySnapshotOutcome> ReadSnapshotAsync(ReadRepositorySnapshotRequest request,
-            CancellationToken ct) => Task.FromResult<ReadRepositorySnapshotOutcome>(new RepositorySnapshotRead(
-            request.Commit, Files));
+
+        public Task<ReadRepositorySnapshotOutcome> ReadSnapshotAsync(
+            ReadRepositorySnapshotRequest request,
+            CancellationToken ct) =>
+            Task.FromResult<ReadRepositorySnapshotOutcome>(new RepositorySnapshotRead(request.Commit, Files));
     }
 
     private sealed record Spec(
         string Identity,
         string Value,
-        string? Dependency);
+        string? Dependency
+    );
 
-    private sealed class ProjectionProvider(string kind, GitLifecycleProtection protection,
-        IMongoCollection<BsonDocument> documents) : ITransactionalDeclarativeResourceProvider,
-        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider
+    private sealed class ProjectionProvider(
+        string kind,
+        GitLifecycleProtection protection,
+        IMongoCollection<BsonDocument> documents
+    ) : ITransactionalDeclarativeResourceProvider, IDeclarativeResourceLifecycleProvider,
+        IDeclarativeAdoptionPreviewProvider
     {
-        public string Kind => kind;
         public IMongoCollection<BsonDocument> Documents => documents;
         public IGitOpsMutations Git { get; set; } = null!;
         public bool SawPlannedReference { get; private set; }
         public int ApplyCalls { get; private set; }
         public int Deletions { get; private set; }
-        public JsonElement NormalizeAndValidate(JsonElement spec) =>
-            DeclarationJson.Write(DeclarationJson.Read<Spec>(spec));
-        public DeclarationFacts Facts(JsonElement spec) => DeclarationJson.Read<Spec>(spec).Dependency is { } name
-            ? new(null, [], [new(new(Kind, name), "spec.dependency")], [], []) : new(null, [], [], [], []);
-        public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) =>
-            [new(DeclarationPhase.Prepare, DeclarationJson.Read<Spec>(spec).Dependency is { } name
-                ? [new(new(Kind, name), DeclarationPhase.Prepare)] : [])];
-        public async Task<string?> ResolveAsync(ResolveDeclaredResourceRequest request, IClientSessionHandle session,
-            CancellationToken ct) => (await documents.Find(session, ByName(request.TenantId, request.Name))
-            .FirstOrDefaultAsync(ct))?["_id"].AsString;
-        public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(ReadCurrentDeclarationRequest request,
-            IClientSessionHandle session, CancellationToken ct)
-        {
-            var row = await documents.Find(session, request.Operation is { } operation
-                ? ById(request.TenantId, operation.ResourceId) : ByName(request.TenantId, request.Address.Name))
-                .FirstOrDefaultAsync(ct);
-            return row is null ? new CurrentDeclarationMissing() : Current(row);
-        }
-        public async Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
-            ProjectDesiredDeclarationRequest request,
-            IClientSessionHandle session, CancellationToken ct)
-        {
-            var spec = DeclarationJson.Read<Spec>(request.Declaration.Spec);
-            string? id = null;
-            if (spec.Dependency is { } name)
-                id = request.Operation is { } operation
-                    ? await Git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId, new(Kind, name)),
-                        session, ct)
-                    : await ResolveAsync(new(request.TenantId, name), session, ct);
-            return Projection(spec, id);
-        }
-        public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(PreviewLifecycleAdoptionRequest request,
-            IClientSessionHandle session, CancellationToken ct)
+
+        public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
+            PreviewLifecycleAdoptionRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
         {
             var row = await documents.Find(session, ById(request.TenantId, request.ResourceId)).SingleAsync(ct);
             var spec = DeclarationJson.Read<Spec>(request.Declaration.Spec);
-            var reference = spec.Dependency is null ? null : request.References.Single(item => item.Address ==
-                new ResourceAddress(Kind, spec.Dependency));
+            var reference = spec.Dependency is null
+                ? null
+                : request.References.Single(item => item.Address == new ResourceAddress(Kind, spec.Dependency));
             if (reference is not null && !await documents.Find(session, ById(request.TenantId, reference.ResourceId))
                     .AnyAsync(ct))
             {
@@ -244,69 +284,191 @@ public sealed partial class GitLifecyclePreviewProjectionTests(MongoReplicaSetFi
                     return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(reference.Address));
                 SawPlannedReference = true;
             }
-            return new GitLifecycleAdoptionPreview(Current(row), Projection(spec, reference?.ResourceId),
+
+            return new GitLifecycleAdoptionPreview(
+                Current(row),
+                Projection(spec, reference?.ResourceId),
                 request.References);
         }
-        public async Task<FenceDeclarationOutcome> FenceAsync(FenceDeclarationRequest request,
-            IClientSessionHandle session, CancellationToken ct)
+
+        public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
+            ReadLifecycleResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
+        {
+            var row = await documents.Find(session, ById(request.TenantId, request.Resource.ResourceId))
+                .FirstOrDefaultAsync(ct);
+            return row is null
+                ? new GitLifecycleResourceAbsent()
+                : new GitLifecycleResourceSnapshot(
+                    request.Resource,
+                    Version(row),
+                    GitLifecyclePresence.Active,
+                    protection,
+                    GitLifecycleVersionSemantics.ObservedDocuments);
+        }
+
+        public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(
+            RemoveLifecycleResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
+        {
+            if (!await Git.AuthorizeAsync(
+                    new AuthorizeGitResourceMutationRequest(
+                        request.Authority.TenantId,
+                        Kind,
+                        request.Resource.ResourceId,
+                        Lifecycle: request.Authority,
+                        LifecycleEffect: GitLifecycleMutationEffect.Remove),
+                    session,
+                    ct))
+                return new StaleGitExecution();
+            await documents.DeleteOneAsync(
+                session,
+                ById(request.Authority.TenantId, request.Resource.ResourceId),
+                cancellationToken: ct);
+            Deletions++;
+            return new GitLifecycleResourceRemoved();
+        }
+
+        public string Kind => kind;
+
+        public JsonElement NormalizeAndValidate(JsonElement spec) =>
+            DeclarationJson.Write(DeclarationJson.Read<Spec>(spec));
+
+        public DeclarationFacts Facts(JsonElement spec) => DeclarationJson.Read<Spec>(spec).Dependency is { } name
+            ? new DeclarationFacts(
+                null,
+                [],
+                [new DeclaredReference(new ResourceAddress(Kind, name), "spec.dependency")],
+                [],
+                [])
+            : new DeclarationFacts(null, [], [], [], []);
+
+        public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec) =>
+        [
+            new(
+                DeclarationPhase.Prepare,
+                DeclarationJson.Read<Spec>(spec).Dependency is { } name
+                    ? [new DeclarationDependency(new ResourceAddress(Kind, name), DeclarationPhase.Prepare)]
+                    : []),
+        ];
+
+        public async Task<string?> ResolveAsync(
+            ResolveDeclaredResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) => (await documents.Find(session, ByName(request.TenantId, request.Name))
+            .FirstOrDefaultAsync(ct))?["_id"].AsString;
+
+        public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
+            ReadCurrentDeclarationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
+        {
+            var row = await documents.Find(
+                    session,
+                    request.Operation is { } operation
+                        ? ById(request.TenantId, operation.ResourceId)
+                        : ByName(request.TenantId, request.Address.Name))
+                .FirstOrDefaultAsync(ct);
+            return row is null ? new CurrentDeclarationMissing() : Current(row);
+        }
+
+        public async Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
+            ProjectDesiredDeclarationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
+        {
+            var spec = DeclarationJson.Read<Spec>(request.Declaration.Spec);
+            string? id = null;
+            if (spec.Dependency is { } name)
+                id = request.Operation is { } operation
+                    ? await Git.ResolveAcceptedAsync(
+                        new ResolveAcceptedGitReferenceRequest(
+                            operation.Context,
+                            operation.ResourceId,
+                            new ResourceAddress(Kind, name)),
+                        session,
+                        ct)
+                    : await ResolveAsync(new ResolveDeclaredResourceRequest(request.TenantId, name), session, ct);
+            return Projection(spec, id);
+        }
+
+        public async Task<FenceDeclarationOutcome> FenceAsync(
+            FenceDeclarationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
         {
             var own = request.Expected.Documents.SingleOrDefault(item => item.DocumentId == Kind + "/" +
                 request.Operation.ResourceId);
             var filter = ById(request.Operation.Context.TenantId, request.Operation.ResourceId);
             if (own is null)
                 return await documents.Find(session, filter).AnyAsync(ct)
-                    ? new DeclarationPreconditionsChanged() : new DeclarationFenced();
+                    ? new DeclarationPreconditionsChanged()
+                    : new DeclarationFenced();
             filter.Add("Revision", own.Revision);
-            return (await documents.UpdateOneAsync(session, filter, Builders<BsonDocument>.Update.Inc("Fence", 1),
+            return (await documents.UpdateOneAsync(
+                session,
+                filter,
+                Builders<BsonDocument>.Update.Inc("Fence", 1),
                 cancellationToken: ct)).ModifiedCount == 1
-                ? new DeclarationFenced() : new DeclarationPreconditionsChanged();
+                ? new DeclarationFenced()
+                : new DeclarationPreconditionsChanged();
         }
-        public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) =>
-            Git.ExecuteAsync(operation, async (session, token) =>
+
+        public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) => Git.ExecuteAsync(
+            operation,
+            async (session, token) =>
             {
                 ApplyCalls++;
                 var spec = DeclarationJson.Read<Spec>(operation.Declaration.Spec);
-                var dependency = spec.Dependency is null ? null : await Git.ResolveAcceptedAsync(new(operation.Context,
-                    operation.ResourceId, new(Kind, spec.Dependency)), session, token);
+                var dependency = spec.Dependency is null
+                    ? null
+                    : await Git.ResolveAcceptedAsync(
+                        new ResolveAcceptedGitReferenceRequest(
+                            operation.Context,
+                            operation.ResourceId,
+                            new ResourceAddress(Kind, spec.Dependency)),
+                        session,
+                        token);
                 var old = await documents.Find(session, ById(operation.Context.TenantId, operation.ResourceId))
                     .FirstOrDefaultAsync(token);
-                var updated = Document(operation.Context.TenantId, operation.ResourceId,
-                    operation.Declaration.Address.Name, spec.Identity, spec.Value, dependency,
+                var updated = Document(
+                    operation.Context.TenantId,
+                    operation.ResourceId,
+                    operation.Declaration.Address.Name,
+                    spec.Identity,
+                    spec.Value,
+                    dependency,
                     (old?["Revision"].ToInt64() ?? 0) + 1);
                 updated["Fence"] = old?.GetValue("Fence", 0L) ?? 0L;
-                await documents.ReplaceOneAsync(session, ById(operation.Context.TenantId, operation.ResourceId),
-                    updated, new ReplaceOptions { IsUpsert = true }, token);
-                return new(operation.ResourceId, Changed: true);
-            }, ct);
-        public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(ReadLifecycleResourceRequest request,
-            IClientSessionHandle session, CancellationToken ct)
-        {
-            var row = await documents.Find(session, ById(request.TenantId, request.Resource.ResourceId))
-                .FirstOrDefaultAsync(ct);
-            return row is null ? new GitLifecycleResourceAbsent() : new GitLifecycleResourceSnapshot(request.Resource,
-                Version(row), GitLifecyclePresence.Active, protection, GitLifecycleVersionSemantics.ObservedDocuments);
-        }
-        public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(RemoveLifecycleResourceRequest request,
-            IClientSessionHandle session, CancellationToken ct)
-        {
-            if (!await Git.AuthorizeAsync(new(request.Authority.TenantId, Kind, request.Resource.ResourceId,
-                    Lifecycle: request.Authority, LifecycleEffect: GitLifecycleMutationEffect.Remove), session, ct))
-                return new StaleGitExecution();
-            await documents.DeleteOneAsync(session, ById(request.Authority.TenantId, request.Resource.ResourceId),
-                cancellationToken: ct);
-            Deletions++;
-            return new GitLifecycleResourceRemoved();
-        }
-        private DeclarationVersionToken Version(BsonDocument row) => new([new(Kind + "/" + row["_id"].AsString,
-            row["Revision"].ToInt64())]);
-        private CurrentDeclaration Current(BsonDocument row) => new(row["_id"].AsString, Version(row),
-            Projection(new(row["Identity"].AsString, row["Value"].AsString, null),
+                await documents.ReplaceOneAsync(
+                    session,
+                    ById(operation.Context.TenantId, operation.ResourceId),
+                    updated,
+                    new ReplaceOptions { IsUpsert = true },
+                    token);
+                return new GitOperationResult(operation.ResourceId, Changed: true);
+            },
+            ct);
+
+        private DeclarationVersionToken Version(BsonDocument row) => new(
+            [new DeclarationDocumentVersion(Kind + "/" + row["_id"].AsString, row["Revision"].ToInt64())]);
+
+        private CurrentDeclaration Current(BsonDocument row) => new(
+            row["_id"].AsString,
+            Version(row),
+            Projection(
+                new Spec(row["Identity"].AsString, row["Value"].AsString, null),
                 row["DependencyId"].IsBsonNull ? null : row["DependencyId"].AsString),
             DeclarationConfigurationState.Configured);
+
         private static DeclarationProjection Projection(Spec spec, string? dependency) => new(
             DeclarationJson.Write(new { identity = spec.Identity }),
             DeclarationJson.Write(new { value = spec.Value, dependencyId = dependency }));
+
         private static BsonDocument ById(string tenant, string id) => new() { { "TenantId", tenant }, { "_id", id } };
+
         private static BsonDocument ByName(string tenant, string name) =>
             new() { { "TenantId", tenant }, { "Name", name } };
     }

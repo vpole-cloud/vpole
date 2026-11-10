@@ -1,12 +1,11 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.Playwright;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
-using Pole.Features.Core.Multitenancy;
+using Microsoft.Playwright;
 using Pole.Features.Realtime.Contracts;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
@@ -19,7 +18,8 @@ namespace Pole.Tests.E2E;
 [Collection(PoleE2ECollection.Name)]
 public sealed class RealtimeBrowserE2ETests(
     PoleE2EFixture fixture,
-    ITestOutputHelper output)
+    ITestOutputHelper output
+)
 {
     private readonly TestTimings _timings = new(typeof(RealtimeBrowserE2ETests));
 
@@ -27,7 +27,9 @@ public sealed class RealtimeBrowserE2ETests(
     public async Task Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes()
     {
         using var caseTiming = _timings.Measure("e2e.case");
-        using var testEvidence = new TestPhaseJournal(nameof(Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes)).Activate();
+        using var testEvidence
+            = new TestPhaseJournal(nameof(Real_Keycloak_cookie_and_notifications_are_shared_by_two_full_API_processes))
+                .Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime root replicas E2E", timings: _timings);
@@ -52,7 +54,8 @@ public sealed class RealtimeBrowserE2ETests(
             var origin = fixture.FrontendBaseAddress.GetLeftPart(UriPartial.Authority);
             var cookies = new CookieContainer();
             var oldCookies = new CookieContainer();
-            using (var bootstrap = fixture.CreateAuthenticatedRequest(HttpMethod.Post,
+            using (var bootstrap = fixture.CreateAuthenticatedRequest(
+                       HttpMethod.Post,
                        "/api/v1/realtime/session",
                        fixture.Alpha))
             {
@@ -68,41 +71,45 @@ public sealed class RealtimeBrowserE2ETests(
 
             await using var first = ReplicaClient(fixture.ApiBaseAddress, cookies, origin);
             await using var second = ReplicaClient(replicaAddress, cookies, origin);
-            var firstChange =
-                new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var secondChange =
-                new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var firstChange
+                = new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondChange
+                = new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
             var firstRevoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var secondRevoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var firstAfterRestart =
-                new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var secondAfterRestart =
-                new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var firstAfterRestart
+                = new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondAfterRestart
+                = new TaskCompletionSource<RealtimeChange>(TaskCreationOptions.RunContinuationsAsynchronously);
             var secondClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             second.Closed += _ =>
             {
                 secondClosed.TrySetResult();
                 return Task.CompletedTask;
             };
-            first.On<RealtimeChange>("Changed",
+            first.On<RealtimeChange>(
+                "Changed",
                 change =>
                 {
                     if (change.ResourceId == owned.Id && change.Revision == 2)
                         firstChange.TrySetResult(change);
                 });
-            second.On<RealtimeChange>("Changed",
+            second.On<RealtimeChange>(
+                "Changed",
                 change =>
                 {
                     if (change.ResourceId == owned.Id && change.Revision == 2)
                         secondChange.TrySetResult(change);
                 });
-            first.On<RealtimeChange>("Changed",
+            first.On<RealtimeChange>(
+                "Changed",
                 change =>
                 {
                     if (change.ResourceId == owned.Id && change.Revision == 3)
                         firstAfterRestart.TrySetResult(change);
                 });
-            second.On<RealtimeChange>("Changed",
+            second.On<RealtimeChange>(
+                "Changed",
                 change =>
                 {
                     if (change.ResourceId == owned.Id && change.Revision == 3)
@@ -117,29 +124,30 @@ public sealed class RealtimeBrowserE2ETests(
                 { new RealtimeSubscriptionRequest("web-services", fixture.Alpha.DefaultTenantId, owned.Id) };
             foreach (var client in new[] { first, second })
             {
-                var acknowledgement =
-                    Assert.Single(
-                        await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe",
-                            [interests],
-                            ct));
+                var acknowledgement = Assert.Single(
+                    await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe", [interests], ct));
                 Assert.True(acknowledgement.Covered);
-                Assert.Equal(acknowledgement.SubscriptionId,
+                Assert.Equal(
+                    acknowledgement.SubscriptionId,
                     Assert.Single(
                             await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", [], ct))
                         .SubscriptionId);
-                Assert.True(await client.InvokeCoreAsync<bool>("ReportClientLifecycle",
-                    [new { reconnects = 1, fallbacks = 1 }],
-                    ct));
-                Assert.False(await client.InvokeCoreAsync<bool>("ReportClientLifecycle",
-                    [new { reconnects = 1, fallbacks = 1 }],
-                    ct));
-                await Assert.ThrowsAsync<HubException>(() =>
-                    client.InvokeCoreAsync<bool>("ReportClientLifecycle",
-                        [new { reconnects = 101, fallbacks = 0 }],
+                Assert.True(
+                    await client.InvokeCoreAsync<bool>(
+                        "ReportClientLifecycle",
+                        [new { reconnects = 1, fallbacks = 1 }],
                         ct));
-                var unchanged =
-                    Assert.Single(
-                        await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", [], ct));
+                Assert.False(
+                    await client.InvokeCoreAsync<bool>(
+                        "ReportClientLifecycle",
+                        [new { reconnects = 1, fallbacks = 1 }],
+                        ct));
+                await Assert.ThrowsAsync<HubException>(() => client.InvokeCoreAsync<bool>(
+                    "ReportClientLifecycle",
+                    [new { reconnects = 101, fallbacks = 0 }],
+                    ct));
+                var unchanged = Assert.Single(
+                    await client.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", [], ct));
                 Assert.True(unchanged.Covered);
                 Assert.Equal(acknowledgement.SubscriptionId, unchanged.SubscriptionId);
             }
@@ -166,14 +174,16 @@ public sealed class RealtimeBrowserE2ETests(
             Assert.Equal(replicaAddress, await fixture.StartRealtimeReplicaAsync(ct));
             ReportPhase("restart-verified");
             await second.StartAsync(ct);
-            var restarted =
-                Assert.Single(
-                    await second.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe", [interests], ct));
+            var restarted = Assert.Single(
+                await second.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Subscribe", [interests], ct));
             Assert.True(restarted.Covered);
-            Assert.True(await second.InvokeCoreAsync<bool>("ReportClientLifecycle",
-                [new { reconnects = 1, fallbacks = 0 }],
-                ct));
-            Assert.Equal(restarted.SubscriptionId,
+            Assert.True(
+                await second.InvokeCoreAsync<bool>(
+                    "ReportClientLifecycle",
+                    [new { reconnects = 1, fallbacks = 0 }],
+                    ct));
+            Assert.Equal(
+                restarted.SubscriptionId,
                 Assert.Single(await second.InvokeCoreAsync<RealtimeSubscriptionAcknowledgement[]>("Heartbeat", [], ct))
                     .SubscriptionId);
             ReportPhase("cross-replica-revision-3");
@@ -190,12 +200,14 @@ public sealed class RealtimeBrowserE2ETests(
             // B initiates logout: notification of A's connection necessarily crosses the backplane.
             await Task.WhenAll(firstRevoked.Task, secondRevoked.Task).WaitAsync(TimeSpan.FromSeconds(15), ct);
             foreach (var client in new[] { first, second })
-                await Assert.ThrowsAsync<HubException>(() =>
-                    client.InvokeCoreAsync<bool>("ReportClientLifecycle", [new { reconnects = 0, fallbacks = 1 }], ct));
+                await Assert.ThrowsAsync<HubException>(() => client.InvokeCoreAsync<bool>(
+                    "ReportClientLifecycle",
+                    [new { reconnects = 0, fallbacks = 1 }],
+                    ct));
             using var savedTransport = new HttpClient(new HttpClientHandler { CookieContainer = oldCookies });
             savedTransport.DefaultRequestHeaders.Add("Origin", origin);
-            using var rejected = await savedTransport.PostAsync(new Uri(fixture.ApiBaseAddress,
-                    "/api/v1/realtime/hub/negotiate?negotiateVersion=1"),
+            using var rejected = await savedTransport.PostAsync(
+                new Uri(fixture.ApiBaseAddress, "/api/v1/realtime/hub/negotiate?negotiateVersion=1"),
                 null,
                 ct);
             Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
@@ -216,29 +228,34 @@ public sealed class RealtimeBrowserE2ETests(
             }
             catch (Exception cleanupFailure) when (primaryFailure is not null)
             {
-                throw new AggregateException("Two-replica realtime scenario and owned cleanup failed.",
+                throw new AggregateException(
+                    "Two-replica realtime scenario and owned cleanup failed.",
                     primaryFailure,
                     cleanupFailure);
             }
         }
     }
 
-    private static HubConnection ReplicaClient(Uri address, CookieContainer cookies, string origin) =>
-        new HubConnectionBuilder()
-            .WithUrl(new Uri(address, "/api/v1/realtime/hub"),
-                options =>
-                {
-                    options.Cookies = cookies;
-                    options.Headers["Origin"] = origin;
-                    options.Transports = HttpTransportType.WebSockets;
-                }).Build();
+    private static HubConnection ReplicaClient(
+        Uri address,
+        CookieContainer cookies,
+        string origin) => new HubConnectionBuilder().WithUrl(
+            new Uri(address, "/api/v1/realtime/hub"),
+            options =>
+            {
+                options.Cookies = cookies;
+                options.Headers["Origin"] = origin;
+                options.Transports = HttpTransportType.WebSockets;
+            })
+        .Build();
 
     [Fact]
     public async Task Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace()
     {
         using var caseTiming = _timings.Measure("e2e.case");
         using var setupTiming = _timings.Measure("e2e.setup");
-        using var testEvidence = new TestPhaseJournal(nameof(Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace)).Activate();
+        using var testEvidence = new TestPhaseJournal(
+            nameof(Ui_token_refresh_renews_cookie_transport_and_preserves_dirty_tenant_workspace)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime browser refresh E2E", timings: _timings);
@@ -251,27 +268,36 @@ public sealed class RealtimeBrowserE2ETests(
 
             string browserEndpoint;
             using (_timings.Measure("e2e.browser.acquire"))
+            {
                 browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
+            }
+
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(
+                browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             setupTiming.Dispose();
             using var scenarioTiming = _timings.Measure("e2e.scenario");
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
-            var context = await browser.NewContextAsync(new BrowserNewContextOptions
-            {
-                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-                IgnoreHTTPSErrors = true
-            });
+            var context = await browser.NewContextAsync(
+                new BrowserNewContextOptions
+                {
+                    ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                    IgnoreHTTPSErrors = true,
+                });
             await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new RealtimeBrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
             await WaitForInitialBootstrapAsync(journal, ct);
             await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading,
-                new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
-            await WaitUntilAsync(() => journal.Bootstraps.Count > 0 && journal.HasCoverage(owned.Id),
+            await Assertions.Expect(
+                    page.GetByRole(
+                        AriaRole.Heading,
+                        new PageGetByRoleOptions { Name = "Service configuration", Exact = true }))
+                .ToBeVisibleAsync();
+            await WaitUntilAsync(
+                () => journal.Bootstraps.Count > 0 && journal.HasCoverage(owned.Id),
                 TimeSpan.FromSeconds(30),
                 "The real browser did not acknowledge pilot coverage.",
                 ct);
@@ -280,27 +306,30 @@ public sealed class RealtimeBrowserE2ETests(
             var refreshesBeforeDraft = journal.RefreshResponses;
             var draft = "REALTIME_REFRESH_DRAFT=unsaved";
             await page.GetByLabel("Environment variables").FillAsync(draft);
-            var workspaceTabs = page.GetByRole(AriaRole.Tablist,
+            var workspaceTabs = page.GetByRole(
+                AriaRole.Tablist,
                 new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
             var workspaceTabCount = await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync();
-            var selectedResource = workspaceTabs.GetByRole(AriaRole.Tab,
+            var selectedResource = workspaceTabs.GetByRole(
+                AriaRole.Tab,
                 new LocatorGetByRoleOptions { Name = owned.Name, Exact = false });
             await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
             await AssertNoReadableCredentialsAsync(page, journal);
 
             // Observe Keycloak's own refresh grant, not a manual updateToken call or an injected token.
-            await WaitUntilAsync(() => journal.RefreshResponses > refreshesBeforeDraft,
+            await WaitUntilAsync(
+                () => journal.RefreshResponses > refreshesBeforeDraft,
                 TimeSpan.FromSeconds(75),
                 "The interactive client did not complete a real refresh_token grant.",
                 ct);
             var refreshCompleted = journal.LastRefreshTimestamp;
-            await WaitUntilAsync(() =>
+            await WaitUntilAsync(
+                () =>
                 {
                     var bootstrap = journal.Bootstraps.LastOrDefault(value => value.Timestamp > refreshCompleted &&
-                                                                              value.ExpiresAtUtc >
-                                                                              originalBootstrap.ExpiresAtUtc);
-                    return bootstrap is not null &&
-                           journal.LatestCoveredConnection(owned.Id, bootstrap.Timestamp) > originalConnection;
+                        value.ExpiresAtUtc > originalBootstrap.ExpiresAtUtc);
+                    return bootstrap is not null && journal.LatestCoveredConnection(owned.Id, bootstrap.Timestamp) >
+                        originalConnection;
                 },
                 TimeSpan.FromSeconds(30),
                 "Refreshed credentials did not bootstrap and acknowledge a new cookie connection.",
@@ -309,12 +338,13 @@ public sealed class RealtimeBrowserE2ETests(
             Assert.Equal(fixture.Alpha.DefaultTenantId, await page.GetByLabel("Tenant").InputValueAsync());
             Assert.Equal(workspaceTabCount, await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync());
             await Assertions.Expect(selectedResource).ToHaveAttributeAsync("aria-selected", "true");
-            await Assertions.Expect(page.GetByRole(AriaRole.Tab,
-                    new PageGetByRoleOptions { Name = "Configuration", Exact = true }))
+            await Assertions
+                .Expect(page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Configuration", Exact = true }))
                 .ToHaveAttributeAsync("aria-selected", "true");
             Assert.Equal(draft, await page.GetByLabel("Environment variables").InputValueAsync());
             await AssertNoReadableCredentialsAsync(page, journal);
-            Assert.True(journal.HandshakeHeadersSafe,
+            Assert.True(
+                journal.HandshakeHeadersSafe,
                 "Realtime bootstrap and hub requests must not contain a tenant header or hub bearer authentication.");
             await journal.DrainAsync();
             Assert.True(journal.ParseFailures == 0, journal.DescribeParseFailures());
@@ -326,7 +356,8 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var caseTiming = _timings.Measure("e2e.case");
         using var setupTiming = _timings.Measure("e2e.setup");
-        using var testEvidence = new TestPhaseJournal(nameof(Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace)).Activate();
+        using var testEvidence = new TestPhaseJournal(
+            nameof(Owned_realtime_Redis_outage_falls_back_and_recovers_without_remounting_dirty_workspace)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime owned Redis outage E2E", timings: _timings);
@@ -338,27 +369,36 @@ public sealed class RealtimeBrowserE2ETests(
             await fixture.UseInteractiveClientTokenLifespanAsync(resources, TimeSpan.FromMinutes(5), ct);
             string browserEndpoint;
             using (_timings.Measure("e2e.browser.acquire"))
+            {
                 browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
+            }
+
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(
+                browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             setupTiming.Dispose();
             using var scenarioTiming = _timings.Measure("e2e.scenario");
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
-            var context = await browser.NewContextAsync(new BrowserNewContextOptions
-            {
-                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-                IgnoreHTTPSErrors = true
-            });
+            var context = await browser.NewContextAsync(
+                new BrowserNewContextOptions
+                {
+                    ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                    IgnoreHTTPSErrors = true,
+                });
             await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new RealtimeBrowserJournal(page, fixture.Alpha.DefaultTenantId);
             await LoginAsync(page);
             await WaitForInitialBootstrapAsync(journal, ct);
             await page.GotoAsync(ResourceUrl(owned.Id, "configuration"));
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading,
-                new PageGetByRoleOptions { Name = "Service configuration", Exact = true })).ToBeVisibleAsync();
-            await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
+            await Assertions.Expect(
+                    page.GetByRole(
+                        AriaRole.Heading,
+                        new PageGetByRoleOptions { Name = "Service configuration", Exact = true }))
+                .ToBeVisibleAsync();
+            await WaitUntilAsync(
+                () => journal.HasCoverage(owned.Id),
                 TimeSpan.FromSeconds(30),
                 "The outage scenario did not establish acknowledged browser coverage.",
                 ct);
@@ -367,64 +407,75 @@ public sealed class RealtimeBrowserE2ETests(
             const string draft = "REALTIME_REDIS_OUTAGE_DRAFT=unsaved";
             var environment = page.GetByLabel("Environment variables");
             await environment.FillAsync(draft);
-            var originalEditor = await environment.ElementHandleAsync()
-                                 ?? throw new InvalidOperationException("The dirty configuration editor is unavailable.");
-            var workspaceTabs = page.GetByRole(AriaRole.Tablist,
+            var originalEditor = await environment.ElementHandleAsync() ??
+                throw new InvalidOperationException("The dirty configuration editor is unavailable.");
+            var workspaceTabs = page.GetByRole(
+                AriaRole.Tablist,
                 new PageGetByRoleOptions { Name = "Web service workspace", Exact = true });
             var tabCount = await workspaceTabs.GetByRole(AriaRole.Tab).CountAsync();
-            var selectedResource = workspaceTabs.GetByRole(AriaRole.Tab,
+            var selectedResource = workspaceTabs.GetByRole(
+                AriaRole.Tab,
                 new LocatorGetByRoleOptions { Name = owned.Name, Exact = false });
-            var sections = page.GetByRole(AriaRole.Tablist,
+            var sections = page.GetByRole(
+                AriaRole.Tablist,
                 new PageGetByRoleOptions { Name = $"{owned.Name} sections", Exact = true });
             var detailPath = $"/api/v1/web-services/{owned.Id}";
             // This cleanup precedes the only outage action and executes before resource teardown.
             // The command targets the isolated Aspire graph, never the reusable Kubernetes lab.
             resources.Defer("restore owned realtime Redis", fixture.StartRealtimeRedisAsync);
             await fixture.StopRealtimeRedisAsync(ct);
-            await WaitUntilAsync(() => !journal.HasCoverage(owned.Id),
+            await WaitUntilAsync(
+                () => !journal.HasCoverage(owned.Id),
                 TimeSpan.FromSeconds(30),
                 "The browser did not release real coverage after its owned Redis became unavailable.",
                 ct);
             Assert.Equal(2, await UpdateMetadataAsync(owned.Id, 1, "redis-outage", ct));
-            await sections.GetByRole(AriaRole.Tab,
-                new LocatorGetByRoleOptions { Name = "Overview", Exact = true }).ClickAsync();
+            await sections.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Overview", Exact = true })
+                .ClickAsync();
             var visibleRevision = page.GetByText("Active revision", new PageGetByTextOptions { Exact = true })
                 .Locator("xpath=following-sibling::dd");
             // Stable details retain their original manual fallback; only reconciling
             // deployments use the existing 2.5s loop (43e5cab3 interval=false).
             var refreshedAt = Stopwatch.GetTimestamp();
-            await page.GetByRole(AriaRole.Button,
-                new PageGetByRoleOptions { Name = "Refresh service details", Exact = true }).ClickAsync();
-            await WaitUntilAsync(() => journal.HasDetailRead(detailPath, refreshedAt),
+            await page.GetByRole(
+                    AriaRole.Button,
+                    new PageGetByRoleOptions { Name = "Refresh service details", Exact = true })
+                .ClickAsync();
+            await WaitUntilAsync(
+                () => journal.HasDetailRead(detailPath, refreshedAt),
                 TimeSpan.FromSeconds(15),
                 "The uncovered browser did not perform its requested manual detail GET.",
                 ct);
             await Assertions.Expect(visibleRevision)
                 .ToHaveTextAsync("2", new LocatorAssertionsToHaveTextOptions { Timeout = 15000 });
             Assert.False(journal.HasCoverage(owned.Id));
-            Assert.True(await originalEditor.EvaluateAsync<bool>("element => element.isConnected"),
+            Assert.True(
+                await originalEditor.EvaluateAsync<bool>("element => element.isConnected"),
                 "Redis fallback must keep the dirty configuration form mounted.");
             var restoredAt = Stopwatch.GetTimestamp();
             await fixture.StartRealtimeRedisAsync(ct);
-            await WaitUntilAsync(() => journal.Bootstraps.Any(value => value.Timestamp > restoredAt) &&
-                                       journal.LatestCoveredConnection(owned.Id, restoredAt) > originalConnection,
+            await WaitUntilAsync(
+                () => journal.Bootstraps.Any(value => value.Timestamp > restoredAt) &&
+                    journal.LatestCoveredConnection(owned.Id, restoredAt) > originalConnection,
                 TimeSpan.FromSeconds(60),
                 "Redis recovery did not bootstrap and acknowledge a new browser connection.",
                 ct);
             var bootstrap = journal.Bootstraps.Last(value => value.Timestamp > restoredAt);
-            await WaitUntilAsync(() => journal.HasDetailRead(detailPath, bootstrap.Timestamp),
+            await WaitUntilAsync(
+                () => journal.HasDetailRead(detailPath, bootstrap.Timestamp),
                 TimeSpan.FromSeconds(15),
                 "Acknowledged recovery did not resync authoritative detail metadata.",
                 ct);
             Assert.Equal(3, await UpdateMetadataAsync(owned.Id, 2, "redis-recovered", ct));
-            await WaitUntilAsync(() => journal.LastRevision(owned.Id) >= 3,
+            await WaitUntilAsync(
+                () => journal.LastRevision(owned.Id) >= 3,
                 TimeSpan.FromSeconds(20),
                 "Recovered Redis did not deliver a committed metadata hint.",
                 ct);
             await Assertions.Expect(visibleRevision)
                 .ToHaveTextAsync("3", new LocatorAssertionsToHaveTextOptions { Timeout = 20000 });
-            await sections.GetByRole(AriaRole.Tab,
-                new LocatorGetByRoleOptions { Name = "Configuration", Exact = true }).ClickAsync();
+            await sections.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Configuration", Exact = true })
+                .ClickAsync();
             Assert.True(
                 await environment.EvaluateAsync<bool>("(element, original) => element === original", originalEditor),
                 "Outage recovery must retain the original dirty editor DOM node.");
@@ -446,7 +497,8 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var caseTiming = _timings.Measure("e2e.case");
         using var setupTiming = _timings.Measure("e2e.setup");
-        using var testEvidence = new TestPhaseJournal(nameof(Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling)).Activate();
+        using var testEvidence = new TestPhaseJournal(
+            nameof(Covered_pending_release_reduces_metadata_reads_against_real_disconnected_polling)).Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         const int windowSeconds = 65;
@@ -458,16 +510,22 @@ public sealed class RealtimeBrowserE2ETests(
             await WaitForReleaseAsync(owned.Id, 1, "Succeeded", ct);
             // The target belongs to this disposable fixture's Mongo/API graph. This follows the
             // ReleaseBrowserE2ETests pattern; the shared lab and its credentials remain untouched.
-            resources.Defer("restore isolated realtime target availability",
+            resources.Defer(
+                "restore isolated realtime target availability",
                 cleanup => SetTargetEnabledAsync(owned.TargetId, true, cleanup));
             await SetTargetEnabledAsync(owned.TargetId, false, ct);
             await SendAsync(HttpMethod.Post, $"/api/v1/web-services/{owned.Id}/redeploy?expectedRevision=1", null, ct);
-            await WaitUntilAsync(async probeCancellation =>
+            await WaitUntilAsync(
+                async probeCancellation =>
                 {
-                    var value = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}", null, probeCancellation);
+                    var value = await SendAsync(
+                        HttpMethod.Get,
+                        $"/api/v1/web-services/{owned.Id}",
+                        null,
+                        probeCancellation);
                     var placement = value.GetProperty("deployments")[0];
                     return Text(placement, "status") == "Failed" &&
-                           Text(placement, "failureCode") == "DeploymentTargetDisabled";
+                        Text(placement, "failureCode") == "DeploymentTargetDisabled";
                 },
                 TimeSpan.FromMinutes(2),
                 "The real pending release did not reach its controlled disabled-target state.",
@@ -480,23 +538,29 @@ public sealed class RealtimeBrowserE2ETests(
 
             string browserEndpoint;
             using (_timings.Measure("e2e.browser.acquire"))
+            {
                 browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
+            }
+
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(
+                browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             setupTiming.Dispose();
             using var scenarioTiming = _timings.Measure("e2e.scenario");
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
             var baseline = await MeasurePendingReadsAsync(browser, owned, disconnected: true, windowSeconds, ct);
             var covered = await MeasurePendingReadsAsync(browser, owned, disconnected: false, windowSeconds, ct);
-            Assert.True(baseline >= 20,
+            Assert.True(
+                baseline >= 20,
                 "The pending-release fallback must establish an actual 2.5-second polling baseline.");
             var reduction = 1d - (double)covered / baseline;
             output.WriteLine(
                 $"Controlled pending release: {windowSeconds}s per window; fallback GETs={baseline}; covered GETs={covered}; reduction={reduction:P1}.");
             output.WriteLine(
                 "Ordinary 20s polling versus the 60s safety interval has a theoretical 66.7% steady-state reduction; this 80% gate is specific to the controlled 2.5s pending-release pilot.");
-            Assert.True(reduction >= 0.8,
+            Assert.True(
+                reduction >= 0.8,
                 "Acknowledged pilot coverage must reduce controlled pending-release metadata GETs by at least 80% against its measured disconnected baseline.");
             await SetTargetEnabledAsync(owned.TargetId, true, ct);
             // Quiet sampling deliberately retains a long failure backoff. Resume this same
@@ -510,7 +574,9 @@ public sealed class RealtimeBrowserE2ETests(
     {
         using var caseTiming = _timings.Measure("e2e.case");
         using var setupTiming = _timings.Measure("e2e.setup");
-        using var testEvidence = new TestPhaseJournal(nameof(Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget)).Activate();
+        using var testEvidence = new TestPhaseJournal(
+                nameof(Committed_metadata_bursts_keep_a_slow_read_alive_and_reach_visible_revisions_within_budget))
+            .Activate();
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         var ct = budget.Token;
         var resources = new TestResourceScope("realtime browser metadata E2E", timings: _timings);
@@ -521,18 +587,23 @@ public sealed class RealtimeBrowserE2ETests(
             await fixture.WaitForWebServiceReadyAsync(owned.GroupId, owned.Name, ct);
             string browserEndpoint;
             using (_timings.Measure("e2e.browser.acquire"))
+            {
                 browserEndpoint = await fixture.GetBrowserEndpointAsync(ct);
+            }
+
             using var playwright = await Playwright.CreateAsync();
-            var browser = await playwright.Chromium.ConnectAsync(browserEndpoint,
+            var browser = await playwright.Chromium.ConnectAsync(
+                browserEndpoint,
                 new BrowserTypeConnectOptions { ExposeNetwork = "<loopback>" });
             setupTiming.Dispose();
             using var scenarioTiming = _timings.Measure("e2e.scenario");
             await using var browserDisposal = _timings.MeasureDisposal(browser, "e2e.browser.dispose");
-            var context = await browser.NewContextAsync(new BrowserNewContextOptions
-            {
-                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-                IgnoreHTTPSErrors = true
-            });
+            var context = await browser.NewContextAsync(
+                new BrowserNewContextOptions
+                {
+                    ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                    IgnoreHTTPSErrors = true,
+                });
             await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
             var page = await BrowserEvidence.NewPageAsync(context);
             var journal = new RealtimeBrowserJournal(page, fixture.Alpha.DefaultTenantId);
@@ -540,9 +611,11 @@ public sealed class RealtimeBrowserE2ETests(
             await WaitForInitialBootstrapAsync(journal, ct);
             await page.GotoAsync(ResourceUrl(owned.Id, "overview"));
             var visibleRevision = page.Locator(".web-service-overview dl div")
-                .Filter(new LocatorFilterOptions { HasText = "Active revision" }).Locator("dd");
+                .Filter(new LocatorFilterOptions { HasText = "Active revision" })
+                .Locator("dd");
             await Assertions.Expect(visibleRevision).ToHaveTextAsync("1");
-            await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
+            await WaitUntilAsync(
+                () => journal.HasCoverage(owned.Id),
                 TimeSpan.FromSeconds(30),
                 "The metadata pilot did not acknowledge real coverage.",
                 ct);
@@ -550,8 +623,9 @@ public sealed class RealtimeBrowserE2ETests(
             var acknowledgedAt = Stopwatch.GetTimestamp();
             try
             {
-                await WaitUntilAsync(() => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
-                                           journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)),
+                await WaitUntilAsync(
+                    () => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
+                        journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)),
                     TimeSpan.FromSeconds(10),
                     "Initial metadata subscriptions and their HTTP resync did not settle.",
                     ct);
@@ -573,7 +647,8 @@ public sealed class RealtimeBrowserE2ETests(
                 if (request.Method == "GET" && new Uri(request.Url).AbsolutePath == detailPath)
                     Interlocked.Increment(ref canceled);
             };
-            await page.RouteAsync(detailRoute,
+            await page.RouteAsync(
+                detailRoute,
                 async route =>
                 {
                     if (route.Request.Method != "GET")
@@ -618,8 +693,9 @@ public sealed class RealtimeBrowserE2ETests(
                 for (var index = 1; index < 8; index++)
                     revision = await UpdateMetadataAsync(owned.Id, revision, $"burst-{index}", ct);
                 await WaitForReleaseAsync(owned.Id, revision, "Succeeded", ct);
-                await WaitUntilAsync(() =>
-                        journal.LastRevision(owned.Id) >= revision && journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(2)),
+                await WaitUntilAsync(
+                    () => journal.LastRevision(owned.Id) >= revision &&
+                        journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(2)),
                     TimeSpan.FromSeconds(20),
                     "The committed metadata burst did not reach the real browser before releasing its old GET.",
                     ct);
@@ -627,10 +703,12 @@ public sealed class RealtimeBrowserE2ETests(
                 Assert.Equal(0, Volatile.Read(ref canceled));
                 release.TrySetResult();
                 await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-                await Assertions.Expect(visibleRevision).ToHaveTextAsync(
-                    revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
-                await WaitUntilAsync(() => journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(1)),
+                await Assertions.Expect(visibleRevision)
+                    .ToHaveTextAsync(
+                        revision.ToString(CultureInfo.InvariantCulture),
+                        new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
+                await WaitUntilAsync(
+                    () => journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(1)),
                     TimeSpan.FromSeconds(5),
                     "The trailing metadata read did not settle.",
                     ct);
@@ -650,9 +728,10 @@ public sealed class RealtimeBrowserE2ETests(
                 // commit-to-visible-revision latency conservatively without a product timing hook.
                 var started = Stopwatch.GetTimestamp();
                 revision = await UpdateMetadataAsync(owned.Id, revision, $"latency-{index}", ct);
-                await Assertions.Expect(visibleRevision).ToHaveTextAsync(
-                    revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
+                await Assertions.Expect(visibleRevision)
+                    .ToHaveTextAsync(
+                        revision.ToString(CultureInfo.InvariantCulture),
+                        new LocatorAssertionsToHaveTextOptions { Timeout = 10_000 });
                 samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             }
 
@@ -660,7 +739,8 @@ public sealed class RealtimeBrowserE2ETests(
             var p95 = samples[(int)Math.Ceiling(samples.Count * 0.95) - 1];
             output.WriteLine(
                 $"Committed WS metadata: {samples.Count} write-start-to-visible-revision samples; p95={p95:F0}ms (includes write request and commit).");
-            Assert.True(p95 <= 3000,
+            Assert.True(
+                p95 <= 3000,
                 "The sampled metadata commit-to-visible-revision p95 upper bound must be at most three seconds.");
             await AssertNoReadableCredentialsAsync(page, journal);
             await journal.DrainAsync();
@@ -668,17 +748,19 @@ public sealed class RealtimeBrowserE2ETests(
         });
     }
 
-    private async Task<int> MeasurePendingReadsAsync(IBrowser browser,
+    private async Task<int> MeasurePendingReadsAsync(
+        IBrowser browser,
         OwnedService owned,
         bool disconnected,
         int windowSeconds,
         CancellationToken ct)
     {
-        var context = await browser.NewContextAsync(new BrowserNewContextOptions
-        {
-            ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
-            IgnoreHTTPSErrors = true
-        });
+        var context = await browser.NewContextAsync(
+            new BrowserNewContextOptions
+            {
+                ViewportSize = new ViewportSize { Width = 1440, Height = 900 },
+                IgnoreHTTPSErrors = true,
+            });
         await using var contextDisposal = _timings.MeasureDisposal(context, "e2e.browser.context.dispose");
         var page = await BrowserEvidence.NewPageAsync(context);
         if (disconnected)
@@ -691,7 +773,8 @@ public sealed class RealtimeBrowserE2ETests(
         var pendingRelease = page.Locator("[aria-label='Release revision 2']").GetByTestId("release-status");
         await Assertions.Expect(pendingRelease).ToHaveTextAsync("Pending");
         if (!disconnected)
-            await WaitUntilAsync(() => journal.HasCoverage(owned.Id),
+            await WaitUntilAsync(
+                () => journal.HasCoverage(owned.Id),
                 TimeSpan.FromSeconds(30),
                 "The covered pending-release sample did not acknowledge subscriptions.",
                 ct);
@@ -700,9 +783,10 @@ public sealed class RealtimeBrowserE2ETests(
         var acknowledgedAt = Stopwatch.GetTimestamp();
         try
         {
-            await WaitUntilAsync(() => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
-                                       journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)) &&
-                                       (disconnected || journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(3))),
+            await WaitUntilAsync(
+                () => Stopwatch.GetElapsedTime(acknowledgedAt) >= TimeSpan.FromMilliseconds(500) &&
+                    journal.PilotReadsQuiet(detailPath, TimeSpan.FromMilliseconds(500)) &&
+                    (disconnected || journal.IsQuiet(owned.Id, TimeSpan.FromSeconds(3))),
                 TimeSpan.FromSeconds(10),
                 "Initial pending-release metadata reads did not settle.",
                 ct);
@@ -712,17 +796,20 @@ public sealed class RealtimeBrowserE2ETests(
             output.WriteLine(journal.DescribePilotReads(detailPath));
             throw;
         }
+
         var before = await LoadQuietOperationAsync(owned.Id, ct);
         Assert.Equal("Failed", Text(before, "phase"));
-        Assert.True(before.GetProperty("retryNotBeforeUtc").GetDateTime().ToUniversalTime() >
-                    DateTime.UtcNow.AddSeconds(windowSeconds + 5),
+        Assert.True(
+            before.GetProperty("retryNotBeforeUtc").GetDateTime().ToUniversalTime() >
+            DateTime.UtcNow.AddSeconds(windowSeconds + 5),
             "The metadata window must finish before automatic reconciliation is due.");
         var started = Stopwatch.GetTimestamp();
         var connectionClosures = journal.ConnectionClosures;
         var end = started + windowSeconds * Stopwatch.Frequency;
-        using var windowTiming = _timings.Measure(disconnected
-            ? "e2e.realtime.window.disconnected" : "e2e.realtime.window.covered");
-        await WaitUntilAsync(() => Stopwatch.GetTimestamp() >= end,
+        using var windowTiming = _timings.Measure(
+            disconnected ? "e2e.realtime.window.disconnected" : "e2e.realtime.window.covered");
+        await WaitUntilAsync(
+            () => Stopwatch.GetTimestamp() >= end,
             TimeSpan.FromSeconds(windowSeconds + 5),
             "The metadata sampling window did not finish.",
             ct);
@@ -733,10 +820,13 @@ public sealed class RealtimeBrowserE2ETests(
         Assert.Equal(before.GetProperty("attemptCount").GetInt32(), after.GetProperty("attemptCount").GetInt32());
         await Assertions.Expect(pendingRelease).ToHaveTextAsync("Pending");
         if (disconnected)
+        {
             Assert.False(journal.HasCoverage(owned.Id));
+        }
         else
         {
-            Assert.True(journal.HasCoverage(owned.Id),
+            Assert.True(
+                journal.HasCoverage(owned.Id),
                 "Realtime coverage must remain confirmed throughout the sample.");
             output.WriteLine(
                 $"Covered window: bootstraps={journal.Bootstraps.Count}; closures before={connectionClosures}; closures after={journal.ConnectionClosures}; refresh grants={journal.RefreshResponses}.");
@@ -754,19 +844,24 @@ public sealed class RealtimeBrowserE2ETests(
 
     private async Task<JsonElement> LoadQuietOperationAsync(string resourceId, CancellationToken ct)
     {
-        var page = await SendAsync(HttpMethod.Get,
+        var page = await SendAsync(
+            HttpMethod.Get,
             $"/api/v1/resource-deployments/operations?resourceType=pole%2Fweb-service&resourceId={resourceId}",
             null,
             ct);
         return page.GetProperty("items").EnumerateArray().Single().Clone();
     }
 
-    private async Task PrepareQuietFailedDeploymentAsync(OwnedService owned, TimeSpan horizon, CancellationToken ct)
+    private async Task PrepareQuietFailedDeploymentAsync(
+        OwnedService owned,
+        TimeSpan horizon,
+        CancellationToken ct)
     {
         for (var attempt = 0; attempt < 6; attempt++)
         {
             JsonElement operation = default;
-            await WaitUntilAsync(async probeCancellation =>
+            await WaitUntilAsync(
+                async probeCancellation =>
                 {
                     operation = await LoadQuietOperationAsync(owned.Id, probeCancellation);
                     return Text(operation, "phase") == "Failed" && operation.GetProperty("retryable").GetBoolean();
@@ -780,7 +875,8 @@ public sealed class RealtimeBrowserE2ETests(
             if (operation.GetProperty("retryNotBeforeUtc").GetDateTime().ToUniversalTime() > DateTime.UtcNow + horizon)
                 return;
             var count = operation.GetProperty("attemptCount").GetInt32();
-            using var retry = fixture.CreateAuthenticatedRequest(HttpMethod.Post,
+            using var retry = fixture.CreateAuthenticatedRequest(
+                HttpMethod.Post,
                 $"/api/v1/resource-deployments/{Text(deployment, "id")}/retry?expectedRevision={placement.GetProperty("deploymentRevision").GetInt64()}&expectedOperation=Apply",
                 fixture.Alpha,
                 fixture.Alpha.DefaultTenantId);
@@ -788,7 +884,8 @@ public sealed class RealtimeBrowserE2ETests(
             if (response.StatusCode == HttpStatusCode.Conflict)
                 continue; // A real recovery race requires a fresh state.
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-            await WaitUntilAsync(async probeCancellation =>
+            await WaitUntilAsync(
+                async probeCancellation =>
                 {
                     var current = await LoadQuietOperationAsync(owned.Id, probeCancellation);
                     return Text(current, "phase") == "Failed" && current.GetProperty("attemptCount").GetInt32() > count;
@@ -802,12 +899,16 @@ public sealed class RealtimeBrowserE2ETests(
             "The controlled pending release did not reach a backoff covering both quiet metadata windows.");
     }
 
-    private async Task WaitForQuietReleaseRecoveryAsync(OwnedService owned, long resourceRevision, CancellationToken ct)
+    private async Task WaitForQuietReleaseRecoveryAsync(
+        OwnedService owned,
+        long resourceRevision,
+        CancellationToken ct)
     {
         using var timing = _timings.Measure("e2e.readiness.WaitForQuietReleaseRecoveryAsync");
         string? expectedDeploymentId = null;
         string? lastState = null;
-        await WaitUntilAsync(async probeCancellation =>
+        await WaitUntilAsync(
+            async probeCancellation =>
             {
                 var operation = await LoadQuietOperationAsync(owned.Id, probeCancellation);
                 var deployment = operation.GetProperty("deployment");
@@ -817,17 +918,20 @@ public sealed class RealtimeBrowserE2ETests(
                 Assert.Equal(owned.TargetId, Text(placement, "deploymentTargetId"));
                 Assert.Equal(resourceRevision, placement.GetProperty("resourceRevision").GetInt64());
                 Assert.Equal("Apply", Text(placement, "desiredOperation"));
-                Assert.Equal(placement.GetProperty("desiredGeneration").GetInt64(),
+                Assert.Equal(
+                    placement.GetProperty("desiredGeneration").GetInt64(),
                     operation.GetProperty("operationGeneration").GetInt64());
                 var deploymentId = Text(deployment, "id");
                 expectedDeploymentId ??= deploymentId;
                 Assert.Equal(expectedDeploymentId, deploymentId);
                 var phase = Text(operation, "phase");
-                Assert.True(phase is "Failed" or "Accepted" or "Running" or "Applied",
+                Assert.True(
+                    phase is "Failed" or "Accepted" or "Running" or "Applied",
                     "The restored owned Apply entered an unexpected operation phase.");
                 if (phase == "Failed")
                 {
-                    Assert.True(operation.GetProperty("retryable").GetBoolean(),
+                    Assert.True(
+                        operation.GetProperty("retryable").GetBoolean(),
                         "The restored owned Apply failure must be retryable.");
                     Assert.Equal("DeploymentTargetDisabled", Text(placement, "failureCode"));
                 }
@@ -847,9 +951,16 @@ public sealed class RealtimeBrowserE2ETests(
                     lastState = state;
                 }
 
-                var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{owned.Id}/releases", null, probeCancellation);
+                var history = await SendAsync(
+                    HttpMethod.Get,
+                    $"/api/v1/web-services/{owned.Id}/releases",
+                    null,
+                    probeCancellation);
                 Assert.Equal(resourceRevision, history.GetProperty("activeRevision").GetInt64());
-                if (history.GetProperty("releases").GetProperty("items").EnumerateArray().Any(value =>
+                if (history.GetProperty("releases")
+                    .GetProperty("items")
+                    .EnumerateArray()
+                    .Any(value =>
                         value.GetProperty("resourceRevision").GetInt64() == resourceRevision &&
                         Text(value, "outcome") == "Succeeded"))
                     return true;
@@ -857,7 +968,8 @@ public sealed class RealtimeBrowserE2ETests(
                     return false; // An accepted/running/applied operation must complete without another write.
                 // Capture the immutable public command from this current owned snapshot. A
                 // recovery race returns 409 and requires a new GET rather than reusing it.
-                using var retry = fixture.CreateAuthenticatedRequest(HttpMethod.Post,
+                using var retry = fixture.CreateAuthenticatedRequest(
+                    HttpMethod.Post,
                     $"/api/v1/resource-deployments/{deploymentId}/retry?expectedRevision={revision}&expectedOperation=Apply",
                     fixture.Alpha,
                     fixture.Alpha.DefaultTenantId);
@@ -877,7 +989,8 @@ public sealed class RealtimeBrowserE2ETests(
             ct);
     }
 
-    private async Task<long> UpdateMetadataAsync(string id,
+    private async Task<long> UpdateMetadataAsync(
+        string id,
         long expectedRevision,
         string marker,
         CancellationToken ct,
@@ -886,79 +999,102 @@ public sealed class RealtimeBrowserE2ETests(
     {
         var path = $"/api/v1/web-services/{id}";
         output.WriteLine($"Metadata update: expectedRevision={expectedRevision}, step={marker}.");
-        var accepted = await SendAsync(HttpMethod.Put,
+        var accepted = await SendAsync(
+            HttpMethod.Put,
             apiAddress is null ? path : new Uri(apiAddress, path).ToString(),
             new
             {
                 spec = Spec("initial"),
                 tags = new[] { "e2e", marker },
                 exposure = "Private",
-                expectedRevision
+                expectedRevision,
             },
             ct,
             owner);
         return accepted.GetProperty("resourceRevision").GetInt64();
     }
 
-    private async Task WaitForReleaseAsync(string id, long revision, string outcome, CancellationToken ct)
+    private async Task WaitForReleaseAsync(
+        string id,
+        long revision,
+        string outcome,
+        CancellationToken ct)
     {
         using var timing = _timings.Measure("e2e.readiness.WaitForReleaseAsync");
-        await WaitUntilAsync(async probeCancellation =>
+        await WaitUntilAsync(
+            async probeCancellation =>
             {
-                var history = await SendAsync(HttpMethod.Get, $"/api/v1/web-services/{id}/releases", null, probeCancellation);
-                return history.GetProperty("releases").GetProperty("items").EnumerateArray().Any(value =>
-                    value.GetProperty("resourceRevision").GetInt64() == revision && Text(value, "outcome") == outcome);
+                var history = await SendAsync(
+                    HttpMethod.Get,
+                    $"/api/v1/web-services/{id}/releases",
+                    null,
+                    probeCancellation);
+                return history.GetProperty("releases")
+                    .GetProperty("items")
+                    .EnumerateArray()
+                    .Any(value =>
+                        value.GetProperty("resourceRevision").GetInt64() == revision &&
+                        Text(value, "outcome") == outcome);
             },
             TimeSpan.FromMinutes(4),
             "The owned realtime release did not reach its required outcome.",
             ct);
     }
 
-    private async Task SetTargetEnabledAsync(string id, bool enabled, CancellationToken ct)
+    private async Task SetTargetEnabledAsync(
+        string id,
+        bool enabled,
+        CancellationToken ct)
     {
         using var get = fixture.CreatePlatformAdminRequest(HttpMethod.Get, $"/api/v1/platform/deployment-targets/{id}");
         using var result = await fixture.Api.SendAsync(get, ct);
         Assert.True(result.IsSuccessStatusCode, $"Realtime target read returned HTTP {(int)result.StatusCode}.");
         var target = await result.Content.ReadFromJsonAsync<JsonElement>(ct);
         using var put = fixture.CreatePlatformAdminRequest(HttpMethod.Put, $"/api/v1/platform/deployment-targets/{id}");
-        put.Content = JsonContent.Create(new
-        {
-            displayName = Text(target, "displayName"),
-            enabled,
-            acceptsWorkloads = enabled,
-            workloadConfiguration = target.GetProperty("workloadConfiguration"),
-            revision = target.GetProperty("revision").GetInt64()
-        });
+        put.Content = JsonContent.Create(
+            new
+            {
+                displayName = Text(target, "displayName"),
+                enabled,
+                acceptsWorkloads = enabled,
+                workloadConfiguration = target.GetProperty("workloadConfiguration"),
+                revision = target.GetProperty("revision").GetInt64(),
+            });
         using var response = await fixture.Api.SendAsync(put, ct);
         Assert.True(response.IsSuccessStatusCode, $"Realtime target update returned HTTP {(int)response.StatusCode}.");
     }
 
-    private async Task<OwnedService> CreateOwnedServiceAsync(TestResourceScope resources,
+    private async Task<OwnedService> CreateOwnedServiceAsync(
+        TestResourceScope resources,
         CancellationToken ct,
         TestUser? owner = null)
     {
         owner ??= fixture.Alpha;
         var name = $"realtime-{Guid.NewGuid():N}"[..20];
-        var group = await SendAsync(HttpMethod.Post,
+        var group = await SendAsync(
+            HttpMethod.Post,
             "/api/v1/resource-groups",
             new
             {
                 name,
                 description = "Owned realtime browser acceptance",
-                tags = new[] { "e2e" }
+                tags = new[] { "e2e" },
             },
             ct,
             owner);
         var groupId = Text(group, "id");
-        resources.Defer("delete realtime group and owned namespace",
+        resources.Defer(
+            "delete realtime group and owned namespace",
             cleanup => DeleteGroupAsync(groupId, cleanup, owner));
-        var targets = await SendAsync(HttpMethod.Get,
+        var targets = await SendAsync(
+            HttpMethod.Get,
             "/api/v1/deployment-targets/available?resourceType=pole%2Fweb-service&requiresPublicIngress=false",
             null,
             ct,
             owner);
         var targetId = Text(targets.EnumerateArray().First(), "id");
-        var created = await SendAsync(HttpMethod.Post,
+        var created = await SendAsync(
+            HttpMethod.Post,
             "/api/v1/web-services",
             new
             {
@@ -969,8 +1105,8 @@ public sealed class RealtimeBrowserE2ETests(
                 spec = Spec("initial"),
                 placement = new
                 {
-                    targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } }
-                }
+                    targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } },
+                },
             },
             ct,
             owner);
@@ -985,13 +1121,16 @@ public sealed class RealtimeBrowserE2ETests(
         await page.GotoAsync(fixture.FrontendBaseAddress.ToString());
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Log in", Exact = true }).ClickAsync();
         await page.GetByLabel("Username or email").FillAsync(owner.Email);
-        await page.GetByRole(AriaRole.Textbox,
-            new PageGetByRoleOptions { Name = "Password", Exact = true }).FillAsync(owner.Password);
+        await page.GetByRole(AriaRole.Textbox, new PageGetByRoleOptions { Name = "Password", Exact = true })
+            .FillAsync(owner.Password);
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign In", Exact = true }).ClickAsync();
         await page.GetByLabel("Tenant").SelectOptionAsync(owner.DefaultTenantId);
     }
 
-    private string ResourceUrl(string id, string section, string? tenantId = null) => new Uri(
+    private string ResourceUrl(
+        string id,
+        string section,
+        string? tenantId = null) => new Uri(
             fixture.FrontendBaseAddress,
             $"?view=web-services&resource={id}&section={section}&tenant={tenantId ?? fixture.Alpha.DefaultTenantId}")
         .ToString();
@@ -1006,7 +1145,7 @@ public sealed class RealtimeBrowserE2ETests(
             periodSeconds = 6,
             timeoutSeconds = 1,
             failureThreshold = 10,
-            successThreshold = 1
+            successThreshold = 1,
         };
         return new
         {
@@ -1014,24 +1153,25 @@ public sealed class RealtimeBrowserE2ETests(
             {
                 server = "docker.io",
                 name = "library/nginx",
-                tag = "1.27.5-alpine"
+                tag = "1.27.5-alpine",
             },
             config = new
             {
                 environmentVariables = new Dictionary<string, string> { ["REALTIME_MARKER"] = marker },
-                portMappings = new[] { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } }
+                portMappings = new[] { new { servicePort = 80, targetPort = "80", protocol = "TCP", name = "http" } },
             },
             autoscaling = (object?)null,
             probes = new
             {
                 startup = probe,
                 liveness = probe,
-                readiness = probe
-            }
+                readiness = probe,
+            },
         };
     }
 
-    private async Task<JsonElement> SendAsync(HttpMethod method,
+    private async Task<JsonElement> SendAsync(
+        HttpMethod method,
         string path,
         object? body,
         CancellationToken ct,
@@ -1047,17 +1187,23 @@ public sealed class RealtimeBrowserE2ETests(
             var code = await ApiProblemCode.ReadAsync(response, ct);
             Assert.Fail($"Realtime browser API {method} returned HTTP {(int)response.StatusCode}, code={code}.");
         }
+
         return await response.Content.ReadFromJsonAsync<JsonElement>(ct);
     }
 
-    private async Task DeleteServiceAsync(string id, CancellationToken ct, TestUser? owner = null)
+    private async Task DeleteServiceAsync(
+        string id,
+        CancellationToken ct,
+        TestUser? owner = null)
     {
         using var timing = _timings.Measure("e2e.cleanup.DeleteServiceAsync");
         owner ??= fixture.Alpha;
         await DeleteAsync($"/api/v1/web-services/{id}", ct, owner);
-        await WaitUntilAsync(async probeCancellation =>
+        await WaitUntilAsync(
+            async probeCancellation =>
             {
-                using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Get,
+                using var request = fixture.CreateAuthenticatedRequest(
+                    HttpMethod.Get,
                     $"/api/v1/web-services/{id}",
                     owner,
                     owner.DefaultTenantId);
@@ -1069,29 +1215,40 @@ public sealed class RealtimeBrowserE2ETests(
             ct);
     }
 
-    private async Task DeleteGroupAsync(string id, CancellationToken ct, TestUser? owner = null)
+    private async Task DeleteGroupAsync(
+        string id,
+        CancellationToken ct,
+        TestUser? owner = null)
     {
         using var timing = _timings.Measure("e2e.cleanup.DeleteGroupAsync");
         await DeleteAsync($"/api/v1/resource-groups/{id}", ct, owner);
         await fixture.WaitForNamespaceDeletionAsync(id, ct);
     }
 
-    private async Task DeleteAsync(string path, CancellationToken ct, TestUser? owner = null)
+    private async Task DeleteAsync(
+        string path,
+        CancellationToken ct,
+        TestUser? owner = null)
     {
         using var timing = _timings.Measure("e2e.cleanup.DeleteAsync");
         owner ??= fixture.Alpha;
         using var request = fixture.CreateAuthenticatedRequest(HttpMethod.Delete, path, owner, owner.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, ct);
-        Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound,
+        Assert.True(
+            response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound,
             $"Realtime browser cleanup returned HTTP {(int)response.StatusCode}.");
     }
 
     private static string Text(JsonElement value, string property) => value.GetProperty(property).GetString()!;
 
-    private static Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string message, CancellationToken ct) =>
-        TestWait.UntilAsync(_ => Task.FromResult(condition()), timeout, message, ct);
+    private static Task WaitUntilAsync(
+        Func<bool> condition,
+        TimeSpan timeout,
+        string message,
+        CancellationToken ct) => TestWait.UntilAsync(_ => Task.FromResult(condition()), timeout, message, ct);
 
-    private static Task WaitUntilAsync(Func<CancellationToken, Task<bool>> condition,
+    private static Task WaitUntilAsync(
+        Func<CancellationToken, Task<bool>> condition,
         TimeSpan timeout,
         string message,
         CancellationToken ct) => TestWait.UntilAsync(condition, timeout, message, ct);
@@ -1100,6 +1257,6 @@ public sealed class RealtimeBrowserE2ETests(
         string Id,
         string GroupId,
         string TargetId,
-        string Name);
-
+        string Name
+    );
 }

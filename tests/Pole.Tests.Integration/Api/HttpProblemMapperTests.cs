@@ -1,25 +1,13 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Application;
-using Pole.Features.ComputeProfiles.Application.Catalog;
-using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ComputeProfiles.Contracts.HttpMapping;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
-using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.Endpoints;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
-using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Endpoints;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Contracts.HttpMapping;
-using Pole.Features.Quotas.Primitives;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -29,20 +17,12 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Contracts.HttpMapping;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Contracts.HttpMapping;
-using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application;
-using Pole.Features.Tenants.Application.Endpoints;
-using Pole.Features.Tenants.Application.Endpoints.Members;
 using Pole.Features.Tenants.Application.Members;
-using Pole.Features.Tenants.Application.Mongo;
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Users.Application;
-using Pole.Features.Users.Application.Endpoints;
 using Pole.Features.Users.Application.Identity;
-using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Application.Registration;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -77,15 +57,14 @@ public sealed class HttpProblemMapperTests
             new StorageProfileTargetMappingsInvalid(
                 new Dictionary<string, string[]>
                 {
-                    ["Body.TargetMappings[0].StorageClassName"] = ["Storage class was not found."]
+                    ["Body.TargetMappings[0].StorageClassName"] = ["Storage class was not found."],
                 }));
 
         Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
         Assert.Equal("storage-profiles.target-mappings.invalid", problem.Code);
         Assert.Contains(
             "Body.TargetMappings[0].StorageClassName",
-            Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(
-                problem.Extensions["errors"]));
+            Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(problem.Extensions["errors"]));
     }
 
     [Fact]
@@ -118,7 +97,7 @@ public sealed class HttpProblemMapperTests
     public void ResourceRegistrationContractMappingPreservesIdentityDetails()
     {
         ResourceRegistrationMutationError error = new ResourceRegistrationIdentityConflict(
-            Pole.Workloads.ResourceTypeId.Create("pole/redis"),
+            ResourceTypeId.Create("pole/redis"),
             "resource-1");
 
         var direct = ResourceGroupContractHttpMappings.MapRegistrationMutationError(error);
@@ -144,8 +123,7 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("deployment-targets.selection-required", problem.Code);
         Assert.Equal(
             ["target-1", "target-2"],
-            Assert.IsAssignableFrom<IReadOnlyList<string>>(
-                problem.Extensions["eligibleDeploymentTargetIds"]));
+            Assert.IsAssignableFrom<IReadOnlyList<string>>(problem.Extensions["eligibleDeploymentTargetIds"]));
     }
 
     [Fact]
@@ -169,8 +147,7 @@ public sealed class HttpProblemMapperTests
     public void DefaultDeploymentTargetAdmissionUsesTheSharedContractMapping()
     {
         var mapper = new HttpProblemMapper(DeploymentTargetContractHttpMappings.All);
-        DefaultDeploymentTargetWorkloadAdmissionError error = new(
-            new DefaultDeploymentTargetNotConfigured());
+        DefaultDeploymentTargetWorkloadAdmissionError error = new(new DefaultDeploymentTargetNotConfigured());
 
         var problem = mapper.Map(error);
 
@@ -182,8 +159,7 @@ public sealed class HttpProblemMapperTests
     public void DefaultDeploymentTargetLookupMapsMissingConfiguration()
     {
         var mapper = new HttpProblemMapper(DeploymentTargetContractHttpMappings.All);
-        DefaultDeploymentTargetLookupError error = new(
-            new DefaultDeploymentTargetNotConfigured());
+        DefaultDeploymentTargetLookupError error = new(new DefaultDeploymentTargetNotConfigured());
 
         var problem = mapper.Map(error);
 
@@ -195,8 +171,7 @@ public sealed class HttpProblemMapperTests
     public void WebServiceOutcomeMapsProviderOwnedComputeError()
     {
         AddWebServiceDeploymentError error = new(
-            new ComputeProfileResolutionError(
-                new ComputeProfileNotFound("compute-1")));
+            new ComputeProfileResolutionError(new ComputeProfileNotFound("compute-1")));
 
         var problem = WebServiceHttpMappings.MapError(error);
 
@@ -209,8 +184,7 @@ public sealed class HttpProblemMapperTests
     public void WebServiceOutcomeMapsProviderOwnedResourceGroupError()
     {
         CreateWebServiceError error = new(
-            new ResourceGroupOwnershipError(
-                new ResourceGroupOwnershipDeleting("resource-group-1")));
+            new ResourceGroupOwnershipError(new ResourceGroupOwnershipDeleting("resource-group-1")));
 
         var problem = WebServiceHttpMappings.MapError(error);
 
@@ -218,9 +192,6 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("resource-groups.deleting", problem.Code);
         Assert.Equal("resource-group-1", problem.Extensions["resourceGroupId"]);
     }
-
-
-
 
 
     [Fact]
@@ -246,23 +217,19 @@ public sealed class HttpProblemMapperTests
         Assert.Equal("deployment-targets.reference-change-rejected", problem.Code);
         Assert.Equal(
             ["target-1"],
-            Assert.IsAssignableFrom<IReadOnlyList<string>>(
-                problem.Extensions["deploymentTargetIds"]));
+            Assert.IsAssignableFrom<IReadOnlyList<string>>(problem.Extensions["deploymentTargetIds"]));
     }
 
     [Fact]
     public void ContractUnionMappingProvidesTheDefaultProblem()
     {
         var mapper = CreateMapper();
-        DeploymentTargetDomainReservationAdmissionError error =
-            new DeploymentTargetNotFound("target-1");
+        DeploymentTargetDomainReservationAdmissionError error = new DeploymentTargetNotFound("target-1");
 
         var problem = mapper.Map(error);
 
         Assert.Equal((int)HttpStatusCode.NotFound, problem.StatusCode);
-        Assert.Equal(
-            "tag:pole.dev,2026:problem:deployment-targets.not-found",
-            problem.Type);
+        Assert.Equal("tag:pole.dev,2026:problem:deployment-targets.not-found", problem.Type);
         Assert.Equal("deployment-targets.not-found", problem.Code);
         Assert.Equal("target-1", problem.Extensions["deploymentTargetId"]);
     }
@@ -271,16 +238,13 @@ public sealed class HttpProblemMapperTests
     public void NestedConsumerUnionUsesTheProviderContractMapping()
     {
         var mapper = CreateMapper();
-        DeploymentTargetDomainReservationAdmissionError contractError =
-            new DeploymentTargetDisabled("target-2");
+        DeploymentTargetDomainReservationAdmissionError contractError = new DeploymentTargetDisabled("target-2");
         CreateDomainZoneOutcome consumerError = contractError;
 
         var problem = mapper.Map(consumerError);
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
-        Assert.Equal(
-            "tag:pole.dev,2026:problem:deployment-targets.disabled",
-            problem.Type);
+        Assert.Equal("tag:pole.dev,2026:problem:deployment-targets.disabled", problem.Type);
         Assert.Equal("deployment-targets.disabled", problem.Code);
         Assert.Equal("target-2", problem.Extensions["deploymentTargetId"]);
     }
@@ -292,9 +256,7 @@ public sealed class HttpProblemMapperTests
             new ManagedDomainZoneAlreadyReserved("app.example.test"));
 
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
-        Assert.Equal(
-            "tag:pole.dev,2026:problem:domains.zone.already-reserved",
-            problem.Type);
+        Assert.Equal("tag:pole.dev,2026:problem:domains.zone.already-reserved", problem.Type);
         Assert.Equal("domains.zone.already-reserved", problem.Code);
         Assert.Equal("app.example.test", problem.Extensions["domain"]);
     }
@@ -317,42 +279,33 @@ public sealed class HttpProblemMapperTests
         var mapper = CreateMapper();
         var overrides = new HttpProblemMappingSet(
         [
-            HttpProblemMapping.For<DeploymentTargetNotFound>(notFound =>
-                new HttpProblem(
-                    (int)HttpStatusCode.UnprocessableEntity,
-                    PoleProblemTypeId.FromCode("domains.zone.target-unavailable"),
-                    "Domain zone target is unavailable",
-                    "domains.zone.target-unavailable",
-                    extensions: new Dictionary<string, object>
-                    {
-                        ["deploymentTargetId"] = notFound.DeploymentTargetId
-                    }))
+            HttpProblemMapping.For<DeploymentTargetNotFound>(notFound => new HttpProblem(
+                (int)HttpStatusCode.UnprocessableEntity,
+                PoleProblemTypeId.FromCode("domains.zone.target-unavailable"),
+                "Domain zone target is unavailable",
+                "domains.zone.target-unavailable",
+                extensions: new Dictionary<string, object>
+                {
+                    ["deploymentTargetId"] = notFound.DeploymentTargetId,
+                })),
         ]);
-        DeploymentTargetDomainReservationAdmissionError contractError =
-            new DeploymentTargetNotFound("target-3");
+        DeploymentTargetDomainReservationAdmissionError contractError = new DeploymentTargetNotFound("target-3");
         CreateDomainZoneOutcome consumerError = contractError;
 
         var problem = mapper.Map(consumerError, overrides);
 
-        Assert.Equal(
-            (int)HttpStatusCode.UnprocessableEntity,
-            problem.StatusCode);
-        Assert.Equal(
-            "domains.zone.target-unavailable",
-            problem.Code);
+        Assert.Equal((int)HttpStatusCode.UnprocessableEntity, problem.StatusCode);
+        Assert.Equal("domains.zone.target-unavailable", problem.Code);
         Assert.Equal("target-3", problem.Extensions["deploymentTargetId"]);
     }
 
     [Fact]
     public void DuplicateDefaultMappingsAreRejected()
     {
-        var duplicate =
-            DeploymentTargetContractHttpMappings.All.Single(mapping =>
-                mapping.MappedType ==
-                typeof(DeploymentTargetDomainReservationAdmissionError));
+        var duplicate = DeploymentTargetContractHttpMappings.All.Single(mapping =>
+            mapping.MappedType == typeof(DeploymentTargetDomainReservationAdmissionError));
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            new HttpProblemMapper([duplicate, duplicate]));
+        var exception = Assert.Throws<InvalidOperationException>(() => new HttpProblemMapper([duplicate, duplicate]));
 
         Assert.Contains(
             typeof(DeploymentTargetDomainReservationAdmissionError).FullName!,
@@ -364,71 +317,45 @@ public sealed class HttpProblemMapperTests
     public void MissingMappingReportsTheResolvedUnionPath()
     {
         var mapper = new HttpProblemMapper([]);
-        DeploymentTargetDomainReservationAdmissionError contractError =
-            new DeploymentTargetNotFound("target-4");
+        DeploymentTargetDomainReservationAdmissionError contractError = new DeploymentTargetNotFound("target-4");
         CreateDomainZoneOutcome consumerError = contractError;
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            mapper.Map(consumerError));
+        var exception = Assert.Throws<InvalidOperationException>(() => mapper.Map(consumerError));
 
-        Assert.Contains(
-            typeof(CreateDomainZoneOutcome).FullName!,
-            exception.Message,
-            StringComparison.Ordinal);
+        Assert.Contains(typeof(CreateDomainZoneOutcome).FullName!, exception.Message, StringComparison.Ordinal);
         Assert.Contains(
             typeof(DeploymentTargetDomainReservationAdmissionError).FullName!,
             exception.Message,
             StringComparison.Ordinal);
-        Assert.Contains(
-            typeof(DeploymentTargetNotFound).FullName!,
-            exception.Message,
-            StringComparison.Ordinal);
+        Assert.Contains(typeof(DeploymentTargetNotFound).FullName!, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void TenantPlatformAdminRejectionHasAStableProblemMapping()
     {
-        var mapper = new HttpProblemMapper(
-            TenantAuthorizationHttpProblemMappings.All);
+        var mapper = new HttpProblemMapper(TenantAuthorizationHttpProblemMappings.All);
 
         var problem = mapper.Map(new TenantPlatformAdminRequired());
 
         Assert.Equal((int)HttpStatusCode.Forbidden, problem.StatusCode);
-        Assert.Equal(
-            "tag:pole.dev,2026:problem:tenant.authorization.platform-admin-required",
-            problem.Type);
-        Assert.Equal(
-            "tenant.authorization.platform-admin-required",
-            problem.Code);
+        Assert.Equal("tag:pole.dev,2026:problem:tenant.authorization.platform-admin-required", problem.Type);
+        Assert.Equal("tenant.authorization.platform-admin-required", problem.Code);
     }
 
     [Fact]
     public void TenantMemberAuthorizationRejectionsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(
-            TenantMemberAuthorizationHttpProblemMappings.All);
+        var mapper = new HttpProblemMapper(TenantMemberAuthorizationHttpProblemMappings.All);
         (IMediatorRejection Rejection, HttpStatusCode Status, string Code)[] cases =
         [
-            (
-                new TenantAuthenticationRequired(),
-                HttpStatusCode.Unauthorized,
+            (new TenantAuthenticationRequired(), HttpStatusCode.Unauthorized,
                 "tenant.authorization.authentication-required"),
-            (
-                new TenantUserIdentityRequired(),
-                HttpStatusCode.Unauthorized,
+            (new TenantUserIdentityRequired(), HttpStatusCode.Unauthorized,
                 "tenant.authorization.user-identity-required"),
-            (
-                new TenantNotFound("tenant-1"),
-                HttpStatusCode.NotFound,
-                "tenants.not-found"),
-            (
-                new TenantMembershipRequired("tenant-1"),
-                HttpStatusCode.Forbidden,
+            (new TenantNotFound("tenant-1"), HttpStatusCode.NotFound, "tenants.not-found"),
+            (new TenantMembershipRequired("tenant-1"), HttpStatusCode.Forbidden,
                 "tenant.authorization.membership-required"),
-            (
-                new TenantMemberNotFound("tenant-1", "member-1"),
-                HttpStatusCode.NotFound,
-                "tenants.member.not-found")
+            (new TenantMemberNotFound("tenant-1", "member-1"), HttpStatusCode.NotFound, "tenants.member.not-found"),
         ];
 
         foreach (var testCase in cases)
@@ -437,13 +364,10 @@ public sealed class HttpProblemMapperTests
 
             Assert.Equal((int)testCase.Status, problem.StatusCode);
             Assert.Equal(testCase.Code, problem.Code);
-            Assert.Equal(
-                PoleProblemTypeId.FromCode(testCase.Code),
-                problem.Type);
+            Assert.Equal(PoleProblemTypeId.FromCode(testCase.Code), problem.Type);
         }
 
-        var memberNotFound = mapper.Map(
-            new TenantMemberNotFound("tenant-1", "member-1"));
+        var memberNotFound = mapper.Map(new TenantMemberNotFound("tenant-1", "member-1"));
         Assert.Equal("tenant-1", memberNotFound.Extensions["tenantId"]);
         Assert.Equal("member-1", memberNotFound.Extensions["memberId"]);
     }
@@ -488,167 +412,14 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void ResourceDeploymentRetryErrorsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(
-            ResourceDeploymentHttpMappings.All);
-        (RetryResourceDeploymentError Error, HttpStatusCode Status, string Code)[]
-            cases =
-            [
-                (
-                    new ResourceDeploymentNotFound("deployment-1"),
-                    HttpStatusCode.NotFound,
-                    "resource-deployments.not-found"),
-                (
-                    new ResourceDeploymentNotRetryable("deployment-1"),
-                    HttpStatusCode.Conflict,
-                    "resource-deployments.retry.not-retryable"),
-                (
-                    new ResourceDeploymentRetryConflict("deployment-1"),
-                    HttpStatusCode.Conflict,
-                    "resource-deployments.retry.concurrent-change")
-            ];
-
-        foreach (var testCase in cases)
-        {
-            var problem = mapper.Map(testCase.Error);
-
-            Assert.Equal((int)testCase.Status, problem.StatusCode);
-            Assert.Equal(testCase.Code, problem.Code);
-            Assert.Equal(
-                PoleProblemTypeId.FromCode(testCase.Code),
-                problem.Type);
-            Assert.Equal(
-                "deployment-1",
-                problem.Extensions["deploymentId"]);
-        }
-    }
-
-    [Fact]
-    public void ResourceDeploymentContractErrorsHaveStableProblemMappings()
-    {
-        var mapper = new HttpProblemMapper(
-            ResourceDeploymentContractHttpMappings.All);
-        (object Error, HttpStatusCode Status, string Code)[] cases =
+        var mapper = new HttpProblemMapper(ResourceDeploymentHttpMappings.All);
+        (RetryResourceDeploymentError Error, HttpStatusCode Status, string Code)[] cases =
         [
-            (
-                new CreateResourceDeploymentError(
-                    new ResourceDeploymentTargetConfigurationChanged(["target-1"])),
-                HttpStatusCode.Conflict,
-                "resource-deployments.target-changed"),
-            (
-                new CreateResourceDeploymentError(
-                    new ResourceDeploymentComputeConfigurationChanged(["compute-1"])),
-                HttpStatusCode.Conflict,
-                "resource-deployments.compute-profile-changed"),
-            (
-                new CreateResourceDeploymentError(
-                    new ResourceDeploymentStorageConfigurationChanged("storage-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.storage-profile-changed"),
-            (
-                new CreateResourceDeploymentError(
-                    new ResourcePlacementResourceGroupNotFound("group-1")),
-                HttpStatusCode.NotFound,
-                "resource-groups.not-found"),
-            (
-                new CreateResourceDeploymentError(
-                    new ResourcePlacementUnavailable("group-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.placement-unavailable"),
-            (
-                new CreateResourceDeploymentError(
-                    new ResourcePlacementDeleting("target-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.placement-deleting"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentMutationNotFound("resource-1")),
-                HttpStatusCode.NotFound,
-                "resource-deployments.not-found"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentChanged("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.changed"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentCardinalityConflict("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.cardinality-conflict"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentPendingDeletion("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.pending-deletion"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentPlacementUnavailable("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.placement-unavailable"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentReplacementTargetMismatch("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.replacement-target-mismatch"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentIngressConfigurationChanged(
-                        "resource-1",
-                        "deployment-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.ingress-changed"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentRetryUnavailable(
-                        "resource-1",
-                        "deployment-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.retry-unavailable"),
-            (
-                new ResourceDeploymentMutationError(
-                    new ResourceDeploymentComputeConfigurationChanged(["compute-1"])),
-                HttpStatusCode.Conflict,
-                "resource-deployments.compute-profile-changed"),
-            (
-                new LoadCurrentResourceDeploymentComputeError(
-                    new CurrentResourceDeploymentComputeNotFound("resource-1")),
-                HttpStatusCode.NotFound,
-                "resource-deployments.not-found"),
-            (
-                new LoadCurrentResourceDeploymentComputeError(
-                    new CurrentResourceDeploymentComputeCardinalityConflict("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.compute-cardinality-conflict"),
-            (
-                new AdvanceResourceDeploymentRevisionError(
-                    new ResourceDeploymentsNotFound("resource-1")),
-                HttpStatusCode.NotFound,
-                "resource-deployments.not-found"),
-            (
-                new AdvanceResourceDeploymentRevisionError(
-                    new ResourceDeploymentsHaveNoActivePlacement("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.no-active-placement"),
-            (
-                new AdvanceResourceDeploymentRevisionError(
-                    new ResourceDeploymentRevisionConflict("resource-1")),
-                HttpStatusCode.Conflict,
-                "resource-deployments.revision-conflict"),
-            (
-                new ResourceGroupHasUnfinishedDeployments("group-1"),
-                HttpStatusCode.Conflict,
-                "resource-deployments.resource-group-referenced"),
-            (
-                new IsolationScopeHasUnfinishedDeployments("group-1", "scope-1"),
-                HttpStatusCode.Conflict,
-                "resource-deployments.isolation-scope-referenced"),
-            (
-                new ComputeProfileReferencedByResourceDeployment("compute-1"),
-                HttpStatusCode.Conflict,
-                "resource-deployments.compute-profile-referenced"),
-            (
-                new ResourceDeploymentFinalizationConflict("resource-1"),
-                HttpStatusCode.Conflict,
-                "resource-deployments.finalization-conflict")
+            (new ResourceDeploymentNotFound("deployment-1"), HttpStatusCode.NotFound, "resource-deployments.not-found"),
+            (new ResourceDeploymentNotRetryable("deployment-1"), HttpStatusCode.Conflict,
+                "resource-deployments.retry.not-retryable"),
+            (new ResourceDeploymentRetryConflict("deployment-1"), HttpStatusCode.Conflict,
+                "resource-deployments.retry.concurrent-change"),
         ];
 
         foreach (var testCase in cases)
@@ -657,45 +428,99 @@ public sealed class HttpProblemMapperTests
 
             Assert.Equal((int)testCase.Status, problem.StatusCode);
             Assert.Equal(testCase.Code, problem.Code);
-            Assert.Equal(
-                PoleProblemTypeId.FromCode(testCase.Code),
-                problem.Type);
+            Assert.Equal(PoleProblemTypeId.FromCode(testCase.Code), problem.Type);
+            Assert.Equal("deployment-1", problem.Extensions["deploymentId"]);
+        }
+    }
+
+    [Fact]
+    public void ResourceDeploymentContractErrorsHaveStableProblemMappings()
+    {
+        var mapper = new HttpProblemMapper(ResourceDeploymentContractHttpMappings.All);
+        (object Error, HttpStatusCode Status, string Code)[] cases =
+        [
+            (new CreateResourceDeploymentError(new ResourceDeploymentTargetConfigurationChanged(["target-1"])),
+                HttpStatusCode.Conflict, "resource-deployments.target-changed"),
+            (new CreateResourceDeploymentError(new ResourceDeploymentComputeConfigurationChanged(["compute-1"])),
+                HttpStatusCode.Conflict, "resource-deployments.compute-profile-changed"),
+            (new CreateResourceDeploymentError(new ResourceDeploymentStorageConfigurationChanged("storage-1")),
+                HttpStatusCode.Conflict, "resource-deployments.storage-profile-changed"),
+            (new CreateResourceDeploymentError(new ResourcePlacementResourceGroupNotFound("group-1")),
+                HttpStatusCode.NotFound, "resource-groups.not-found"),
+            (new CreateResourceDeploymentError(new ResourcePlacementUnavailable("group-1")), HttpStatusCode.Conflict,
+                "resource-deployments.placement-unavailable"),
+            (new CreateResourceDeploymentError(new ResourcePlacementDeleting("target-1")), HttpStatusCode.Conflict,
+                "resource-deployments.placement-deleting"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound("resource-1")),
+                HttpStatusCode.NotFound, "resource-deployments.not-found"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentChanged("resource-1")), HttpStatusCode.Conflict,
+                "resource-deployments.changed"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentCardinalityConflict("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.cardinality-conflict"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentPendingDeletion("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.pending-deletion"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentPlacementUnavailable("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.placement-unavailable"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentReplacementTargetMismatch("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.replacement-target-mismatch"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentIngressConfigurationChanged("resource-1", "deployment-1")),
+                HttpStatusCode.Conflict, "resource-deployments.ingress-changed"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentRetryUnavailable("resource-1", "deployment-1")),
+                HttpStatusCode.Conflict, "resource-deployments.retry-unavailable"),
+            (new ResourceDeploymentMutationError(new ResourceDeploymentComputeConfigurationChanged(["compute-1"])),
+                HttpStatusCode.Conflict, "resource-deployments.compute-profile-changed"),
+            (new LoadCurrentResourceDeploymentComputeError(new CurrentResourceDeploymentComputeNotFound("resource-1")),
+                HttpStatusCode.NotFound, "resource-deployments.not-found"),
+            (new LoadCurrentResourceDeploymentComputeError(new CurrentResourceDeploymentComputeCardinalityConflict("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.compute-cardinality-conflict"),
+            (new AdvanceResourceDeploymentRevisionError(new ResourceDeploymentsNotFound("resource-1")),
+                HttpStatusCode.NotFound, "resource-deployments.not-found"),
+            (new AdvanceResourceDeploymentRevisionError(new ResourceDeploymentsHaveNoActivePlacement("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.no-active-placement"),
+            (new AdvanceResourceDeploymentRevisionError(new ResourceDeploymentRevisionConflict("resource-1")),
+                HttpStatusCode.Conflict, "resource-deployments.revision-conflict"),
+            (new ResourceGroupHasUnfinishedDeployments("group-1"), HttpStatusCode.Conflict,
+                "resource-deployments.resource-group-referenced"),
+            (new IsolationScopeHasUnfinishedDeployments("group-1", "scope-1"), HttpStatusCode.Conflict,
+                "resource-deployments.isolation-scope-referenced"),
+            (new ComputeProfileReferencedByResourceDeployment("compute-1"), HttpStatusCode.Conflict,
+                "resource-deployments.compute-profile-referenced"),
+            (new ResourceDeploymentFinalizationConflict("resource-1"), HttpStatusCode.Conflict,
+                "resource-deployments.finalization-conflict"),
+        ];
+
+        foreach (var testCase in cases)
+        {
+            var problem = mapper.Map(testCase.Error);
+
+            Assert.Equal((int)testCase.Status, problem.StatusCode);
+            Assert.Equal(testCase.Code, problem.Code);
+            Assert.Equal(PoleProblemTypeId.FromCode(testCase.Code), problem.Type);
         }
     }
 
     [Fact]
     public void QuotaReservationErrorsHaveStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(
-            QuotaContractHttpMappings.All);
+        var mapper = new HttpProblemMapper(QuotaContractHttpMappings.All);
         QuotaReservationError exceeded = new QuotaExceeded(
             new QuotaKey("CpuMillis"),
             Limit: 8_000,
             Requested: 2_000,
             Current: 7_000);
-        (QuotaReservationError Error, HttpStatusCode Status, string Code)[]
-            cases =
-            [
-                (
-                    exceeded,
-                    HttpStatusCode.UnprocessableEntity,
-                    "quotas.reservation.exceeded"),
-                (
-                    new QuotaReservationConflict(
-                        "tenant-1",
-                        QuotaResourceKey.Create("web-service", "resource-1")),
-                    HttpStatusCode.Conflict,
-                    "quotas.reservation.conflict")
-            ];
+        (QuotaReservationError Error, HttpStatusCode Status, string Code)[] cases =
+        [
+            (exceeded, HttpStatusCode.UnprocessableEntity, "quotas.reservation.exceeded"),
+            (new QuotaReservationConflict("tenant-1", QuotaResourceKey.Create("web-service", "resource-1")),
+                HttpStatusCode.Conflict, "quotas.reservation.conflict"),
+        ];
 
         foreach (var testCase in cases)
         {
             var mapped = mapper.Map(testCase.Error);
             Assert.Equal((int)testCase.Status, mapped.StatusCode);
             Assert.Equal(testCase.Code, mapped.Code);
-            Assert.Equal(
-                PoleProblemTypeId.FromCode(testCase.Code),
-                mapped.Type);
+            Assert.Equal(PoleProblemTypeId.FromCode(testCase.Code), mapped.Type);
         }
 
         var problem = mapper.Map(exceeded);
@@ -708,10 +533,8 @@ public sealed class HttpProblemMapperTests
     [Fact]
     public void QuotaExecutionErrorsUnwrapToStableProblemMappings()
     {
-        var mapper = new HttpProblemMapper(
-            QuotaContractHttpMappings.All);
-        QuotaExecutionError error = new QuotaReservationCommitError(
-            new QuotaReservationExpired("reservation-1"));
+        var mapper = new HttpProblemMapper(QuotaContractHttpMappings.All);
+        QuotaExecutionError error = new QuotaReservationCommitError(new QuotaReservationExpired("reservation-1"));
 
         var problem = mapper.Map(error);
         var direct = QuotaContractHttpMappings.MapExecutionError(error);
@@ -719,29 +542,23 @@ public sealed class HttpProblemMapperTests
         Assert.Equal((int)HttpStatusCode.Conflict, problem.StatusCode);
         Assert.Equal(problem.Code, direct.Code);
         Assert.Equal("quotas.reservation.commit-expired", problem.Code);
-        Assert.Equal(
-            PoleProblemTypeId.FromCode(problem.Code),
-            problem.Type);
+        Assert.Equal(PoleProblemTypeId.FromCode(problem.Code), problem.Type);
     }
 
     [Fact]
     public void NullExtensionValueIsRejected()
     {
-        var exception = Assert.Throws<ArgumentException>(() =>
-            new HttpProblem(
-                (int)HttpStatusCode.Conflict,
-                PoleProblemTypeId.FromCode("example.problem"),
-                "Example problem",
-                "example.problem",
-                extensions: new Dictionary<string, object>
-                {
-                    ["optional"] = null!
-                }));
+        var exception = Assert.Throws<ArgumentException>(() => new HttpProblem(
+            (int)HttpStatusCode.Conflict,
+            PoleProblemTypeId.FromCode("example.problem"),
+            "Example problem",
+            "example.problem",
+            extensions: new Dictionary<string, object>
+            {
+                ["optional"] = null!,
+            }));
 
-        Assert.Contains(
-            "cannot be null",
-            exception.Message,
-            StringComparison.Ordinal);
+        Assert.Contains("cannot be null", exception.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -750,16 +567,14 @@ public sealed class HttpProblemMapperTests
     [InlineData("domains.zone.not_found")]
     public void PoleProblemTypeRejectsInvalidCodes(string code)
     {
-        var exception = Assert.Throws<ArgumentException>(() =>
-            PoleProblemTypeId.FromCode(code));
+        var exception = Assert.Throws<ArgumentException>(() => PoleProblemTypeId.FromCode(code));
 
         Assert.Equal("code", exception.ParamName);
     }
 
-    private static HttpProblemMapper CreateMapper() =>
-        new(
-        [
-            .. DeploymentTargetContractHttpMappings.All,
-            .. DomainHttpMappings.All
-        ]);
+    private static HttpProblemMapper CreateMapper() => new(
+    [
+        .. DeploymentTargetContractHttpMappings.All,
+        .. DomainHttpMappings.All,
+    ]);
 }

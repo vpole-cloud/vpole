@@ -8,19 +8,16 @@ namespace Pole.Features.WebServices.Application.Common;
 public sealed record WebServiceDeploymentQuotaInput(
     long RequestedCpuMillisPerInstance,
     long RequestedMemoryMiPerInstance,
-    long Instances)
+    long Instances
+)
 {
     public static WebServiceDeploymentQuotaInput Create(
         long requestedCpuMillisPerInstance,
         long requestedMemoryMiPerInstance,
         long instances)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(
-            requestedCpuMillisPerInstance,
-            1);
-        ArgumentOutOfRangeException.ThrowIfLessThan(
-            requestedMemoryMiPerInstance,
-            1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(requestedCpuMillisPerInstance, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(requestedMemoryMiPerInstance, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(instances, 1);
 
         return new WebServiceDeploymentQuotaInput(
@@ -31,7 +28,8 @@ public sealed record WebServiceDeploymentQuotaInput(
 }
 
 public sealed record WebServiceQuotaInput(
-    ImmutableList<WebServiceDeploymentQuotaInput> Deployments)
+    ImmutableList<WebServiceDeploymentQuotaInput> Deployments
+)
 {
     public static WebServiceQuotaInput Create(
         long requestedCpuMillisPerInstance,
@@ -45,26 +43,22 @@ public sealed record WebServiceQuotaInput(
             WebServiceDeploymentQuotaInput.Create(
                 requestedCpuMillisPerInstance,
                 requestedMemoryMiPerInstance,
-                spec.Autoscaling?.MaxReplicas ?? fixedReplicas)
+                spec.Autoscaling?.MaxReplicas ?? fixedReplicas),
         ]);
     }
 
-    public static WebServiceQuotaInput Create(
-        IEnumerable<WebServiceDeploymentQuotaInput> deployments)
+    public static WebServiceQuotaInput Create(IEnumerable<WebServiceDeploymentQuotaInput> deployments)
     {
         ArgumentNullException.ThrowIfNull(deployments);
-        var normalized = deployments
-            .Select(deployment => WebServiceDeploymentQuotaInput.Create(
+        var normalized = deployments.Select(deployment => WebServiceDeploymentQuotaInput.Create(
                 deployment.RequestedCpuMillisPerInstance,
                 deployment.RequestedMemoryMiPerInstance,
                 deployment.Instances))
             .ToImmutableList();
         if (normalized.Count == 0)
-        {
             throw new ArgumentException(
                 "At least one web service deployment is required for quota calculation.",
                 nameof(deployments));
-        }
 
         return new WebServiceQuotaInput(normalized);
     }
@@ -83,14 +77,15 @@ public sealed class WebServiceQuotaProfile(
     CpuQuota cpuQuota,
     RamQuota ramQuota,
     WorkloadInstancesQuota workloadInstancesQuota,
-    WebServiceCountQuota serviceCountQuota) : QuotaProfile<WebServiceQuotaInput>
+    WebServiceCountQuota serviceCountQuota
+) : QuotaProfile<WebServiceQuotaInput>
 {
     public override IReadOnlyCollection<QuotaKey> Keys { get; } =
     [
         CpuQuota.QuotaKey,
         RamQuota.QuotaKey,
         WorkloadInstancesQuota.QuotaKey,
-        WebServiceCountQuota.QuotaKey
+        WebServiceCountQuota.QuotaKey,
     ];
 
     public override QuotaDelta Calculate(WebServiceQuotaInput input)
@@ -115,13 +110,12 @@ public sealed class WebServiceQuotaProfile(
             new QuotaValue(cpuQuota.Key, cpuMillis),
             new QuotaValue(ramQuota.Key, memoryMi),
             new QuotaValue(workloadInstancesQuota.Key, instances),
-            serviceCountQuota.Measure(input)
+            serviceCountQuota.Measure(input),
         ]);
     }
 }
 
 public static class WebServiceQuotaResourceKey
 {
-    public static QuotaResourceKey Create(string webServiceId) =>
-        QuotaResourceKey.Create("web-service", webServiceId);
+    public static QuotaResourceKey Create(string webServiceId) => QuotaResourceKey.Create("web-service", webServiceId);
 }

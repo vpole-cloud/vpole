@@ -10,10 +10,13 @@ public sealed record ResourceIngressPolicyDefinition(
     bool RequiresIngressPlacement,
     Func<ImmutableList<NetworkPort>, bool> AllowsPorts,
     Func<ResourceIngressPolicyRequest, ImmutableDictionary<string, string>> DestinationPodLabels,
-    Func<ResourceIngressPolicyRequest, ResourceIngressPolicyTargetSources, ResourceIngressPolicyNetworkSource?> ResolveSource);
+    Func<ResourceIngressPolicyRequest, ResourceIngressPolicyTargetSources, ResourceIngressPolicyNetworkSource?>
+        ResolveSource
+);
 
 public sealed record ResourceIngressPolicyTargetSources(
-    IReadOnlyDictionary<string, ResourceIngressPolicyNetworkSource?> Sources)
+    IReadOnlyDictionary<string, ResourceIngressPolicyNetworkSource?> Sources
+)
 {
     public ResourceIngressPolicyNetworkSource? Get(string name) =>
         Sources.TryGetValue(name, out var source) ? source : null;
@@ -23,13 +26,16 @@ public closed record ResourceIngressPolicyNetworkSource;
 
 public sealed record ResourceIngressPolicyPodSource(
     string Namespace,
-    ImmutableDictionary<string, string> PodLabels) : ResourceIngressPolicyNetworkSource;
+    ImmutableDictionary<string, string> PodLabels
+) : ResourceIngressPolicyNetworkSource;
 
-public sealed record ResourceIngressPolicyCidrSource(string Cidr) : ResourceIngressPolicyNetworkSource;
+public sealed record ResourceIngressPolicyCidrSource(
+    string Cidr
+) : ResourceIngressPolicyNetworkSource;
 
 /// <summary>
-/// Both revisions advance independently. An empty port list leaves a deny tombstone.
-/// The registered provider definition resolves the source from the current target configuration.
+///     Both revisions advance independently. An empty port list leaves a deny tombstone.
+///     The registered provider definition resolves the source from the current target configuration.
 /// </summary>
 public sealed record ResourceIngressPolicyRequest(
     string TenantId,
@@ -42,7 +48,8 @@ public sealed record ResourceIngressPolicyRequest(
     string Purpose,
     long DeploymentDesiredGeneration,
     long TargetWorkloadConfigurationRevision,
-    ImmutableList<NetworkPort> AllowedTcpPorts);
+    ImmutableList<NetworkPort> AllowedTcpPorts
+);
 
 public sealed record ResourceIngressPolicyApplied;
 

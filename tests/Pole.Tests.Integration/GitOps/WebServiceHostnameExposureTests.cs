@@ -1,10 +1,8 @@
+using System.Text.Json;
 using MongoDB.Driver;
-using Pole.Features.Domains.Migrations;
-using Pole.Features.GitOps.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -12,18 +10,21 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class WebServiceHostnameExposureGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+public sealed class WebServiceHostnameExposureGlobalTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task CustomHostnamesBlockManualExposureDowngradeAndRollBackPlacementChanges()
     {
         await EnablePublicWebTargetAsync();
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var creation = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "demo-api")))
-            .AssertHandlerOutcome();
+        var creation = (await Mediator.Send(Data.CreateWebServiceRequest(group.Id, "demo-api"))).AssertHandlerOutcome();
         if (creation is CreateWebServiceError creationError)
-            Assert.Fail($"{creationError.Value.GetType().Name}: " +
-                System.Text.Json.JsonSerializer.Serialize(creationError.Value, creationError.Value.GetType()));
+            Assert.Fail(
+                $"{creationError.Value.GetType().Name}: " + JsonSerializer.Serialize(
+                    creationError.Value,
+                    creationError.Value.GetType()));
         var created = Assert.IsType<CreateWebServiceResponse>(creation.Value);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(HostnameSnapshot())).Status);
         var before = await WebServices.Find(item => item.Id == created.WebServiceId).SingleAsync();
@@ -31,9 +32,15 @@ public sealed class WebServiceHostnameExposureGlobalTests(MongoReplicaSetFixture
         var events = await BusinessEvents();
         var releases = await Releases();
 
-        var outcome = (await Mediator.Send(new UpdateWebServiceRequest(before.Id,
-            new(before.Spec.ToDto(), before.Tags, WebServiceExposureMode.Private, before.ActiveRevision),
-            before.TenantId))).AssertHandlerOutcome();
+        var outcome = (await Mediator.Send(
+            new UpdateWebServiceRequest(
+                before.Id,
+                new UpdateWebServiceRequestBody(
+                    before.Spec.ToDto(),
+                    before.Tags,
+                    WebServiceExposureMode.Private,
+                    before.ActiveRevision),
+                before.TenantId))).AssertHandlerOutcome();
         var error = Assert.IsType<UpdateWebServiceError>(outcome.Value);
         var unavailable = Assert.IsType<WebServiceDependencyUnavailable>(error.Value);
         Assert.IsType<WebServicePublicExposureRequired>(unavailable.Cause.Value);
@@ -41,11 +48,12 @@ public sealed class WebServiceHostnameExposureGlobalTests(MongoReplicaSetFixture
         var unchanged = await WebServices.Find(item => item.Id == before.Id).SingleAsync();
         Assert.Equal(before.Revision, unchanged.Revision);
         Assert.Equal(WebServiceExposureMode.Public, unchanged.Exposure.Mode);
-        var unchangedPlacement = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id)
-            .SingleAsync();
+        var unchangedPlacement
+            = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
         Assert.Equal(placement.Revision, unchangedPlacement.Revision);
         Assert.Equal(placement.DesiredGeneration, unchangedPlacement.DesiredGeneration);
-        Assert.Equal(placement.ResolvedPlacement.Ingress!.Hostnames,
+        Assert.Equal(
+            placement.ResolvedPlacement.Ingress!.Hostnames,
             unchangedPlacement.ResolvedPlacement.Ingress!.Hostnames);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(releases, await Releases());

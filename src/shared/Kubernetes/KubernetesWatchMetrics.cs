@@ -12,7 +12,7 @@ public enum KubernetesWatchOutcome
     Malformed,
     StalledHeaders,
     Cancelled,
-    Unavailable
+    Unavailable,
 }
 
 /// <summary>Technical process-wide LIST/WATCH outcomes. Native selectors and metadata are excluded.</summary>
@@ -20,18 +20,18 @@ public sealed class KubernetesWatchMetrics : IDisposable
 {
     public const string MeterName = "Pole.KubernetesWatch";
 
-    internal static KubernetesWatchMetrics Shared { get; } = new();
-
     private readonly Meter meter;
-    private readonly bool ownsMeter;
     private readonly Counter<long> outcomes;
+    private readonly bool ownsMeter;
 
     public KubernetesWatchMetrics(Meter? instrumentMeter = null)
     {
-        meter = instrumentMeter ?? new(MeterName);
+        meter = instrumentMeter ?? new Meter(MeterName);
         ownsMeter = instrumentMeter is null;
         outcomes = meter.CreateCounter<long>("pole.kubernetes.watch.outcomes");
     }
+
+    internal static KubernetesWatchMetrics Shared { get; } = new();
 
     public void Dispose()
     {
@@ -39,7 +39,8 @@ public sealed class KubernetesWatchMetrics : IDisposable
             meter.Dispose();
     }
 
-    public void Record(KubernetesWatchOutcome outcome) => outcomes.Add(1,
+    public void Record(KubernetesWatchOutcome outcome) => outcomes.Add(
+        1,
         new TagList
         {
             {
@@ -49,8 +50,8 @@ public sealed class KubernetesWatchMetrics : IDisposable
                     KubernetesWatchOutcome.Eof => "eof",
                     KubernetesWatchOutcome.Expired => "410", KubernetesWatchOutcome.Malformed => "malformed",
                     KubernetesWatchOutcome.StalledHeaders => "stalled_headers",
-                    KubernetesWatchOutcome.Cancelled => "cancelled", _ => "unavailable"
+                    KubernetesWatchOutcome.Cancelled => "cancelled", _ => "unavailable",
                 }
-            }
+            },
         });
 }

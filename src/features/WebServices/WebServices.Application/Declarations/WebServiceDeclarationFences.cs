@@ -1,20 +1,12 @@
-using System.Collections.Immutable;
-using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Application;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
 using static Pole.Features.WebServices.Application.Declarations.WebServiceDeclarations;
@@ -31,10 +23,13 @@ internal sealed class WebServiceDeclarationFences(
     FenceDeploymentTargetPlanningSnapshot fencePlanningTarget,
     FenceSourceBuildConfiguration fenceBuildConfiguration,
     FenceResourceConnectionReferencePlanning fencePlanningConnections,
-    FenceConsumerSecretPlanningSnapshot fencePlanningSecrets)
+    FenceConsumerSecretPlanningSnapshot fencePlanningSecrets
+)
 {
-    public async Task<FenceDeclarationOutcome> FenceAsync(FenceDeclarationRequest request,
-        IClientSessionHandle session, CancellationToken cancellationToken)
+    public async Task<FenceDeclarationOutcome> FenceAsync(
+        FenceDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
     {
         var loaded = await planningReader.ReadExecutionPlanningAsync(request.Operation, session, cancellationToken);
         if (loaded is DeclarationReadBlocked blocked)
@@ -44,15 +39,18 @@ internal sealed class WebServiceDeclarationFences(
             return new DeclarationPreconditionsChanged();
         if (dependencies.Current is { } current)
         {
-            if (!request.Expected.Documents.Contains(new(
-                    WebServiceDeclarations.VersionKey(current.Id), current.Revision)) ||
+            if (!request.Expected.Documents.Contains(
+                    new DeclarationDocumentVersion(VersionKey(current.Id), current.Revision)) ||
                 !request.Expected.Documents.Contains(
-                    new(
-                        DeclarationVersionKeys.PlanningFence(WebServiceDeclarations.Kind, current.Id),
+                    new DeclarationDocumentVersion(
+                        DeclarationVersionKeys.PlanningFence(Kind, current.Id),
                         current.PlanningFence)))
                 return new DeclarationPreconditionsChanged();
-            var write = await services.UpdateOneAsync(session, WebServiceFilters.AtPlanningVersion(current),
-                Builders<WebService>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);
+            var write = await services.UpdateOneAsync(
+                session,
+                WebServiceFilters.AtPlanningVersion(current),
+                Builders<WebService>.Update.Inc(item => item.PlanningFence, 1),
+                cancellationToken: cancellationToken);
             if (write.ModifiedCount != 1)
                 return new DeclarationPreconditionsChanged();
         }
@@ -71,16 +69,16 @@ internal sealed class WebServiceDeclarationFences(
                 return new DeclarationPreconditionsChanged();
         }
 
-        if (await fencePlanningScope(dependencies.Scope, session, cancellationToken)
-            is IsolationScopePlanningFenceRejected ||
-            await fencePlanningTarget(dependencies.Target, session, cancellationToken)
-            is DeploymentTargetPlanningFenceRejected ||
-            await fencePlanningCompute(dependencies.Compute, session, cancellationToken)
-            is ComputeProfilePlanningFenceRejected)
+        if (await fencePlanningScope(dependencies.Scope, session, cancellationToken) is
+                IsolationScopePlanningFenceRejected ||
+            await fencePlanningTarget(dependencies.Target, session, cancellationToken) is
+                DeploymentTargetPlanningFenceRejected ||
+            await fencePlanningCompute(dependencies.Compute, session, cancellationToken) is
+                ComputeProfilePlanningFenceRejected)
             return new DeclarationPreconditionsChanged();
         if (dependencies.Placements is { } placements &&
-            await fencePlanningPlacements(placements, session, cancellationToken)
-            is ResourceDeploymentPlanningFenceRejected)
+            await fencePlanningPlacements(placements, session, cancellationToken) is
+                ResourceDeploymentPlanningFenceRejected)
             return new DeclarationPreconditionsChanged();
         if (dependencies.Secrets is { } secrets)
         {

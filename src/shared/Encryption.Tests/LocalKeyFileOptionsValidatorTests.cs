@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-
 namespace Pole.Encryption.Tests;
 
 public sealed class LocalKeyFileOptionsValidatorTests
@@ -92,11 +90,7 @@ public sealed class LocalKeyFileOptionsValidatorTests
     {
         using var files = new TemporaryKeyDirectory();
         var sharedPath = files.WriteKey("shared.key");
-        var options = Options(
-            "one",
-            1,
-            Key("one", 1, sharedPath),
-            Key("two", 1, sharedPath));
+        var options = Options("one", 1, Key("one", 1, sharedPath), Key("two", 1, sharedPath));
 
         var result = _validator.Validate(null, options);
 
@@ -162,18 +156,20 @@ public sealed class LocalKeyFileOptionsValidatorTests
     private static LocalKeyFileOptions Options(
         string activeId,
         int activeVersion,
-        params LocalKeyFileKeyOptions[] keys) =>
-        new()
-        {
-            ActiveKeyId = activeId,
-            ActiveKeyVersion = activeVersion,
-            Keys = keys.ToList()
-        };
+        params LocalKeyFileKeyOptions[] keys) => new()
+    {
+        ActiveKeyId = activeId,
+        ActiveKeyVersion = activeVersion,
+        Keys = keys.ToList(),
+    };
 
-    private static LocalKeyFileKeyOptions Key(string id, int version, string path) => new()
+    private static LocalKeyFileKeyOptions Key(
+        string id,
+        int version,
+        string path) => new()
     {
         Id = id,
         Version = version,
-        Path = path
+        Path = path,
     };
 }

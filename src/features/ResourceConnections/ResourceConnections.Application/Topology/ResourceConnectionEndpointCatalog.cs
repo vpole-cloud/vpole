@@ -1,10 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceConnections.Application.Common;
-using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Workloads;
 
@@ -14,7 +8,8 @@ internal sealed record ResolvedConnectionEndpoint(
     string Id,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort)
+    NetworkPort TargetPort
+)
 {
     internal IReadOnlyList<ResourceConnectionConfigurationField> Configuration { get; init; } = [];
 }
@@ -33,8 +28,8 @@ internal union ResolveConnectionEndpointOutcome(
 
 public sealed class ResourceConnectionEndpointCatalog
 {
-    private readonly IReadOnlyDictionary<ResourceTypeId, IResourceConnectionDestinationCapability>
-        destinations;
+    private readonly IReadOnlyDictionary<ResourceTypeId, IResourceConnectionDestinationCapability> destinations;
+
     private readonly HashSet<ResourceTypeId> sources;
 
     public ResourceConnectionEndpointCatalog(
@@ -60,6 +55,7 @@ public sealed class ResourceConnectionEndpointCatalog
                 throw new InvalidOperationException(
                     $"Resource connection destination type '{destination.ResourceType.Value}' is registered more than once.");
         }
+
         destinations = registered;
     }
 
@@ -67,12 +63,17 @@ public sealed class ResourceConnectionEndpointCatalog
 
     public bool SupportsDestination(ResourceTypeId type) => destinations.ContainsKey(type);
 
-    public async Task<ResourceConnectionEndpointsFound?> LoadAvailableAsync(string tenantId, ResourceTypeId type,
-        string resourceId, CancellationToken cancellationToken = default)
+    public async Task<ResourceConnectionEndpointsFound?> LoadAvailableAsync(
+        string tenantId,
+        ResourceTypeId type,
+        string resourceId,
+        CancellationToken cancellationToken = default)
     {
-        if (!destinations.TryGetValue(type, out var provider)) return null;
+        if (!destinations.TryGetValue(type, out var provider))
+            return null;
         var found = await provider.LoadAvailableAsync(tenantId, [resourceId], cancellationToken);
-        if (!found.TryGetValue(resourceId, out var endpoints)) return null;
+        if (!found.TryGetValue(resourceId, out var endpoints))
+            return null;
         Validate(endpoints.Endpoints);
         return endpoints;
     }
@@ -89,16 +90,14 @@ public sealed class ResourceConnectionEndpointCatalog
             return new ConnectionEndpointUnsupportedByProvider();
 
         var result = await destination.LoadAsync(
-            new LoadResourceConnectionDestinationRequest(
-                TenantId: tenantId,
-                ResourceId: resourceId),
+            new LoadResourceConnectionDestinationRequest(TenantId: tenantId, ResourceId: resourceId),
             session: session,
             cancellationToken: cancellationToken);
         return result switch
         {
             ResourceConnectionEndpointsFound found => Resolve(found.Endpoints, endpointId),
             ResourceConnectionDestinationMissing => new ConnectionEndpointMissing(),
-            ResourceConnectionDestinationDeleting => new ConnectionDestinationDeleting()
+            ResourceConnectionDestinationDeleting => new ConnectionDestinationDeleting(),
         };
     }
 
@@ -108,35 +107,33 @@ public sealed class ResourceConnectionEndpointCatalog
     {
         var published = endpoints.ToArray();
         Validate(published);
-        var endpoint = published.SingleOrDefault(item =>
-            string.Equals(item.Id, endpointId, StringComparison.Ordinal));
+        var endpoint = published.SingleOrDefault(item => string.Equals(item.Id, endpointId, StringComparison.Ordinal));
         return endpoint is null
             ? new ConnectionEndpointUnsupportedByProvider()
             : new ResolvedConnectionEndpoint(
                 endpoint.Id,
                 endpoint.ServiceName,
                 endpoint.ServicePort,
-                endpoint.TargetPort)
-            { Configuration = endpoint.Configuration };
+                endpoint.TargetPort) { Configuration = endpoint.Configuration };
     }
 
     private static void Validate(IEnumerable<ResourceConnectionEndpoint> endpoints)
     {
         var published = endpoints.ToArray();
-        if (published.GroupBy(item => item.Id, StringComparer.Ordinal)
-            .Any(group => group.Skip(1).Any()))
+        if (published.GroupBy(item => item.Id, StringComparer.Ordinal).Any(group => group.Skip(1).Any()))
             throw new InvalidOperationException("A destination provider published duplicate connection endpoint IDs.");
-        if (published.Any(item =>
-                string.IsNullOrWhiteSpace(item.Id) ||
-                string.IsNullOrWhiteSpace(item.ServiceName) ||
+        if (published.Any(item => string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.ServiceName) ||
                 !ValidText(item.DisplayName, 200) || !ValidText(item.Protocol, 64) || item.Transport != "TCP" ||
                 item.Configuration is null || item.Configuration.Count > 32 ||
-                item.Configuration.Any(field => !ValidText(field.Key, 128) || !ValidText(field.DisplayName, 200) || !ValidText(field.Value, 500)) ||
-                item.Configuration.GroupBy(field => field.Key, StringComparer.Ordinal).Any(group => group.Skip(1).Any()) ||
-                !NetworkPort.TryCreate(item.ServicePort.Value, out _) ||
+                item.Configuration.Any(field =>
+                    !ValidText(field.Key, 128) || !ValidText(field.DisplayName, 200) || !ValidText(field.Value, 500)) ||
+                item.Configuration
+                    .GroupBy(field => field.Key, StringComparer.Ordinal)
+                    .Any(group => group.Skip(1).Any()) || !NetworkPort.TryCreate(item.ServicePort.Value, out _) ||
                 !NetworkPort.TryCreate(item.TargetPort.Value, out _)))
             throw new InvalidOperationException("A destination provider published an invalid connection endpoint.");
     }
 
-    private static bool ValidText(string value, int length) => !string.IsNullOrWhiteSpace(value) && value.Length <= length && !value.Any(char.IsControl);
+    private static bool ValidText(string value, int length) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= length && !value.Any(char.IsControl);
 }

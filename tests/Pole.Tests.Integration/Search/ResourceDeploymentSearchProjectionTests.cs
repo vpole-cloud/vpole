@@ -8,22 +8,21 @@ using Pole.Features.Search.Contracts;
 using Pole.Features.Search.Domain;
 using Pole.Features.WebServices.Application.Search;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.Search;
 
 [Collection(IntegrationTestCollection.Tenant4)]
 public sealed class ResourceDeploymentSearchProjectionTests(
-    MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
-    private CreateSearchProjection CreateProjection =>
-        Services.GetRequiredService<CreateSearchProjection>();
-    private UpdateSearchOperationalStatus UpdateStatus =>
-        Services.GetRequiredService<UpdateSearchOperationalStatus>();
-    private ResolveSearchSourceType ResolveSourceType =>
-        Services.GetRequiredService<ResolveSearchSourceType>();
+    private CreateSearchProjection CreateProjection => Services.GetRequiredService<CreateSearchProjection>();
+
+    private UpdateSearchOperationalStatus UpdateStatus => Services.GetRequiredService<UpdateSearchOperationalStatus>();
+
+    private ResolveSearchSourceType ResolveSourceType => Services.GetRequiredService<ResolveSearchSourceType>();
+
     private IMongoCollection<SearchSourceDocument> SearchSources =>
         Fixture.Database.GetCollection<SearchSourceDocument>("SearchSourceDocuments");
 
@@ -33,11 +32,12 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         var tenantId = ObjectId.GenerateNewId().ToString();
         var resourceId = ObjectId.GenerateNewId().ToString();
         var deploymentId = ObjectId.GenerateNewId().ToString();
-        var consumer = CreateConsumer(CreatePlacement(
-            deploymentId,
-            desiredGeneration: 2,
-            observedGeneration: 2,
-            status: ResourceDeploymentStatus.Applied));
+        var consumer = CreateConsumer(
+            CreatePlacement(
+                deploymentId,
+                desiredGeneration: 2,
+                observedGeneration: 2,
+                status: ResourceDeploymentStatus.Applied));
 
         await consumer.Handle(
             tenantId,
@@ -70,13 +70,11 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         await CreateProjection(CreateWebSnapshot(tenantId, resourceId, "worker"));
         await CreateProjection(CreateWebSnapshot(otherTenantId, resourceId, "other-worker"));
 
-        var stub = new StubResourceDeploymentQueryService([
-            CreatePlacement(deploymentId, 3, 3, ResourceDeploymentStatus.Applied)
+        var stub = new StubResourceDeploymentQueryService(
+        [
+            CreatePlacement(deploymentId, 3, 3, ResourceDeploymentStatus.Applied),
         ]);
-        var consumer = new ResourceDeploymentSearchProjectionConsumer(
-            UpdateStatus,
-            stub.LoadAsync,
-            ResolveSourceType);
+        var consumer = new ResourceDeploymentSearchProjectionConsumer(UpdateStatus, stub.LoadAsync, ResolveSourceType);
         var currentEventTime = DateTime.UtcNow;
 
         await consumer.Handle(
@@ -89,12 +87,15 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             false,
             CancellationToken.None);
 
-        stub.Current = [CreatePlacement(
-            deploymentId,
-            desiredGeneration: 2,
-            observedGeneration: 1,
-            status: ResourceDeploymentStatus.Failed,
-            failureCode: "ProviderUnavailable")];
+        stub.Current =
+        [
+            CreatePlacement(
+                deploymentId,
+                desiredGeneration: 2,
+                observedGeneration: 1,
+                status: ResourceDeploymentStatus.Failed,
+                failureCode: "ProviderUnavailable"),
+        ];
         await consumer.Handle(
             tenantId,
             deploymentId,
@@ -130,21 +131,28 @@ public sealed class ResourceDeploymentSearchProjectionTests(
         var tenantId = ObjectId.GenerateNewId().ToString();
         var resourceId = ObjectId.GenerateNewId().ToString();
         var identity = new SearchProjectionIdentity(
-            tenantId, WebServiceSearchProjection.SourceType.ResourceTypeId, resourceId);
+            tenantId,
+            WebServiceSearchProjection.SourceType.ResourceTypeId,
+            resourceId);
         var eventTime = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         await CreateProjection(CreateWebSnapshot(tenantId, resourceId, "worker"));
-        await UpdateStatus(identity, new(2, 5, "current", null, eventTime));
+        await UpdateStatus(identity, new SearchOperationalStatusSnapshot(2, 5, "current", null, eventTime));
 
-        await UpdateStatus(identity, new(resourceRevision, observedGeneration, "candidate", null,
-            eventTime.AddSeconds(eventTimeOffsetSeconds)));
+        await UpdateStatus(
+            identity,
+            new SearchOperationalStatusSnapshot(
+                resourceRevision,
+                observedGeneration,
+                "candidate",
+                null,
+                eventTime.AddSeconds(eventTimeOffsetSeconds)));
 
         var projected = await LoadAsync(tenantId, resourceId);
         var status = Assert.IsType<SearchOperationalStatus>(projected.OperationalStatus.Value);
         Assert.Equal(accepted ? "candidate" : "current", status.Status);
         Assert.Equal(accepted ? resourceRevision : 2, status.ResourceRevision);
         Assert.Equal(accepted ? observedGeneration : 5, status.ObservedGeneration);
-        Assert.Equal(accepted ? eventTime.AddSeconds(eventTimeOffsetSeconds) : eventTime,
-            status.EventOccurredAtUtc);
+        Assert.Equal(accepted ? eventTime.AddSeconds(eventTimeOffsetSeconds) : eventTime, status.EventOccurredAtUtc);
     }
 
     [Fact]
@@ -184,10 +192,7 @@ public sealed class ResourceDeploymentSearchProjectionTests(
     public async Task UnregisteredResourceType_IsIgnoredWithoutLoadingDeployments()
     {
         var stub = new StubResourceDeploymentQueryService([]);
-        var consumer = new ResourceDeploymentSearchProjectionConsumer(
-            UpdateStatus,
-            stub.LoadAsync,
-            ResolveSourceType);
+        var consumer = new ResourceDeploymentSearchProjectionConsumer(UpdateStatus, stub.LoadAsync, ResolveSourceType);
 
         await consumer.Handle(
             Data.TenantId,
@@ -200,57 +205,72 @@ public sealed class ResourceDeploymentSearchProjectionTests(
             CancellationToken.None);
 
         Assert.Equal(0, stub.LoadCount);
-        Assert.Equal(0, await SearchSources.CountDocumentsAsync(Builders<SearchSourceDocument>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await SearchSources.CountDocumentsAsync(
+                Builders<SearchSourceDocument>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
-    private ResourceDeploymentSearchProjectionConsumer CreateConsumer(
-        params PlacementSummaryDto[] placements) =>
-        new(
-            UpdateStatus,
-            new StubResourceDeploymentQueryService(placements).LoadAsync,
-            ResolveSourceType);
+    private ResourceDeploymentSearchProjectionConsumer CreateConsumer(params PlacementSummaryDto[] placements) => new(
+        UpdateStatus,
+        new StubResourceDeploymentQueryService(placements).LoadAsync,
+        ResolveSourceType);
 
-    private Task<SearchSourceDocument> LoadAsync(string tenantId, string resourceId) =>
-        SearchSources.Find(source =>
+    private Task<SearchSourceDocument> LoadAsync(string tenantId, string resourceId) => SearchSources.Find(source =>
             source.TenantId == tenantId &&
             source.ResourceTypeId == WebServiceSearchProjection.SourceType.ResourceTypeId.Value &&
-            source.SourceId == resourceId).SingleAsync();
+            source.SourceId == resourceId)
+        .SingleAsync();
 
     private static SearchProjectionSnapshot CreateWebSnapshot(
         string tenantId,
         string resourceId,
-        string title) =>
-        new(
-            new SearchProjectionIdentity(
-                tenantId,
-                WebServiceSearchProjection.SourceType.ResourceTypeId,
-                resourceId),
-            title,
-            ObjectId.GenerateNewId().ToString(),
-            null,
-            [
-                new SearchProjectionField(SearchProjectionFieldType.SourceId, resourceId),
-                new SearchProjectionField(SearchProjectionFieldType.Name, title)
-            ],
-            1);
+        string title) => new(
+        new SearchProjectionIdentity(tenantId, WebServiceSearchProjection.SourceType.ResourceTypeId, resourceId),
+        title,
+        ObjectId.GenerateNewId().ToString(),
+        null,
+        [
+            new SearchProjectionField(SearchProjectionFieldType.SourceId, resourceId),
+            new SearchProjectionField(SearchProjectionFieldType.Name, title),
+        ],
+        1);
 
     private static PlacementSummaryDto CreatePlacement(
         string deploymentId,
         long desiredGeneration,
         long observedGeneration,
         ResourceDeploymentStatus status,
-        string? failureCode = null) =>
-        new(deploymentId, ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
-            TestData.DefaultDeploymentTargetId, desiredGeneration, observedGeneration, status, failureCode,
-            new ComputeConfigurationSummaryDto(new ComputeProfileReference(TestData.DefaultComputeProfileId, 1),
-            "General purpose", new ComputeResourceValuesDto(250, 256), new ComputeResourceValuesDto(1000, 1024), []),
-            ImmutableList<ResourceDeploymentEndpointDto>.Empty, ResourceRevision: desiredGeneration, FixedReplicas: 1,
-            Ingress: null, DeploymentRevision: 1, DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
-            Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished",
+        string? failureCode = null) => new(
+        deploymentId,
+        ObjectId.GenerateNewId().ToString(),
+        ObjectId.GenerateNewId().ToString(),
+        TestData.DefaultDeploymentTargetId,
+        desiredGeneration,
+        observedGeneration,
+        status,
+        failureCode,
+        new ComputeConfigurationSummaryDto(
+            new ComputeProfileReference(TestData.DefaultComputeProfileId, 1),
+            "General purpose",
+            new ComputeResourceValuesDto(250, 256),
+            new ComputeResourceValuesDto(1000, 1024),
+            []),
+        ImmutableList<ResourceDeploymentEndpointDto>.Empty,
+        ResourceRevision: desiredGeneration,
+        FixedReplicas: 1,
+        Ingress: null,
+        DeploymentRevision: 1,
+        DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
+        Isolation: new ResourceDeploymentIsolationDto(
+            "Unknown",
+            "EnforcementRequired",
+            "EnforcementNotEstablished",
             null));
 
     private sealed class StubResourceDeploymentQueryService(
-        IReadOnlyList<PlacementSummaryDto> current)
+        IReadOnlyList<PlacementSummaryDto> current
+    )
     {
         public IReadOnlyList<PlacementSummaryDto> Current { get; set; } = current;
         public int LoadCount { get; private set; }

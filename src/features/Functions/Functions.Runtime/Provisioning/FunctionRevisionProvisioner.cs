@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
 using Pole.Features.Functions.Runtime.Agent;
@@ -13,11 +12,14 @@ namespace Pole.Features.Functions.Runtime.Provisioning;
 
 public sealed record FunctionRevisionProvisioningCompleted;
 
-public sealed record FunctionRevisionProvisioningDeferred(string Reason);
+public sealed record FunctionRevisionProvisioningDeferred(
+    string Reason
+);
 
 public sealed record FunctionRevisionProvisioningFailed(
     string Code,
-    string Message);
+    string Message
+);
 
 public union FunctionRevisionProvisioningOutcome(
     FunctionRevisionProvisioningCompleted,
@@ -37,7 +39,8 @@ public sealed class FunctionRevisionProvisioner(
     IFunctionRevisionKubernetesManager kubernetesManager,
     MarkFunctionRevisionReady markFunctionRevisionReady,
     PromoteFunctionRevision promoteFunctionRevision,
-    ILogger<FunctionRevisionProvisioner> logger) : IFunctionRevisionProvisioner
+    ILogger<FunctionRevisionProvisioner> logger
+) : IFunctionRevisionProvisioner
 {
     private static readonly TimeSpan MetadataTimeout = TimeSpan.FromSeconds(10);
 
@@ -50,18 +53,16 @@ public sealed class FunctionRevisionProvisioner(
         if (revision.Status is ReadyFunctionRevisionStatus)
             return await PromoteAsync(subject, app, revision, cancellationToken);
         if (revision.Status is not ProvisioningFunctionRevisionStatus)
-        {
             return new FunctionRevisionProvisioningFailed(
                 "revision-status",
                 "Only a provisioning or ready Function revision can be provisioned.");
-        }
 
         var activation = await activator.EnsureActiveAsync(subject, cancellationToken);
         if (activation is FunctionRevisionActivationError activationFailure)
         {
             if (activationFailure.Value is FunctionActivationScaleRejected
                 {
-                    Error.Value: FunctionRevisionGatewaySourceUnavailable sourceFailure
+                    Error.Value: FunctionRevisionGatewaySourceUnavailable sourceFailure,
                 })
                 return new FunctionRevisionProvisioningDeferred(sourceFailure.Message);
             return await FailAndStopAsync(subject, "activation", activationFailure.Message(), cancellationToken);
@@ -71,24 +72,19 @@ public sealed class FunctionRevisionProvisioner(
 
         var metadataFailure = "No ready Function Agent returned valid metadata.";
         foreach (var endpoint in snapshot.Endpoints)
-        {
             try
             {
                 using var metadataTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 metadataTimeout.CancelAfter(MetadataTimeout);
-                var response = await agentClient.GetMetadataAsync(
-                    endpoint,
-                    app,
-                    revision,
-                    metadataTimeout.Token);
+                var response = await agentClient.GetMetadataAsync(endpoint, app, revision, metadataTimeout.Token);
                 if (!response.IsSuccess || response.Value is null)
                 {
                     metadataFailure = response.Error?.Message ??
-                                      $"Function Agent metadata endpoint returned {(int)response.StatusCode}.";
+                        $"Function Agent metadata endpoint returned {(int)response.StatusCode}.";
                     continue;
                 }
 
-                metadataFailure = ValidateMetadata(response.Value, endpoint, app, revision) ?? string.Empty;
+                metadataFailure = ValidateMetadata(response.Value, endpoint, app, revision) ?? "";
                 if (metadataFailure.Length == 0)
                 {
                     var scaled = await kubernetesManager.ScaleProvisioningAsync(
@@ -106,19 +102,9 @@ public sealed class FunctionRevisionProvisioner(
                             cancellationToken);
                     }
 
-                    var ready = await markFunctionRevisionReady(
-                        app.TenantId,
-                        app.Id,
-                        revision.Id,
-                        cancellationToken);
+                    var ready = await markFunctionRevisionReady(app.TenantId, app.Id, revision.Id, cancellationToken);
                     if (ready is not FunctionRevisionLifecycleCompleted)
-                    {
-                        return await FailAndStopAsync(
-                            subject,
-                            "readiness",
-                            ready.FailureMessage(),
-                            cancellationToken);
-                    }
+                        return await FailAndStopAsync(subject, "readiness", ready.FailureMessage(), cancellationToken);
 
                     return await PromoteAsync(subject, app, revision, cancellationToken);
                 }
@@ -141,7 +127,6 @@ public sealed class FunctionRevisionProvisioner(
                     endpoint.Port,
                     revision.Id);
             }
-        }
 
         return await FailAndStopAsync(subject, "agent-metadata", metadataFailure, cancellationToken);
     }
@@ -152,18 +137,10 @@ public sealed class FunctionRevisionProvisioner(
         FunctionRevision revision,
         CancellationToken cancellationToken)
     {
-        var promoted = await promoteFunctionRevision(
-            app.TenantId,
-            app.Id,
-            revision.Id,
-            cancellationToken);
+        var promoted = await promoteFunctionRevision(app.TenantId, app.Id, revision.Id, cancellationToken);
         return promoted is FunctionRevisionLifecycleCompleted
             ? new FunctionRevisionProvisioningCompleted()
-            : await FailAndStopAsync(
-                subject,
-                "promotion",
-                promoted.FailureMessage(),
-                cancellationToken);
+            : await FailAndStopAsync(subject, "promotion", promoted.FailureMessage(), cancellationToken);
     }
 
     private async Task<FunctionRevisionProvisioningOutcome> FailAndStopAsync(
@@ -174,12 +151,10 @@ public sealed class FunctionRevisionProvisioner(
     {
         var stopped = await kubernetesManager.ScaleProvisioningAsync(subject, 0, cancellationToken);
         if (stopped is FunctionRevisionKubernetesOperationError stopFailure)
-        {
             logger.LogWarning(
                 "[function-revision-stop-failed] Could not return failed revision {RevisionId} to zero replicas: {Reason}",
                 subject.Revision.Id,
                 stopFailure.Message());
-        }
 
         return new FunctionRevisionProvisioningFailed(code, message);
     }
@@ -192,8 +167,10 @@ public sealed class FunctionRevisionProvisioner(
     {
         if (!string.Equals(metadata.ProtocolVersion, revision.Spec.RuntimeProtocolVersion, StringComparison.Ordinal))
             return "Function Agent protocol version does not match the revision.";
-        if (!string.Equals(metadata.FunctionAppId, app.Id, StringComparison.Ordinal) ||
-            !string.Equals(metadata.RevisionId, revision.Id, StringComparison.Ordinal))
+        if (!string.Equals(metadata.FunctionAppId, app.Id, StringComparison.Ordinal) || !string.Equals(
+                metadata.RevisionId,
+                revision.Id,
+                StringComparison.Ordinal))
             return "Function Agent runtime identity does not match the revision.";
         if (!string.Equals(metadata.AgentInstanceId, endpoint.TargetUid, StringComparison.Ordinal))
             return "Function Agent instance identity does not match its Kubernetes Pod UID.";
@@ -202,15 +179,14 @@ public sealed class FunctionRevisionProvisioner(
 
         var expected = revision.Spec.Handlers.ToDictionary(handler => handler.Name, StringComparer.Ordinal);
         if (metadata.Handlers.Count != expected.Count ||
-            metadata.Handlers.Select(handler => handler.Name).Distinct(StringComparer.Ordinal).Count() != expected.Count)
+            metadata.Handlers.Select(handler => handler.Name).Distinct(StringComparer.Ordinal).Count() !=
+            expected.Count)
             return "Function Agent handler set does not match the revision.";
         foreach (var actual in metadata.Handlers)
-        {
             if (!expected.TryGetValue(actual.Name, out var handler) ||
                 actual.TriggerKind != TriggerKind(handler.Trigger) ||
                 actual.MaxConcurrencyPerInstance != handler.MaxConcurrencyPerInstance)
                 return $"Function Agent handler '{actual.Name}' does not match the revision.";
-        }
 
         return null;
     }
@@ -219,6 +195,6 @@ public sealed class FunctionRevisionProvisioner(
     {
         HttpFunctionTriggerSpec => FunctionTriggerKind.Http,
         TimerFunctionTriggerSpec => FunctionTriggerKind.Timer,
-        _ => throw new ArgumentOutOfRangeException(nameof(trigger), trigger, null)
+        _ => throw new ArgumentOutOfRangeException(nameof(trigger), trigger, null),
     };
 }

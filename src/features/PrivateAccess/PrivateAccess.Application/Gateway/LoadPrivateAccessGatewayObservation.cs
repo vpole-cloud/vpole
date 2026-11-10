@@ -1,9 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.PrivateAccess.Application.Admission;
-using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Grants;
 using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 
@@ -14,7 +10,8 @@ public sealed record PrivateAccessGatewayObservation(
     DateTime CredentialExpiresAtUtc,
     DateTime? LastContactAtUtc,
     string? ProtocolVersion,
-    bool BrokerLeaseActive);
+    bool BrokerLeaseActive
+);
 
 public delegate Task<PrivateAccessGatewayObservation?> LoadPrivateAccessGatewayObservation(
     string tenantId,
@@ -23,24 +20,22 @@ public delegate Task<PrivateAccessGatewayObservation?> LoadPrivateAccessGatewayO
 
 internal sealed class MongoLoadPrivateAccessGatewayObservation(
     IMongoCollection<PrivateAccessGateway> gateways,
-    LoadPrivateAccessBrokerOwner loadOwner)
+    LoadPrivateAccessBrokerOwner loadOwner
+)
 {
     public async Task<PrivateAccessGatewayObservation?> InvokeAsync(
         string tenantId,
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var gateway = await gateways.Find(
-                PrivateAccessGatewayFilters.ByTenantTarget(tenantId, deploymentTargetId))
+        var gateway = await gateways.Find(PrivateAccessGatewayFilters.ByTenantTarget(tenantId, deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
         if (gateway is null)
             return null;
 
         var owner = await loadOwner(tenantId, deploymentTargetId, cancellationToken);
-        var leaseActive = gateway.State is ActivePrivateAccessGatewayState &&
-            owner?.Gateway is { } identity &&
-            identity.GatewayId == gateway.Id &&
-            identity.Generation == gateway.Generation &&
+        var leaseActive = gateway.State is ActivePrivateAccessGatewayState && owner?.Gateway is { } identity &&
+            identity.GatewayId == gateway.Id && identity.Generation == gateway.Generation &&
             identity.Revision == gateway.Revision;
         return new PrivateAccessGatewayObservation(
             gateway.Generation,

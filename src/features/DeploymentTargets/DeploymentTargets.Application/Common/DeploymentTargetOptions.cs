@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
-using Pole.Workloads;
 using Microsoft.Extensions.Options;
 using Pole.Features.DeploymentTargets.Domain;
+using Pole.Workloads;
 
 namespace Pole.Features.DeploymentTargets.Application.Common;
 
@@ -9,7 +9,7 @@ public enum DeploymentTargetBootstrapMode
 {
     Auto,
     InCluster,
-    Kubeconfig
+    Kubeconfig,
 }
 
 public sealed class DeploymentTargetOptions
@@ -28,8 +28,8 @@ public sealed class DeploymentTargetBootstrapOptions
     public DeploymentTargetBootstrapMode Mode { get; init; } = DeploymentTargetBootstrapMode.Auto;
     public string? KubeconfigPath { get; init; }
     public string? KubeconfigContext { get; init; }
-    public DeploymentTargetBootstrapWorkloadConfigurationOptions WorkloadConfiguration { get; init; } =
-        new();
+
+    public DeploymentTargetBootstrapWorkloadConfigurationOptions WorkloadConfiguration { get; init; } = new();
 }
 
 public sealed class DeploymentTargetBootstrapWorkloadConfigurationOptions
@@ -49,9 +49,10 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesOptions
         Pods.Select(entry => new KeyValuePair<string, DeploymentTargetNetworkSource>(
                 entry.Key,
                 DeploymentTargetPodNetworkSource.Create(entry.Value.Namespace, entry.Value.PodLabels)))
-            .Concat(Cidrs.Select(entry => new KeyValuePair<string, DeploymentTargetNetworkSource>(
-                entry.Key,
-                DeploymentTargetCidrNetworkSource.Create(entry.Value))))
+            .Concat(
+                Cidrs.Select(entry => new KeyValuePair<string, DeploymentTargetNetworkSource>(
+                    entry.Key,
+                    DeploymentTargetCidrNetworkSource.Create(entry.Value))))
             .ToImmutableDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
 
     internal IEnumerable<string> ValidationFailures()
@@ -66,25 +67,19 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesOptions
         }
 
         foreach (var (purpose, pod) in Pods)
-        {
             if (pod is null || !DeploymentTargetPodNetworkSource.IsValidNamespace(pod.Namespace) ||
                 !DeploymentTargetPodNetworkSource.IsValid(pod.PodLabels))
-            {
                 yield return $"{prefix}:Pods:{purpose} requires an exact namespace and nonempty valid pod labels.";
-            }
-        }
 
         foreach (var (purpose, cidr) in Cidrs)
-        {
             if (!DeploymentTargetCidrNetworkSource.IsValid(cidr))
                 yield return $"{prefix}:Cidrs:{purpose} must be a bounded IP network.";
-        }
     }
 }
 
 public sealed class DeploymentTargetBootstrapPodSourceOptions
 {
-    public string Namespace { get; init; } = string.Empty;
+    public string Namespace { get; init; } = "";
     public Dictionary<string, string> PodLabels { get; init; } = [];
 }
 
@@ -111,60 +106,43 @@ public sealed class DeploymentTargetOptionsValidator : IValidateOptions<Deployme
 
         if (string.IsNullOrWhiteSpace(options.Bootstrap.DisplayName) ||
             options.Bootstrap.DisplayName.Trim().Length > 80)
-        {
             failures.Add("DeploymentTargets:Bootstrap:DisplayName is required and cannot exceed 80 characters.");
-        }
 
         if (!string.IsNullOrWhiteSpace(options.Bootstrap.KubeconfigPath) &&
             !Path.IsPathFullyQualified(options.Bootstrap.KubeconfigPath))
-        {
             failures.Add("DeploymentTargets:Bootstrap:KubeconfigPath must be an absolute path.");
-        }
 
         if (options.Bootstrap.Mode == DeploymentTargetBootstrapMode.InCluster &&
             (!string.IsNullOrWhiteSpace(options.Bootstrap.KubeconfigPath) ||
-             !string.IsNullOrWhiteSpace(options.Bootstrap.KubeconfigContext)))
-        {
+                !string.IsNullOrWhiteSpace(options.Bootstrap.KubeconfigContext)))
             failures.Add("InCluster bootstrap cannot specify kubeconfig path or context.");
-        }
 
         var workloadConfiguration = options.Bootstrap.WorkloadConfiguration;
         if (workloadConfiguration is null)
         {
-            failures.Add(
-                "DeploymentTargets:Bootstrap:WorkloadConfiguration is required.");
+            failures.Add("DeploymentTargets:Bootstrap:WorkloadConfiguration is required.");
         }
         else
         {
             failures.AddRange(workloadConfiguration.NetworkSources.ValidationFailures());
             var ingress = workloadConfiguration.Ingress;
             if (ingress is not null &&
-                !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(
-                    ingress.IngressClassName))
-            {
+                !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(ingress.IngressClassName))
                 failures.Add(
                     "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:IngressClassName " +
                     "must be a valid Kubernetes resource name.");
-            }
             if (ingress is not null &&
-                !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(
-                    ingress.ClusterIssuerName))
-            {
+                !DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(ingress.ClusterIssuerName))
                 failures.Add(
                     "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:ClusterIssuerName " +
                     "must be a valid Kubernetes resource name.");
-            }
             if (ingress?.PublicBaseDomain is not null &&
                 !DeploymentTargetIngressConfiguration.IsValidPublicBaseDomain(ingress.PublicBaseDomain))
-            {
                 failures.Add(
                     "DeploymentTargets:Bootstrap:WorkloadConfiguration:Ingress:PublicBaseDomain " +
                     "must be a valid ASCII DNS name.");
-            }
         }
 
-        return failures.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(failures);
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

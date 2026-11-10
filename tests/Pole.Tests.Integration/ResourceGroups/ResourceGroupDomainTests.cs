@@ -1,7 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
@@ -12,8 +11,8 @@ public sealed class ResourceGroupDomainTests
     private const string ResourceGroupId = "507f1f77bcf86cd799439012";
     private const string ScopeId = "507f1f77bcf86cd799439013";
     private const string TargetId = "507f1f77bcf86cd799439014";
-    private static readonly DateTime CreatedAtUtc =
-        new(2026, 7, 27, 10, 0, 0, DateTimeKind.Utc);
+
+    private static readonly DateTime CreatedAtUtc = new(2026, 7, 27, 10, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public void IsolationScopeFactory_UsesTechnicalName_AndRejectsReservedDefault()
@@ -40,12 +39,18 @@ public sealed class ResourceGroupDomainTests
     [InlineData("production_")]
     public void IsolationScopeFactory_RejectsInvalidTechnicalNames(string name) =>
         Assert.Throws<ArgumentException>(() => IsolationScopeFactory.CreateAdditional(
-            TenantId, ResourceGroupId, name, new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc)));
+            TenantId,
+            ResourceGroupId,
+            name,
+            new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc)));
 
     [Fact]
     public void IsolationScopeCurrentStatesRoundTripBsonWithExplicitInitialValues()
     {
-        var scope = IsolationScopeFactory.CreateAdditional(TenantId, ResourceGroupId, "production",
+        var scope = IsolationScopeFactory.CreateAdditional(
+            TenantId,
+            ResourceGroupId,
+            "production",
             new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc));
         Assert.Equal(1, scope.Revision);
         Assert.False(scope.IsDefault);
@@ -64,8 +69,7 @@ public sealed class ResourceGroupDomainTests
             ResourceGroupId,
             new IsolationScopeFactory.CreateOptions(ScopeId, CreatedAtUtc));
 
-        Assert.Throws<InvalidOperationException>(() =>
-            scope.RequestDeletion(CreatedAtUtc.AddMinutes(1)));
+        Assert.Throws<InvalidOperationException>(() => scope.RequestDeletion(CreatedAtUtc.AddMinutes(1)));
     }
 
     [Fact]
@@ -79,13 +83,10 @@ public sealed class ResourceGroupDomainTests
             {
                 Id = ResourceGroupId,
                 DefaultIsolationScopeId = ScopeId,
-                CreatedAtUtc = CreatedAtUtc
+                CreatedAtUtc = CreatedAtUtc,
             });
 
-        var updated = resourceGroup.UpdateMetadata(
-            "after",
-            ["production"],
-            CreatedAtUtc.AddMinutes(1));
+        var updated = resourceGroup.UpdateMetadata("after", ["production"], CreatedAtUtc.AddMinutes(1));
 
         Assert.Equal(resourceGroup.Revision + 1, updated.Revision);
         Assert.Equal(resourceGroup.DefaultIsolationScopeId, updated.DefaultIsolationScopeId);
@@ -103,12 +104,9 @@ public sealed class ResourceGroupDomainTests
             "external-42",
             "Orders database",
             "acme",
-            new ResourceRegistrationFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc));
+            new ResourceRegistrationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), CreatedAtUtc));
 
-        var roundTripped = BsonSerializer.Deserialize<ResourceRegistration>(
-            registration.ToBson());
+        var roundTripped = BsonSerializer.Deserialize<ResourceRegistration>(registration.ToBson());
 
         Assert.Equal("acme/database", roundTripped.ResourceTypeId);
         Assert.Equal("acme", roundTripped.OwningPluginId);
@@ -119,9 +117,7 @@ public sealed class ResourceGroupDomainTests
             "external-42",
             "Orders database",
             "acme",
-            new ResourceRegistrationFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc)));
+            new ResourceRegistrationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), CreatedAtUtc)));
         Assert.Throws<ArgumentException>(() => ResourceRegistrationFactory.Create(
             TenantId,
             ResourceGroupId,
@@ -129,9 +125,7 @@ public sealed class ResourceGroupDomainTests
             "external-42",
             "Redis",
             "pole",
-            new ResourceRegistrationFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc)));
+            new ResourceRegistrationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), CreatedAtUtc)));
     }
 
     [Fact]
@@ -143,13 +137,10 @@ public sealed class ResourceGroupDomainTests
             ScopeId,
             TargetId,
             "pole-a1b2c3",
-            new RuntimeCellFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc));
+            new RuntimeCellFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), CreatedAtUtc));
         var ready = cell.MarkReady(1, CreatedAtUtc.AddMinutes(1));
 
-        Assert.Throws<InvalidOperationException>(() =>
-            ready.MarkReady(1, CreatedAtUtc.AddMinutes(2)));
+        Assert.Throws<InvalidOperationException>(() => ready.MarkReady(1, CreatedAtUtc.AddMinutes(2)));
 
         var roundTripped = BsonSerializer.Deserialize<RuntimeCell>(ready.ToBson());
         var readyState = Assert.IsType<ReadyRuntimeCellState>(roundTripped.State);

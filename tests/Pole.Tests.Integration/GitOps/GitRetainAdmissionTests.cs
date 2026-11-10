@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Domain;
-using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
@@ -14,7 +13,7 @@ public sealed partial class GitPrunePlanningTests
         var source = await Create(GitPrunePolicy.Retain);
         await Own(source, widgets, "old", "old-id");
         repository.Files = [Manifest("Widget", "new")];
-        await Worker.ProcessAsync(new(source.TenantId, source.Id), default);
+        await Worker.ProcessAsync(new GitSourceIdentity(source.TenantId, source.Id), default);
 
         var run = await Latest(source);
         Assert.Equal(0, widgets.ApplyCalls);
@@ -23,7 +22,8 @@ public sealed partial class GitPrunePlanningTests
         var waiting = Assert.IsType<GitInputAwaitingApproval>(run.Input);
         Assert.Equal(GitRunCompletion.Blocked, Assert.IsType<GitRunFinished>(run.State).Completion);
         var preview = await Services.GetRequiredService<IMongoCollection<GitOperationPreview>>()
-            .Find(item => item.Id == waiting.PreviewId).SingleAsync();
+            .Find(item => item.Id == waiting.PreviewId)
+            .SingleAsync();
         Assert.IsType<GitPreviewAwaitingConfirmation>(preview.State);
         Assert.False(preview.CanAuthorizePrune());
         Assert.True((await Inventory.Find(item => item.ResourceId == "old-id").SingleAsync()).PendingRemoval);
@@ -38,7 +38,7 @@ public sealed partial class GitPrunePlanningTests
         await Own(source, widgets, "old", "old-id");
         await Own(source, widgets, "kept", "kept-id");
         repository.Files = [Manifest("Widget", "kept"), Manifest("Gadget", "new")];
-        await Worker.ProcessAsync(new(source.TenantId, source.Id), default);
+        await Worker.ProcessAsync(new GitSourceIdentity(source.TenantId, source.Id), default);
 
         var run = await Latest(source);
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);
@@ -48,7 +48,8 @@ public sealed partial class GitPrunePlanningTests
         Assert.Equal(2, await widgets.Documents.CountDocumentsAsync(_ => true));
         Assert.Equal(1, await gadgets.Documents.CountDocumentsAsync(_ => true));
         Assert.True((await Inventory.Find(item => item.ResourceId == "old-id").SingleAsync()).PendingRemoval);
-        Assert.Equal(0, await Services.GetRequiredService<IMongoCollection<GitOperationPreview>>()
-            .CountDocumentsAsync(_ => true));
+        Assert.Equal(
+            0,
+            await Services.GetRequiredService<IMongoCollection<GitOperationPreview>>().CountDocumentsAsync(_ => true));
     }
 }

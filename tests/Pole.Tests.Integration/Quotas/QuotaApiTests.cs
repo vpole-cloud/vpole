@@ -1,15 +1,16 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using Pole.Features.Core.Multitenancy;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+public sealed class QuotaApiTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Theory]
     [InlineData(null)]
@@ -37,8 +38,8 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
         {
             limits = new[]
             {
-                new { key = "WebServiceCount", value = 1 }
-            }
+                new { key = "WebServiceCount", value = 1 },
+            },
         };
 
         var forbidden = await Client.PutAsJsonAsync(path, body);
@@ -70,21 +71,13 @@ public sealed class QuotaApiTests(MongoReplicaSetFixture fixture)
             $"/api/v1/platform/tenants/{Data.TenantId}/quota",
             new
             {
-                limits = new[] { new { key = "UnknownQuota", value = 1 } }
+                limits = new[] { new { key = "UnknownQuota", value = 1 } },
             });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-        using var problem = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync());
-        Assert.Equal(
-            "request.validation.failed",
-            problem.RootElement.GetProperty("code").GetString());
-        Assert.True(
-            problem.RootElement
-                .GetProperty("errors")
-                .TryGetProperty("Body.Limits[0].Key", out _));
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("request.validation.failed", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("Body.Limits[0].Key", out _));
     }
 }

@@ -15,7 +15,7 @@ internal static class DeclarationPlanValues
         AdoptionDeclarationPlan adoption => adoption.Current,
         ReplacementDeclarationPlan replacement => replacement.Current,
         RemovalDeclarationPlan removal => removal.Current,
-        CreateDeclarationPlan or BlockedDeclarationPlan => null
+        CreateDeclarationPlan or BlockedDeclarationPlan => null,
     };
 
     public static DeclarationProjection? Desired(ResourceDeclarationPlan plan) => plan switch
@@ -25,7 +25,7 @@ internal static class DeclarationPlanValues
         NoOpDeclarationPlan noop => noop.Desired,
         AdoptionDeclarationPlan adoption => adoption.Desired,
         ReplacementDeclarationPlan replacement => replacement.Desired,
-        RemovalDeclarationPlan or BlockedDeclarationPlan => null
+        RemovalDeclarationPlan or BlockedDeclarationPlan => null,
     };
 
     public static GitPlannedAction Action(ResourceDeclarationPlan plan) => plan switch
@@ -36,7 +36,7 @@ internal static class DeclarationPlanValues
         BlockedDeclarationPlan => GitPlannedAction.Blocked,
         AdoptionDeclarationPlan => GitPlannedAction.Adopt,
         ReplacementDeclarationPlan => GitPlannedAction.Replace,
-        RemovalDeclarationPlan => GitPlannedAction.Remove
+        RemovalDeclarationPlan => GitPlannedAction.Remove,
     };
 
     public static IDeclarationFailure? Blocker(ResourceDeclarationPlan plan) => plan switch
@@ -44,26 +44,27 @@ internal static class DeclarationPlanValues
         BlockedDeclarationPlan blocked => blocked.Failure,
         AdoptionDeclarationPlan => new DeclarationAdoptionRequired(),
         ReplacementDeclarationPlan or RemovalDeclarationPlan => new DeclarationReplacementRequired(),
-        CreateDeclarationPlan or UpdateDeclarationPlan or NoOpDeclarationPlan => null
+        CreateDeclarationPlan or UpdateDeclarationPlan or NoOpDeclarationPlan => null,
     };
 
     public static DeclarationVersionToken Versions(ResourceDeclarationPlan plan) => new(
-        (Current(plan)?.Version.Documents ?? [])
-        .Concat(Desired(plan)?.Dependencies?.Documents ?? [])
-        .Distinct().OrderBy(item => item.DocumentId, StringComparer.Ordinal).ToArray());
+        (Current(plan)?.Version.Documents ?? []).Concat(Desired(plan)?.Dependencies?.Documents ?? [])
+        .Distinct()
+        .OrderBy(item => item.DocumentId, StringComparer.Ordinal)
+        .ToArray());
 
     public static bool Same(ResourceDeclarationPlan expected, ResourceDeclarationPlan current) =>
-        Action(expected) == Action(current) &&
-        Equals(Blocker(expected), Blocker(current)) &&
+        Action(expected) == Action(current) && Equals(Blocker(expected), Blocker(current)) &&
         Current(expected)?.ResourceId == Current(current)?.ResourceId &&
         Versions(expected).Documents.SequenceEqual(Versions(current).Documents) &&
         SameProjection(Current(expected)?.Projection, Current(current)?.Projection) &&
         SameProjection(Desired(expected), Desired(current));
 
     public static bool SameProjection(DeclarationProjection? left, DeclarationProjection? right) =>
-        left is null || right is null ? left is null && right is null :
-        JsonElement.DeepEquals(left.Identity, right.Identity) &&
-        JsonElement.DeepEquals(left.Configuration, right.Configuration);
+        left is null || right is null
+            ? left is null && right is null
+            : JsonElement.DeepEquals(left.Identity, right.Identity) &&
+            JsonElement.DeepEquals(left.Configuration, right.Configuration);
 
     public static string Json(DeclarationProjection projection)
     {
@@ -92,10 +93,15 @@ internal static class DeclarationPlanValues
         var current = Current(plan)?.Projection;
         return Differences(current?.Identity, desired.Identity, "identity")
             .Concat(Differences(current?.Configuration, desired.Configuration, "configuration"))
-            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
     }
 
-    private static IEnumerable<string> Differences(JsonElement? before, JsonElement after, string path)
+    private static IEnumerable<string> Differences(
+        JsonElement? before,
+        JsonElement after,
+        string path)
     {
         if (before is { } previous && JsonElement.DeepEquals(previous, after))
             yield break;
@@ -103,8 +109,8 @@ internal static class DeclarationPlanValues
         if (after.ValueKind == JsonValueKind.Object &&
             (before is null || before.Value.ValueKind == JsonValueKind.Object))
         {
-            var previousProperties = before?.EnumerateObject().ToDictionary(item => item.Name, item => item.Value)
-                                     ?? new Dictionary<string, JsonElement>();
+            var previousProperties = before?.EnumerateObject().ToDictionary(item => item.Name, item => item.Value) ??
+                new Dictionary<string, JsonElement>();
             var nextProperties = after.EnumerateObject().ToDictionary(item => item.Name, item => item.Value);
             foreach (var name in previousProperties.Keys.Union(nextProperties.Keys).Order(StringComparer.Ordinal))
             {
@@ -112,13 +118,17 @@ internal static class DeclarationPlanValues
                 if (!nextProperties.TryGetValue(name, out var value))
                     yield return child;
                 else
-                    foreach (var field in Differences(previousProperties.TryGetValue(name, out var old) ? old : null,
-                                 value, child))
+                    foreach (var field in Differences(
+                                 previousProperties.TryGetValue(name, out var old) ? old : null,
+                                 value,
+                                 child))
                         yield return field;
             }
         }
         else
+        {
             yield return path;
+        }
     }
 
     private static void Write(Utf8JsonWriter writer, JsonElement element)
@@ -131,6 +141,7 @@ internal static class DeclarationPlanValues
                 writer.WritePropertyName(property.Name);
                 Write(writer, property.Value);
             }
+
             writer.WriteEndObject();
         }
         else if (element.ValueKind == JsonValueKind.Array)
@@ -141,6 +152,8 @@ internal static class DeclarationPlanValues
             writer.WriteEndArray();
         }
         else
+        {
             element.WriteTo(writer);
+        }
     }
 }

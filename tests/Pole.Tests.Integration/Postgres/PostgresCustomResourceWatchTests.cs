@@ -40,7 +40,8 @@ public sealed class PostgresCustomResourceWatchTests
         await changes.DisposeAsync();
         Assert.True(stream.Disposed);
         // The transport owns its response, never the cached target client.
-        await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io",
+        await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>(
+            "postgresql.cnpg.io",
             "v1",
             "owned",
             "clusters");
@@ -60,9 +61,10 @@ public sealed class PostgresCustomResourceWatchTests
         var changes = Changes(client, cancellation.Token).GetAsyncEnumerator();
         await changes.MoveNextAsync();
         await changes.MoveNextAsync();
-        first.Write(malformed
-            ? "{invalid-json\n"
-            : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"native-canary-secret\"}}\n");
+        first.Write(
+            malformed
+                ? "{invalid-json\n"
+                : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"native-canary-secret\"}}\n");
         Assert.True(await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(KubernetesListWatchChangeKind.Unavailable, changes.Current.Kind);
         Assert.True(first.Disposed);
@@ -98,28 +100,33 @@ public sealed class PostgresCustomResourceWatchTests
         await changes.DisposeAsync();
     }
 
-    private static IAsyncEnumerable<KubernetesListWatchChange<JsonElement>> Changes(IKubernetes client,
-        CancellationToken ct) =>
-        KubernetesListWatch.WatchAsync<JsonElement>(async (continuation, token) =>
-            {
-                var page = await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io",
-                    "v1",
-                    "owned",
-                    "clusters",
-                    continueParameter: continuation,
-                    fieldSelector: "metadata.name=pg-owned",
-                    labelSelector: "pole.io/tenant-id=tenant",
-                    limit: 100,
-                    cancellationToken: token);
-                var metadata = page.GetProperty("metadata");
-                return new(page.GetProperty("items").EnumerateArray().Select(item => item.Clone()).ToArray(),
-                    metadata.GetProperty("resourceVersion").GetString(),
-                    metadata.TryGetProperty("continue", out var next) ? next.GetString() : null);
-            },
-            (version, error, token) => WatchAsync(client, version, error, token),
-            item => item.GetProperty("metadata").GetProperty("resourceVersion").GetString(),
-            TimeProvider.System,
-            cancellationToken: ct);
+    private static IAsyncEnumerable<KubernetesListWatchChange<JsonElement>> Changes(
+        IKubernetes client,
+        CancellationToken ct) => KubernetesListWatch.WatchAsync(
+        async (continuation, token) =>
+        {
+            var page = await client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>(
+                "postgresql.cnpg.io",
+                "v1",
+                "owned",
+                "clusters",
+                continueParameter: continuation,
+                fieldSelector: "metadata.name=pg-owned",
+                labelSelector: "pole.io/tenant-id=tenant",
+                limit: 100,
+                cancellationToken: token);
+            var metadata = page.GetProperty("metadata");
+            return new KubernetesListPage<JsonElement>(
+                page.GetProperty("items").EnumerateArray().Select(item => item.Clone()).ToArray(),
+                metadata.GetProperty("resourceVersion").GetString(),
+                metadata.TryGetProperty("continue", out var next) ? next.GetString() : null);
+        },
+        (
+            version, error,
+            token) => WatchAsync(client, version, error, token),
+        item => item.GetProperty("metadata").GetProperty("resourceVersion").GetString(),
+        TimeProvider.System,
+        cancellationToken: ct);
 
     private static async IAsyncEnumerable<(WatchEventType Type, JsonElement Item)> WatchAsync(
         IKubernetes client,
@@ -142,21 +149,22 @@ public sealed class PostgresCustomResourceWatchTests
             yield return (type, Assert.IsType<JsonElement>(item));
     }
 
-    private static string List(string version) => JsonSerializer.Serialize(new
-    {
-        apiVersion = "postgresql.cnpg.io/v1",
-        kind = "ClusterList",
-        metadata = new
+    private static string List(string version) => JsonSerializer.Serialize(
+        new
         {
-            resourceVersion = version
-        },
-        items = new[]
-        {
-            new
+            apiVersion = "postgresql.cnpg.io/v1",
+            kind = "ClusterList",
+            metadata = new
             {
-                apiVersion = "postgresql.cnpg.io/v1", kind = "Cluster",
-                metadata = new { name = "pg-owned", uid = "controller", resourceVersion = "item" }
-            }
-        }
-    });
+                resourceVersion = version,
+            },
+            items = new[]
+            {
+                new
+                {
+                    apiVersion = "postgresql.cnpg.io/v1", kind = "Cluster",
+                    metadata = new { name = "pg-owned", uid = "controller", resourceVersion = "item" },
+                },
+            },
+        });
 }

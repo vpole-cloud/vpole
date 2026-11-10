@@ -16,7 +16,8 @@ public sealed record WebServiceDeploymentCompletedEvent(
     string? FailureCode,
     string? FailureMessage,
     string ReleaseOutcome,
-    bool ReleaseTerminal) : IPoleEvent
+    bool ReleaseTerminal
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

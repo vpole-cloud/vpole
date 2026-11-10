@@ -6,7 +6,6 @@ using k8s.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.Functions.Runtime.Endpoints;
@@ -16,7 +15,8 @@ public sealed partial class FunctionEndpointSliceWatcher(
     IFunctionEndpointRegistry registry,
     LoadResourceDeploymentTargetIds loadDeploymentTargetIds,
     TimeProvider timeProvider,
-    ILogger<FunctionEndpointSliceWatcher> logger) : BackgroundService
+    ILogger<FunctionEndpointSliceWatcher> logger
+) : BackgroundService
 {
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
@@ -31,9 +31,7 @@ public sealed partial class FunctionEndpointSliceWatcher(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var targetIds = await loadDeploymentTargetIds(
-                    FunctionResourceDeployment.ResourceType,
-                    stoppingToken);
+                var targetIds = await loadDeploymentTargetIds(FunctionResourceDeployment.ResourceType, stoppingToken);
                 var desired = targetIds.ToHashSet(StringComparer.Ordinal);
                 foreach (var removed in watchers.Keys.Where(id => !desired.Contains(id)).ToArray())
                 {
@@ -44,12 +42,11 @@ public sealed partial class FunctionEndpointSliceWatcher(
                     registry.RemoveTarget(removed);
                     watchers.Remove(removed);
                 }
+
                 foreach (var targetId in desired.Where(id => !watchers.ContainsKey(id)))
                 {
                     var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                    watchers[targetId] = (
-                        cancellation,
-                        WatchTargetAsync(targetId, cancellation.Token));
+                    watchers[targetId] = (cancellation, WatchTargetAsync(targetId, cancellation.Token));
                 }
 
                 await Task.Delay(TargetRefreshDelay, timeProvider, stoppingToken);
@@ -68,15 +65,12 @@ public sealed partial class FunctionEndpointSliceWatcher(
         }
     }
 
-    private async Task WatchTargetAsync(
-        string deploymentTargetId,
-        CancellationToken stoppingToken)
+    private async Task WatchTargetAsync(string deploymentTargetId, CancellationToken stoppingToken)
     {
         string? resourceVersion = null;
         var retryDelay = InitialRetryDelay;
 
         while (!stoppingToken.IsCancellationRequested)
-        {
             try
             {
                 if (resourceVersion is null)
@@ -84,9 +78,9 @@ public sealed partial class FunctionEndpointSliceWatcher(
 
                 var observedEvent = false;
                 await foreach (var (type, slice) in source.WatchAsync(
-                                   deploymentTargetId,
-                                   resourceVersion,
-                                   stoppingToken)
+                                       deploymentTargetId,
+                                       resourceVersion,
+                                       stoppingToken)
                                    .WithCancellation(stoppingToken))
                 {
                     observedEvent = true;
@@ -119,26 +113,19 @@ public sealed partial class FunctionEndpointSliceWatcher(
                     deploymentTargetId,
                     retryDelay.TotalMilliseconds);
                 await Task.Delay(retryDelay, timeProvider, stoppingToken);
-                retryDelay = TimeSpan.FromMilliseconds(Math.Min(
-                    retryDelay.TotalMilliseconds * 2,
-                    MaxRetryDelay.TotalMilliseconds));
+                retryDelay = TimeSpan.FromMilliseconds(
+                    Math.Min(retryDelay.TotalMilliseconds * 2, MaxRetryDelay.TotalMilliseconds));
             }
-        }
     }
 
-    private async Task<string> RelistAsync(
-        string deploymentTargetId,
-        CancellationToken cancellationToken)
+    private async Task<string> RelistAsync(string deploymentTargetId, CancellationToken cancellationToken)
     {
         var slices = new List<V1EndpointSlice>();
         string? continuationToken = null;
         string? resourceVersion = null;
         do
         {
-            var page = await source.ListPageAsync(
-                deploymentTargetId,
-                continuationToken,
-                cancellationToken);
+            var page = await source.ListPageAsync(deploymentTargetId, continuationToken, cancellationToken);
             slices.AddRange(page.Items.Where(IsFunctionSlice));
             resourceVersion = page.ResourceVersion ?? resourceVersion;
             continuationToken = page.ContinuationToken;
@@ -176,8 +163,7 @@ public sealed partial class FunctionEndpointSliceWatcher(
         }
     }
 
-    private static bool IsFunctionSlice(V1EndpointSlice slice) =>
-        slice.Metadata?.Labels is { } labels &&
+    private static bool IsFunctionSlice(V1EndpointSlice slice) => slice.Metadata?.Labels is { } labels &&
         labels.TryGetValue("kubernetes.io/service-name", out var serviceName) &&
         FunctionAgentServiceName().IsMatch(serviceName);
 
@@ -185,7 +171,7 @@ public sealed partial class FunctionEndpointSliceWatcher(
     {
         KubernetesException { Status.Code: 410 } => true,
         HttpOperationException { Response.StatusCode: HttpStatusCode.Gone } => true,
-        _ => false
+        _ => false,
     };
 
     [GeneratedRegex("^fn-[a-z0-9]{1,24}-r[1-9][0-9]*-agent$", RegexOptions.CultureInvariant)]

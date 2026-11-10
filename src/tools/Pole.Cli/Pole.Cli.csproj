@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <OutputType>Exe</OutputType>
-    <AssemblyName>Pole.Cli</AssemblyName>
-    <RootNamespace>Pole.Cli</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Primitives/PrivateAccess.Primitives.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <OutputType>Exe</OutputType>
+        <AssemblyName>Pole.Cli</AssemblyName>
+        <RootNamespace>Pole.Cli</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Primitives/PrivateAccess.Primitives.csproj"/>
+    </ItemGroup>
 </Project>

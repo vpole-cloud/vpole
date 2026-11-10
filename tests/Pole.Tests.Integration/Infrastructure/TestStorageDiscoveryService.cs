@@ -6,15 +6,14 @@ namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class TestStorageDiscoveryService
 {
-    public string TenantId { get; init; } = string.Empty;
-    private readonly IReadOnlyDictionary<string, IReadOnlySet<string>>
-        _storageClassNamesByTarget;
     private readonly ConcurrentQueue<string> _requestedDeploymentTargetIds = [];
 
-    public TestStorageDiscoveryService(params string[] storageClassNames)
-        : this(new Dictionary<string, IReadOnlyCollection<string>>
+    private readonly IReadOnlyDictionary<string, IReadOnlySet<string>> _storageClassNamesByTarget;
+
+    public TestStorageDiscoveryService(params string[] storageClassNames) : this(
+        new Dictionary<string, IReadOnlyCollection<string>>
         {
-            [TestData.DefaultDeploymentTargetId] = storageClassNames
+            [TestData.DefaultDeploymentTargetId] = storageClassNames,
         })
     {
     }
@@ -28,8 +27,9 @@ public sealed class TestStorageDiscoveryService
             StringComparer.Ordinal);
     }
 
-    public IReadOnlyCollection<string> RequestedDeploymentTargetIds =>
-        _requestedDeploymentTargetIds.ToArray();
+    public string TenantId { get; init; } = "";
+
+    public IReadOnlyCollection<string> RequestedDeploymentTargetIds => _requestedDeploymentTargetIds.ToArray();
 
     public Task<DiscoverKubernetesStorageClassesOutcome> GetStorageClassesAsync(
         string deploymentTargetId,
@@ -37,14 +37,10 @@ public sealed class TestStorageDiscoveryService
     {
         var storageClassNamesResult = ResolveStorageClassNames(deploymentTargetId);
         if (storageClassNamesResult is KubernetesStorageDiscoveryUnavailable failure)
-        {
-            return Task.FromResult<DiscoverKubernetesStorageClassesOutcome>(
-                failure);
-        }
+            return Task.FromResult<DiscoverKubernetesStorageClassesOutcome>(failure);
 
         var storageClassNames = (IReadOnlySet<string>)storageClassNamesResult.Value;
-        IReadOnlyCollection<KubernetesStorageClassDto> storageClasses = storageClassNames
-            .Order(StringComparer.Ordinal)
+        IReadOnlyCollection<KubernetesStorageClassDto> storageClasses = storageClassNames.Order(StringComparer.Ordinal)
             .Select((name, index) => new KubernetesStorageClassDto(
                 name,
                 "test.provisioner",
@@ -55,8 +51,7 @@ public sealed class TestStorageDiscoveryService
                 new Dictionary<string, string>(),
                 new Dictionary<string, string>()))
             .ToArray();
-        return Task.FromResult<DiscoverKubernetesStorageClassesOutcome>(
-            storageClasses);
+        return Task.FromResult<DiscoverKubernetesStorageClassesOutcome>(storageClasses);
     }
 
     public Task<DiscoverKubernetesPersistentVolumesOutcome> GetPersistentVolumesAsync(
@@ -65,10 +60,7 @@ public sealed class TestStorageDiscoveryService
     {
         var storageClassNamesResult = ResolveStorageClassNames(deploymentTargetId);
         if (storageClassNamesResult is KubernetesStorageDiscoveryUnavailable failure)
-        {
-            return Task.FromResult<DiscoverKubernetesPersistentVolumesOutcome>(
-                failure);
-        }
+            return Task.FromResult<DiscoverKubernetesPersistentVolumesOutcome>(failure);
 
         IReadOnlyCollection<KubernetesPersistentVolumeDto> persistentVolumes =
         [
@@ -80,23 +72,18 @@ public sealed class TestStorageDiscoveryService
                 null,
                 null,
                 "Retain",
-                new KubernetesStorageOwnerDto(null, null, null, null, null))
+                new KubernetesStorageOwnerDto(null, null, null, null, null)),
         ];
-        return Task.FromResult<DiscoverKubernetesPersistentVolumesOutcome>(
-            persistentVolumes);
+        return Task.FromResult<DiscoverKubernetesPersistentVolumesOutcome>(persistentVolumes);
     }
 
-    public Task<DiscoverKubernetesPersistentVolumeClaimsOutcome>
-        GetPersistentVolumeClaimsAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default)
+    public Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> GetPersistentVolumeClaimsAsync(
+        string deploymentTargetId,
+        CancellationToken cancellationToken = default)
     {
         var storageClassNamesResult = ResolveStorageClassNames(deploymentTargetId);
         if (storageClassNamesResult is KubernetesStorageDiscoveryUnavailable failure)
-        {
-            return Task.FromResult<DiscoverKubernetesPersistentVolumeClaimsOutcome>(
-                failure);
-        }
+            return Task.FromResult<DiscoverKubernetesPersistentVolumeClaimsOutcome>(failure);
 
         IReadOnlyCollection<KubernetesPersistentVolumeClaimDto> persistentVolumeClaims =
         [
@@ -108,31 +95,19 @@ public sealed class TestStorageDiscoveryService
                 "Bound",
                 "standard",
                 "pv-standard-1",
-                new KubernetesStorageOwnerDto(
-                    TenantId,
-                    "rg-1",
-                    "Redis",
-                    "redis-1",
-                    "redis-main"))
+                new KubernetesStorageOwnerDto(TenantId, "rg-1", "Redis", "redis-1", "redis-main")),
         ];
-        return Task.FromResult<DiscoverKubernetesPersistentVolumeClaimsOutcome>(
-            persistentVolumeClaims);
+        return Task.FromResult<DiscoverKubernetesPersistentVolumeClaimsOutcome>(persistentVolumeClaims);
     }
 
-    public Task<DiscoverKubernetesStorageClassNamesOutcome>
-        GetStorageClassNamesAsync(
+    public Task<DiscoverKubernetesStorageClassNamesOutcome> GetStorageClassNamesAsync(
         string deploymentTargetId,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(ResolveStorageClassNames(deploymentTargetId));
+        CancellationToken cancellationToken = default) => Task.FromResult(ResolveStorageClassNames(deploymentTargetId));
 
-    private DiscoverKubernetesStorageClassNamesOutcome
-        ResolveStorageClassNames(
-        string deploymentTargetId)
+    private DiscoverKubernetesStorageClassNamesOutcome ResolveStorageClassNames(string deploymentTargetId)
     {
         _requestedDeploymentTargetIds.Enqueue(deploymentTargetId);
-        return _storageClassNamesByTarget.TryGetValue(
-            deploymentTargetId,
-            out var storageClassNames)
+        return _storageClassNamesByTarget.TryGetValue(deploymentTargetId, out var storageClassNames)
             ? storageClassNames
             : new KubernetesStorageDiscoveryUnavailable(deploymentTargetId);
     }

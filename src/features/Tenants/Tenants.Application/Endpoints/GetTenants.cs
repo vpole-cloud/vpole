@@ -4,8 +4,6 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Members;
-using Pole.Features.Tenants.Application.Mongo;
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints;
@@ -14,16 +12,20 @@ public static class GetTenants
 {
     public static IEndpointRouteBuilder MapGetTenantsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (IMediator mediator, [AsParameters] GetTenantsRequest request, CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                IReadOnlyCollection<TenantDto> tenants => Results.Ok(tenants)
-            });
-        })
-        .WithName("GetTenants")
-        .Produces<IReadOnlyCollection<TenantDto>>();
+        app.MapGet(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] GetTenantsRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        IReadOnlyCollection<TenantDto> tenants => Results.Ok(tenants),
+                    });
+                })
+            .WithName("GetTenants")
+            .Produces<IReadOnlyCollection<TenantDto>>();
 
         return app;
     }
@@ -36,19 +38,16 @@ public sealed record GetTenantsRequest(
 public union GetTenantsOutcome(IReadOnlyCollection<TenantDto>);
 
 public sealed class GetTenantsHandler(
-    LoadTenantsForUser loadTenantsForUser)
-    : IMediatorOutcomeHandler<GetTenantsRequest, GetTenantsOutcome>
+    LoadTenantsForUser loadTenantsForUser
+) : IMediatorOutcomeHandler<GetTenantsRequest, GetTenantsOutcome>
 {
     public async Task<GetTenantsOutcome> HandleAsync(
         GetTenantsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var memberTenants = await loadTenantsForUser(
-            request.CurrentUserId,
-            cancellationToken);
+        var memberTenants = await loadTenantsForUser(request.CurrentUserId, cancellationToken);
 
-        return memberTenants
-            .Select(t =>
+        return memberTenants.Select(t =>
             {
                 var member = t.Members.First(m => m.UserId == request.CurrentUserId);
                 return t.ToDto(member.Role, member.IsDefault);

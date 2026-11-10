@@ -1,9 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
@@ -16,16 +13,15 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
     LoadResourcePlacementInTransaction loadResourcePlacement,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentExactMutationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment mutations");
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
         var loaded = await ResourceDeploymentMutationSupport.LoadExactAsync(
             resourceDeployments,
@@ -36,10 +32,8 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
             return loadFailure;
         var current = (ResourceDeployment)loaded.Value;
         if (current.Revision != request.ExpectedDeploymentRevision)
-        {
             return new ResourceDeploymentMutationError(
                 new ResourceDeploymentChanged(request.ResourceId, request.ResourceDeploymentId));
-        }
 
         var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
             request.ResourceId,
@@ -49,12 +43,8 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
             return computeExpectation.Value;
         if (current.DesiredOperation == ResourceDeploymentOperation.Delete ||
             current.State is DeletedResourceDeploymentState)
-        {
             return new ResourceDeploymentMutationError(
-                new ResourceDeploymentPendingDeletion(
-                    request.ResourceId,
-                    request.ResourceDeploymentId));
-        }
+                new ResourceDeploymentPendingDeletion(request.ResourceId, request.ResourceDeploymentId));
 
         var runtimeCell = await loadResourcePlacement(
             new LoadResourcePlacementInTransactionRequest(
@@ -66,17 +56,12 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
             !string.Equals(
                 runtimeCell.DeploymentTargetId,
                 current.ResolvedPlacement.DeploymentTargetId,
-                StringComparison.Ordinal) ||
-            !string.Equals(
+                StringComparison.Ordinal) || !string.Equals(
                 runtimeCell.KubernetesNamespace,
                 current.ResolvedPlacement.KubernetesNamespace,
                 StringComparison.Ordinal))
-        {
             return new ResourceDeploymentMutationError(
-                new ResourceDeploymentPlacementUnavailable(
-                    request.ResourceId,
-                    request.ResourceDeploymentId));
-        }
+                new ResourceDeploymentPlacementUnavailable(request.ResourceId, request.ResourceDeploymentId));
 
         var placement = current.ResolvedPlacement;
         if (request.ReplacementCompute is not null)
@@ -85,28 +70,23 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
                     request.ReplacementCompute.DeploymentTargetId,
                     placement.DeploymentTargetId,
                     StringComparison.Ordinal))
-            {
                 return new ResourceDeploymentMutationError(
-                    new ResourceDeploymentReplacementTargetMismatch(
-                        request.ResourceId,
-                        request.ResourceDeploymentId));
-            }
+                    new ResourceDeploymentReplacementTargetMismatch(request.ResourceId, request.ResourceDeploymentId));
 
             var computeFence = await fenceResolvedComputeProfiles(
-                [new ComputeProfileResolutionFenceRequest(
-                    request.ReplacementCompute.ComputeProfileId,
-                    request.ReplacementCompute.ComputeProfileRevision,
-                    request.ReplacementCompute.DeploymentTargetId,
-                    request.TenantId,
-                    request.ResourceType)],
+                [
+                    new ComputeProfileResolutionFenceRequest(
+                        request.ReplacementCompute.ComputeProfileId,
+                        request.ReplacementCompute.ComputeProfileRevision,
+                        request.ReplacementCompute.DeploymentTargetId,
+                        request.TenantId,
+                        request.ResourceType),
+                ],
                 session,
                 cancellationToken);
             if (computeFence is ComputeProfileResolutionFenceRejected)
-            {
                 return new ResourceDeploymentMutationError(
-                    new ResourceDeploymentComputeConfigurationChanged(
-                        [request.ReplacementCompute.ComputeProfileId]));
-            }
+                    new ResourceDeploymentComputeConfigurationChanged([request.ReplacementCompute.ComputeProfileId]));
 
             placement = placement with { Compute = request.ReplacementCompute.ToDomain() };
         }
@@ -116,12 +96,10 @@ internal sealed class MongoRequestExactResourceDeploymentApply(
             if (!ResourceDeploymentMutationSupport.HasSameIngressIdentity(
                     current.ResolvedPlacement.Ingress,
                     request.ReplacementIngress))
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentIngressConfigurationChanged(
                         request.ResourceId,
                         request.ResourceDeploymentId));
-            }
 
             placement = placement with { Ingress = request.ReplacementIngress.ToDomain() };
         }

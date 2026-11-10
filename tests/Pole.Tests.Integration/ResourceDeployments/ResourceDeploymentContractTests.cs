@@ -16,8 +16,8 @@ public sealed class ResourceDeploymentContractTests
     private const string TenantId = "507f1f77bcf86cd799439011";
     private const string DeploymentId = "507f1f77bcf86cd799439012";
     private const string RuntimeCellId = "507f1f77bcf86cd799439013";
-    private static readonly ResourceTypeId TestResourceType =
-        ResourceTypeId.Create("pole/test-resource");
+
+    private static readonly ResourceTypeId TestResourceType = ResourceTypeId.Create("pole/test-resource");
 
     [Fact]
     public void ResourceTypeId_ValidatesAndNormalizesStrings()
@@ -42,10 +42,7 @@ public sealed class ResourceDeploymentContractTests
         var exception = Assert.Throws<InvalidOperationException>(() =>
             new ResourceDeploymentAdapterCatalog([descriptor, descriptor]));
 
-        Assert.Contains(
-            TestResourceType.Value,
-            exception.Message,
-            StringComparison.Ordinal);
+        Assert.Contains(TestResourceType.Value, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -58,7 +55,7 @@ public sealed class ResourceDeploymentContractTests
                 RecoveryBatchSize = 0,
                 ClaimLeaseSeconds = 1,
                 InitialRetryDelaySeconds = 30,
-                MaximumRetryDelaySeconds = 10
+                MaximumRetryDelaySeconds = 10,
             });
 
         Assert.True(result.Failed);
@@ -72,18 +69,10 @@ public sealed class ResourceDeploymentContractTests
     [InlineData(
         typeof(ResourceDeploymentDeletionRequestedEvent),
         "pole.resource-deployments/v1/resource-deployment-deletion-requested")]
-    [InlineData(
-        typeof(ResourceDeploymentAppliedEvent),
-        "pole.resource-deployments/v1/resource-deployment-applied")]
-    [InlineData(
-        typeof(ResourceDeploymentFailedEvent),
-        "pole.resource-deployments/v1/resource-deployment-failed")]
-    [InlineData(
-        typeof(ResourceDeploymentDeletedEvent),
-        "pole.resource-deployments/v1/resource-deployment-deleted")]
-    public void Events_HaveStablePersistedNames(
-        Type eventType,
-        string expectedName)
+    [InlineData(typeof(ResourceDeploymentAppliedEvent), "pole.resource-deployments/v1/resource-deployment-applied")]
+    [InlineData(typeof(ResourceDeploymentFailedEvent), "pole.resource-deployments/v1/resource-deployment-failed")]
+    [InlineData(typeof(ResourceDeploymentDeletedEvent), "pole.resource-deployments/v1/resource-deployment-deleted")]
+    public void Events_HaveStablePersistedNames(Type eventType, string expectedName)
     {
         var entityName = eventType.GetCustomAttribute<EntityNameAttribute>();
 
@@ -100,7 +89,7 @@ public sealed class ResourceDeploymentContractTests
             Generation: 4,
             ResourceRevision: 7)
         {
-            EventCore = EventCore.Create(TenantId)
+            EventCore = EventCore.Create(TenantId),
         };
 
         var json = JsonSerializer.Serialize(@event, EventJson.SerializerOptions);
@@ -133,13 +122,11 @@ public sealed class ResourceDeploymentContractTests
         public Task<ResourceDeploymentAdapterResult> ApplyAsync(
             ResourceDeploymentReconciliationContext context,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<ResourceDeploymentAdapterResult>(
-                ResourceDeploymentAdapterResult.Succeeded.Create());
+            Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
 
         public Task<ResourceDeploymentAdapterResult> DeleteAsync(
             ResourceDeploymentReconciliationContext context,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<ResourceDeploymentAdapterResult>(
-                ResourceDeploymentAdapterResult.Succeeded.Create());
+            Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
     }
 }

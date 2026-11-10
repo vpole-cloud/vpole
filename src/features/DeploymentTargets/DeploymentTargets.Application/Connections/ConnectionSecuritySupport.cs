@@ -9,8 +9,10 @@ internal static class ConnectionPayloadLimits
     public const int MaximumKubeconfigBytes = 1024 * 1024;
     public const int MaximumTokenBytes = 64 * 1024;
     public const int MaximumCertificateDataCharacters = 1024 * 1024;
-    public const int MaximumServiceAccountCredentialBytes =
-        MaximumCertificateDataCharacters + MaximumTokenBytes + (4 * 1024);
+
+    public const int MaximumServiceAccountCredentialBytes
+        = MaximumCertificateDataCharacters + MaximumTokenBytes + 4 * 1024;
+
     public const int MaximumContextNameCharacters = 253;
     public const int MaximumServerUrlCharacters = 2048;
     public const int MaximumTlsServerNameCharacters = 253;
@@ -19,10 +21,11 @@ internal static class ConnectionPayloadLimits
 
 internal static class ConnectionRejections
 {
-    public static DeploymentTargetConnectionRejected Validation(string field, string message) => new(new Dictionary<string, string[]>
-    {
-        [field] = [message]
-    });
+    public static DeploymentTargetConnectionRejected Validation(string field, string message) => new(
+        new Dictionary<string, string[]>
+        {
+            [field] = [message],
+        });
 }
 
 internal static class ConnectionValueValidation
@@ -70,14 +73,9 @@ internal static class ConnectionValueValidation
                 continue;
             }
 
-            if (paddingStarted ||
-                !(character is >= 'a' and <= 'z' or
-                    >= 'A' and <= 'Z' or
-                    >= '0' and <= '9' or
-                    '-' or '.' or '_' or '~' or '+' or '/'))
-            {
+            if (paddingStarted || !(character is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-'
+                    or '.' or '_' or '~' or '+' or '/'))
                 return false;
-            }
         }
 
         return true;
@@ -88,7 +86,7 @@ internal static class ConnectionValueValidation
         int maximumCharacters,
         out string normalized)
     {
-        normalized = string.Empty;
+        normalized = "";
         if (string.IsNullOrWhiteSpace(value) || value.Length > maximumCharacters)
             return false;
 
@@ -114,20 +112,16 @@ internal static class ConnectionValueValidation
 
     public static bool TryNormalizeServerUrl(string? value, out string normalized)
     {
-        normalized = string.Empty;
+        normalized = "";
         if (string.IsNullOrWhiteSpace(value) || value.Length > ConnectionPayloadLimits.MaximumServerUrlCharacters)
             return false;
 
         var candidate = value.Trim();
         if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) ||
             !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(uri.Host) ||
-            !string.IsNullOrEmpty(uri.UserInfo) ||
-            !string.IsNullOrEmpty(uri.Query) ||
-            !string.IsNullOrEmpty(uri.Fragment))
-        {
+            string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
             return false;
-        }
 
         normalized = candidate.TrimEnd('/');
         return normalized.Length > 0;
@@ -142,9 +136,7 @@ internal static class ConnectionValueValidation
         var candidate = value.Trim();
         if (candidate.Length > ConnectionPayloadLimits.MaximumTlsServerNameCharacters ||
             candidate.Any(character => char.IsWhiteSpace(character) || char.IsControl(character)))
-        {
             return false;
-        }
 
         var hostKind = Uri.CheckHostName(candidate);
         if (hostKind is not (UriHostNameType.Dns or UriHostNameType.IPv4 or UriHostNameType.IPv6))

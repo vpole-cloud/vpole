@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
-    <AssemblyName>Pole.Features.PrivateAccess.Contracts</AssemblyName>
-    <RootNamespace>Pole.Features.PrivateAccess.Contracts</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../../shared/ResultType/ResultType.csproj" />
-    <ProjectReference Include="../../../shared/Workloads/Workloads.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
+        <AssemblyName>Pole.Features.PrivateAccess.Contracts</AssemblyName>
+        <RootNamespace>Pole.Features.PrivateAccess.Contracts</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../../shared/ResultType/ResultType.csproj"/>
+        <ProjectReference Include="../../../shared/Workloads/Workloads.csproj"/>
+    </ItemGroup>
 </Project>

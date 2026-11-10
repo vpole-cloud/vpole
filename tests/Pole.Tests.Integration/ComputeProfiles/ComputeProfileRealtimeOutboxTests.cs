@@ -1,32 +1,24 @@
 using System.Text.Json;
+using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.ComputeProfiles.Application.Realtime;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.ComputeProfiles.Events;
-using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application.Writes;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.Outbox.Domain;
 using Pole.Features.Realtime.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.ComputeProfiles;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class ComputeProfileRealtimeOutboxTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     private const string EventType = "pole.compute-profiles/v1/compute-profile-catalog-changed";
     public override Task InitializeAsync() => base.InitializeAsync();
@@ -44,25 +36,28 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         {
             DisplayName = "Private changed compute name",
             Revision = 2,
-            UpdatedAtUtc = profile.UpdatedAtUtc.AddSeconds(1)
+            UpdatedAtUtc = profile.UpdatedAtUtc.AddSeconds(1),
         };
         Assert.IsType<ComputeProfile>(
             (await host.GetRequiredService<PersistUpdatedComputeProfile>()(profile, replacement)).Value);
-        Assert.IsType<ComputeProfileDeleted>((await host.GetRequiredService<DeleteComputeProfile>()(profile.Id, 2))
-            .Value);
-        var messages = await Fixture.DbContext.OutboxMessages.Find(message => message.EventType == EventType)
+        Assert.IsType<ComputeProfileDeleted>(
+            (await host.GetRequiredService<DeleteComputeProfile>()(profile.Id, 2)).Value);
+        var messages = await Fixture.DbContext
+            .OutboxMessages
+            .Find(message => message.EventType == EventType)
             .ToListAsync();
         Assert.Equal(3, messages.Count);
         foreach (var message in messages)
         {
             Assert.Null(message.TenantId);
-            var payload =
-                JsonSerializer.Deserialize<ComputeProfileCatalogChangedEvent>(message.PayloadJson,
-                    EventExtensions.SerializerOptions)!;
+            var payload = JsonSerializer.Deserialize<ComputeProfileCatalogChangedEvent>(
+                message.PayloadJson,
+                EventExtensions.SerializerOptions)!;
             Assert.Equal(profile.Id, payload.ComputeProfileId);
             Assert.Equal("", payload.EventCore.TenantId);
             using var json = JsonDocument.Parse(message.PayloadJson);
-            Assert.Equal(new[] { "computeProfileId", "eventCore", "revision" },
+            Assert.Equal(
+                new[] { "computeProfileId", "eventCore", "revision" },
                 json.RootElement.EnumerateObject().Select(property => property.Name).Order().ToArray());
             Assert.DoesNotContain(profile.DisplayName, message.PayloadJson);
             Assert.DoesNotContain(replacement.DisplayName, message.PayloadJson);
@@ -81,18 +76,20 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         await Fixture.DbContext.DeploymentTargets.InsertManyAsync([firstTarget, secondTarget]);
         using var host = new ComputeProfilePersistenceTestHost(Fixture);
         var originalDefault = ComputeProfileTestData.CreateProfile(firstTarget.Id, isDefault: true);
-        Assert.IsType<ComputeProfile>((await host.GetRequiredService<PersistCreatedComputeProfile>()(originalDefault))
-            .Value);
+        Assert.IsType<ComputeProfile>(
+            (await host.GetRequiredService<PersistCreatedComputeProfile>()(originalDefault)).Value);
         var candidate = ComputeProfileTestData.CreateProfile(secondTarget.Id);
         if (operation != "create")
-            Assert.IsType<ComputeProfile>((await host.GetRequiredService<PersistCreatedComputeProfile>()(candidate))
-                .Value);
+            Assert.IsType<ComputeProfile>(
+                (await host.GetRequiredService<PersistCreatedComputeProfile>()(candidate)).Value);
         var profiles = Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles");
         var beforeCount = await CountEventsAsync();
         var beforeReferences = await Fixture.DbContext.DeploymentTargetReferences.Find(_ => true).ToListAsync();
         var beforeTargets = await Fixture.DbContext.DeploymentTargets.Find(_ => true).ToListAsync();
         var realStore = new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"));
-        StoreOutboxWrites failingStore = async (session, writes, ct) =>
+        StoreOutboxWrites failingStore = async (
+            session, writes,
+            ct) =>
         {
             await realStore.InvokeAsync(session, writes, ct);
             throw new InvalidOperationException("controlled catalog outbox failure");
@@ -102,10 +99,11 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         {
             case "create":
                 await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                    failingHost.GetRequiredService<PersistCreatedComputeProfile>()(candidate with
-                    {
-                        IsDefault = true
-                    }));
+                    failingHost.GetRequiredService<PersistCreatedComputeProfile>()(
+                        candidate with
+                        {
+                            IsDefault = true,
+                        }));
                 Assert.False(await profiles.Find(profile => profile.Id == candidate.Id).AnyAsync());
                 break;
             case "update":
@@ -114,7 +112,7 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
                     IsDefault = true,
                     TargetMappings = originalDefault.TargetMappings,
                     Revision = 2,
-                    UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1)
+                    UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1),
                 };
                 await Assert.ThrowsAsync<InvalidOperationException>(() =>
                     failingHost.GetRequiredService<PersistUpdatedComputeProfile>()(candidate, replacement));
@@ -137,10 +135,12 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         Assert.True(activeDefault.IsDefault);
         Assert.Equal(1, activeDefault.Revision);
         var afterReferences = await Fixture.DbContext.DeploymentTargetReferences.Find(_ => true).ToListAsync();
-        Assert.Equal(beforeReferences.Select(reference => reference.Id).Order(),
+        Assert.Equal(
+            beforeReferences.Select(reference => reference.Id).Order(),
             afterReferences.Select(reference => reference.Id).Order());
         foreach (var before in beforeTargets)
-            Assert.Equal(before.ReferenceFence,
+            Assert.Equal(
+                before.ReferenceFence,
                 (await Fixture.DbContext.DeploymentTargets.Find(target => target.Id == before.Id).SingleAsync())
                 .ReferenceFence);
         Assert.Equal(beforeCount, await CountEventsAsync());
@@ -152,9 +152,9 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         var target = ComputeProfileTestData.CreateTarget();
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var host = new ComputeProfilePersistenceTestHost(Fixture);
-        Assert.IsType<Pole.Features.DeploymentTargets.Contracts.DeploymentTargetReferenceChangeRejected>((await
-            host.GetRequiredService<PersistCreatedComputeProfile>()(
-                ComputeProfileTestData.CreateProfile(MongoDB.Bson.ObjectId.GenerateNewId().ToString()))).Value);
+        Assert.IsType<DeploymentTargetReferenceChangeRejected>(
+            (await host.GetRequiredService<PersistCreatedComputeProfile>()(
+                ComputeProfileTestData.CreateProfile(ObjectId.GenerateNewId().ToString()))).Value);
         Assert.Equal(0, await CountEventsAsync());
         var profile = ComputeProfileTestData.CreateProfile(target.Id);
         await host.GetRequiredService<PersistCreatedComputeProfile>()(profile);
@@ -162,15 +162,16 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         {
             DisplayName = "Accepted",
             Revision = 2,
-            UpdatedAtUtc = profile.UpdatedAtUtc.AddSeconds(1)
+            UpdatedAtUtc = profile.UpdatedAtUtc.AddSeconds(1),
         };
         await host.GetRequiredService<PersistUpdatedComputeProfile>()(profile, updated);
-        Assert.IsType<ComputeProfileRevisionConflict>((await host.GetRequiredService<PersistUpdatedComputeProfile>()(
-            profile,
-            updated with
-            {
-                DisplayName = "Stale"
-            })).Value);
+        Assert.IsType<ComputeProfileRevisionConflict>(
+            (await host.GetRequiredService<PersistUpdatedComputeProfile>()(
+                profile,
+                updated with
+                {
+                    DisplayName = "Stale",
+                })).Value);
         Assert.Equal(2, await CountEventsAsync());
     }
 
@@ -179,7 +180,8 @@ public sealed class ComputeProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
     {
         var changes = new List<RealtimeChange>();
         var publicTopics = new List<string>();
-        var consumer = new NotifyComputeProfileCatalogChangedConsumer((change, _) =>
+        var consumer = new NotifyComputeProfileCatalogChangedConsumer(
+            (change, _) =>
             {
                 changes.Add(change);
                 return Task.CompletedTask;

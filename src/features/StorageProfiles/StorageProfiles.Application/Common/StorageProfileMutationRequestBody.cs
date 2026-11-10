@@ -1,8 +1,6 @@
 using FluentValidation;
-using Pole.Validation;
-using MongoDB.Bson;
-using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Validation;
 using Pole.Workloads;
 
 namespace Pole.Features.StorageProfiles.Application.Common;
@@ -17,23 +15,21 @@ public abstract record StorageProfileMutationRequestBody(
     IReadOnlyCollection<StorageProfileTargetMappingRequestBody> TargetMappings,
     IReadOnlyCollection<string> AllowedResourceTypes,
     StorageProfileTenantAccessDto TenantAccess,
-    StorageProfileSizeLimitsDto? SizeLimits);
+    StorageProfileSizeLimitsDto? SizeLimits
+);
 
 public sealed record StorageProfileTargetMappingRequestBody(
     string DeploymentTargetId,
-    string StorageClassName);
+    string StorageClassName
+);
 
-public abstract class StorageProfileMutationRequestBodyValidator<TBody>
-    : AbstractValidator<TBody>
+public abstract class StorageProfileMutationRequestBodyValidator<TBody> : AbstractValidator<TBody>
     where TBody : StorageProfileMutationRequestBody
 {
     protected StorageProfileMutationRequestBodyValidator()
     {
-        RuleFor(body => body.DisplayName)
-            .NotEmpty()
-            .MaximumLength(80);
-        RuleFor(body => body.Description)
-            .MaximumLength(500);
+        RuleFor(body => body.DisplayName).NotEmpty().MaximumLength(80);
+        RuleFor(body => body.Description).MaximumLength(500);
         RuleFor(body => body.MediaType)
             .Must(BeDefinedEnumValue<StorageMediaType>)
             .WithMessage("Media type is invalid.");
@@ -54,34 +50,25 @@ public abstract class StorageProfileMutationRequestBodyValidator<TBody>
             .NotNull()
             .SetValidator(new StorageProfileTargetMappingRequestBodyValidator());
 
-        RuleFor(body => body.AllowedResourceTypes)
-            .NotNull()
-            .NotEmpty();
+        RuleFor(body => body.AllowedResourceTypes).NotNull().NotEmpty();
         RuleForEach(body => body.AllowedResourceTypes)
             .Must(value => ResourceTypeId.TryCreate(value, out _))
             .WithMessage("Allowed resource type is invalid.");
 
-        RuleFor(body => body.TenantAccess)
-            .NotNull()
-            .SetValidator(new StorageProfileTenantAccessDtoValidator());
+        RuleFor(body => body.TenantAccess).NotNull().SetValidator(new StorageProfileTenantAccessDtoValidator());
         When(
             body => body.SizeLimits is not null,
-            () => RuleFor(body => body.SizeLimits!)
-                .SetValidator(new StorageProfileSizeLimitsDtoValidator()));
+            () => RuleFor(body => body.SizeLimits!).SetValidator(new StorageProfileSizeLimitsDtoValidator()));
     }
 
     private static bool HaveUniqueDeploymentTargets(
-        IReadOnlyCollection<StorageProfileTargetMappingRequestBody>? mappings) =>
-        mappings is null ||
-        mappings.All(mapping => mapping is not null) &&
-        mappings
-            .Select(mapping => mapping!.DeploymentTargetId?.Trim())
+        IReadOnlyCollection<StorageProfileTargetMappingRequestBody>? mappings) => mappings is null ||
+        (mappings.All(mapping => mapping is not null) && mappings.Select(mapping => mapping!.DeploymentTargetId?.Trim())
             .Distinct(StringComparer.Ordinal)
-            .Count() == mappings.Count;
+            .Count() == mappings.Count);
 
     private static bool BeDefinedEnumValue<TEnum>(string? value)
-        where TEnum : struct, Enum =>
-        Enum.GetNames<TEnum>().Contains(value?.Trim(), StringComparer.OrdinalIgnoreCase);
+        where TEnum : struct, Enum => Enum.GetNames<TEnum>().Contains(value?.Trim(), StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class StorageProfileTargetMappingRequestBodyValidator
@@ -89,9 +76,7 @@ public sealed class StorageProfileTargetMappingRequestBodyValidator
 {
     public StorageProfileTargetMappingRequestBodyValidator()
     {
-        RuleFor(mapping => mapping.DeploymentTargetId)
-            .NotEmpty()
-            .MongoObjectId("Deployment target ID");
+        RuleFor(mapping => mapping.DeploymentTargetId).NotEmpty().MongoObjectId("Deployment target ID");
         RuleFor(mapping => mapping.StorageClassName)
             .Cascade(CascadeMode.Stop)
             .NotEmpty()
@@ -101,18 +86,15 @@ public sealed class StorageProfileTargetMappingRequestBodyValidator
     }
 }
 
-public sealed class StorageProfileTenantAccessDtoValidator
-    : AbstractValidator<StorageProfileTenantAccessDto>
+public sealed class StorageProfileTenantAccessDtoValidator : AbstractValidator<StorageProfileTenantAccessDto>
 {
     public StorageProfileTenantAccessDtoValidator()
     {
         RuleFor(access => access.Mode)
-            .Must(mode =>
-                Enum.GetNames<StorageProfileTenantAccessMode>()
-                    .Contains(mode?.Trim(), StringComparer.OrdinalIgnoreCase))
+            .Must(mode => Enum.GetNames<StorageProfileTenantAccessMode>()
+                .Contains(mode?.Trim(), StringComparer.OrdinalIgnoreCase))
             .WithMessage("Tenant access mode is invalid.");
-        RuleFor(access => access.TenantIds)
-            .NotNull();
+        RuleFor(access => access.TenantIds).NotNull();
         RuleFor(access => access.TenantIds)
             .Must(ids => ids is not null && ids.Count > 0)
             .When(access => string.Equals(
@@ -127,22 +109,16 @@ public sealed class StorageProfileTenantAccessDtoValidator
                 nameof(StorageProfileTenantAccessMode.AllTenants),
                 StringComparison.OrdinalIgnoreCase))
             .WithMessage("Tenant IDs must be empty when access is granted to all tenants.");
-        RuleForEach(access => access.TenantIds)
-            .MongoObjectId("Tenant ID");
+        RuleForEach(access => access.TenantIds).MongoObjectId("Tenant ID");
     }
 }
 
-public sealed class StorageProfileSizeLimitsDtoValidator
-    : AbstractValidator<StorageProfileSizeLimitsDto>
+public sealed class StorageProfileSizeLimitsDtoValidator : AbstractValidator<StorageProfileSizeLimitsDto>
 {
     public StorageProfileSizeLimitsDtoValidator()
     {
-        RuleFor(limits => limits.MinSizeGb)
-            .GreaterThan(0)
-            .When(limits => limits.MinSizeGb is not null);
-        RuleFor(limits => limits.MaxSizeGb)
-            .GreaterThan(0)
-            .When(limits => limits.MaxSizeGb is not null);
+        RuleFor(limits => limits.MinSizeGb).GreaterThan(0).When(limits => limits.MinSizeGb is not null);
+        RuleFor(limits => limits.MaxSizeGb).GreaterThan(0).When(limits => limits.MaxSizeGb is not null);
         RuleFor(limits => limits.MaxSizeGb)
             .GreaterThanOrEqualTo(limits => limits.MinSizeGb)
             .When(limits => limits.MinSizeGb is not null && limits.MaxSizeGb is not null)

@@ -5,9 +5,7 @@ using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Catalog;
-using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Credentials;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
@@ -16,20 +14,15 @@ namespace Pole.Features.DeploymentTargets.Application;
 
 public static class DeploymentTargetPersistenceRegistration
 {
-    public static IServiceCollection AddDeploymentTargetPersistence(
-        this IServiceCollection services)
+    public static IServiceCollection AddDeploymentTargetPersistence(this IServiceCollection services)
     {
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<DeploymentTarget>("DeploymentTargets"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<DeploymentTargetReference>("DeploymentTargetReferences"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<DeploymentTargetSettings>("DeploymentTargetSettings"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName));
 
@@ -40,19 +33,25 @@ public static class DeploymentTargetPersistenceRegistration
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoDomainReservationTargetPlanning, ResolveNamedDomainReservationTarget>(
-            services, implementation => implementation.ResolveNameAsync);
+            services,
+            implementation => implementation.ResolveNameAsync);
         AddCapability<MongoDomainReservationTargetPlanning, ResolveDomainReservationTargetPlanningSnapshot>(
-            services, implementation => implementation.ReadAsync);
+            services,
+            implementation => implementation.ReadAsync);
         AddCapability<MongoDomainReservationTargetPlanning, FenceDomainReservationTargetPlanningSnapshot>(
-            services, implementation => implementation.FenceAsync);
+            services,
+            implementation => implementation.FenceAsync);
         AddCapability<MongoDeploymentTargetPlanningSnapshots, ResolveDeploymentTargetPlanningSnapshot>(
-            services, implementation => implementation.ReadAsync);
+            services,
+            implementation => implementation.ReadAsync);
         AddCapability<MongoDeploymentTargetPlanningSnapshots, FenceDeploymentTargetPlanningSnapshot>(
-            services, implementation => implementation.FenceAsync);
+            services,
+            implementation => implementation.FenceAsync);
         AddCapability<MongoLoadDeploymentTargets, LoadDeploymentTargets>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoResolveNamedDeploymentTarget, ResolveNamedDeploymentTarget>(services,
+        AddCapability<MongoResolveNamedDeploymentTarget, ResolveNamedDeploymentTarget>(
+            services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadEligibleDeploymentTargets, LoadEligibleDeploymentTargets>(
             services,
@@ -63,16 +62,13 @@ public static class DeploymentTargetPersistenceRegistration
         AddCapability<MongoPersistUpdatedDeploymentTarget, PersistUpdatedDeploymentTarget>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoPersistRotatedDeploymentTargetConnection,
-            PersistRotatedDeploymentTargetConnection>(
+        AddCapability<MongoPersistRotatedDeploymentTargetConnection, PersistRotatedDeploymentTargetConnection>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoPersistDeploymentTargetValidation,
-            PersistDeploymentTargetValidation>(
+        AddCapability<MongoPersistDeploymentTargetValidation, PersistDeploymentTargetValidation>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoEnsureNoDeploymentTargetReferences,
-            EnsureNoDeploymentTargetReferences>(
+        AddCapability<MongoEnsureNoDeploymentTargetReferences, EnsureNoDeploymentTargetReferences>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoDeleteDeploymentTarget, DeleteDeploymentTarget>(
@@ -85,25 +81,20 @@ public static class DeploymentTargetPersistenceRegistration
         AddCapability<MongoLookupDefaultDeploymentTarget, LookupDefaultDeploymentTarget>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoListEligibleDeploymentTargetsForNewWorkload,
-            ListEligibleDeploymentTargetsForNewWorkload>(
+        AddCapability<MongoListEligibleDeploymentTargetsForNewWorkload, ListEligibleDeploymentTargetsForNewWorkload>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoAdmitDeploymentTargetForWorkload, AdmitDeploymentTargetForWorkload>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoAdmitDefaultDeploymentTargetForNewWorkload,
-            AdmitDefaultDeploymentTargetForNewWorkload>(
+        AddCapability<MongoAdmitDefaultDeploymentTargetForNewWorkload, AdmitDefaultDeploymentTargetForNewWorkload>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoAdmitDeploymentTargetForNewWorkload,
-            AdmitDeploymentTargetForNewWorkload>(
+        AddCapability<MongoAdmitDeploymentTargetForNewWorkload, AdmitDeploymentTargetForNewWorkload>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoAdmitDeploymentTargetPublicIngressForNewWorkload,
-            AdmitDeploymentTargetPublicIngressForNewWorkload>(
-            services,
-            implementation => implementation.InvokeAsync);
+            AdmitDeploymentTargetPublicIngressForNewWorkload>(services, implementation => implementation.InvokeAsync);
         AddCapability<MongoListEligiblePublicIngressDeploymentTargetsForNewWorkload,
             ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
             services,
@@ -117,15 +108,11 @@ public static class DeploymentTargetPersistenceRegistration
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoEnsureNoDeploymentTargetPublicBaseDomainReferences,
-            EnsureNoDeploymentTargetPublicBaseDomainReferences>(
+            EnsureNoDeploymentTargetPublicBaseDomainReferences>(services, implementation => implementation.InvokeAsync);
+        AddCapability<MongoApplyDeploymentTargetReferenceChanges, ApplyDeploymentTargetReferenceChanges>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoApplyDeploymentTargetReferenceChanges,
-            ApplyDeploymentTargetReferenceChanges>(
-            services,
-            implementation => implementation.InvokeAsync);
-        AddCapability<MongoFenceDeploymentTargetWorkloadConfigurations,
-            FenceDeploymentTargetWorkloadConfigurations>(
+        AddCapability<MongoFenceDeploymentTargetWorkloadConfigurations, FenceDeploymentTargetWorkloadConfigurations>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoFenceDeploymentTargetObservation, FenceDeploymentTargetObservation>(
@@ -146,40 +133,26 @@ public static class DeploymentTargetPersistenceRegistration
             .InvokeAsync);
 
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedDeploymentTargetOutcome>>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedDeploymentTargetOutcome>>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services
             .TryAddSingleton<RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome>>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>);
+                serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services
             .TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetDeletionFenceOutcome>>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>);
+                serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services
             .TryAddSingleton<
                 RunMongoOutcomeTransaction<PersistRotatedDeploymentTargetConnectionOutcome>>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeOutcomeAsync<PersistRotatedDeploymentTargetConnectionOutcome>);
+                serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services
             .TryAddSingleton<RunMongoOutcomeTransaction<PersistDeploymentTargetValidationOutcome>>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeOutcomeAsync<PersistDeploymentTargetValidationOutcome>);
+                serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services
             .TryAddSingleton<
                 RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome>>(serviceProvider =>
-                serviceProvider
-                    .GetRequiredService<MongoRunTransaction>()
-                    .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>);
+                serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         return services;
     }
 

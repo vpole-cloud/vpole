@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using k8s;
 using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
@@ -7,8 +6,8 @@ namespace Pole.Features.DeploymentTargets.Application.Connections;
 public sealed record StoredDeploymentTargetConnectionUnavailable;
 
 /// <summary>
-/// Recreates a Kubernetes client from a stored deployment-target connection.
-/// The caller owns and must dispose a successful client.
+///     Recreates a Kubernetes client from a stored deployment-target connection.
+///     The caller owns and must dispose a successful client.
 /// </summary>
 public delegate ValueTask<CreateStoredKubernetesClientOutcome> CreateDeploymentTargetKubernetesClient(
     string deploymentTargetId,
@@ -16,7 +15,8 @@ public delegate ValueTask<CreateStoredKubernetesClientOutcome> CreateDeploymentT
     CancellationToken cancellationToken = default);
 
 internal sealed class DeploymentTargetKubernetesClientFactory(
-    DeploymentTargetConnectionProtector protector)
+    DeploymentTargetConnectionProtector protector
+)
 {
     public async ValueTask<CreateStoredKubernetesClientOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -28,14 +28,19 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         return connection switch
         {
             InClusterDeploymentTargetConnection => KubernetesClientSecurity.CreateInClusterForStored(cancellationToken),
-            KubeconfigDeploymentTargetConnection kubeconfig => await CreateFromStoredKubeconfigAsync(deploymentTargetId, kubeconfig, cancellationToken),
-            ServiceAccountDeploymentTargetConnection serviceAccount => await CreateFromStoredServiceAccountAsync(deploymentTargetId, serviceAccount, cancellationToken),
-            _ => new StoredDeploymentTargetConnectionUnavailable()
+            KubeconfigDeploymentTargetConnection kubeconfig => await CreateFromStoredKubeconfigAsync(
+                deploymentTargetId,
+                kubeconfig,
+                cancellationToken),
+            ServiceAccountDeploymentTargetConnection serviceAccount => await CreateFromStoredServiceAccountAsync(
+                deploymentTargetId,
+                serviceAccount,
+                cancellationToken),
+            _ => new StoredDeploymentTargetConnectionUnavailable(),
         };
     }
 
-    private async ValueTask<CreateStoredKubernetesClientOutcome>
-        CreateFromStoredKubeconfigAsync(
+    private async ValueTask<CreateStoredKubernetesClientOutcome> CreateFromStoredKubeconfigAsync(
         string deploymentTargetId,
         KubeconfigDeploymentTargetConnection connection,
         CancellationToken cancellationToken)
@@ -57,13 +62,9 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
             var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
             if (!string.Equals(canonical.ContextName, connection.ContextName, StringComparison.Ordinal) ||
                 !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal))
-            {
                 return new StoredDeploymentTargetConnectionUnavailable();
-            }
 
-            return KubernetesClientSecurity.CreateForStored(
-                canonical,
-                cancellationToken);
+            return KubernetesClientSecurity.CreateForStored(canonical, cancellationToken);
         }
         finally
         {
@@ -71,8 +72,7 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         }
     }
 
-    private async ValueTask<CreateStoredKubernetesClientOutcome>
-        CreateFromStoredServiceAccountAsync(
+    private async ValueTask<CreateStoredKubernetesClientOutcome> CreateFromStoredServiceAccountAsync(
         string deploymentTargetId,
         ServiceAccountDeploymentTargetConnection connection,
         CancellationToken cancellationToken)
@@ -95,18 +95,13 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
                 return new StoredDeploymentTargetConnectionUnavailable();
             var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
             if (!KubeconfigCanonicalizer.IsServiceAccountCredential(canonical) ||
-                !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal) ||
-                !string.Equals(
+                !string.Equals(canonical.ServerUrl, connection.ServerUrl, StringComparison.Ordinal) || !string.Equals(
                     canonical.CertificateAuthorityData,
                     connection.CertificateAuthorityData,
                     StringComparison.Ordinal))
-            {
                 return new StoredDeploymentTargetConnectionUnavailable();
-            }
 
-            return KubernetesClientSecurity.CreateForStored(
-                canonical,
-                cancellationToken);
+            return KubernetesClientSecurity.CreateForStored(canonical, cancellationToken);
         }
         finally
         {
@@ -119,10 +114,8 @@ internal sealed class DeploymentTargetKubernetesClientFactory(
         if (string.IsNullOrWhiteSpace(deploymentTargetId) ||
             deploymentTargetId.Length > ConnectionPayloadLimits.MaximumDeploymentTargetIdCharacters ||
             connectionVersion < 1)
-        {
             throw new ArgumentException(
                 "The stored deployment-target connection owner is invalid.",
                 nameof(deploymentTargetId));
-        }
     }
 }

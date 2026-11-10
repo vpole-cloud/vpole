@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Workloads;
@@ -8,7 +7,8 @@ using Pole.Workloads;
 namespace Pole.Features.ResourceGroups.Application.ResourceRegistrations;
 
 internal sealed class MongoResourceRegistrationConnectionFence(
-    IMongoCollection<ResourceRegistration> registrations)
+    IMongoCollection<ResourceRegistration> registrations
+)
 {
     public async Task<RegisteredResource?> InvokeAsync(
         FenceRegisteredResourceRequest request,
@@ -24,7 +24,7 @@ internal sealed class MongoResourceRegistrationConnectionFence(
             Builders<ResourceRegistration>.Update.Inc(item => item.ReferenceFence, 1),
             new FindOneAndUpdateOptions<ResourceRegistration>
             {
-                ReturnDocument = ReturnDocument.After
+                ReturnDocument = ReturnDocument.After,
             },
             cancellationToken);
         return registration is null

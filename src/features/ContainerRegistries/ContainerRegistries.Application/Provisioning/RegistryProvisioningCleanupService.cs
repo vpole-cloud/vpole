@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Pole.Features.ContainerRegistries.Application.Mongo;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
@@ -8,9 +7,7 @@ namespace Pole.Features.ContainerRegistries.Application.Provisioning;
 
 public sealed record RegistryCleanupCompleted;
 
-public union RegistryCleanupOutcome(
-    RegistryCleanupCompleted,
-    ContainerRegistryProviderError);
+public union RegistryCleanupOutcome(RegistryCleanupCompleted, ContainerRegistryProviderError);
 
 public sealed record RegistryProvisioningAttempt(
     string AttemptId,
@@ -20,14 +17,17 @@ public sealed record RegistryProvisioningAttempt(
     string PullRobotName,
     string? BuildExternalRobotId,
     string? PullExternalRobotId,
-    DateTime? NameVerificationNotBeforeUtc);
+    DateTime? NameVerificationNotBeforeUtc
+);
 
 public sealed record RegistryProvisioningFailure(
     string Code,
-    string Message)
+    string Message
+)
 {
-    public static RegistryProvisioningFailure Interrupted(string message) =>
-        new("container-registries.provisioning.interrupted", message);
+    public static RegistryProvisioningFailure Interrupted(string message) => new(
+        "container-registries.provisioning.interrupted",
+        message);
 }
 
 internal static class RegistryProvisioningCleanupPolicy
@@ -39,14 +39,15 @@ internal static class RegistryProvisioningCleanupPolicy
 }
 
 /// <summary>
-/// Reconciles the durable cleanup state machine. It is intentionally a cohesive concrete
-/// Hangfire job rather than a broad data-access interface.
+///     Reconciles the durable cleanup state machine. It is intentionally a cohesive concrete
+///     Hangfire job rather than a broad data-access interface.
 /// </summary>
 public sealed class RegistryProvisioningCleanupService(
     RegistryProvisioningPersistence persistence,
     IContainerRegistryClient registryClient,
     TimeProvider timeProvider,
-    ILogger<RegistryProvisioningCleanupService> logger)
+    ILogger<RegistryProvisioningCleanupService> logger
+)
 {
     private const int ReconciliationBatchSize = 100;
     private static readonly TimeSpan AbandonedAttemptAge = TimeSpan.FromMinutes(10);
@@ -55,8 +56,11 @@ public sealed class RegistryProvisioningCleanupService(
         string projectId,
         RegistryProvisioningAttempt attempt,
         RegistryProvisioningFailure originalFailure,
-        CancellationToken cancellationToken = default) =>
-        persistence.ClaimCleanupAsync(projectId, attempt, originalFailure, cancellationToken);
+        CancellationToken cancellationToken = default) => persistence.ClaimCleanupAsync(
+        projectId,
+        attempt,
+        originalFailure,
+        cancellationToken);
 
     public async Task<RegistryCleanupOutcome> CleanupAsync(
         string projectId,
@@ -71,60 +75,82 @@ public sealed class RegistryProvisioningCleanupService(
         workTimeout.CancelAfter(RegistryProvisioningCleanupPolicy.LeasedWorkTimeout);
         var result = await registryClient.DeleteRobotCredentialsAsync(
             [
-                new(leasedCleanup.ProjectName, leasedCleanup.BuildRobotName, leasedCleanup.BuildExternalRobotId),
-                new(leasedCleanup.ProjectName, leasedCleanup.PullRobotName, leasedCleanup.PullExternalRobotId)
+                new RegistryRobotCleanupTarget(
+                    leasedCleanup.ProjectName,
+                    leasedCleanup.BuildRobotName,
+                    leasedCleanup.BuildExternalRobotId),
+                new RegistryRobotCleanupTarget(
+                    leasedCleanup.ProjectName,
+                    leasedCleanup.PullRobotName,
+                    leasedCleanup.PullExternalRobotId),
             ],
             workTimeout.Token);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var requiresNameVerification = leasedCleanup.BuildExternalRobotId is null ||
-                                       leasedCleanup.PullExternalRobotId is null;
+            leasedCleanup.PullExternalRobotId is null;
         if (result.Value is ContainerRegistryProviderError providerError)
         {
             await persistence.RecordCleanupRetryAsync(
-                projectId, leasedCleanup, ProviderFailure(providerError), requiresNameVerification,
-                now, cancellationToken);
+                projectId,
+                leasedCleanup,
+                ProviderFailure(providerError),
+                requiresNameVerification,
+                now,
+                cancellationToken);
             logger.LogWarning(
                 "Container registry robot cleanup remains required for project {RegistryProjectId}, Harbor project {ExternalProjectId}, attempt {AttemptId}.",
-                projectId, leasedCleanup.ExternalProjectId, leasedCleanup.AttemptId);
+                projectId,
+                leasedCleanup.ExternalProjectId,
+                leasedCleanup.AttemptId);
             return providerError;
         }
+
         var cleanupResult = (RegistryRobotCleanupResult)result.Value;
         if (requiresNameVerification &&
             (cleanupResult.MatchedByNameCount > 0 || now < leasedCleanup.CleanupVerificationNotBeforeUtc))
         {
             await persistence.RecordCleanupVerificationPendingAsync(
-                projectId, leasedCleanup, cleanupResult.MatchedByNameCount, now, cancellationToken);
+                projectId,
+                leasedCleanup,
+                cleanupResult.MatchedByNameCount,
+                now,
+                cancellationToken);
             return new RegistryCleanupCompleted();
         }
 
         await persistence.MarkCleanupCompletedAsync(projectId, leasedCleanup, now, cancellationToken);
         logger.LogInformation(
             "Removed robot credentials from interrupted container registry provisioning for project {RegistryProjectId}, Harbor project {ExternalProjectId}, attempt {AttemptId}.",
-            projectId, leasedCleanup.ExternalProjectId, leasedCleanup.AttemptId);
+            projectId,
+            leasedCleanup.ExternalProjectId,
+            leasedCleanup.AttemptId);
         return new RegistryCleanupCompleted();
     }
 
     public async Task ReconcileAsync(CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        foreach (var project in await persistence.LoadPendingCleanupAsync(now, ReconciliationBatchSize, cancellationToken))
-        {
+        foreach (var project in await persistence.LoadPendingCleanupAsync(
+                     now,
+                     ReconciliationBatchSize,
+                     cancellationToken))
             if (project.State is CleanupRequiredRegistryProjectProvisioning cleanup)
                 await ReconcileCleanupAsync(project.Id, cleanup, cancellationToken);
-        }
 
         var cutoff = now - AbandonedAttemptAge;
-        foreach (var project in await persistence.LoadAbandonedRemoteAsync(cutoff, ReconciliationBatchSize, cancellationToken))
-        {
+        foreach (var project in await persistence.LoadAbandonedRemoteAsync(
+                     cutoff,
+                     ReconciliationBatchSize,
+                     cancellationToken))
             if (project.State is RemoteProvisionedRegistryProject remote)
                 await ReconcileAbandonedAsync(project, remote, cancellationToken);
-        }
 
-        foreach (var project in await persistence.LoadAbandonedProvisioningAsync(cutoff, ReconciliationBatchSize, cancellationToken))
-        {
+        foreach (var project in await persistence.LoadAbandonedProvisioningAsync(
+                     cutoff,
+                     ReconciliationBatchSize,
+                     cancellationToken))
             if (project.State is ProvisioningRegistryProject provisioning)
                 await ReconcileAbandonedProvisioningAsync(project, provisioning, cancellationToken);
-        }
     }
 
     private async Task ReconcileAbandonedAsync(
@@ -134,8 +160,14 @@ public sealed class RegistryProvisioningCleanupService(
     {
         var names = RegistryRobotNames.ForAttempt(remote.AttemptId);
         var attempt = new RegistryProvisioningAttempt(
-            remote.AttemptId, project.Name, remote.ExternalProjectId, names.Build, names.Pull,
-            remote.BuildExternalRobotId, remote.PullExternalRobotId, null);
+            remote.AttemptId,
+            project.Name,
+            remote.ExternalProjectId,
+            names.Build,
+            names.Pull,
+            remote.BuildExternalRobotId,
+            remote.PullExternalRobotId,
+            null);
         await ClaimAndReconcileAsync(
             project.Id,
             attempt,
@@ -151,8 +183,13 @@ public sealed class RegistryProvisioningCleanupService(
     {
         var names = RegistryRobotNames.ForAttempt(provisioning.AttemptId);
         var attempt = new RegistryProvisioningAttempt(
-            provisioning.AttemptId, project.Name, project.Name, names.Build, names.Pull,
-            null, null,
+            provisioning.AttemptId,
+            project.Name,
+            project.Name,
+            names.Build,
+            names.Pull,
+            null,
+            null,
             provisioning.StartedAtUtc + RegistryProvisioningCleanupPolicy.NameVerificationHorizon);
         await ClaimAndReconcileAsync(
             project.Id,
@@ -182,7 +219,9 @@ public sealed class RegistryProvisioningCleanupService(
         {
             logger.LogWarning(
                 "Container registry provisioning reconciliation threw {ExceptionType} for project {RegistryProjectId}, attempt {AttemptId}; durable cleanup state was retained.",
-                exception.GetType().Name, projectId, attempt.AttemptId);
+                exception.GetType().Name,
+                projectId,
+                attempt.AttemptId);
         }
     }
 
@@ -203,16 +242,20 @@ public sealed class RegistryProvisioningCleanupService(
         {
             logger.LogWarning(
                 "Container registry robot cleanup reconciliation threw {ExceptionType} for project {RegistryProjectId}, Harbor project {ExternalProjectId}, attempt {AttemptId}; durable cleanup state was retained.",
-                exception.GetType().Name, projectId, cleanup.ExternalProjectId, cleanup.AttemptId);
+                exception.GetType().Name,
+                projectId,
+                cleanup.ExternalProjectId,
+                cleanup.AttemptId);
         }
     }
 
-    private static RegistryProvisioningFailure ProviderFailure(ContainerRegistryProviderError error) =>
-        error switch
-        {
-            ContainerRegistryProviderNotConfigured => new(
-                "container-registries.provider.not-configured", "Harbor is not configured."),
-            ContainerRegistryProviderUnavailable => new(
-                "container-registries.provider.unavailable", "Harbor is unavailable.")
-        };
+    private static RegistryProvisioningFailure ProviderFailure(ContainerRegistryProviderError error) => error switch
+    {
+        ContainerRegistryProviderNotConfigured => new RegistryProvisioningFailure(
+            "container-registries.provider.not-configured",
+            "Harbor is not configured."),
+        ContainerRegistryProviderUnavailable => new RegistryProvisioningFailure(
+            "container-registries.provider.unavailable",
+            "Harbor is unavailable."),
+    };
 }

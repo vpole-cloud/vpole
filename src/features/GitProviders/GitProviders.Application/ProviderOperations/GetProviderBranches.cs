@@ -5,21 +5,19 @@ using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-public union GetProviderBranchesOutcome(
-    ProviderPage<ProviderBranch>,
-    GitProviderRepositoryAccessError);
+public union GetProviderBranchesOutcome(ProviderPage<ProviderBranch>, GitProviderRepositoryAccessError);
 
-public delegate Task<GetProviderBranchesOutcome>
-    GetProviderBranches(
-        GitProviderConnection connection,
-        string repositoryId,
-        int page,
-        int pageSize,
-        CancellationToken cancellationToken = default);
+public delegate Task<GetProviderBranchesOutcome> GetProviderBranches(
+    GitProviderConnection connection,
+    string repositoryId,
+    int page,
+    int pageSize,
+    CancellationToken cancellationToken = default);
 
 internal sealed class GitHubGetProviderBranches(
     IGitHubAppClient gitHubClient,
-    ILogger<GitHubGetProviderBranches> logger)
+    ILogger<GitHubGetProviderBranches> logger
+)
 {
     public async Task<GetProviderBranchesOutcome> InvokeAsync(
         GitProviderConnection connection,
@@ -40,7 +38,7 @@ internal sealed class GitHubGetProviderBranches(
         return result switch
         {
             ProviderPage<ProviderBranch> branchPage => branchPage,
-            GitProviderRepositoryAccessError error => error
+            GitProviderRepositoryAccessError error => error,
         };
     }
 }

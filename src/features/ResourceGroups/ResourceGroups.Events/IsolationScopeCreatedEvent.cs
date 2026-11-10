@@ -8,7 +8,8 @@ public sealed record IsolationScopeCreatedEvent(
     string IsolationScopeId,
     string ResourceGroupId,
     string Name,
-    bool IsDefault) : IPoleEvent
+    bool IsDefault
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -16,7 +17,8 @@ public sealed record IsolationScopeCreatedEvent(
 [EntityName("pole.resource-groups/v1/isolation-scope-deletion-requested")]
 public sealed record IsolationScopeDeletionRequestedEvent(
     string IsolationScopeId,
-    string ResourceGroupId) : IPoleEvent
+    string ResourceGroupId
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

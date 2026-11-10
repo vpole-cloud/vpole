@@ -1,7 +1,6 @@
 using MongoDB.Bson;
 using Pole.Dns;
 using Pole.Features.Domains.Domain;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
@@ -43,7 +42,7 @@ public sealed class DnsDomainTests
             targetId,
             "Company",
             DnsName.Create("Example.COM."),
-            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
+            "zone-" + ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var binding = HostnameBindingFactory.CreateCustom(
             tenantId,
@@ -54,7 +53,7 @@ public sealed class DnsDomainTests
             ObjectId.GenerateNewId().ToString(),
             "Api.Eu",
             DnsName.Create(zone.Domain),
-            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
+            "binding-" + ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
 
         Assert.Equal("company.example.com", zone.Domain);
@@ -66,16 +65,13 @@ public sealed class DnsDomainTests
     [Fact]
     public void Managed_zone_cannot_use_platform_generated_label_namespace()
     {
-        var exception = Assert.Throws<ArgumentException>(() =>
-            TenantDomainZoneFactory.CreateManagedReservation(
-                ObjectId.GenerateNewId().ToString(),
+        var exception = Assert.Throws<ArgumentException>(() => TenantDomainZoneFactory.CreateManagedReservation(
+            ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678",
             DnsName.Create("example.com"),
-            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
-            new TenantDomainZoneFactory.CreateOptions(
-                    ObjectId.GenerateNewId().ToString(),
-                    DateTime.UtcNow)));
+            "zone-" + ObjectId.GenerateNewId(),
+            new TenantDomainZoneFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow)));
 
         Assert.Contains("reserved", exception.Message, StringComparison.OrdinalIgnoreCase);
     }

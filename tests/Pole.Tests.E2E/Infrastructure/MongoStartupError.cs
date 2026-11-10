@@ -5,7 +5,8 @@ namespace Pole.Tests.E2E.Infrastructure;
 internal sealed record MongoStartupError(
     long EventId,
     int? Code,
-    string Cause)
+    string Cause
+)
 {
     // Resource logs can contain credentials. Only numeric IDs and fixed categories leave this parser.
     internal static MongoStartupError? Parse(string line)
@@ -16,9 +17,8 @@ internal sealed record MongoStartupError(
         {
             using var document = JsonDocument.Parse(line, new JsonDocumentOptions { MaxDepth = 16 });
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("s", out var severity) || severity.ValueKind != JsonValueKind.String ||
-                severity.GetString() is not ("E" or "F") ||
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("s", out var severity) ||
+                severity.ValueKind != JsonValueKind.String || severity.GetString() is not ("E" or "F") ||
                 !root.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number ||
                 !id.TryGetInt64(out var eventId))
                 return null;
@@ -30,17 +30,19 @@ internal sealed record MongoStartupError(
             {
                 if (error.ValueKind == JsonValueKind.Object)
                 {
-                    if (error.TryGetProperty("code", out var errorCode) && errorCode.ValueKind == JsonValueKind.Number &&
-                        errorCode.TryGetInt32(out var value))
+                    if (error.TryGetProperty("code", out var errorCode) &&
+                        errorCode.ValueKind == JsonValueKind.Number && errorCode.TryGetInt32(out var value))
                         code = value;
                     if (error.TryGetProperty("errmsg", out var message) && message.ValueKind == JsonValueKind.String)
                         cause = Classify(message.GetString()!);
                 }
                 else if (error.ValueKind == JsonValueKind.String)
+                {
                     cause = Classify(error.GetString()!);
+                }
             }
 
-            return new(eventId, code, cause);
+            return new MongoStartupError(eventId, code, cause);
         }
         catch (JsonException)
         {
@@ -53,9 +55,11 @@ internal sealed record MongoStartupError(
         _ when error.Contains("Address already in use", StringComparison.OrdinalIgnoreCase) => "address-in-use",
         _ when error.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) => "permission-denied",
         _ when error.Contains("No space left on device", StringComparison.OrdinalIgnoreCase) => "disk-full",
-        _ when error.Contains("Cannot assign requested address", StringComparison.OrdinalIgnoreCase) => "address-unavailable",
-        _ => "unclassified"
+        _ when error.Contains("Cannot assign requested address", StringComparison.OrdinalIgnoreCase) =>
+            "address-unavailable",
+        _ => "unclassified",
     };
 
-    public override string ToString() => $"MongoDB error: event={EventId}, code={Code?.ToString() ?? "none"}, cause={Cause}";
+    public override string ToString() =>
+        $"MongoDB error: event={EventId}, code={Code?.ToString() ?? "none"}, cause={Cause}";
 }

@@ -5,32 +5,9 @@ namespace Pole.Tests.E2E.Infrastructure;
 // Current subscription evidence, never a union of historical acknowledgements.
 internal sealed class RealtimeCoverageJournal
 {
-    internal sealed record Coverage(
-        string Topic,
-        string? TenantId,
-        string? ResourceId,
-        bool Covered);
-
-    private sealed record Invocation(
-        string Method,
-        long Epoch,
-        long Sequence);
-
-    private sealed class Connection(long document, long openedAt)
-    {
-        public long Document { get; } = document;
-        public long OpenedAt { get; } = openedAt;
-        public bool Closed { get; set; }
-        public long Epoch { get; set; }
-        public long Sequence { get; set; }
-        public long AcceptedSequence { get; set; }
-        public long ReceivedAt { get; set; }
-        public Coverage[] Coverage { get; set; } = [];
-        public Dictionary<string, Invocation> Invocations { get; } = new();
-    }
+    private readonly Dictionary<int, Connection> connections = new();
 
     private readonly object sync = new();
-    private readonly Dictionary<int, Connection> connections = new();
     private long document;
     private int latestConnection;
 
@@ -66,7 +43,9 @@ internal sealed class RealtimeCoverageJournal
     public bool IsCurrent(int connection)
     {
         lock (sync)
+        {
             return Current(connection) is not null;
+        }
     }
 
     public void Sent(int connection, JsonElement message)
@@ -87,7 +66,10 @@ internal sealed class RealtimeCoverageJournal
         }
     }
 
-    public void Received(int connection, JsonElement message, long receivedAt)
+    public void Received(
+        int connection,
+        JsonElement message,
+        long receivedAt)
     {
         lock (sync)
         {
@@ -113,23 +95,28 @@ internal sealed class RealtimeCoverageJournal
             state.ReceivedAt = receivedAt;
             if (!message.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Array)
                 return;
-            state.Coverage = result.EnumerateArray().Select(item => new Coverage(
-                item.GetProperty("topic").GetString()!, OptionalText(item, "tenantId"),
-                OptionalText(item, "resourceId"), item.GetProperty("covered").GetBoolean())).ToArray();
+            state.Coverage = result.EnumerateArray()
+                .Select(item => new Coverage(
+                    item.GetProperty("topic").GetString()!,
+                    OptionalText(item, "tenantId"),
+                    OptionalText(item, "resourceId"),
+                    item.GetProperty("covered").GetBoolean()))
+                .ToArray();
         }
     }
 
-    public int LatestCoveredConnection(Func<IReadOnlyList<Coverage>, bool> matches,
+    public int LatestCoveredConnection(
+        Func<IReadOnlyList<Coverage>, bool> matches,
         long after = 0,
         bool requireOpenedAfter = false)
     {
         lock (sync)
         {
             var state = Current(latestConnection);
-            return state is not null && state.ReceivedAt > after &&
-                   (!requireOpenedAfter || state.OpenedAt > after) && matches(state.Coverage)
-                ? latestConnection
-                : 0;
+            return state is not null && state.ReceivedAt > after && (!requireOpenedAfter || state.OpenedAt > after) &&
+                matches(state.Coverage)
+                    ? latestConnection
+                    : 0;
         }
     }
 
@@ -147,4 +134,33 @@ internal sealed class RealtimeCoverageJournal
 
     private static string? OptionalText(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    internal sealed record Coverage(
+        string Topic,
+        string? TenantId,
+        string? ResourceId,
+        bool Covered
+    );
+
+    private sealed record Invocation(
+        string Method,
+        long Epoch,
+        long Sequence
+    );
+
+    private sealed class Connection(
+        long document,
+        long openedAt
+    )
+    {
+        public long Document { get; } = document;
+        public long OpenedAt { get; } = openedAt;
+        public bool Closed { get; set; }
+        public long Epoch { get; set; }
+        public long Sequence { get; set; }
+        public long AcceptedSequence { get; set; }
+        public long ReceivedAt { get; set; }
+        public Coverage[] Coverage { get; set; } = [];
+        public Dictionary<string, Invocation> Invocations { get; } = new();
+    }
 }

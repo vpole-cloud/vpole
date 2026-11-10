@@ -11,11 +11,12 @@ public sealed record UnmanagedSecret : SecretManagement;
 public enum KubernetesSecretType
 {
     Opaque,
-    BasicAuthentication
+    BasicAuthentication,
 }
 
 public sealed record ProviderManagedSecret(
     string ResourceType,
     string ResourceId,
     string BindingId,
-    KubernetesSecretType KubernetesType) : SecretManagement;
+    KubernetesSecretType KubernetesType
+) : SecretManagement;

@@ -1,5 +1,3 @@
-using Pole.Features.SourceBuilds.Application.Jobs;
-
 namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class TestSourceBuildJobDispatcher

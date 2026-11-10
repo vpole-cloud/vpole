@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Dns;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Domain;
@@ -9,6 +7,7 @@ using Pole.Features.DeploymentTargets.Domain;
 namespace Pole.Features.DeploymentTargets.Application.References;
 
 internal sealed record DeploymentTargetPublicBaseDomainAvailable;
+
 internal union EnsureDeploymentTargetPublicBaseDomainAvailableOutcome(
     DeploymentTargetPublicBaseDomainAvailable,
     DeploymentTargetPublicBaseDomainConflict);
@@ -21,12 +20,13 @@ internal delegate Task<EnsureDeploymentTargetPublicBaseDomainAvailableOutcome>
         CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Serializes admission of DNS trees delegated to deployment targets. The fence prevents two
-/// concurrent transactions from accepting ancestor and descendant public base domains.
+///     Serializes admission of DNS trees delegated to deployment targets. The fence prevents two
+///     concurrent transactions from accepting ancestor and descendant public base domains.
 /// </summary>
 internal sealed class MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
     IMongoCollection<DeploymentTarget> deploymentTargets,
-    IMongoCollection<DeploymentTargetPublicBaseDomainAdmissionFence> fences)
+    IMongoCollection<DeploymentTargetPublicBaseDomainAdmissionFence> fences
+)
 {
     public async Task<EnsureDeploymentTargetPublicBaseDomainAvailableOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -47,10 +47,7 @@ internal sealed class MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
             new UpdateOptions { IsUpsert = true },
             cancellationToken);
 
-        var targets = await deploymentTargets
-            .Find(
-                session,
-                DeploymentTargetFilters.WithConfiguredPublicBaseDomain())
+        var targets = await deploymentTargets.Find(session, DeploymentTargetFilters.WithConfiguredPublicBaseDomain())
             .ToListAsync(cancellationToken);
         foreach (var existing in targets)
         {
@@ -60,11 +57,8 @@ internal sealed class MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
             var otherDomain = DnsName.Create(
                 existing.WorkloadConfiguration.Ingress!.PublicBaseDomain ?? throw new InvalidOperationException(
                     "A deployment target with configured public ingress has no public base domain."));
-            if (candidate.IsSameOrDescendantOf(otherDomain) ||
-                otherDomain.IsSameOrDescendantOf(candidate))
-            {
+            if (candidate.IsSameOrDescendantOf(otherDomain) || otherDomain.IsSameOrDescendantOf(candidate))
                 return new DeploymentTargetPublicBaseDomainConflict(deploymentTargetId);
-            }
         }
 
         return new DeploymentTargetPublicBaseDomainAvailable();

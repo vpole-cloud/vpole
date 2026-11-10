@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Defaults;
@@ -9,22 +10,19 @@ using Pole.Features.StorageProfiles.Events;
 
 namespace Pole.Features.StorageProfiles.Application.Catalog;
 
-public union PersistUpdatedStorageProfileOutcome(
-    StorageProfile,
-    StorageProfileRevisionConflict);
+public union PersistUpdatedStorageProfileOutcome(StorageProfile, StorageProfileRevisionConflict);
 
-public delegate Task<PersistUpdatedStorageProfileOutcome>
-    PersistUpdatedStorageProfile(
-        StorageProfile current,
-        StorageProfile replacement,
-        CancellationToken cancellationToken = default);
+public delegate Task<PersistUpdatedStorageProfileOutcome> PersistUpdatedStorageProfile(
+    StorageProfile current,
+    StorageProfile replacement,
+    CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistUpdatedStorageProfile(
     IMongoCollection<StorageProfile> storageProfiles,
-    RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>
-        runMongoTransaction,
+    RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
-    StorageProfileHistory history)
+    StorageProfileHistory history
+)
 {
     public Task<PersistUpdatedStorageProfileOutcome> InvokeAsync(
         StorageProfile current,
@@ -32,12 +30,15 @@ internal sealed class MongoPersistUpdatedStorageProfile(
         CancellationToken cancellationToken = default)
     {
         EnsureSameIdentity(current, replacement);
-        return runMongoTransaction(async (transaction, ct) =>
+        return runMongoTransaction(
+            async (transaction, ct) =>
             {
                 if (current == replacement)
                 {
-                    var exists = await storageProfiles.Find(transaction.Session,
-                        StorageProfileFilters.AtSnapshot(current)).AnyAsync(ct);
+                    var exists = await storageProfiles.Find(
+                            transaction.Session,
+                            StorageProfileFilters.AtSnapshot(current))
+                        .AnyAsync(ct);
                     return exists
                         ? transaction.Commit(current)
                         : transaction.Abort(new StorageProfileRevisionConflict(current.Id));
@@ -68,10 +69,16 @@ internal sealed class MongoPersistUpdatedStorageProfile(
                     return transaction.Abort(new StorageProfileRevisionConflict(current.Id));
                 await history.StoreAsync(current, transaction.Session, ct);
                 await history.StoreAsync(replacement, transaction.Session, ct);
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(
-                        replacement.Id, replacement.Revision, replacement.TechnicalName,
-                        Pole.Features.Events.Abstractions.EventCore.Create()))],
+                await storeOutboxWrites(
+                    transaction.Session,
+                    [
+                        OutboxWrite.Create(
+                            new StorageProfileCatalogChangedEvent(
+                                replacement.Id,
+                                replacement.Revision,
+                                replacement.TechnicalName,
+                                EventCore.Create())),
+                    ],
                     ct);
                 return transaction.Commit(replacement);
             },
@@ -83,10 +90,8 @@ internal sealed class MongoPersistUpdatedStorageProfile(
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(replacement);
         if (current.Id != replacement.Id || current.TechnicalName != replacement.TechnicalName)
-        {
             throw new ArgumentException(
                 "A storage-profile replacement must preserve the profile identity.",
                 nameof(replacement));
-        }
     }
 }

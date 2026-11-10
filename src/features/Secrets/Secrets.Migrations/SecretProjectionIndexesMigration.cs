@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.Secrets.Migrations;
 
@@ -12,17 +12,26 @@ public sealed class SecretProjectionIndexesMigration : IMigration
 
     public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
-        await context.GetCollection<BsonDocument>("SecretProjections").Indexes.CreateOneAsync(
-            new CreateIndexModel<BsonDocument>(Builders<BsonDocument>.IndexKeys
-                .Ascending("TenantId").Ascending("SecretId")), cancellationToken: cancellationToken);
-        await context.GetCollection<BsonDocument>("Secrets").Indexes.CreateOneAsync(
-            new CreateIndexModel<BsonDocument>(Builders<BsonDocument>.IndexKeys
-                .Ascending("TenantId").Ascending("Management.ResourceType").Ascending("Management.ResourceId"),
-                new CreateIndexOptions<BsonDocument>
-                {
-                    Name = "UX_Secrets_ManagedOwner",
-                    Unique = true,
-                    PartialFilterExpression = new BsonDocument("Management._t", "ProviderManagedSecret")
-                }), cancellationToken: cancellationToken);
+        await context.GetCollection<BsonDocument>("SecretProjections")
+            .Indexes
+            .CreateOneAsync(
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("SecretId")),
+                cancellationToken: cancellationToken);
+        await context.GetCollection<BsonDocument>("Secrets")
+            .Indexes
+            .CreateOneAsync(
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TenantId")
+                        .Ascending("Management.ResourceType")
+                        .Ascending("Management.ResourceId"),
+                    new CreateIndexOptions<BsonDocument>
+                    {
+                        Name = "UX_Secrets_ManagedOwner",
+                        Unique = true,
+                        PartialFilterExpression = new BsonDocument("Management._t", "ProviderManagedSecret"),
+                    }),
+                cancellationToken: cancellationToken);
     }
 }

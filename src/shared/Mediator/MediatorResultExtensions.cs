@@ -3,8 +3,8 @@ namespace Pole.Mediator;
 public static class MediatorResultExtensions
 {
     /// <summary>
-    /// Projects either branch without exposing the preview union's underlying value access
-    /// to transport adapters and other generic infrastructure.
+    ///     Projects either branch without exposing the preview union's underlying value access
+    ///     to transport adapters and other generic infrastructure.
     /// </summary>
     public static TResult Match<TOutcome, TResult>(
         this MediatorResult<TOutcome> result,
@@ -18,7 +18,7 @@ public static class MediatorResultExtensions
         return result switch
         {
             TOutcome => onOutcome((TOutcome)result.Value),
-            PipelineRejected rejected => onRejected(rejected)
+            PipelineRejected rejected => onRejected(rejected),
         };
     }
 }

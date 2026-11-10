@@ -8,4 +8,4 @@ module internal PostgresConnectionEndpoints =
     [<Literal>]
     let TcpPort = 5432
 
-    let buildReadWriteServiceName (resourceId : string) = $"pg-{resourceId}-rw"
+    let buildReadWriteServiceName (resourceId: string) = $"pg-{resourceId}-rw"

@@ -19,21 +19,21 @@ public static class PrivateAccessGatewayIds
         return Convert.ToHexString(digest.AsSpan(0, 12)).ToLowerInvariant();
     }
 
-    public static bool IsCanonicalObjectId(string? value) =>
-        value is { Length: 24 } && value.All(character =>
-            character is >= '0' and <= '9' or >= 'a' and <= 'f');
+    public static bool IsCanonicalObjectId(string? value) => value is { Length: 24 } &&
+        value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 }
 
 /// <summary>
-/// The current certificate identity of the Access Gateway for one tenant in one target.
-/// A generation change invalidates every existing control and data stream.
+///     The current certificate identity of the Access Gateway for one tenant in one target.
+///     A generation change invalidates every existing control and data stream.
 /// </summary>
 public sealed record PrivateAccessGatewayIdentity(
     string TenantId,
     string DeploymentTargetId,
     string GatewayId,
     long Generation,
-    long Revision);
+    long Revision
+);
 
 public delegate Task<PrivateAccessGatewayIdentity?> ResolvePrivateAccessGatewayIdentity(
     string certificateSha256Pin,
@@ -51,29 +51,31 @@ public sealed record PrivateAccessGatewayEndpointSnapshot(
     string KubernetesNamespace,
     string ServiceName,
     int ServicePort,
-    int TargetPort);
+    int TargetPort
+);
 
 public sealed record PrivateAccessGatewayDesiredState(
     string TenantId,
     string DeploymentTargetId,
-    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints);
+    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints
+);
 
 public sealed record PrivateAccessGatewayRegistration(
     PrivateAccessGatewayIdentity Identity,
     string CertificateSha256Pin,
     DateTime CertificateNotAfterUtc,
-    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints);
+    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints
+);
 
-public delegate Task<IReadOnlyList<PrivateAccessGatewayDesiredState>>
-    LoadPrivateAccessGatewayDesiredStates(CancellationToken cancellationToken = default);
+public delegate Task<IReadOnlyList<PrivateAccessGatewayDesiredState>> LoadPrivateAccessGatewayDesiredStates(
+    CancellationToken cancellationToken = default);
 
-public delegate Task<IReadOnlyList<PrivateAccessGatewayDesiredState>>
-    LoadPrivateAccessGatewayDesiredStatesForTenant(
-        string tenantId,
-        CancellationToken cancellationToken = default);
+public delegate Task<IReadOnlyList<PrivateAccessGatewayDesiredState>> LoadPrivateAccessGatewayDesiredStatesForTenant(
+    string tenantId,
+    CancellationToken cancellationToken = default);
 
-public delegate Task<IReadOnlyList<PrivateAccessGatewayRegistration>>
-    LoadPrivateAccessGatewayRegistrations(CancellationToken cancellationToken = default);
+public delegate Task<IReadOnlyList<PrivateAccessGatewayRegistration>> LoadPrivateAccessGatewayRegistrations(
+    CancellationToken cancellationToken = default);
 
 public delegate Task<bool> SavePrivateAccessGatewayRegistration(
     SavePrivateAccessGatewayRegistrationRequest request,
@@ -87,4 +89,5 @@ public sealed record SavePrivateAccessGatewayRegistrationRequest(
     PrivateAccessGatewayIdentity Identity,
     string CertificateSha256Pin,
     DateTime CertificateNotAfterUtc,
-    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints);
+    IReadOnlyList<PrivateAccessGatewayEndpointSnapshot> Endpoints
+);

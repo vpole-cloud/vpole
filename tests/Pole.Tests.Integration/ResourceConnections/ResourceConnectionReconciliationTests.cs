@@ -6,37 +6,31 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Application;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceConnections.Application;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Jobs;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
-using Pole.Features.ResourceConnections.Application.Mongo;
 using Pole.Features.ResourceConnections.Application.Reconciliation;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class ResourceConnectionReconciliationTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
-    private ServiceProvider services = null!;
-    private IServiceScope scope = null!;
     private readonly FakePolicyTarget policy = new();
-    private IMongoCollection<ResourceConnection> Connections => Fixture.Database
-        .GetCollection<ResourceConnection>("ResourceConnections");
-    private IMongoCollection<ResourceConnectionCleanupTombstone> Tombstones => Fixture.Database
-        .GetCollection<ResourceConnectionCleanupTombstone>(
-            "ResourceConnectionCleanupTombstones");
+    private IServiceScope scope = null!;
+    private ServiceProvider services = null!;
+
+    private IMongoCollection<ResourceConnection> Connections =>
+        Fixture.Database.GetCollection<ResourceConnection>("ResourceConnections");
+
+    private IMongoCollection<ResourceConnectionCleanupTombstone> Tombstones =>
+        Fixture.Database.GetCollection<ResourceConnectionCleanupTombstone>("ResourceConnectionCleanupTombstones");
 
     public override async Task InitializeAsync()
     {
@@ -53,10 +47,11 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         collection.AddResourceConnectionsFeature();
         collection.RemoveAll<IResourceConnectionPolicyTarget>();
         collection.AddSingleton<IResourceConnectionPolicyTarget>(policy);
-        services = collection.BuildServiceProvider(new ServiceProviderOptions
-        {
-            ValidateScopes = true
-        });
+        services = collection.BuildServiceProvider(
+            new ServiceProviderOptions
+            {
+                ValidateScopes = true,
+            });
         scope = services.CreateScope();
     }
 
@@ -80,24 +75,18 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         var partial = await LoadAsync(connection.Id);
         var active = Assert.IsType<ActiveResourceConnection>(partial.Lifecycle);
         Assert.IsType<AppliedConnectionApply>(active.Targets[0].Status);
-        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionApply>(
-            active.Targets[1].Status).Reason);
+        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionApply>(active.Targets[1].Status).Reason);
 
         policy.ApplyFailureTarget = null;
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>()
-            .RecoverAsync();
-        var applied = Assert.IsType<ActiveResourceConnection>(
-            (await LoadAsync(connection.Id)).Lifecycle);
+        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>().RecoverAsync();
+        var applied = Assert.IsType<ActiveResourceConnection>((await LoadAsync(connection.Id)).Lifecycle);
         Assert.All(applied.Targets, target => Assert.IsType<AppliedConnectionApply>(target.Status));
         Assert.True(policy.ApplyAttempts["target-1"] >= 2);
 
         policy.ApplyFailureTarget = "target-1";
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>()
-            .RecoverAsync();
-        var drift = Assert.IsType<ActiveResourceConnection>(
-            (await LoadAsync(connection.Id)).Lifecycle);
-        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionApply>(
-            drift.Targets[0].Status).Reason);
+        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>().RecoverAsync();
+        var drift = Assert.IsType<ActiveResourceConnection>((await LoadAsync(connection.Id)).Lifecycle);
+        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionApply>(drift.Targets[0].Status).Reason);
     }
 
     [Fact]
@@ -111,29 +100,25 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         var deleting = Assert.IsType<ResourceConnection>(deletion.Value);
         policy.CleanupFailureTarget = "target-2";
 
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionReconciler>()
+        await scope.ServiceProvider
+            .GetRequiredService<ResourceConnectionReconciler>()
             .ReconcileAsync(deleting.TenantId, deleting.Id, deleting.Generation);
 
         var incomplete = await LoadAsync(connection.Id);
         var cleanup = Assert.IsType<DeletingResourceConnection>(incomplete.Lifecycle);
         Assert.IsType<CompletedConnectionCleanup>(cleanup.Targets[0].Status);
-        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionCleanup>(
-            cleanup.Targets[1].Status).Reason);
+        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionCleanup>(cleanup.Targets[1].Status).Reason);
         Assert.Equal(0, await Tombstones.CountDocumentsAsync(item => item.Id == connection.Id));
 
         policy.CleanupFailureTarget = "target-1";
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>()
-            .RecoverAsync();
-        var rechecked = Assert.IsType<DeletingResourceConnection>(
-            (await LoadAsync(connection.Id)).Lifecycle);
-        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionCleanup>(
-            rechecked.Targets[0].Status).Reason);
+        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>().RecoverAsync();
+        var rechecked = Assert.IsType<DeletingResourceConnection>((await LoadAsync(connection.Id)).Lifecycle);
+        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionCleanup>(rechecked.Targets[0].Status).Reason);
         Assert.IsType<CompletedConnectionCleanup>(rechecked.Targets[1].Status);
         Assert.Equal(0, await Tombstones.CountDocumentsAsync(item => item.Id == connection.Id));
 
         policy.CleanupFailureTarget = null;
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>()
-            .RecoverAsync();
+        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>().RecoverAsync();
 
         Assert.Equal(0, await Connections.CountDocumentsAsync(item => item.Id == connection.Id));
         var tombstone = await Tombstones.Find(item => item.Id == connection.Id).SingleAsync();
@@ -141,8 +126,7 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         Assert.Equal(2, tombstone.Targets.Count);
         Assert.Equal("source-namespace-target-1", tombstone.Targets[0].Sources[0].Namespace);
         Assert.Equal(2, policy.TombstoneCleanupAttempts);
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>()
-            .RecoverAsync();
+        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>().RecoverAsync();
         Assert.Equal(4, policy.TombstoneCleanupAttempts);
     }
 
@@ -151,65 +135,61 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
     {
         var original = ConnectionWithTwoTargets();
         var oldSnapshot = Assert.IsType<ActiveResourceConnection>(original.Lifecycle).Targets[0].Snapshot;
-        var moved = original.RefreshResolvedTargets([
+        var moved = original.RefreshResolvedTargets(
+        [
             oldSnapshot with
             {
                 DestinationRuntimeCellId = "new-destination-cell",
-                DestinationNamespace = "new-destination-namespace"
+                DestinationNamespace = "new-destination-namespace",
             },
-            Target("target-2")
+            Target("target-2"),
         ]);
-        var completed = Assert.IsType<ConnectionCleanupRecorded>(moved.RecordCleanupCompleted(
-            oldSnapshot.PolicyLocation,
-            moved.Generation,
-            DateTime.UtcNow).Value).Connection;
+        var completed = Assert.IsType<ConnectionCleanupRecorded>(
+                moved.RecordCleanupCompleted(oldSnapshot.PolicyLocation, moved.Generation, DateTime.UtcNow).Value)
+            .Connection;
         await Connections.InsertOneAsync(completed);
         policy.CleanupFailureTarget = "target-1";
 
-        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>()
-            .RecoverAsync();
+        await scope.ServiceProvider.GetRequiredService<ResourceConnectionRecoveryJob>().RecoverAsync();
 
-        var active = Assert.IsType<ActiveResourceConnection>(
-            (await LoadAsync(completed.Id)).Lifecycle);
+        var active = Assert.IsType<ActiveResourceConnection>((await LoadAsync(completed.Id)).Lifecycle);
         var failed = Assert.Single(active.RetiringTargets);
-        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionCleanup>(
-            failed.Status).Reason);
+        Assert.Equal("TargetUnavailable", Assert.IsType<FailedConnectionCleanup>(failed.Status).Reason);
     }
 
-    private Task<ResourceConnection> LoadAsync(string id) =>
-        Connections.Find(item => item.Id == id).SingleAsync();
+    private Task<ResourceConnection> LoadAsync(string id) => Connections.Find(item => item.Id == id).SingleAsync();
 
-    private static ResourceConnection ConnectionWithTwoTargets() =>
-        ResourceConnectionFactory.Create(
-            ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString(),
-            "caller-to-cache",
-            ResourceTypeId.Create("pole/web-service"),
-            ObjectId.GenerateNewId().ToString(),
-            ResourceTypeId.Create("pole/redis"),
-            ObjectId.GenerateNewId().ToString(),
-            "redis",
-            [Target("target-1"), Target("target-2")]);
+    private static ResourceConnection ConnectionWithTwoTargets() => ResourceConnectionFactory.Create(
+        ObjectId.GenerateNewId().ToString(),
+        ObjectId.GenerateNewId().ToString(),
+        "caller-to-cache",
+        ResourceTypeId.Create("pole/web-service"),
+        ObjectId.GenerateNewId().ToString(),
+        ResourceTypeId.Create("pole/redis"),
+        ObjectId.GenerateNewId().ToString(),
+        "redis",
+        [Target("target-1"), Target("target-2")]);
 
-    private static ConnectionTargetSnapshot Target(string targetId) =>
-        ConnectionTargetSnapshot.Create(
-            targetId,
-            $"destination-deployment-{targetId}",
-            $"destination-cell-{targetId}",
-            $"destination-namespace-{targetId}",
-            "cache-svc",
-            6379,
-            6379,
-            [new ConnectionSourcePlacement(
+    private static ConnectionTargetSnapshot Target(string targetId) => ConnectionTargetSnapshot.Create(
+        targetId,
+        $"destination-deployment-{targetId}",
+        $"destination-cell-{targetId}",
+        $"destination-namespace-{targetId}",
+        "cache-svc",
+        6379,
+        6379,
+        [
+            new ConnectionSourcePlacement(
                 $"source-deployment-{targetId}",
                 $"source-cell-{targetId}",
-                $"source-namespace-{targetId}")]);
+                $"source-namespace-{targetId}"),
+        ]);
 
     private sealed class FakePolicyTarget : IResourceConnectionPolicyTarget
     {
+        public readonly Dictionary<string, int> ApplyAttempts = new();
         public string? ApplyFailureTarget;
         public string? CleanupFailureTarget;
-        public readonly Dictionary<string, int> ApplyAttempts = new();
         public int TombstoneCleanupAttempts;
 
         public Task<ResourceConnectionPolicyApplyOutcome> ApplyAsync(
@@ -217,8 +197,7 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
             ConnectionTargetSnapshot snapshot,
             CancellationToken cancellationToken = default)
         {
-            ApplyAttempts[snapshot.TargetId] =
-                ApplyAttempts.GetValueOrDefault(snapshot.TargetId) + 1;
+            ApplyAttempts[snapshot.TargetId] = ApplyAttempts.GetValueOrDefault(snapshot.TargetId) + 1;
             return Task.FromResult<ResourceConnectionPolicyApplyOutcome>(
                 ApplyFailureTarget == snapshot.TargetId
                     ? new ResourceConnectionPolicyTargetUnavailable()
@@ -228,11 +207,10 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
         public Task<ResourceConnectionPolicyDeleteOutcome> DeleteAsync(
             ResourceConnection connection,
             ConnectionTargetSnapshot snapshot,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<ResourceConnectionPolicyDeleteOutcome>(
-                CleanupFailureTarget == snapshot.TargetId
-                    ? new ResourceConnectionPolicyTargetUnavailable()
-                    : new ResourceConnectionPolicySucceeded());
+            CancellationToken cancellationToken = default) => Task.FromResult<ResourceConnectionPolicyDeleteOutcome>(
+            CleanupFailureTarget == snapshot.TargetId
+                ? new ResourceConnectionPolicyTargetUnavailable()
+                : new ResourceConnectionPolicySucceeded());
 
         public Task<ResourceConnectionPolicyDeleteOutcome> DeleteTombstoneAsync(
             ResourceConnectionCleanupTombstone tombstone,
@@ -240,8 +218,7 @@ public sealed class ResourceConnectionReconciliationTests(MongoReplicaSetFixture
             CancellationToken cancellationToken = default)
         {
             TombstoneCleanupAttempts++;
-            return Task.FromResult<ResourceConnectionPolicyDeleteOutcome>(
-                new ResourceConnectionPolicySucceeded());
+            return Task.FromResult<ResourceConnectionPolicyDeleteOutcome>(new ResourceConnectionPolicySucceeded());
         }
     }
 }

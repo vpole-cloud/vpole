@@ -13,20 +13,21 @@ public sealed class ClosedOutcomeCompilerTests
         string additionalVariant,
         bool expectsNonExhaustiveWarning)
     {
-        var diagnostics = Compile($$"""
-            public closed record State;
-            public sealed record Pending : State;
-            public sealed record Complete : State;
-            {{additionalVariant}}
-            public static class Mapping
-            {
-                public static int Map(State state) => state switch
-                {
-                    Pending => 0,
-                    Complete => 1
-                };
-            }
-            """);
+        var diagnostics = Compile(
+            $$"""
+              public closed record State;
+              public sealed record Pending : State;
+              public sealed record Complete : State;
+              {{additionalVariant}}
+              public static class Mapping
+              {
+                  public static int Map(State state) => state switch
+                  {
+                      Pending => 0,
+                      Complete => 1
+                  };
+              }
+              """);
         Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         Assert.Equal(expectsNonExhaustiveWarning, diagnostics.Any(diagnostic => diagnostic.Id == "CS8509"));
     }
@@ -34,7 +35,8 @@ public sealed class ClosedOutcomeCompilerTests
     [Fact]
     public void OperationUnion_RejectsFailureThatOnlyAnotherOperationCanReturn()
     {
-        var diagnostics = Compile("""
+        var diagnostics = Compile(
+            """
             public sealed record Found;
             public sealed record Deleted;
             public sealed record Missing;
@@ -54,8 +56,7 @@ public sealed class ClosedOutcomeCompilerTests
 
     private static IReadOnlyList<Diagnostic> Compile(string source)
     {
-        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(Path.PathSeparator)
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Select(path => MetadataReference.CreateFromFile(path));
         return CSharpCompilation.Create(
                 "ClosedOutcomeCharacterization",

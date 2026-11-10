@@ -1,23 +1,16 @@
-using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
-using Pole.Features.GitOps.Application;
-using Pole.Features.GitOps.Application.Jobs;
-using Pole.Features.GitOps.Application.Lifecycle;
-using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
-using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class FunctionLifecycleRuntimeProgressTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class FunctionLifecycleRuntimeProgressTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("complete")]
@@ -28,9 +21,12 @@ public sealed class FunctionLifecycleRuntimeProgressTests(MongoReplicaSetFixture
         var run = await RemoveFunctionDuringRuntimeAsync(progress, null);
         Assert.True(run.State is GitRunWaitingCleanup, string.Join(",", run.Diagnostics.Select(item => item.Code)));
         Assert.Equal(FunctionAppDesiredState.Deleting, (await CurrentFunction()).DesiredState);
-        Assert.True(await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>().Find(item =>
-            item.RunId == run.Id && item.Kind == "FunctionApp" && item.Lifecycle!.Step == GitLifecycleStep.BeginRemoval)
-            .AnyAsync());
+        Assert.True(
+            await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
+                .Find(item =>
+                    item.RunId == run.Id && item.Kind == "FunctionApp" &&
+                    item.Lifecycle!.Step == GitLifecycleStep.BeginRemoval)
+                .AnyAsync());
     }
 
     [Theory]
@@ -51,7 +47,9 @@ public sealed class FunctionLifecycleRuntimeProgressTests(MongoReplicaSetFixture
         var run = await RemoveFunctionDuringRuntimeAsync("complete", change);
         Assert.NotEqual(FunctionAppDesiredState.Deleting, (await CurrentFunction()).DesiredState);
         AssertRuntimeApprovalStopped(run, change);
-        Assert.False(await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>().Find(item =>
-            item.RunId == run.Id && item.Kind == "FunctionApp").AnyAsync());
+        Assert.False(
+            await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
+                .Find(item => item.RunId == run.Id && item.Kind == "FunctionApp")
+                .AnyAsync());
     }
 }

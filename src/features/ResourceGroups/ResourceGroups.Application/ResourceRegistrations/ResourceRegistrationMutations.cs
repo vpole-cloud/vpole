@@ -3,7 +3,6 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
@@ -17,7 +16,8 @@ internal sealed class MongoResourceRegistrationMutations(
     IMongoCollection<ResourceRegistration> registrations,
     TimeProvider timeProvider,
     StoreOutboxWrites storeOutboxWrites,
-    IGitLifecycleCleanupProofRecorder cleanupProofs)
+    IGitLifecycleCleanupProofRecorder cleanupProofs
+)
 {
     public async Task<ResourceRegistrationOutcome> RegisterAsync(
         string? owningPluginId,
@@ -40,8 +40,7 @@ internal sealed class MongoResourceRegistrationMutations(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
 
-        var existing = await registrations
-            .Find(
+        var existing = await registrations.Find(
                 session,
                 ResourceRegistrationFilters.ByIdentity(
                     candidate.TenantId,
@@ -49,38 +48,29 @@ internal sealed class MongoResourceRegistrationMutations(
                     candidate.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
-        {
-            return IsSameRegistration(existing, candidate)
-                ? ToContract(existing)
-                : Conflict(resource);
-        }
+            return IsSameRegistration(existing, candidate) ? ToContract(existing) : Conflict(resource);
 
-        var admission = await AdvanceFenceAsync(
-            tenantId,
-            resourceGroupId,
-            session,
-            cancellationToken);
+        var admission = await AdvanceFenceAsync(tenantId, resourceGroupId, session, cancellationToken);
         if (admission is { } admissionError)
             return admissionError;
 
         try
         {
-            await registrations.InsertOneAsync(
-                session,
-                candidate,
-                cancellationToken: cancellationToken);
+            await registrations.InsertOneAsync(session, candidate, cancellationToken: cancellationToken);
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
             return Conflict(resource);
         }
 
-        await storeOutboxWrites(session,
+        await storeOutboxWrites(
+            session,
             [
-                OutboxWrite.Create(new ResourceRegisteredEvent(candidate.ResourceGroupId,
-                    candidate.ResourceTypeId,
-                    candidate.ResourceId) { EventCore = EventCore.Create(candidate.TenantId) })
+                OutboxWrite.Create(
+                    new ResourceRegisteredEvent(
+                        candidate.ResourceGroupId,
+                        candidate.ResourceTypeId,
+                        candidate.ResourceId) { EventCore = EventCore.Create(candidate.TenantId) }),
             ],
             cancellationToken);
         return ToContract(candidate);
@@ -96,27 +86,19 @@ internal sealed class MongoResourceRegistrationMutations(
     {
         EnsureTransaction(session);
         ArgumentNullException.ThrowIfNull(resource);
-        var current = await registrations
-            .Find(
+        var current = await registrations.Find(
                 session,
-                ResourceRegistrationFilters.ByIdentity(
-                    tenantId,
-                    resource.ResourceTypeId,
-                    resource.ResourceId))
+                ResourceRegistrationFilters.ByIdentity(tenantId, resource.ResourceTypeId, resource.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
-        {
             return new ResourceRegistrationMutationError(
-                new ResourceRegistrationNotFound(
-                    resource.ResourceTypeId,
-                    resource.ResourceId));
-        }
+                new ResourceRegistrationNotFound(resource.ResourceTypeId, resource.ResourceId));
 
-        if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
-            !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
-        {
+        if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) || !string.Equals(
+                current.OwningPluginId,
+                owningPluginId,
+                StringComparison.Ordinal))
             return Conflict(resource);
-        }
 
         var replacement = ResourceRegistrationFactory.UpdateDisplayName(
             current,
@@ -125,30 +107,25 @@ internal sealed class MongoResourceRegistrationMutations(
         if (ReferenceEquals(replacement, current))
             return ToContract(current);
 
-        var admission = await AdvanceFenceAsync(
-            tenantId,
-            resourceGroupId,
-            session,
-            cancellationToken);
+        var admission = await AdvanceFenceAsync(tenantId, resourceGroupId, session, cancellationToken);
         if (admission is { } admissionError)
             return admissionError;
 
         var write = await registrations.ReplaceOneAsync(
             session,
-            ResourceRegistrationFilters.Exact(
-                tenantId,
-                resourceGroupId,
-                resource.ResourceTypeId,
-                resource.ResourceId),
+            ResourceRegistrationFilters.Exact(tenantId, resourceGroupId, resource.ResourceTypeId, resource.ResourceId),
             replacement,
             cancellationToken: cancellationToken);
         if (write.ModifiedCount != 1)
             return Conflict(resource);
-        await storeOutboxWrites(session,
+        await storeOutboxWrites(
+            session,
             [
-                OutboxWrite.Create(new ResourceRegistrationUpdatedEvent(replacement.ResourceGroupId,
-                    replacement.ResourceTypeId,
-                    replacement.ResourceId) { EventCore = EventCore.Create(replacement.TenantId) })
+                OutboxWrite.Create(
+                    new ResourceRegistrationUpdatedEvent(
+                        replacement.ResourceGroupId,
+                        replacement.ResourceTypeId,
+                        replacement.ResourceId) { EventCore = EventCore.Create(replacement.TenantId) }),
             ],
             cancellationToken);
         return ToContract(replacement);
@@ -165,20 +142,19 @@ internal sealed class MongoResourceRegistrationMutations(
     {
         EnsureTransaction(session);
         var current = await registrations
-            .Find(
-                session,
-                ResourceRegistrationFilters.ByIdentity(tenantId, resourceTypeId, resourceId))
+            .Find(session, ResourceRegistrationFilters.ByIdentity(tenantId, resourceTypeId, resourceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
             return new ResourceUnregistered();
-        if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) ||
-            !string.Equals(current.OwningPluginId, owningPluginId, StringComparison.Ordinal))
-        {
+        if (!string.Equals(current.ResourceGroupId, resourceGroupId, StringComparison.Ordinal) || !string.Equals(
+                current.OwningPluginId,
+                owningPluginId,
+                StringComparison.Ordinal))
             return new ResourceRegistrationMutationError(
                 new ResourceRegistrationIdentityConflict(resourceTypeId, resourceId));
-        }
 
-        var before = await resourceGroups.FindOneAndUpdateAsync(session,
+        var before = await resourceGroups.FindOneAndUpdateAsync(
+            session,
             ResourceGroupFilters.Active(tenantId, resourceGroupId),
             Builders<ResourceGroup>.Update.Inc(group => group.RegistrationFence, 1),
             new FindOneAndUpdateOptions<ResourceGroup> { ReturnDocument = ReturnDocument.Before },
@@ -188,30 +164,35 @@ internal sealed class MongoResourceRegistrationMutations(
 
         var deletion = await registrations.DeleteOneAsync(
             session,
-            ResourceRegistrationFilters.Exact(
-                tenantId,
-                resourceGroupId,
-                resourceTypeId,
-                resourceId),
+            ResourceRegistrationFilters.Exact(tenantId, resourceGroupId, resourceTypeId, resourceId),
             cancellationToken: cancellationToken);
         if (deletion.DeletedCount == 1)
         {
-            await cleanupProofs.RecordAsync(new(tenantId, new GitRegisteredCleanupResource(resourceTypeId, resourceId),
-                UnregisteredCleanupKey(current.Id),
-                [new(ResourceGroupLifecycleVersions.RegistrationFenceVersionKey(resourceGroupId),
-                    before.RegistrationFence,
-                    checked(before.RegistrationFence + 1))]), session, cancellationToken);
+            await cleanupProofs.RecordAsync(
+                new RecordGitLifecycleCleanupRequest(
+                    tenantId,
+                    new GitRegisteredCleanupResource(resourceTypeId, resourceId),
+                    UnregisteredCleanupKey(current.Id),
+                    [
+                        new GitCleanupVersionTransition(
+                            ResourceGroupLifecycleVersions.RegistrationFenceVersionKey(resourceGroupId),
+                            before.RegistrationFence,
+                            checked(before.RegistrationFence + 1)),
+                    ]),
+                session,
+                cancellationToken);
             await storeOutboxWrites(
                 session,
                 [
                     OutboxWrite.Create(
                         new ResourceUnregisteredEvent(resourceGroupId, resourceTypeId.Value, resourceId)
                         {
-                            EventCore = EventCore.Create(tenantId)
-                        })
+                            EventCore = EventCore.Create(tenantId),
+                        }),
                 ],
                 cancellationToken);
         }
+
         return deletion.DeletedCount == 1
             ? new ResourceUnregistered()
             : new ResourceRegistrationMutationError(
@@ -241,50 +222,41 @@ internal sealed class MongoResourceRegistrationMutations(
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var exists = await resourceGroups
-            .Find(session, ResourceGroupFilters.ByTenantAndId(tenantId, resourceGroupId))
+        var exists = await resourceGroups.Find(session, ResourceGroupFilters.ByTenantAndId(tenantId, resourceGroupId))
             .AnyAsync(cancellationToken);
         return exists
-            ? new ResourceRegistrationMutationError(
-                new ResourceRegistrationResourceGroupDeleting(resourceGroupId))
-            : new ResourceRegistrationMutationError(
-                new ResourceRegistrationResourceGroupNotFound(resourceGroupId));
+            ? new ResourceRegistrationMutationError(new ResourceRegistrationResourceGroupDeleting(resourceGroupId))
+            : new ResourceRegistrationMutationError(new ResourceRegistrationResourceGroupNotFound(resourceGroupId));
     }
 
-    private static bool IsSameRegistration(
-        ResourceRegistration existing,
-        ResourceRegistration candidate) =>
+    private static bool IsSameRegistration(ResourceRegistration existing, ResourceRegistration candidate) =>
         string.Equals(existing.ResourceGroupId, candidate.ResourceGroupId, StringComparison.Ordinal) &&
-        string.Equals(existing.DisplayName, candidate.DisplayName, StringComparison.Ordinal) &&
-        string.Equals(existing.OwningPluginId, candidate.OwningPluginId, StringComparison.Ordinal);
+        string.Equals(existing.DisplayName, candidate.DisplayName, StringComparison.Ordinal) && string.Equals(
+            existing.OwningPluginId,
+            candidate.OwningPluginId,
+            StringComparison.Ordinal);
 
-    private static ResourceRegistrationOutcome Conflict(
-        ResourceRegistrationDescriptor resource) =>
+    private static ResourceRegistrationOutcome Conflict(ResourceRegistrationDescriptor resource) =>
         new ResourceRegistrationMutationError(
-            new ResourceRegistrationIdentityConflict(
-                resource.ResourceTypeId,
-                resource.ResourceId));
+            new ResourceRegistrationIdentityConflict(resource.ResourceTypeId, resource.ResourceId));
 
-    private static RegisteredResource ToContract(ResourceRegistration registration) =>
-        new(
-            registration.Id,
-            registration.TenantId,
-            registration.ResourceGroupId,
-            ResourceTypeId.Create(registration.ResourceTypeId),
-            registration.ResourceId,
-            registration.DisplayName,
-            registration.OwningPluginId,
-            registration.CreatedAtUtc,
-            registration.UpdatedAtUtc);
+    private static RegisteredResource ToContract(ResourceRegistration registration) => new(
+        registration.Id,
+        registration.TenantId,
+        registration.ResourceGroupId,
+        ResourceTypeId.Create(registration.ResourceTypeId),
+        registration.ResourceId,
+        registration.DisplayName,
+        registration.OwningPluginId,
+        registration.CreatedAtUtc,
+        registration.UpdatedAtUtc);
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!session.IsInTransaction)
-        {
             throw new InvalidOperationException(
                 "Resource registration changes require the resource owner's active MongoDB transaction.");
-        }
     }
 
     private static string UnregisteredCleanupKey(string id) => $"ResourceRegistration/{id}/Unregistered";

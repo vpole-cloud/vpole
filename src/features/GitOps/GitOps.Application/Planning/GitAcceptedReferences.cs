@@ -12,13 +12,15 @@ namespace Pole.Features.GitOps.Application.Planning;
 public sealed record PinSnapshotReferencesRequest(
     GitRunHandle Handle,
     GitAcceptedSnapshot Snapshot,
-    CompiledSnapshot Compiled);
+    CompiledSnapshot Compiled
+);
 
 public sealed class GitAcceptedReferences(
     IMongoCollection<GitAcceptedReference> references,
     GitRunStore runs,
     IServiceProvider services,
-    MongoRunTransaction transactions)
+    MongoRunTransaction transactions
+)
 {
     public async Task<bool> PinAsync(PinSnapshotReferencesRequest request, CancellationToken ct)
     {
@@ -28,7 +30,8 @@ public sealed class GitAcceptedReferences(
         {
             var consumer = resources[(declaration.Address.Kind, declaration.Address.Name)];
             var facts = providers.Find(declaration.Address.Kind)!.Facts(declaration.Spec);
-            var addresses = facts.References.Select(item => item.Target)
+            var addresses = facts.References
+                .Select(item => item.Target)
                 .Concat(facts.Scope is { } scope ? [scope] : [])
                 .Concat(declaration.Steps.SelectMany(item => item.Dependencies).Select(item => item.Resource))
                 .Distinct();
@@ -37,14 +40,16 @@ public sealed class GitAcceptedReferences(
                 if (resources.ContainsKey((address.Kind, address.Name)))
                     continue;
 
-                var pinned = await transactions.InvokeOutcomeAsync<bool>(async (tx, token) =>
+                var pinned = await transactions.InvokeOutcomeAsync<bool>(
+                    async (tx, token) =>
                     {
                         var run = await runs.TouchAsync(request.Handle, tx.Session, token);
                         if (run?.AcceptedSnapshot is not { } accepted ||
                             accepted.DesiredHash != request.Snapshot.DesiredHash)
                             return tx.Abort(false);
 
-                        var key = GitAcceptedReferenceFilters.Key(run.Stamp.Source,
+                        var key = GitAcceptedReferenceFilters.Key(
+                            run.Stamp.Source,
                             consumer.ResourceId,
                             address.Kind,
                             address.Name);
@@ -56,12 +61,17 @@ public sealed class GitAcceptedReferences(
                         var id = provider is null
                             ? null
                             : await provider.ResolveAsync(
-                                new(run.Stamp.Source.TenantId, address.Name),
+                                new ResolveDeclaredResourceRequest(run.Stamp.Source.TenantId, address.Name),
                                 tx.Session,
                                 token);
                         if (id is not null)
-                            await references.InsertOneAsync(tx.Session,
-                                new(key, run.Stamp.Source, consumer.ResourceId, new(address.Kind, address.Name, id)),
+                            await references.InsertOneAsync(
+                                tx.Session,
+                                new GitAcceptedReference(
+                                    key,
+                                    run.Stamp.Source,
+                                    consumer.ResourceId,
+                                    new GitResourceIdentity(address.Kind, address.Name, id)),
                                 cancellationToken: token);
                         return tx.Commit(true);
                     },
@@ -77,7 +87,8 @@ public sealed class GitAcceptedReferences(
     // Provider-owned technical dependencies (such as placement profiles) use the same durable identity rule.
     // This runs before the provider transaction, so later blockers cannot roll back a successful resolution.
     public Task<PinGitReferenceOutcome> PinAsync(PinGitReferenceRequest request, CancellationToken ct) =>
-        transactions.InvokeOutcomeAsync<PinGitReferenceOutcome>(async (tx, token) =>
+        transactions.InvokeOutcomeAsync<PinGitReferenceOutcome>(
+            async (tx, token) =>
             {
                 var handle = request.Context.ToHandle();
                 var run = await runs.TouchAsync(handle, tx.Session, token);
@@ -86,7 +97,8 @@ public sealed class GitAcceptedReferences(
                     return tx.Abort(new StaleGitExecution());
 
                 var target = request.Target;
-                var key = GitAcceptedReferenceFilters.Key(run.Stamp.Source,
+                var key = GitAcceptedReferenceFilters.Key(
+                    run.Stamp.Source,
                     request.ConsumerResourceId,
                     target.Address.Kind,
                     target.Address.Name);
@@ -95,11 +107,13 @@ public sealed class GitAcceptedReferences(
                 if (current is not null)
                     return tx.Commit(new GitReferencePinned(current.Target.ResourceId));
 
-                await references.InsertOneAsync(tx.Session,
-                    new(key,
+                await references.InsertOneAsync(
+                    tx.Session,
+                    new GitAcceptedReference(
+                        key,
                         run.Stamp.Source,
                         request.ConsumerResourceId,
-                        new(target.Address.Kind, target.Address.Name, target.ResourceId)),
+                        new GitResourceIdentity(target.Address.Kind, target.Address.Name, target.ResourceId)),
                     cancellationToken: token);
                 return tx.Commit(new GitReferencePinned(target.ResourceId));
             },
@@ -120,7 +134,8 @@ public sealed class GitAcceptedReferences(
         if (internalResource is not null)
             return internalResource.ResourceId;
 
-        var key = GitAcceptedReferenceFilters.Key(run.Stamp.Source,
+        var key = GitAcceptedReferenceFilters.Key(
+            run.Stamp.Source,
             request.ConsumerResourceId,
             request.Address.Kind,
             request.Address.Name);

@@ -6,14 +6,16 @@ public sealed record StoredStorageClass(
     bool IsDefault,
     string? ReclaimPolicy,
     string? VolumeBindingMode,
-    bool? AllowVolumeExpansion);
+    bool? AllowVolumeExpansion
+);
 
 public sealed record StoredStorageOwner(
     string? TenantId,
     string? ResourceGroupId,
     string? ResourceType,
     string? ResourceId,
-    string? ResourceName);
+    string? ResourceName
+);
 
 public sealed record StoredPersistentVolume(
     string Name,
@@ -23,7 +25,8 @@ public sealed record StoredPersistentVolume(
     string? BoundClaimNamespace,
     string? BoundClaimName,
     string? ReclaimPolicy,
-    StoredStorageOwner Owner);
+    StoredStorageOwner Owner
+);
 
 public sealed record StoredPersistentVolumeClaim(
     string Name,
@@ -33,13 +36,15 @@ public sealed record StoredPersistentVolumeClaim(
     StoredClaimStatus? Status,
     string? StorageClassName,
     string? VolumeName,
-    StoredStorageOwner Owner);
+    StoredStorageOwner Owner
+);
 
 public sealed record StoredStorageInventory(
     StoredStorageClass[] StorageClasses,
     StoredPersistentVolume[] PersistentVolumes,
     StoredPersistentVolumeClaim[] PersistentVolumeClaims,
-    bool Complete);
+    bool Complete
+);
 
 public enum StoredVolumeStatus
 {
@@ -47,12 +52,12 @@ public enum StoredVolumeStatus
     Available,
     Bound,
     Released,
-    Failed
+    Failed,
 }
 
 public enum StoredClaimStatus
 {
     Pending,
     Bound,
-    Lost
+    Lost,
 }

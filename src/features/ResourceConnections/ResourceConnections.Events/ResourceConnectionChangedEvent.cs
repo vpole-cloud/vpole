@@ -7,7 +7,8 @@ namespace Pole.Features.ResourceConnections.Events;
 public sealed record ResourceConnectionChangedEvent(
     string ConnectionId,
     long Revision,
-    long Generation) : IPoleEvent
+    long Generation
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

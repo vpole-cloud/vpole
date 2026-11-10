@@ -1,8 +1,5 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.RedisServices.Application;
-using Pole.Features.RedisServices.Application.Declarations;
-using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Services;
@@ -24,21 +21,13 @@ internal static class RedisPersistenceGuards
         if (string.IsNullOrWhiteSpace(redis.Name))
             throw new ArgumentException("Redis name is required.", nameof(redis));
         if (!ObjectId.TryParse(redis.ResourceGroupId, out _))
-        {
-            throw new ArgumentException(
-                "Redis resource group ID must be a MongoDB ObjectId.",
-                nameof(redis));
-        }
+            throw new ArgumentException("Redis resource group ID must be a MongoDB ObjectId.", nameof(redis));
         ArgumentNullException.ThrowIfNull(redis.Spec);
         ArgumentNullException.ThrowIfNull(redis.Spec.Storage);
         if (redis.Spec.Storage.SizeGb <= 0)
             throw new ArgumentOutOfRangeException(nameof(redis), "Redis storage size must be greater than zero.");
         if (!ObjectId.TryParse(redis.Spec.Storage.StorageProfileId, out _))
-        {
-            throw new ArgumentException(
-                "Redis storage profile ID must be a MongoDB ObjectId.",
-                nameof(redis));
-        }
+            throw new ArgumentException("Redis storage profile ID must be a MongoDB ObjectId.", nameof(redis));
     }
 
     public static void EnsureListQuery(RedisListQuery query)
@@ -50,65 +39,43 @@ internal static class RedisPersistenceGuards
             throw new ArgumentOutOfRangeException(nameof(query), "Page number must be greater than zero.");
         if (query.PageSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(query), "Page size must be greater than zero.");
-        if (!string.IsNullOrWhiteSpace(query.ResourceGroupId) &&
-            !ObjectId.TryParse(query.ResourceGroupId, out _))
-        {
-            throw new ArgumentException(
-                "Redis resource group ID must be a MongoDB ObjectId.",
-                nameof(query));
-        }
+        if (!string.IsNullOrWhiteSpace(query.ResourceGroupId) && !ObjectId.TryParse(query.ResourceGroupId, out _))
+            throw new ArgumentException("Redis resource group ID must be a MongoDB ObjectId.", nameof(query));
     }
 
-    public static void EnsureSameIdentity(
-        Redis current,
-        Redis replacement)
+    public static void EnsureSameIdentity(Redis current, Redis replacement)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(replacement);
         if (!string.Equals(current.TenantId, replacement.TenantId, StringComparison.Ordinal) ||
-            !string.Equals(current.Id, replacement.Id, StringComparison.Ordinal) ||
-            !string.Equals(current.Name, replacement.Name, StringComparison.Ordinal))
-        {
+            !string.Equals(current.Id, replacement.Id, StringComparison.Ordinal) || !string.Equals(
+                current.Name,
+                replacement.Name,
+                StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "A Redis replacement must preserve tenant, resource identity, and immutable name.");
-        }
     }
 
-    public static void EnsureActiveUpdate(
-        Redis current,
-        Redis replacement)
+    public static void EnsureActiveUpdate(Redis current, Redis replacement)
     {
         EnsureSameIdentity(current, replacement);
         if (current.Lifecycle is not (ActiveRedisLifecycle or PreparedRedisLifecycle) ||
             replacement.Lifecycle is not ActiveRedisLifecycle)
-        {
             throw new InvalidOperationException(
                 "Redis configuration must activate a prepared service or update an active service.");
-        }
     }
 
-    public static void EnsureDeletionTransition(
-        Redis current,
-        Redis replacement)
+    public static void EnsureDeletionTransition(Redis current, Redis replacement)
     {
         EnsureSameIdentity(current, replacement);
-        if (current.Lifecycle is not ActiveRedisLifecycle ||
-            replacement.Lifecycle is not DeletingRedisLifecycle)
-        {
-            throw new InvalidOperationException(
-                "Redis deletion must transition an active Redis service to deleting.");
-        }
+        if (current.Lifecycle is not ActiveRedisLifecycle || replacement.Lifecycle is not DeletingRedisLifecycle)
+            throw new InvalidOperationException("Redis deletion must transition an active Redis service to deleting.");
     }
 
-    public static void EnsureTransaction(
-        IClientSessionHandle session,
-        string operation)
+    public static void EnsureTransaction(IClientSessionHandle session, string operation)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!session.IsInTransaction)
-        {
-            throw new InvalidOperationException(
-                $"{operation} must run inside the logical resource transaction.");
-        }
+            throw new InvalidOperationException($"{operation} must run inside the logical resource transaction.");
     }
 }

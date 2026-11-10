@@ -8,7 +8,8 @@ public sealed record SourceBuildJobStateChangedEvent(
     string BuildJobId,
     string WebServiceId,
     string State,
-    DateTime UpdatedAtUtc) : IPoleEvent
+    DateTime UpdatedAtUtc
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

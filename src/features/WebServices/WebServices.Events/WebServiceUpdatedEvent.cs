@@ -15,7 +15,8 @@ public sealed record WebServiceUpdatedEvent(
     WebServiceSpecSnapshot Spec,
     WebServiceExposureSnapshot Exposure,
     ImmutableHashSet<string> Tags,
-    ImmutableList<WebServiceDesiredDeploymentSnapshot> Deployments) : IPoleEvent
+    ImmutableList<WebServiceDesiredDeploymentSnapshot> Deployments
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

@@ -11,14 +11,11 @@ public sealed class FunctionRuntimeOptionsValidationTests
     [Fact]
     public void Default_options_are_valid()
     {
-        Assert.True(new FunctionGatewayOptionsValidator()
-            .Validate(null, new FunctionGatewayOptions()).Succeeded);
-        Assert.True(new FunctionScalerOptionsValidator()
-            .Validate(null, new FunctionScalerOptions()).Succeeded);
-        Assert.True(new FunctionTimerOptionsValidator()
-            .Validate(null, new FunctionTimerOptions()).Succeeded);
-        Assert.True(new FunctionCoordinationOptionsValidator()
-            .Validate(null, new FunctionCoordinationOptions()).Succeeded);
+        Assert.True(new FunctionGatewayOptionsValidator().Validate(null, new FunctionGatewayOptions()).Succeeded);
+        Assert.True(new FunctionScalerOptionsValidator().Validate(null, new FunctionScalerOptions()).Succeeded);
+        Assert.True(new FunctionTimerOptionsValidator().Validate(null, new FunctionTimerOptions()).Succeeded);
+        Assert.True(
+            new FunctionCoordinationOptionsValidator().Validate(null, new FunctionCoordinationOptions()).Succeeded);
     }
 
     [Fact]
@@ -29,8 +26,9 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var result = new FunctionGatewayOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.AgentLongPollMilliseconds), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.AgentLongPollMilliseconds), StringComparison.Ordinal));
     }
 
     [Fact]
@@ -41,8 +39,9 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var result = new FunctionGatewayOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.RequestBodyTimeoutSeconds), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.RequestBodyTimeoutSeconds), StringComparison.Ordinal));
     }
 
     [Theory]
@@ -65,14 +64,13 @@ public sealed class FunctionRuntimeOptionsValidationTests
             MaxPendingBytesPerRevision = revisionBytes,
             MaxPendingBytes = totalBytes,
             PublicBurst = burst,
-            PublicRequestsPerSecond = requestsPerSecond
+            PublicRequestsPerSecond = requestsPerSecond,
         };
 
         var result = new FunctionGatewayOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(expectedFailure, StringComparison.Ordinal));
+        Assert.Contains(result.Failures, failure => failure.Contains(expectedFailure, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -83,8 +81,9 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var result = new FunctionScalerOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.AgentStatusTimeoutSeconds), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.AgentStatusTimeoutSeconds), StringComparison.Ordinal));
     }
 
     [Fact]
@@ -95,8 +94,9 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var result = new FunctionTimerOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.BatchSize), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.BatchSize), StringComparison.Ordinal));
     }
 
     [Fact]
@@ -105,14 +105,15 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var options = new FunctionTimerOptions
         {
             DispatchLeaseSeconds = 900,
-            ExecutionTimeoutSeconds = 900
+            ExecutionTimeoutSeconds = 900,
         };
 
         var result = new FunctionTimerOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.DispatchLeaseSeconds), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.DispatchLeaseSeconds), StringComparison.Ordinal));
     }
 
     [Fact]
@@ -121,14 +122,15 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var options = new FunctionTimerOptions
         {
             DispatchLeaseSeconds = 120,
-            ExecutionTimeoutSeconds = 10
+            ExecutionTimeoutSeconds = 10,
         };
 
         var result = new FunctionTimerOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains("maximum Function activation timeout", StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains("maximum Function activation timeout", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -145,14 +147,13 @@ public sealed class FunctionRuntimeOptionsValidationTests
         {
             AdmissionLeaseSeconds = admissionSeconds,
             ActivationLeaseSeconds = activationSeconds,
-            RecoveryGraceSeconds = recoverySeconds
+            RecoveryGraceSeconds = recoverySeconds,
         };
 
         var result = new FunctionCoordinationOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(expectedFailure, StringComparison.Ordinal));
+        Assert.Contains(result.Failures, failure => failure.Contains(expectedFailure, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -163,8 +164,9 @@ public sealed class FunctionRuntimeOptionsValidationTests
         var result = new FunctionCoordinationOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.CallTimeoutSeconds), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.CallTimeoutSeconds), StringComparison.Ordinal));
     }
 
     [Theory]
@@ -179,13 +181,14 @@ public sealed class FunctionRuntimeOptionsValidationTests
         {
             CallTimeoutSeconds = callTimeoutSeconds,
             InitialAdmissionLeaseSeconds = initialLeaseSeconds,
-            AdmissionLeaseSeconds = admissionLeaseSeconds
+            AdmissionLeaseSeconds = admissionLeaseSeconds,
         };
 
         var result = new FunctionCoordinationOptionsValidator().Validate(null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(result.Failures, failure =>
-            failure.Contains(nameof(options.InitialAdmissionLeaseSeconds), StringComparison.Ordinal));
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains(nameof(options.InitialAdmissionLeaseSeconds), StringComparison.Ordinal));
     }
 }

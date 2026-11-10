@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Planning;
 using Pole.Features.GitOps.Application.Runs;
+using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
@@ -12,51 +12,61 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class RepositoryMutationAuthorityTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class RepositoryMutationAuthorityTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task EveryMutationAuthorityComponentAndAcceptedOperationIsCheckedInsideItsTransaction()
     {
-        await Apply(files:
-        [
-            new("group.yaml",
-                """
-                apiVersion: pole.io/v1alpha1
-                kind: ResourceGroup
-                metadata: {name: demo}
-                spec: {description: original}
-                """)
-        ]);
+        await Apply(
+            files:
+            [
+                new ManifestFile(
+                    "group.yaml",
+                    """
+                    apiVersion: pole.io/v1alpha1
+                    kind: ResourceGroup
+                    metadata: {name: demo}
+                    spec: {description: original}
+                    """),
+            ]);
         var original = await Pipeline.LatestAsync(source);
         var snapshot = Assert.IsType<GitInputAccepted>(original.Input).Snapshot;
-        await SourceStore.RequestSyncAsync(new(Data.TenantId,
+        await SourceStore.RequestSyncAsync(
+            new GitSourceCommand(
+                Data.TenantId,
                 source,
                 1,
                 Guid.NewGuid().ToString(),
-                new(GitRunTrigger.Manual, Data.UserId)),
+                new GitRunInitiator(GitRunTrigger.Manual, Data.UserId)),
             default);
         var store = Services.GetRequiredService<GitRunStore>();
-        var claim = Assert.IsType<GitWorkClaim>((await store.ClaimAsync(
-            new(Data.TenantId, source),
-            "worker",
-            default)).Value);
+        var claim = Assert.IsType<GitWorkClaim>(
+            (await store.ClaimAsync(new GitSourceIdentity(Data.TenantId, source), "worker", default)).Value);
         Assert.True(await store.PinAsync(claim.Handle, snapshot.Commit, default));
         Assert.True(await store.AcceptAsync(claim.Handle, snapshot, default));
         var stamp = claim.Run.Stamp;
-        var authority = new GitExecutionAuthority(stamp.ConfigurationRevision,
+        var authority = new GitExecutionAuthority(
+            stamp.ConfigurationRevision,
             stamp.Generation,
             claim.Handle.Identity.WorkerId,
             claim.Handle.Identity.Attempt,
             snapshot.Commit);
-        var context = new GitMutationContext(Data.TenantId,
+        var context = new GitMutationContext(
+            Data.TenantId,
             source,
             claim.Run.Id,
             stamp.Fence,
             claim.Source.DisplayUrl,
             authority);
         var accepted = snapshot.Resources.Single();
-        var declaration = Services.GetRequiredService<ManifestCompiler>().Restore(snapshot.ApiVersion,
-            [new(accepted.Kind, accepted.Name, accepted.SpecJson)]).Declarations.Single();
+        var declaration = Services.GetRequiredService<ManifestCompiler>()
+            .Restore(
+                snapshot.ApiVersion,
+                [new AcceptedManifestDeclaration(accepted.Kind, accepted.Name, accepted.SpecJson)])
+            .Declarations
+            .Single();
         var input = new GitOperationInput(context, declaration, DeclarationPhase.Prepare, accepted.ResourceId);
         var planned = await Services.GetRequiredService<GitOperationPlanning>().PlanAsync(input, default);
         var operation = Assert.IsType<GitOperationPlanned>(planned.Value).Operation;
@@ -69,24 +79,25 @@ public sealed class RepositoryMutationAuthorityTests(MongoReplicaSetFixture fixt
             input with { Context = context with { Authority = authority with { ConfigurationRevision = 2 } } },
             input with
             {
-                Context = context with { Authority = authority with { Generation = stamp.Generation + 1 } }
+                Context = context with { Authority = authority with { Generation = stamp.Generation + 1 } },
             },
             input with { Context = context with { Authority = authority with { WorkerId = "other" } } },
             input with
             {
-                Context = context with { Authority = authority with { Attempt = authority.Attempt + 1 } }
+                Context = context with { Authority = authority with { Attempt = authority.Attempt + 1 } },
             },
             input with { Context = context with { Authority = authority with { Commit = new string('f', 40) } } },
             input with { ResourceId = Id() },
             input with { Phase = DeclarationPhase.Configure },
             input with { Declaration = declaration with { Hash = "different" } },
-            input with { Declaration = declaration with { Address = new("Other", "demo") } }
+            input with { Declaration = declaration with { Address = new ResourceAddress("Other", "demo") } },
         };
         var mutations = Services.GetRequiredService<IGitOpsMutations>();
         foreach (var value in invalid)
         {
             var called = false;
-            var result = await mutations.ExecuteAsync(new(value, operation.Plan),
+            var result = await mutations.ExecuteAsync(
+                new GitOperation(value, operation.Plan),
                 (_, _) =>
                 {
                     called = true;

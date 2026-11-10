@@ -22,11 +22,11 @@ internal static class Program
                     await GatewaySession.RunAsync(
                         BrokerOrigin.Parse(RequiredEnvironment("POLE_ACCESS_BROKER")),
                         Environment.GetEnvironmentVariable("POLE_ACCESS_IDENTITY_FILE") ??
-                            "/run/pole-access/identity.pfx", lifetime.Token);
+                        "/run/pole-access/identity.pfx",
+                        lifetime.Token);
                     return 0;
                 default:
-                    Console.Error.WriteLine(
-                        "Usage: Pole.AccessGateway gateway");
+                    Console.Error.WriteLine("Usage: Pole.AccessGateway gateway");
                     return 2;
             }
         }

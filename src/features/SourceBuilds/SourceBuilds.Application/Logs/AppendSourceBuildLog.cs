@@ -9,13 +9,19 @@ public delegate Task<SourceBuildLogWriteOutcome> AppendSourceBuildLog(
     string sanitizedText,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoAppendSourceBuildLog(SourceBuildLogPersistence persistence)
+internal sealed class MongoAppendSourceBuildLog(
+    SourceBuildLogPersistence persistence
+)
 {
     public Task<SourceBuildLogWriteOutcome> InvokeAsync(
         SourceBuildLogIdentity identity,
         long sequence,
         SourceBuildLogStream stream,
         string sanitizedText,
-        CancellationToken cancellationToken = default) =>
-        persistence.AppendAsync(identity, sequence, stream, sanitizedText, cancellationToken);
+        CancellationToken cancellationToken = default) => persistence.AppendAsync(
+        identity,
+        sequence,
+        stream,
+        sanitizedText,
+        cancellationToken);
 }

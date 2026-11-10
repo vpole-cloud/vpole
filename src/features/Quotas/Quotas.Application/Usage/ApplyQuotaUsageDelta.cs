@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Domain;
 
@@ -13,7 +12,8 @@ public delegate Task ApplyQuotaUsageDelta(
 
 internal sealed class MongoApplyQuotaUsageDelta(
     IMongoCollection<TenantQuotaUsage> usages,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task InvokeAsync(
         string tenantId,
@@ -28,19 +28,10 @@ internal sealed class MongoApplyQuotaUsageDelta(
         if (delta.IsEmpty)
             return;
         if (delta.Values.Any(value => value.Value >= 0))
-        {
-            throw new ArgumentException(
-                "Usage-release values must be less than zero.",
-                nameof(delta));
-        }
+            throw new ArgumentException("Usage-release values must be less than zero.", nameof(delta));
 
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var usage = await MongoQuotaUsage.TouchAsync(
-            usages,
-            session,
-            tenantId,
-            nowUtc,
-            cancellationToken);
+        var usage = await MongoQuotaUsage.TouchAsync(usages, session, tenantId, nowUtc, cancellationToken);
         var values = QuotaValues.AddAndClampToZero(usage.Values, delta.Values);
         await usages.UpdateOneAsync(
             session,

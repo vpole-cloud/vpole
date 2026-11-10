@@ -2,8 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Pole.ASP.Helpers;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
-using Xunit;
 using Pole.Features.GitOps.Primitives;
+using Xunit;
 
 namespace Pole.Features.GitOps.Tests;
 
@@ -22,8 +22,7 @@ public sealed class SnapshotSourceStatusJsonTests
         var json = JsonSerializer.Serialize(plan, HttpOptions);
         using var document = JsonDocument.Parse(json);
         Assert.Equal(action.ToString(), document.RootElement.GetProperty("action").GetString());
-        Assert.Equal(action, JsonSerializer.Deserialize<RepositoryOperationPlanView>(json,
-            HttpOptions)!.Action);
+        Assert.Equal(action, JsonSerializer.Deserialize<RepositoryOperationPlanView>(json, HttpOptions)!.Action);
         var numeric = JsonNode.Parse(json)!;
         numeric["action"] = (int)action;
         Assert.Throws<JsonException>(() =>
@@ -37,7 +36,8 @@ public sealed class SnapshotSourceStatusJsonTests
     [MemberData(nameof(States))]
     public void Current_run_status_has_a_typed_JSON_string_contract(RepositoryRunStatus state)
     {
-        var view = new RepositoryRunView("run",
+        var view = new RepositoryRunView(
+            "run",
             "source",
             1,
             1,

@@ -51,12 +51,15 @@ public sealed class RecordDataConstructionAnalyzer : DiagnosticAnalyzer
         {
             if (property.IsStatic || property.IsImplicitlyDeclared || property.IsAbstract)
                 continue;
-            var declarations = property.DeclaringSyntaxReferences.Select(reference => reference.GetSyntax())
-                .OfType<PropertyDeclarationSyntax>().ToArray();
+            var declarations = property.DeclaringSyntaxReferences
+                .Select(reference => reference.GetSyntax())
+                .OfType<PropertyDeclarationSyntax>()
+                .ToArray();
             if (declarations.Length == 0)
                 continue; // Synthesized positional properties point to their parameter declaration.
-            var backingField = type.GetMembers().OfType<IFieldSymbol>().Any(field =>
-                SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol, property));
+            var backingField = type.GetMembers()
+                .OfType<IFieldSymbol>()
+                .Any(field => SymbolEqualityComparer.Default.Equals(field.AssociatedSymbol, property));
             var storedAccessor = declarations.Any(declaration =>
                 declaration.AccessorList?.Accessors.Any(accessor =>
                     accessor.Body is null && accessor.ExpressionBody is null) == true);
@@ -64,18 +67,20 @@ public sealed class RecordDataConstructionAnalyzer : DiagnosticAnalyzer
                 yield return property;
         }
 
-        foreach (var field in type.GetMembers().OfType<IFieldSymbol>().Where(field =>
-                     !field.IsStatic && !field.IsImplicitlyDeclared))
+        foreach (var field in type.GetMembers()
+                     .OfType<IFieldSymbol>()
+                     .Where(field => !field.IsStatic && !field.IsImplicitlyDeclared))
             yield return field;
 
         foreach (var constructor in type.InstanceConstructors.Where(constructor => !constructor.IsImplicitlyDeclared))
         {
             // A record copy constructor preserves record semantics, rather than offering another data shape.
             if (constructor.Parameters.Length == 1 && SymbolEqualityComparer.Default.Equals(
-                    constructor.Parameters[0].Type, type))
+                    constructor.Parameters[0].Type,
+                    type))
                 continue;
             if (constructor.DeclaringSyntaxReferences.Any(reference =>
-                reference.GetSyntax() is ConstructorDeclarationSyntax))
+                    reference.GetSyntax() is ConstructorDeclarationSyntax))
                 yield return constructor;
         }
     }
@@ -93,15 +98,16 @@ public sealed class RecordDataConstructionAnalyzer : DiagnosticAnalyzer
                 break;
             }
         }
+
         var name = member is IMethodSymbol constructor
-            ? ".ctor(" + string.Join(",",
-                constructor.Parameters.Select(parameter => parameter.Type.ToDisplayString())) + ")"
+            ? ".ctor(" +
+            string.Join(",", constructor.Parameters.Select(parameter => parameter.Type.ToDisplayString())) + ")"
             : member.Name;
         var kind = member switch
         {
             IPropertySymbol => "extra-property",
             IFieldSymbol => "extra-field",
-            _ => "secondary-constructor"
+            _ => "secondary-constructor",
         };
         return path + "|" + member.ContainingType.ToDisplayString() + "|" + name + "|" + kind;
     }

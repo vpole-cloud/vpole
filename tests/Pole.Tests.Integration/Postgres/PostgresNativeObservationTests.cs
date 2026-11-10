@@ -15,10 +15,10 @@ using Pole.Features.Postgres.Application.Kubernetes;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Observation;
-using Pole.Tests.Integration.ResourceDeployments;
-using Pole.Workloads;
 using Pole.Testing.Kubernetes;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Postgres;
 
@@ -36,10 +36,12 @@ public sealed class PostgresNativeObservationTests
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
-        Assert.Equal(mode == PostgresDeploymentMode.Operator ? 6 : 8,
+        Assert.Equal(
+            mode == PostgresDeploymentMode.Operator ? 6 : 8,
             api.Requests.Count(NativeWatchTestClient.IsWatch));
         Assert.All(api.Streams, stream => Assert.Equal(0, stream.FramesWritten));
-        Assert.DoesNotContain(api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
+        Assert.DoesNotContain(
+            api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
             uri => uri.Query.Contains("bootstrap", StringComparison.Ordinal));
         var query = Uri.UnescapeDataString(api.Requests.First().Query);
         foreach (var key in api.Identity.ToDictionary().Keys)
@@ -124,10 +126,10 @@ public sealed class PostgresNativeObservationTests
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
-        Assert.Equal(8,
+        Assert.Equal(
+            8,
             api.Requests.Count(uri =>
-                uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) &&
-                NativeWatchTestClient.IsWatch(uri)));
+                uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) && NativeWatchTestClient.IsWatch(uri)));
         var warning = api.Stream("events", "pod-00");
         var foreign = api.Pod("pod-00", "foreign-controller");
         api.Stream("pods").Write(PostgresNativeTestApi.Frame("MODIFIED", foreign));
@@ -178,13 +180,15 @@ public sealed class PostgresNativeObservationTests
         var result = await observer.ObserveBoundAsync(api.Context, "controller");
         Assert.Equal("controller", result.BindingId);
         Assert.True(Assert.IsType<ObservedWorkload>(result.Observation).Ready);
-        Assert.Equal("pod-00",
+        Assert.Equal(
+            "pod-00",
             Assert.Single(Assert.IsType<AvailableWorkloadDiagnostics>(result.Diagnostics).Instances).Uid);
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(result));
         Assert.Equal(4, api.ControllerReads);
         api.CurrentCondition = false;
-        Assert.False(Assert
-            .IsType<ObservedWorkload>((await observer.ObserveBoundAsync(api.Context, "controller")).Observation).Ready);
+        Assert.False(
+            Assert.IsType<ObservedWorkload>((await observer.ObserveBoundAsync(api.Context, "controller")).Observation)
+                .Ready);
     }
 
     [Theory]
@@ -195,12 +199,13 @@ public sealed class PostgresNativeObservationTests
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator)
         {
             UnversionedCondition = generation,
-            IncludeBootstrapPod = true
+            IncludeBootstrapPod = true,
         };
         using var client = NativeWatchTestClient.Create(api);
         var result = await Bound(api, client).ObserveBoundAsync(api.Context, "controller");
         Assert.True(Assert.IsType<ObservedWorkload>(result.Observation).Ready);
-        Assert.Equal("pod-00",
+        Assert.Equal(
+            "pod-00",
             Assert.Single(Assert.IsType<AvailableWorkloadDiagnostics>(result.Diagnostics).Instances).Uid);
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(result));
     }
@@ -227,7 +232,7 @@ public sealed class PostgresNativeObservationTests
         using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator)
         {
             UnversionedCondition = "omitted",
-            IntentMismatch = mismatch
+            IntentMismatch = mismatch,
         };
         using var client = NativeWatchTestClient.Create(api);
         var result = await Bound(api, client).ObserveBoundAsync(api.Context, "controller");
@@ -301,14 +306,16 @@ public sealed class PostgresNativeObservationTests
         using var client = NativeWatchTestClient.Create(api);
         var reads = 0;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(api,
+        var changes = Source(
+                api,
                 () =>
                 {
                     reads++;
                     return client;
                 },
                 () => Target(1) with { Enabled = enabled, DeletionRequested = deleting })
-            .WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
+            .WatchAsync(api.Context, cancellation.Token)
+            .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Equal(0, reads);
         Assert.Empty(api.Requests);
@@ -324,7 +331,8 @@ public sealed class PostgresNativeObservationTests
         var version = 1L;
         var reads = 0;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(api,
+        var changes = Source(
+                api,
                 () =>
                 {
                     reads++;
@@ -332,7 +340,8 @@ public sealed class PostgresNativeObservationTests
                     return client;
                 },
                 () => Target(version))
-            .WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
+            .WatchAsync(api.Context, cancellation.Token)
+            .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Equal(1, reads);
         Assert.Empty(api.Requests);
@@ -349,7 +358,8 @@ public sealed class PostgresNativeObservationTests
         using var secondClient = NativeWatchTestClient.Create(secondApi);
         var version = 1L;
         var reads = 0;
-        var source = Source(firstApi,
+        var source = Source(
+            firstApi,
             () =>
             {
                 reads++;
@@ -367,17 +377,20 @@ public sealed class PostgresNativeObservationTests
         Assert.Equal(previousReads, reads);
         firstCancellation.Cancel();
         await first.DisposeAsync();
-        await firstClient.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>("postgresql.cnpg.io",
+        await firstClient.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>(
+            "postgresql.cnpg.io",
             "v1",
             "owned",
             "clusters");
         using var secondCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         // Retain the logical placement identity while switching the cached transport.
         secondApi.ResourceIdentity = firstApi;
-        var second = source.WatchAsync(firstApi.Context with
-        {
-            TargetConnectionVersion = 2
-        }, secondCancellation.Token)
+        var second = source.WatchAsync(
+                firstApi.Context with
+                {
+                    TargetConnectionVersion = 2,
+                },
+                secondCancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(second, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.True(reads > previousReads);
@@ -391,19 +404,23 @@ public sealed class PostgresNativeObservationTests
     private static IResourceDeploymentBoundObserver Bound(PostgresNativeTestApi api, IKubernetes client) =>
         Observer(api, client);
 
-    private static LoadPostgresClusterById Load(PostgresNativeTestApi api) => new((tenant, id, _) =>
+    private static LoadPostgresClusterById Load(PostgresNativeTestApi api) => (
+        tenant, id,
+        _) =>
     {
         Assert.Equal(api.Resource.TenantId, tenant);
         Assert.Equal(api.Resource.Id, id);
         return Task.FromResult(FSharpOption<PostgresCluster>.Some(api.Resource));
-    });
+    };
 
-    private static DeploymentTargetLookupDto Target(long version) => new("target",
+    private static DeploymentTargetLookupDto Target(long version) => new(
+        "target",
         "Target",
         "cluster",
         "kubeconfig",
         version,
-        new DeploymentTargetWorkloadConfigurationLookupDto(1,
+        new DeploymentTargetWorkloadConfigurationLookupDto(
+            1,
             null,
             new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
         1,
@@ -417,20 +434,22 @@ public sealed class PostgresNativeObservationTests
     private static IResourceDeploymentObservationChangeSource Source(PostgresNativeTestApi api, IKubernetes client) =>
         Source(api, () => client);
 
-    private static IResourceDeploymentObservationChangeSource Source(PostgresNativeTestApi api,
+    private static IResourceDeploymentObservationChangeSource Source(
+        PostgresNativeTestApi api,
         Func<IKubernetes> client,
         Func<LookupDeploymentTargetOutcome>? target = null) => new PostgresResourceDeploymentChangeSource(
         Load(api),
         new ClientProvider(client),
-        new LookupDeploymentTarget((id, _) =>
+        (id, _) =>
         {
             Assert.Equal("target", id);
             return Task.FromResult((target ?? (() => Target(1)))());
-        }),
+        },
         new Budget(),
         TimeProvider.System);
 
-    internal static async Task NextAsync(IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
+    internal static async Task NextAsync(
+        IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
         ResourceDeploymentObservationChangeKind kind)
     {
         for (var count = 0; count < 100; count++)
@@ -443,7 +462,9 @@ public sealed class PostgresNativeObservationTests
         Assert.Fail($"No {kind} transition.");
     }
 
-    private sealed class ClientProvider(Func<IKubernetes> client) : IKubernetesClientProvider
+    private sealed class ClientProvider(
+        Func<IKubernetes> client
+    ) : IKubernetesClientProvider
     {
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {
@@ -466,20 +487,62 @@ public sealed class PostgresNativeObservationTests
 
 internal sealed class PostgresNativeTestApi : DelegatingHandler
 {
+    private readonly WorkloadIdentityLabels _identity;
+    private readonly PostgresCluster _resource;
     private readonly ConcurrentDictionary<string, NativeWatchTestStream> _streams = new(StringComparer.Ordinal);
+
+    public PostgresNativeTestApi(PostgresDeploymentMode mode)
+    {
+        _resource = PostgresCluster.Create(
+            "507f1f77bcf86cd799439010",
+            "database",
+            "507f1f77bcf86cd799439012",
+            17,
+            mode,
+            "profile",
+            new CreatePostgresClusterOptions(FSharpOption<string>.Some("scope"), 1, 1));
+        _identity = new WorkloadIdentityLabels(
+            Resource.TenantId,
+            Resource.GroupId,
+            "scope",
+            "cell",
+            "target",
+            "Postgres",
+            Resource.Id,
+            "deployment");
+        Context = new ResourceDeploymentObservationContext(
+            new ResourceDeploymentReconciliationSnapshot(
+                "deployment",
+                Resource.TenantId,
+                PostgresResourceDeployment.ResourceType,
+                Resource.Id,
+                Resource.GroupId,
+                "scope",
+                "cell",
+                2,
+                1,
+                2,
+                DateTime.UtcNow,
+                new ResourceDeploymentResolvedPlacementSnapshot(
+                    "target",
+                    1,
+                    "owned",
+                    null,
+                    new ResourceDeploymentStorageConfiguration("profile", 1, "owned-storage"),
+                    ResourceDeploymentTestData.ContractCompute("target"))),
+            3,
+            1);
+    }
 
     public ConcurrentQueue<Uri> Requests { get; } = new();
 
     public IEnumerable<NativeWatchTestStream> Streams => _streams.Values;
-    private readonly PostgresCluster _resource;
 
     public PostgresNativeTestApi? ResourceIdentity { get; set; }
 
     public PostgresCluster Resource => ResourceIdentity?.Resource ?? _resource;
 
     public ResourceDeploymentObservationContext Context { get; }
-
-    private readonly WorkloadIdentityLabels _identity;
     public WorkloadIdentityLabels Identity => ResourceIdentity?.Identity ?? _identity;
     public string Name => PostgresClusterKubernetesBuilder.buildResourceName(Resource.Id);
     public bool Operator => Resource.Spec.DeploymentMode == PostgresDeploymentMode.Operator;
@@ -507,44 +570,6 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
 
     public string? IntentMismatch { get; set; }
 
-    public PostgresNativeTestApi(PostgresDeploymentMode mode)
-    {
-        _resource = PostgresCluster.Create("507f1f77bcf86cd799439010",
-            "database",
-            "507f1f77bcf86cd799439012",
-            17,
-            mode,
-            "profile",
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some("scope"), 1, 1));
-        _identity = new(Resource.TenantId,
-            Resource.GroupId,
-            "scope",
-            "cell",
-            "target",
-            "Postgres",
-            Resource.Id,
-            "deployment");
-        Context = new(new ResourceDeploymentReconciliationSnapshot("deployment",
-                Resource.TenantId,
-                PostgresResourceDeployment.ResourceType,
-                Resource.Id,
-                Resource.GroupId,
-                "scope",
-                "cell",
-                2,
-                1,
-                2,
-                DateTime.UtcNow,
-                new ResourceDeploymentResolvedPlacementSnapshot("target",
-                    1,
-                    "owned",
-                    null,
-                    new ResourceDeploymentStorageConfiguration("profile", 1, "owned-storage"),
-                    ResourceDeploymentTestData.ContractCompute("target"))),
-            3,
-            1);
-    }
-
     public NativeWatchTestStream Stream(string kind, string? key = null) => _streams[kind + ":" + key];
 
     private static string QueryValue(Uri uri, string marker)
@@ -554,7 +579,8 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
         return start < 0 ? "" : query[(start + marker.Length)..].Split(',', '&')[0];
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
         var uri = request.RequestUri!;
@@ -565,86 +591,102 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
             "events" => QueryValue(uri, "involvedObject.uid="),
             "services" => QueryValue(uri, "metadata.name="),
             "endpointslices" => QueryValue(uri, "kubernetes.io/service-name="),
-            _ => null
+            _ => null,
         };
         if (NativeWatchTestClient.IsWatch(uri))
         {
             Assert.Contains(kind, new[] { ControllerKind, "pods", "services", "events", "endpointslices" });
             var stream = new NativeWatchTestStream();
             _streams[kind + ":" + key] = stream;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                RequestMessage = request,
-                Content = new StreamContent(stream)
-            });
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    RequestMessage = request,
+                    Content = new StreamContent(stream),
+                });
         }
 
         string json;
         if (uri.AbsolutePath.Contains("/persistentvolumeclaims/", StringComparison.Ordinal))
+        {
             json = KubernetesJson.Serialize(Pvc());
+        }
         else if (kind == Name)
         {
             ControllerReads++;
             json = Operator
                 ? ClusterJson(ControllerReads >= ReplaceAtRead ? "replacement" : "controller")
-                : KubernetesJson.Serialize(StatefulSet(ControllerReads >= ReplaceAtRead
-                    ? "replacement"
-                    : "controller"));
+                : KubernetesJson.Serialize(
+                    StatefulSet(ControllerReads >= ReplaceAtRead ? "replacement" : "controller"));
         }
         else
+        {
             json = kind switch
             {
-                "clusters" when Operator => JsonSerializer.Serialize(new
-                {
-                    apiVersion = "postgresql.cnpg.io/v1",
-                    kind = "ClusterList",
-                    metadata = new
+                "clusters" when Operator => JsonSerializer.Serialize(
+                    new
                     {
-                        resourceVersion = "cluster-list"
-                    },
-                    items = ControllerPresent
-                        ? new[] { JsonSerializer.Deserialize<JsonElement>(ClusterJson("controller")) }
-                        : []
-                }),
-                "statefulsets" when !Operator => KubernetesJson.Serialize(new V1StatefulSetList
-                {
-                    Metadata = ListMeta("stateful-list"),
-                    Items = ControllerPresent ? [StatefulSet("controller")] : []
-                }),
-                "pods" => KubernetesJson.Serialize(new V1PodList
-                {
-                    Metadata = ListMeta("pods-list"),
-                    Items = Enumerable.Range(0, PodCount).Select(i => Pod($"pod-{i:00}"))
-                        .Concat(IncludeBootstrapPod ? [Pod("bootstrap", "bootstrap-job")] : []).ToArray()
-                }),
-                "services" => KubernetesJson.Serialize(new V1ServiceList
-                {
-                    Metadata = ListMeta("service-list-" + key),
-                    Items = [Service(key!)]
-                }),
-                "events" => KubernetesJson.Serialize(new Corev1EventList
-                {
-                    Metadata = ListMeta("event-list-" + key),
-                    Items = []
-                }),
-                "endpointslices" => KubernetesJson.Serialize(new V1EndpointSliceList
-                {
-                    Metadata = ListMeta("slice-list-" + key),
-                    Items = [Slice("slice", key!)]
-                }),
-                _ => throw new Xunit.Sdk.XunitException($"Unexpected native request {uri.AbsolutePath}")
+                        apiVersion = "postgresql.cnpg.io/v1",
+                        kind = "ClusterList",
+                        metadata = new
+                        {
+                            resourceVersion = "cluster-list",
+                        },
+                        items = ControllerPresent
+                            ? new[] { JsonSerializer.Deserialize<JsonElement>(ClusterJson("controller")) }
+                            : [],
+                    }),
+                "statefulsets" when !Operator => KubernetesJson.Serialize(
+                    new V1StatefulSetList
+                    {
+                        Metadata = ListMeta("stateful-list"),
+                        Items = ControllerPresent ? [StatefulSet("controller")] : [],
+                    }),
+                "pods" => KubernetesJson.Serialize(
+                    new V1PodList
+                    {
+                        Metadata = ListMeta("pods-list"),
+                        Items = Enumerable.Range(0, PodCount)
+                            .Select(i => Pod($"pod-{i:00}"))
+                            .Concat(IncludeBootstrapPod ? [Pod("bootstrap", "bootstrap-job")] : [])
+                            .ToArray(),
+                    }),
+                "services" => KubernetesJson.Serialize(
+                    new V1ServiceList
+                    {
+                        Metadata = ListMeta("service-list-" + key),
+                        Items = [Service(key!)],
+                    }),
+                "events" => KubernetesJson.Serialize(
+                    new Corev1EventList
+                    {
+                        Metadata = ListMeta("event-list-" + key),
+                        Items = [],
+                    }),
+                "endpointslices" => KubernetesJson.Serialize(
+                    new V1EndpointSliceList
+                    {
+                        Metadata = ListMeta("slice-list-" + key),
+                        Items = [Slice("slice", key!)],
+                    }),
+                _ => throw new XunitException($"Unexpected native request {uri.AbsolutePath}"),
             };
+        }
 
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            RequestMessage = request,
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        });
+        return Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
     }
 
     private static V1ListMeta ListMeta(string version) => new() { ResourceVersion = version };
 
-    private V1ObjectMeta Metadata(string name, string uid, string? parent = null) => new()
+    private V1ObjectMeta Metadata(
+        string name,
+        string uid,
+        string? parent = null) => new()
     {
         Name = name,
         Uid = uid,
@@ -661,11 +703,11 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                 {
                     Uid = parent, Name = "parent",
                     Kind = parent == "bootstrap-job" ? "Job" : Operator ? "Cluster" : "StatefulSet",
-                    ApiVersion =
-                        parent == "bootstrap-job" ? "batch/v1" : Operator ? "postgresql.cnpg.io/v1" : "apps/v1",
-                    Controller = true
-                }
-            ]
+                    ApiVersion
+                        = parent == "bootstrap-job" ? "batch/v1" : Operator ? "postgresql.cnpg.io/v1" : "apps/v1",
+                    Controller = true,
+                },
+            ],
     };
 
     private V1ObjectMeta ControllerMetadata(string uid)
@@ -688,7 +730,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
         Spec = new V1StatefulSetSpec
         {
             Replicas = 1,
-            Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") }
+            Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") },
         },
         Status = new V1StatefulSetStatus
         {
@@ -698,45 +740,47 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
             Replicas = 1,
             UpdatedReplicas = 1,
             ReadyReplicas = 1,
-            AvailableReplicas = 1
-        }
+            AvailableReplicas = 1,
+        },
     };
 
     private string ClusterJson(string uid)
     {
-        var node = JsonNode.Parse(KubernetesJson.Serialize(new
-        {
-            apiVersion = "postgresql.cnpg.io/v1",
-            kind = "Cluster",
-            metadata = ControllerMetadata(uid),
-            spec = new
-            {
-                instances = IntentMismatch == "native-instances" ? 2 : 1,
-                secret = "native-canary-spec",
-                imageName = IntentMismatch == "native-image"
-                    ? "native-canary-old"
-                    : "ghcr.io/cloudnative-pg/postgresql:17",
-                resources = Requirements(IntentMismatch == "native-resources"),
-                storage = new
+        var node = JsonNode.Parse(
+            KubernetesJson.Serialize(
+                new
                 {
-                    size = IntentMismatch == "native-storage" ? "2Gi" : "1Gi",
-                    storageClass = "owned-storage"
-                }
-            },
-            status = new
-            {
-                instances = 1,
-                readyInstances = 1,
-                conditions = new[]
-                {
-                    new
+                    apiVersion = "postgresql.cnpg.io/v1",
+                    kind = "Cluster",
+                    metadata = ControllerMetadata(uid),
+                    spec = new
                     {
-                        type = "Ready", status = "True", observedGeneration = CurrentCondition ? 2 : 1,
-                        message = "native-canary-condition"
-                    }
-                }
-            }
-        }))!;
+                        instances = IntentMismatch == "native-instances" ? 2 : 1,
+                        secret = "native-canary-spec",
+                        imageName = IntentMismatch == "native-image"
+                            ? "native-canary-old"
+                            : "ghcr.io/cloudnative-pg/postgresql:17",
+                        resources = Requirements(IntentMismatch == "native-resources"),
+                        storage = new
+                        {
+                            size = IntentMismatch == "native-storage" ? "2Gi" : "1Gi",
+                            storageClass = "owned-storage",
+                        },
+                    },
+                    status = new
+                    {
+                        instances = 1,
+                        readyInstances = 1,
+                        conditions = new[]
+                        {
+                            new
+                            {
+                                type = "Ready", status = "True", observedGeneration = CurrentCondition ? 2 : 1,
+                                message = "native-canary-condition",
+                            },
+                        },
+                    },
+                }))!;
         if (UnversionedCondition == "omitted")
             node["status"]!["conditions"]![0]!.AsObject().Remove("observedGeneration");
         else if (UnversionedCondition == "zero")
@@ -783,36 +827,36 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
         Requests = new Dictionary<string, ResourceQuantity>
         {
             ["cpu"] = new(stale ? "100m" : "250m"),
-            ["memory"] = new("256Mi")
+            ["memory"] = new("256Mi"),
         },
-        Limits = new Dictionary<string, ResourceQuantity> { ["cpu"] = new("1"), ["memory"] = new("1Gi") }
+        Limits = new Dictionary<string, ResourceQuantity> { ["cpu"] = new("1"), ["memory"] = new("1Gi") },
     };
 
     private V1PersistentVolumeClaim Pvc()
     {
         var meta = Metadata("data", "pvc", IntentMismatch == "pvc-owner" ? "foreign" : "controller");
-        return new()
+        return new V1PersistentVolumeClaim
         {
             Metadata = meta,
-            Spec = new()
+            Spec = new V1PersistentVolumeClaimSpec
             {
                 StorageClassName = IntentMismatch == "pvc-class" ? "foreign" : "owned-storage",
                 Resources = new V1VolumeResourceRequirements
                 {
                     Requests = new Dictionary<string, ResourceQuantity>
                     {
-                        ["storage"] = new(IntentMismatch == "storage" ? "2Gi" : "1Gi")
-                    }
-                }
+                        ["storage"] = new(IntentMismatch == "storage" ? "2Gi" : "1Gi"),
+                    },
+                },
             },
-            Status = new()
+            Status = new V1PersistentVolumeClaimStatus
             {
                 Phase = "Bound",
                 Capacity = new Dictionary<string, ResourceQuantity>
                 {
-                    ["storage"] = new(IntentMismatch == "pvc-capacity" ? "512Mi" : "1Gi")
-                }
-            }
+                    ["storage"] = new(IntentMismatch == "pvc-capacity" ? "512Mi" : "1Gi"),
+                },
+            },
         };
     }
 
@@ -821,25 +865,33 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
         var meta = Metadata(uid, uid, parent);
         if (IntentMismatch == "generation")
             meta.Labels["pole.io/deployment-generation"] = "1";
-        return new()
+        return new V1Pod
         {
             ApiVersion = "v1",
             Kind = "Pod",
             Metadata = meta,
-            Spec = new()
+            Spec = new V1PodSpec
             {
                 Containers =
                 [
                     new V1Container
                     {
                         Name = "postgres",
-                        Image =
-                            IntentMismatch == "image" ? "native-canary-old" : "ghcr.io/cloudnative-pg/postgresql:17",
+                        Image = IntentMismatch == "image"
+                            ? "native-canary-old"
+                            : "ghcr.io/cloudnative-pg/postgresql:17",
                         Resources = Requirements(IntentMismatch == "resources"),
-                        VolumeMounts = [new() { Name = "pgdata", MountPath = "/var/lib/postgresql/data" }]
-                    }
+                        VolumeMounts = [new V1VolumeMount { Name = "pgdata", MountPath = "/var/lib/postgresql/data" }],
+                    },
                 ],
-                Volumes = [new() { Name = "pgdata", PersistentVolumeClaim = new() { ClaimName = "data" } }],
+                Volumes =
+                [
+                    new V1Volume
+                    {
+                        Name = "pgdata",
+                        PersistentVolumeClaim = new V1PersistentVolumeClaimVolumeSource { ClaimName = "data" },
+                    },
+                ],
                 NodeSelector = IntentMismatch == "selector"
                     ? new Dictionary<string, string> { ["old"] = "selector" }
                     : null,
@@ -850,33 +902,37 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                         {
                             PreferredDuringSchedulingIgnoredDuringExecution =
                             [
-                                new()
+                                new V1PreferredSchedulingTerm
                                 {
                                     Weight = 1,
                                     Preference = new V1NodeSelectorTerm
-                                        { MatchExpressions = [new() { Key = "old", OperatorProperty = "Exists" }] }
-                                }
-                            ]
-                        }
+                                    {
+                                        MatchExpressions =
+                                            [new V1NodeSelectorRequirement { Key = "old", OperatorProperty = "Exists" }],
+                                    },
+                                },
+                            ],
+                        },
                     }
                     : null,
                 Tolerations = IntentMismatch == "tolerations"
-                    ? [new() { Key = "old", OperatorProperty = "Exists" }]
-                    : null
+                    ? [new V1Toleration { Key = "old", OperatorProperty = "Exists" }]
+                    : null,
             },
-            Status = new()
+            Status = new V1PodStatus
             {
                 Phase = "Running",
-                Conditions = [new() { Type = "Ready", Status = IntentMismatch == "not-ready" ? "False" : "True" }],
+                Conditions =
+                    [new V1PodCondition { Type = "Ready", Status = IntentMismatch == "not-ready" ? "False" : "True" }],
                 ContainerStatuses =
                 [
-                    new()
+                    new V1ContainerStatus
                     {
                         Name = "postgres", Ready = true, Image = "native-canary-image",
-                        ImageID = "native-canary-image-id"
-                    }
-                ]
-            }
+                        ImageID = "native-canary-image-id",
+                    },
+                ],
+            },
         };
     }
 
@@ -884,7 +940,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
     {
         ApiVersion = "v1",
         Kind = "Service",
-        Metadata = Metadata(name, ServiceVersion + name, Operator ? "controller" : null)
+        Metadata = Metadata(name, ServiceVersion + name, Operator ? "controller" : null),
     };
 
     public V1EndpointSlice Slice(string uid, string serviceName) => new()
@@ -906,10 +962,10 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                 new V1OwnerReference
                 {
                     Name = serviceName, Uid = ServiceVersion + serviceName, Kind = "Service", ApiVersion = "v1",
-                    Controller = true
-                }
-            ]
-        }
+                    Controller = true,
+                },
+            ],
+        },
     };
 
     public static string Frame<T>(string kind, T value) =>

@@ -4,7 +4,6 @@ using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
@@ -13,8 +12,9 @@ using Xunit;
 namespace Pole.Tests.Integration.FunctionApps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+public sealed class FunctionAppApiTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Http_api_round_trips_polymorphic_trigger_contract()
@@ -66,8 +66,8 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
                 new FunctionHandlerRequest(
                     "second",
                     1,
-                    new HttpFunctionTriggerRequest("orders/{orderId}", ["post"], FunctionExposure.Public))
-            ]
+                    new HttpFunctionTriggerRequest("orders/{orderId}", ["post"], FunctionExposure.Public)),
+            ],
         };
 
         var response = await Client.PostAsJsonAsync(
@@ -127,42 +127,39 @@ public sealed class FunctionAppApiTests(MongoReplicaSetFixture fixture)
         var created = await createResponse.Content.ReadFromJsonAsync<CreateFunctionAppResponse>();
         Assert.NotNull(created);
 
-        await Fixture.DbContext.ResourceDeployments.DeleteManyAsync(
-            deployment => deployment.ResourceId == created.FunctionAppId);
+        await Fixture.DbContext.ResourceDeployments.DeleteManyAsync(deployment =>
+            deployment.ResourceId == created.FunctionAppId);
 
         var response = await Client.DeleteAsync($"/api/v1/function-apps/{created.FunctionAppId}");
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(
-            "function-apps.resource-deployment.missing",
-            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal("function-apps.resource-deployment.missing", problem.RootElement.GetProperty("code").GetString());
     }
 
-    private static FunctionRevisionRequest RevisionRequest() =>
-        new(
-            new FunctionImageRequest("registry.example", "team/functions", "v1"),
-            new FunctionConfiguration(
-                ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
-            new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
-            [
-                new FunctionHandlerRequest(
-                    "webhook",
-                    4,
-                    new HttpFunctionTriggerRequest("orders/{id}", ["POST"], FunctionExposure.Public)),
-                new FunctionHandlerRequest(
-                    "cleanup",
-                    1,
-                    new TimerFunctionTriggerRequest(
-                        "*/5 * * * *",
-                        TimerConcurrencyPolicy.Forbid,
-                        TimerMisfirePolicy.FireOnce,
-                        new FunctionRetryPolicy(3, [5, 30])))
-            ]);
+    private static FunctionRevisionRequest RevisionRequest() => new(
+        new FunctionImageRequest("registry.example", "team/functions", "v1"),
+        new FunctionConfiguration(
+            ImmutableDictionary<string, string>.Empty,
+            ImmutableDictionary<string, FunctionSecretReference>.Empty),
+        new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
+        new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
+        [
+            new FunctionHandlerRequest(
+                "webhook",
+                4,
+                new HttpFunctionTriggerRequest("orders/{id}", ["POST"], FunctionExposure.Public)),
+            new FunctionHandlerRequest(
+                "cleanup",
+                1,
+                new TimerFunctionTriggerRequest(
+                    "*/5 * * * *",
+                    TimerConcurrencyPolicy.Forbid,
+                    TimerMisfirePolicy.FireOnce,
+                    new FunctionRetryPolicy(3, [5, 30]))),
+        ]);
 
-    private sealed record ResourceGroupResponse(string Id);
+    private sealed record ResourceGroupResponse(
+        string Id
+    );
 }

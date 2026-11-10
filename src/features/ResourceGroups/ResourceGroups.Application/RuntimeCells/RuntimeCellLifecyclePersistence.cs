@@ -4,7 +4,6 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
@@ -17,28 +16,26 @@ public sealed class RuntimeCellLifecyclePersistence(
     ApplyDeploymentTargetReferenceChanges applyDeploymentTargetReferenceChanges,
     RunMongoOutcomeTransaction<Unit> runUnitTransaction,
     RunMongoOutcomeTransaction<bool> runBooleanTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<RuntimeCell?> LoadAsync(
         string tenantId,
         string runtimeCellId,
-        CancellationToken cancellationToken = default) =>
-        await runtimeCells
-            .Find(RuntimeCellFilters.ByTenantAndId(tenantId, runtimeCellId))
-            .FirstOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await runtimeCells
+        .Find(RuntimeCellFilters.ByTenantAndId(tenantId, runtimeCellId))
+        .FirstOrDefaultAsync(cancellationToken);
 
     public Task PersistReconciliationAsync(
         RuntimeCell runtimeCell,
         long generation,
         RuntimeCellEnsureOutcome namespaceOutcome,
-        CancellationToken cancellationToken = default) =>
-        runUnitTransaction(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runUnitTransaction(
+        async (transaction, ct) =>
         {
             if (namespaceOutcome is Unit)
             {
-                var ready = runtimeCell.MarkReady(
-                    generation,
-                    timeProvider.GetUtcNow().UtcDateTime);
+                var ready = runtimeCell.MarkReady(generation, timeProvider.GetUtcNow().UtcDateTime);
                 var replacement = await runtimeCells.ReplaceOneAsync(
                     transaction.Session,
                     RuntimeCellFilters.AtDesiredGenerationAndState<ProvisioningRuntimeCellState>(
@@ -47,12 +44,7 @@ public sealed class RuntimeCellLifecyclePersistence(
                     ready,
                     cancellationToken: ct);
                 if (replacement.ModifiedCount == 1)
-                {
-                    await storeOutboxWrites(
-                        transaction.Session,
-                        [OutboxWrite.Create(ready.ToReadyEvent())],
-                        ct);
-                }
+                    await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(ready.ToReadyEvent())], ct);
 
                 return transaction.Commit(Unit.Value);
             }
@@ -62,36 +54,32 @@ public sealed class RuntimeCellLifecyclePersistence(
                 generation,
                 RuntimeCellOperation.Reconciliation,
                 EnsureFailureCode(namespaceOutcome),
-                namespaceOutcome is RuntimeCellNetworkPolicyOwnershipConflict
-                    or RuntimeCellNetworkPolicyUnavailable
+                namespaceOutcome is RuntimeCellNetworkPolicyOwnershipConflict or RuntimeCellNetworkPolicyUnavailable
                     ? "The Kubernetes ingress policy could not be established for this runtime cell."
                     : "The Kubernetes namespace reconciliation attempt failed.",
                 attemptedAtUtc,
                 attemptedAtUtc.Add(RetryDelay(generation)));
             var failureWrite = await runtimeCells.ReplaceOneAsync(
                 transaction.Session,
-                RuntimeCellFilters.AtDesiredGenerationAndState<ProvisioningRuntimeCellState>(
-                    runtimeCell,
-                    generation),
+                RuntimeCellFilters.AtDesiredGenerationAndState<ProvisioningRuntimeCellState>(runtimeCell, generation),
                 failed,
                 cancellationToken: ct);
             if (failureWrite.ModifiedCount == 1)
-            {
                 await storeOutboxWrites(
                     transaction.Session,
                     [OutboxWrite.Create(failed.ToReconciliationFailedEvent())],
                     ct);
-            }
 
             return transaction.Commit(Unit.Value);
-        }, cancellationToken);
+        },
+        cancellationToken);
 
     public Task<bool> PersistDeletionAsync(
         RuntimeCell runtimeCell,
         long generation,
         RuntimeCellDeleteOutcome namespaceOutcome,
-        CancellationToken cancellationToken = default) =>
-        runBooleanTransaction(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runBooleanTransaction(
+        async (transaction, ct) =>
         {
             if (namespaceOutcome is RuntimeCellNamespaceDeletionPending)
             {
@@ -108,10 +96,17 @@ public sealed class RuntimeCellLifecyclePersistence(
                     pending,
                     cancellationToken: ct);
                 if (pendingWrite.ModifiedCount == 1)
-                    await storeOutboxWrites(transaction.Session,
-                        [OutboxWrite.Create(pending.ToDeletionRequestedEvent(),
-                            RuntimeCellPendingKey.DeletionCheck(pending.Id, generation,
-                                ((DeletingRuntimeCellState)pending.State).CheckSequence))], ct);
+                    await storeOutboxWrites(
+                        transaction.Session,
+                        [
+                            OutboxWrite.Create(
+                                pending.ToDeletionRequestedEvent(),
+                                RuntimeCellPendingKey.DeletionCheck(
+                                    pending.Id,
+                                    generation,
+                                    ((DeletingRuntimeCellState)pending.State).CheckSequence)),
+                        ],
+                        ct);
                 return transaction.Commit(false);
             }
 
@@ -133,9 +128,7 @@ public sealed class RuntimeCellLifecyclePersistence(
                 return transaction.Commit(false);
             }
 
-            var deleted = runtimeCell.MarkDeleted(
-                generation,
-                timeProvider.GetUtcNow().UtcDateTime);
+            var deleted = runtimeCell.MarkDeleted(generation, timeProvider.GetUtcNow().UtcDateTime);
             var replacement = await runtimeCells.ReplaceOneAsync(
                 transaction.Session,
                 RuntimeCellFilters.AtDeletionCheck(runtimeCell),
@@ -147,8 +140,8 @@ public sealed class RuntimeCellLifecyclePersistence(
             var unregister = await applyDeploymentTargetReferenceChanges(
                 new ApplyDeploymentTargetReferenceChangesRequest(
                     Owner: new DeploymentTargetReferenceOwner(
-                    ResourcePlacementReferenceOwnerTypes.RuntimeCell,
-                    runtimeCell.Id),
+                        ResourcePlacementReferenceOwnerTypes.RuntimeCell,
+                        runtimeCell.Id),
                     AddedDeploymentTargetIds: [],
                     RemovedDeploymentTargetIds: [runtimeCell.DeploymentTargetId]),
                 session: transaction.Session,
@@ -156,38 +149,28 @@ public sealed class RuntimeCellLifecyclePersistence(
             if (unregister is DeploymentTargetReferenceChangeRejected)
                 return transaction.Abort(false);
 
-            await storeOutboxWrites(
-                transaction.Session,
-                [OutboxWrite.Create(deleted.ToDeletedEvent())],
-                ct);
+            await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(deleted.ToDeletedEvent())], ct);
             return transaction.Commit(true);
-        }, cancellationToken);
+        },
+        cancellationToken);
 
-    public static string EnsureFailureCode(RuntimeCellEnsureOutcome outcome) =>
-        outcome switch
-        {
-            Unit => throw new ArgumentException(
-                "A successful namespace operation has no failure code.",
-                nameof(outcome)),
-            RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
-            RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed",
-            RuntimeCellDeploymentTargetUnavailable targetUnavailable =>
-                $"DeploymentTarget{targetUnavailable.Reason}",
-            RuntimeCellNetworkPolicyOwnershipConflict => "NetworkPolicyOwnershipConflict",
-            RuntimeCellNetworkPolicyUnavailable => "NetworkPolicyApplyFailed"
-        };
+    public static string EnsureFailureCode(RuntimeCellEnsureOutcome outcome) => outcome switch
+    {
+        Unit => throw new ArgumentException("A successful namespace operation has no failure code.", nameof(outcome)),
+        RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
+        RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed",
+        RuntimeCellDeploymentTargetUnavailable targetUnavailable => $"DeploymentTarget{targetUnavailable.Reason}",
+        RuntimeCellNetworkPolicyOwnershipConflict => "NetworkPolicyOwnershipConflict",
+        RuntimeCellNetworkPolicyUnavailable => "NetworkPolicyApplyFailed",
+    };
 
-    public static string DeleteFailureCode(RuntimeCellDeleteOutcome outcome) =>
-        outcome switch
-        {
-            Unit => throw new ArgumentException(
-                "A successful namespace operation has no failure code.",
-                nameof(outcome)),
-            RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
-            RuntimeCellNamespaceDeletionPending =>
-                "NamespaceDeletionPending",
-            RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed"
-        };
+    public static string DeleteFailureCode(RuntimeCellDeleteOutcome outcome) => outcome switch
+    {
+        Unit => throw new ArgumentException("A successful namespace operation has no failure code.", nameof(outcome)),
+        RuntimeCellNamespaceOwnershipConflict => "NamespaceOwnershipConflict",
+        RuntimeCellNamespaceDeletionPending => "NamespaceDeletionPending",
+        RuntimeCellNamespaceUnavailable => "NamespaceOperationFailed",
+    };
 
     public static TimeSpan RetryDelay(long generation)
     {

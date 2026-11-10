@@ -5,12 +5,11 @@ namespace Pole.Features.GitProviders.Application.Common;
 
 internal static class SourceRepositoryBuildMappings
 {
-    public static SourceRepositoryBuildSnapshot ToBuildSnapshot(this SourceRepository repository) =>
-        new(
-            repository.Id,
-            repository.TechnicalName,
-            repository.ConnectionId,
-            repository.ExternalRepositoryId,
-            repository.Branch,
-            repository.Revision);
+    public static SourceRepositoryBuildSnapshot ToBuildSnapshot(this SourceRepository repository) => new(
+        repository.Id,
+        repository.TechnicalName,
+        repository.ConnectionId,
+        repository.ExternalRepositoryId,
+        repository.Branch,
+        repository.Revision);
 }

@@ -7,15 +7,20 @@ public interface IObservationReadBudget
 
 public abstract record ObservationChange;
 
-public sealed record ObservationSourceReady(string SourceId) : ObservationChange;
+public sealed record ObservationSourceReady(
+    string SourceId
+) : ObservationChange;
 
 public sealed record ObservationSourceLost : ObservationChange;
 
-public sealed record ObservationInvalidated(string? SourceId = null) : ObservationChange;
+public sealed record ObservationInvalidated(
+    string? SourceId = null
+) : ObservationChange;
 
 public sealed record ObservationCut(
     long SourceVersion,
-    string SourceId);
+    string SourceId
+);
 
 public enum ObservationSampleResult
 {
@@ -23,7 +28,7 @@ public enum ObservationSampleResult
     Superseded,
     BindingLost,
     Unavailable,
-    OwnerLost
+    OwnerLost,
 }
 
 public enum ObservationSampleMetric
@@ -31,14 +36,19 @@ public enum ObservationSampleMetric
     Accepted,
     Rejected,
     Cancelled,
-    Failed
+    Failed,
 }
 
 /// <summary>The feature owns native reads, context validation, persistence outcomes and metrics.</summary>
 public interface IObservationSession
 {
     IAsyncEnumerable<ObservationChange> WatchAsync(CancellationToken ct);
-    Task<long?> SetSourceAsync(long version, string? sourceId, CancellationToken ct);
+
+    Task<long?> SetSourceAsync(
+        long version,
+        string? sourceId,
+        CancellationToken ct);
+
     Task<ObservationSampleResult> SampleAsync(ObservationCut cut, CancellationToken ct);
     Task<bool> RenewAsync(CancellationToken ct);
     void RecordSource(bool healthy);

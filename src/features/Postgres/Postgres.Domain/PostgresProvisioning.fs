@@ -4,19 +4,17 @@ open System
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
 
-type PostgresDesiredCapacity =
-    { Instances : int
-      Storage : int }
+type PostgresDesiredCapacity = { Instances: int; Storage: int }
 
 type PostgresBootstrapCredential =
     { [<BsonRepresentation(BsonType.ObjectId)>]
-      SourceSecretId : string
-      SourceKey : string
+      SourceSecretId: string
+      SourceKey: string
       [<BsonRepresentation(BsonType.ObjectId)>]
-      CredentialId : string
-      Username : string }
+      CredentialId: string
+      Username: string }
 
-    static member Create(sourceSecretId : string, sourceKey : string, credentialId : string, username : string) =
+    static member Create(sourceSecretId: string, sourceKey: string, credentialId: string, username: string) =
         if not (ObjectId.TryParse sourceSecretId |> fst) then
             invalidArg (nameof sourceSecretId) "A bootstrap Secret identity is required."
 
@@ -36,23 +34,20 @@ type PostgresBootstrapCredential =
 
 [<AbstractClass>]
 [<BsonDiscriminator(RootClass = true)>]
-[<BsonKnownTypes(
-    typeof<DirectPostgresProvisioning>,
-    typeof<PreparedPostgresProvisioning>,
-    typeof<ConfiguredPostgresProvisioning>)>]
-type PostgresProvisioningState() =
-    class
-    end
+[<BsonKnownTypes(typeof<DirectPostgresProvisioning>,
+                 typeof<PreparedPostgresProvisioning>,
+                 typeof<ConfiguredPostgresProvisioning>)>]
+type PostgresProvisioningState() = class end
 
 and [<BsonDiscriminator("direct")>] DirectPostgresProvisioning() =
     inherit PostgresProvisioningState()
 
-and [<BsonDiscriminator("prepared")>] PreparedPostgresProvisioning(bootstrap : PostgresBootstrapCredential) =
+and [<BsonDiscriminator("prepared")>] PreparedPostgresProvisioning(bootstrap: PostgresBootstrapCredential) =
     inherit PostgresProvisioningState()
 
     member _.Bootstrap = bootstrap
 
-and [<BsonDiscriminator("configured")>] ConfiguredPostgresProvisioning(bootstrap : PostgresBootstrapCredential) =
+and [<BsonDiscriminator("configured")>] ConfiguredPostgresProvisioning(bootstrap: PostgresBootstrapCredential) =
     inherit PostgresProvisioningState()
 
     member _.Bootstrap = bootstrap

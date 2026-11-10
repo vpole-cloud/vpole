@@ -24,17 +24,16 @@ public sealed class FunctionRevisionManifestTests
     {
         var subject = CreateSubject();
 
-        var deployment = subject.ToDeployment(secretProjections: new Dictionary<string, FunctionSecretProjection>
-        { ["API_KEY"] = new("function-secrets", "API_KEY") });
+        var deployment = subject.ToDeployment(
+            secretProjections: new Dictionary<string, FunctionSecretProjection>
+                { ["API_KEY"] = new("function-secrets", "API_KEY") });
         var pod = deployment.Spec.Template.Spec;
         var container = Assert.Single(pod.Containers);
 
         Assert.Equal("fn-507f1f77bcf86cd799439011-r3", deployment.Metadata.Name);
         Assert.Equal("pole-tenant-rg", deployment.Metadata.NamespaceProperty);
         Assert.Equal(0, deployment.Spec.Replicas);
-        Assert.Equal(
-            "0",
-            deployment.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation]);
+        Assert.Equal("0", deployment.Metadata.Annotations[FunctionRevisionInKubernetes.ScaleGenerationAnnotation]);
         Assert.Equal(1, deployment.Spec.RevisionHistoryLimit);
         Assert.Equal("Recreate", deployment.Spec.Strategy.Type);
         Assert.Equal(subject.App.Id, deployment.Metadata.Labels["pole.io/function-app-id"]);
@@ -51,9 +50,14 @@ public sealed class FunctionRevisionManifestTests
             subject.Placement.RuntimeCellId,
             deployment.Spec.Template.Metadata.Labels["pole.io/runtime-cell-id"]);
         Assert.Equal(deployment.Spec.Template.Metadata.Labels, subject.ToService().Metadata.Labels);
-        Assert.Equal(deployment.Spec.Selector.MatchLabels, deployment.Spec.Template.Metadata.Labels
-            .Where(pair => deployment.Spec.Selector.MatchLabels.ContainsKey(pair.Key))
-            .ToDictionary());
+        Assert.Equal(
+            deployment.Spec.Selector.MatchLabels,
+            deployment.Spec
+                .Template
+                .Metadata
+                .Labels
+                .Where(pair => deployment.Spec.Selector.MatchLabels.ContainsKey(pair.Key))
+                .ToDictionary());
 
         Assert.Equal("registry.example/team/functions@sha256:abcdef", container.Image);
         Assert.Equal("Always", container.ImagePullPolicy);
@@ -83,10 +87,14 @@ public sealed class FunctionRevisionManifestTests
     public void Deployment_maps_runtime_identity_concurrency_config_and_secret_references()
     {
         var subject = CreateSubject();
-        var environment = Assert.Single(subject.ToDeployment(
-            secretProjections: new Dictionary<string, FunctionSecretProjection>
-            { ["API_KEY"] = new("function-secrets", "API_KEY") }).Spec.Template.Spec.Containers)
-            .Env.ToDictionary(item => item.Name);
+        var environment = Assert
+            .Single(
+                subject.ToDeployment(
+                        secretProjections: new Dictionary<string, FunctionSecretProjection>
+                            { ["API_KEY"] = new("function-secrets", "API_KEY") })
+                    .Spec.Template.Spec.Containers)
+            .Env
+            .ToDictionary(item => item.Name);
 
         Assert.Equal(subject.App.Id, environment["PoleFunctions__FunctionAppId"].Value);
         Assert.Equal(subject.Revision.Id, environment["PoleFunctions__RevisionId"].Value);
@@ -107,18 +115,22 @@ public sealed class FunctionRevisionManifestTests
             "pole-agent",
             [new FunctionAgentTrustedKey("key-1", "public-spki")]);
 
-        var environment = Assert.Single(subject.ToDeployment(trust, new Dictionary<string, FunctionSecretProjection>
-        { ["API_KEY"] = new("function-secrets", "API_KEY") }).Spec.Template.Spec.Containers)
-            .Env.ToDictionary(item => item.Name);
+        var environment = Assert
+            .Single(
+                subject.ToDeployment(
+                        trust,
+                        new Dictionary<string, FunctionSecretProjection>
+                            { ["API_KEY"] = new("function-secrets", "API_KEY") })
+                    .Spec.Template.Spec.Containers)
+            .Env
+            .ToDictionary(item => item.Name);
 
         Assert.Equal("pole-runtime", environment["PoleFunctions__AgentAuthentication__Issuer"].Value);
         Assert.Equal("pole-agent", environment["PoleFunctions__AgentAuthentication__Audience"].Value);
         Assert.Equal(
             "metadata.uid",
             environment["PoleFunctions__AgentAuthentication__TargetUid"].ValueFrom.FieldRef.FieldPath);
-        Assert.Equal(
-            "key-1",
-            environment["PoleFunctions__AgentAuthentication__TrustedKeys__0__KeyId"].Value);
+        Assert.Equal("key-1", environment["PoleFunctions__AgentAuthentication__TrustedKeys__0__KeyId"].Value);
         Assert.Equal(
             "public-spki",
             environment["PoleFunctions__AgentAuthentication__TrustedKeys__0__SubjectPublicKeyInfoBase64"].Value);
@@ -157,30 +169,20 @@ public sealed class FunctionRevisionManifestTests
     {
         var now = DateTimeOffset.Parse("2026-07-17T10:00:00Z");
         var spec = new FunctionRevisionSpecInput(
-            new FunctionImage(
-                "registry.example",
-                "team/functions",
-                "v3",
-                "sha256:abcdef",
-                "function-pull-secret"),
+            new FunctionImage("registry.example", "team/functions", "v3", "sha256:abcdef", "function-pull-secret"),
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty.Add("LOG_LEVEL", "Debug"),
-                ImmutableDictionary<string, FunctionSecretReference>.Empty
-                    .Add("API_KEY", new("507f1f77bcf86cd799439099", "api-key"))),
-            new FunctionResources(
-                new FunctionResourceValues(250, 256),
-                new FunctionResourceValues(500, 512)),
+                ImmutableDictionary<string, FunctionSecretReference>.Empty.Add(
+                    "API_KEY",
+                    new FunctionSecretReference("507f1f77bcf86cd799439099", "api-key"))),
+            new FunctionResources(new FunctionResourceValues(250, 256), new FunctionResourceValues(500, 512)),
             new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
             [
                 new FunctionHandlerSpec(
                     "webhook",
                     4,
-                    new HttpFunctionTriggerSpec(
-                        string.Empty,
-                        "orders/{id}",
-                        ["POST"],
-                        FunctionExposure.Public))
+                    new HttpFunctionTriggerSpec("", "orders/{id}", ["POST"], FunctionExposure.Public)),
             ]);
         var created = FunctionAppFactory.Create(
             "507f1f77bcf86cd799439011",
@@ -196,13 +198,13 @@ public sealed class FunctionRevisionManifestTests
             now);
         var app = created.FunctionApp with
         {
-            Id = "507f1f77bcf86cd799439011"
+            Id = "507f1f77bcf86cd799439011",
         };
         var revision = created.Revision with
         {
             Id = "507f1f77bcf86cd799439012",
             FunctionAppId = app.Id,
-            RevisionNumber = 3
+            RevisionNumber = 3,
         };
         return new FunctionRevisionInKubernetes(
             app,

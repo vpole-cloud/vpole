@@ -37,7 +37,8 @@ public sealed class FunctionHttpGateway(
     IFunctionTrafficCoordinator trafficCoordinator,
     IFunctionMeterWriter meterWriter,
     FunctionGatewayOptions options,
-    TimeProvider timeProvider) : IFunctionHttpGateway
+    TimeProvider timeProvider
+) : IFunctionHttpGateway
 {
     private static readonly HashSet<string> HopByHopHeaders = new(
         [
@@ -50,9 +51,10 @@ public sealed class FunctionHttpGateway(
             "Transfer-Encoding",
             "Upgrade",
             "Proxy-Connection",
-            "Content-Length"
+            "Content-Length",
         ],
         StringComparer.OrdinalIgnoreCase);
+
     private static readonly HashSet<string> SensitiveRequestHeaders = new(
         [
             "Authorization",
@@ -62,84 +64,9 @@ public sealed class FunctionHttpGateway(
             "X-Forwarded-For",
             "X-Forwarded-Host",
             "X-Forwarded-Port",
-            "X-Forwarded-Proto"
+            "X-Forwarded-Proto",
         ],
         StringComparer.OrdinalIgnoreCase);
-
-    private sealed record FunctionHttpInvocation(
-        string NormalizedRoute,
-        string HandlerPath,
-        FunctionExposure Exposure,
-        string InvocationId,
-        long ReservedBytes,
-        ResolvedFunctionHttpRoute Resolved,
-        FunctionRevisionCoordinationKey CoordinationKey,
-        FunctionMeterDimensions MeterDimensions);
-
-    private sealed record FunctionHttpAdmission(
-        FunctionAdmissionLease Lease,
-        bool RequiresActivationFence);
-
-    private readonly record struct FunctionRequestBodyResult(
-        bool Succeeded,
-        byte[]? Body);
-
-    private sealed record FunctionHttpAttempt(
-        string AttemptId,
-        DateTimeOffset DeadlineUtc,
-        ReserveFunctionAttemptRequest ReserveRequest,
-        HttpFunctionInvocationPayload Payload);
-
-    private sealed record FunctionHttpDispatch(
-        FunctionHttpInvocation Invocation,
-        FunctionHttpAttempt Attempt,
-        FunctionAdmissionLease DistributedAdmission,
-        FunctionPendingAdmissionLease PendingAdmission,
-        CancellationTokenSource ExecutionTimeout,
-        CancellationToken ExecutionDeadline,
-        CancellationToken PreStartDeadline,
-        CancellationToken RequestCancellation);
-
-    private enum EndpointReservationOutcome
-    {
-        Reserved,
-        Handled,
-        Unavailable,
-        CapacityRejected
-    }
-
-    private enum EndpointExecutionOutcome
-    {
-        Handled,
-        CapacityRejected
-    }
-
-    private readonly record struct EndpointReservationResult
-    {
-        private EndpointReservationResult(
-            EndpointReservationOutcome outcome,
-            string? reservationToken = null)
-        {
-            Outcome = outcome;
-            ReservationToken = reservationToken;
-        }
-
-        public EndpointReservationOutcome Outcome { get; }
-
-        public string? ReservationToken { get; }
-
-        public static EndpointReservationResult Reserved(string reservationToken) =>
-            new(EndpointReservationOutcome.Reserved, reservationToken);
-
-        public static EndpointReservationResult Handled() =>
-            new(EndpointReservationOutcome.Handled);
-
-        public static EndpointReservationResult Unavailable() =>
-            new(EndpointReservationOutcome.Unavailable);
-
-        public static EndpointReservationResult CapacityRejected() =>
-            new(EndpointReservationOutcome.CapacityRejected);
-    }
 
     public async Task InvokeAsync(
         HttpContext context,
@@ -147,28 +74,15 @@ public sealed class FunctionHttpGateway(
         string handlerPath,
         CancellationToken cancellationToken = default)
     {
-        var invocation = await ResolveInvocationAsync(
-            context,
-            functionRoute,
-            handlerPath,
-            cancellationToken);
-        if (invocation is null ||
-            !await TryAdmitPublicTrafficAsync(context, invocation, cancellationToken))
-        {
+        var invocation = await ResolveInvocationAsync(context, functionRoute, handlerPath, cancellationToken);
+        if (invocation is null || !await TryAdmitPublicTrafficAsync(context, invocation, cancellationToken))
             return;
-        }
 
-        using var pendingLease = await TryAcquirePendingAdmissionAsync(
-            context,
-            invocation,
-            cancellationToken);
+        using var pendingLease = await TryAcquirePendingAdmissionAsync(context, invocation, cancellationToken);
         if (pendingLease is null)
             return;
 
-        var admission = await TryAcquireDistributedAdmissionAsync(
-            context,
-            invocation,
-            cancellationToken);
+        var admission = await TryAcquireDistributedAdmissionAsync(context, invocation, cancellationToken);
         if (admission is null)
             return;
 
@@ -182,16 +96,13 @@ public sealed class FunctionHttpGateway(
             distributedAdmission,
             admissionLifetime.Token,
             cancellationToken);
-        if (!body.Succeeded ||
-            !await TryWriteAdmittedMeterAsync(
+        if (!body.Succeeded || !await TryWriteAdmittedMeterAsync(
                 context,
                 invocation,
                 distributedAdmission,
                 admissionLifetime.Token,
                 cancellationToken))
-        {
             return;
-        }
 
         var snapshot = await TryGetReadyEndpointsAsync(
             context,
@@ -222,30 +133,46 @@ public sealed class FunctionHttpGateway(
         var exposure = ResolveExposure(context.Connection.LocalPort);
         if (exposure is null)
         {
-            await WriteErrorAsync(context, StatusCodes.Status404NotFound, "function_route_not_found",
-                "The Function route was not found.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status404NotFound,
+                "function_route_not_found",
+                "The Function route was not found.",
+                cancellationToken);
             return null;
         }
 
         var normalizedRoute = functionRoute.Trim().ToLowerInvariant();
         if (normalizedRoute.Length == 0)
         {
-            await WriteErrorAsync(context, StatusCodes.Status404NotFound, "function_route_not_found",
-                "The Function route was not found.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status404NotFound,
+                "function_route_not_found",
+                "The Function route was not found.",
+                cancellationToken);
             return null;
         }
 
         if (!RequestMetadataIsWithinLimits(context.Request))
         {
-            await WriteErrorAsync(context, StatusCodes.Status431RequestHeaderFieldsTooLarge,
-                "request_metadata_too_large", "The Function request metadata exceeded its limit.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status431RequestHeaderFieldsTooLarge,
+                "request_metadata_too_large",
+                "The Function request metadata exceeded its limit.",
+                cancellationToken);
             return null;
         }
 
         if (context.Request.ContentLength is < 0 || context.Request.ContentLength > options.MaxRequestBodyBytes)
         {
-            await WriteErrorAsync(context, StatusCodes.Status413PayloadTooLarge, "request_body_too_large",
-                "The Function request body exceeded its limit.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status413PayloadTooLarge,
+                "request_body_too_large",
+                "The Function request body exceeded its limit.",
+                cancellationToken);
             return null;
         }
 
@@ -257,8 +184,12 @@ public sealed class FunctionHttpGateway(
             cancellationToken);
         if (resolved is null)
         {
-            await WriteErrorAsync(context, StatusCodes.Status404NotFound, "function_route_not_found",
-                "The Function route was not found.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status404NotFound,
+                "function_route_not_found",
+                "The Function route was not found.",
+                cancellationToken);
             return null;
         }
 
@@ -296,8 +227,12 @@ public sealed class FunctionHttpGateway(
 
         if (!publicRateLimiter.TryAcquire(invocation.NormalizedRoute))
         {
-            await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "rate_limit_exceeded",
-                "The Function request rate limit was exceeded.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status429TooManyRequests,
+                "rate_limit_exceeded",
+                "The Function request rate limit was exceeded.",
+                cancellationToken);
             return false;
         }
 
@@ -305,12 +240,8 @@ public sealed class FunctionHttpGateway(
         try
         {
             traffic = await trafficCoordinator.TryAcquireAsync(
-                new FunctionAppCoordinationKey(
-                    invocation.Resolved.App.TenantId,
-                    invocation.Resolved.App.Id),
-                new FunctionTrafficRequest(
-                    invocation.InvocationId,
-                    invocation.Resolved.Route.HandlerName),
+                new FunctionAppCoordinationKey(invocation.Resolved.App.TenantId, invocation.Resolved.App.Id),
+                new FunctionTrafficRequest(invocation.InvocationId, invocation.Resolved.Route.HandlerName),
                 cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -319,9 +250,12 @@ public sealed class FunctionHttpGateway(
         }
         catch
         {
-            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable,
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
                 "function_coordination_unavailable",
-                "Function request coordination is temporarily unavailable.", cancellationToken);
+                "Function request coordination is temporarily unavailable.",
+                cancellationToken);
             return false;
         }
 
@@ -350,8 +284,8 @@ public sealed class FunctionHttpGateway(
         FunctionHttpInvocation invocation,
         CancellationToken cancellationToken)
     {
-        var pendingKey =
-            $"{invocation.Resolved.App.TenantId}/{invocation.Resolved.App.Id}/{invocation.Resolved.Revision.Id}";
+        var pendingKey
+            = $"{invocation.Resolved.App.TenantId}/{invocation.Resolved.App.Id}/{invocation.Resolved.Revision.Id}";
         var lease = pendingAdmission.TryAcquire(
             pendingKey,
             invocation.Resolved.Route.HandlerName,
@@ -359,8 +293,12 @@ public sealed class FunctionHttpGateway(
         if (lease is not null)
             return lease;
 
-        await WriteErrorAsync(context, StatusCodes.Status429TooManyRequests, "pending_limit_exceeded",
-            "The Function pending request limit was exceeded.", cancellationToken);
+        await WriteErrorAsync(
+            context,
+            StatusCodes.Status429TooManyRequests,
+            "pending_limit_exceeded",
+            "The Function pending request limit was exceeded.",
+            cancellationToken);
         return null;
     }
 
@@ -388,9 +326,12 @@ public sealed class FunctionHttpGateway(
         }
         catch
         {
-            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable,
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
                 "function_coordination_unavailable",
-                "Function request coordination is temporarily unavailable.", cancellationToken);
+                "Function request coordination is temporarily unavailable.",
+                cancellationToken);
             return null;
         }
 
@@ -400,38 +341,25 @@ public sealed class FunctionHttpGateway(
             if (admissionDecision.RetryAfterMilliseconds > 0)
                 context.Response.Headers.RetryAfter = RetryAfterSeconds(admissionDecision.RetryAfterMilliseconds);
             var quiescing = admissionDecision.Kind == FunctionAdmissionDecisionKind.Rejected &&
-                            admissionDecision.Rejection == FunctionAdmissionRejection.RevisionQuiescing;
+                admissionDecision.Rejection == FunctionAdmissionRejection.RevisionQuiescing;
             var capacityExceeded = admissionDecision.Kind == FunctionAdmissionDecisionKind.Rejected &&
-                                   admissionDecision.Rejection is
-                                       FunctionAdmissionRejection.RequestLimitExceeded or
-                                       FunctionAdmissionRejection.ByteLimitExceeded;
+                admissionDecision.Rejection is FunctionAdmissionRejection.RequestLimitExceeded
+                    or FunctionAdmissionRejection.ByteLimitExceeded;
             await WriteErrorAsync(
                 context,
-                quiescing
-                    ? StatusCodes.Status503ServiceUnavailable
-                    : capacityExceeded
-                        ? StatusCodes.Status429TooManyRequests
-                        : StatusCodes.Status503ServiceUnavailable,
-                quiescing
-                    ? "revision_scaling"
-                    : capacityExceeded
-                        ? "pending_limit_exceeded"
-                        : "function_coordination_rejected",
-                quiescing
-                    ? "The Function revision is completing a scaling transition."
-                    : capacityExceeded
-                        ? "The Function pending request limit was exceeded."
-                        : "Function request coordination returned an invalid decision.",
+                quiescing ? StatusCodes.Status503ServiceUnavailable :
+                capacityExceeded ? StatusCodes.Status429TooManyRequests : StatusCodes.Status503ServiceUnavailable,
+                quiescing ? "revision_scaling" :
+                capacityExceeded ? "pending_limit_exceeded" : "function_coordination_rejected",
+                quiescing ? "The Function revision is completing a scaling transition." :
+                capacityExceeded ? "The Function pending request limit was exceeded." :
+                "Function request coordination returned an invalid decision.",
                 cancellationToken);
             return null;
         }
 
         return new FunctionHttpAdmission(
-            new FunctionAdmissionLease(
-                admissionCoordinator,
-                invocation.CoordinationKey,
-                admissionToken,
-                timeProvider),
+            new FunctionAdmissionLease(admissionCoordinator, invocation.CoordinationKey, admissionToken, timeProvider),
             admissionDecision.RequiresActivationFence);
     }
 
@@ -444,20 +372,20 @@ public sealed class FunctionHttpGateway(
         using var bodyTimeout = new CancellationTokenSource(
             TimeSpan.FromSeconds(options.RequestBodyTimeoutSeconds),
             timeProvider);
-        using var bodyLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            admissionLifetime,
-            bodyTimeout.Token);
+        using var bodyLifetime = CancellationTokenSource.CreateLinkedTokenSource(admissionLifetime, bodyTimeout.Token);
 
         try
         {
-            return new FunctionRequestBodyResult(
-                true,
-                await ReadBodyAsync(context.Request, bodyLifetime.Token));
+            return new FunctionRequestBodyResult(true, await ReadBodyAsync(context.Request, bodyLifetime.Token));
         }
         catch (FunctionRequestBodyTooLargeException)
         {
-            await WriteErrorAsync(context, StatusCodes.Status413PayloadTooLarge, "request_body_too_large",
-                "The Function request body exceeded its limit.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status413PayloadTooLarge,
+                "request_body_too_large",
+                "The Function request body exceeded its limit.",
+                cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -539,10 +467,7 @@ public sealed class FunctionHttpGateway(
             invocation.Resolved.App,
             invocation.Resolved.Revision,
             placement);
-        var service = new FunctionServiceKey(
-            placement.DeploymentTargetId,
-            subject.Namespace,
-            subject.ServiceName);
+        var service = new FunctionServiceKey(placement.DeploymentTargetId, subject.Namespace, subject.ServiceName);
         var snapshot = endpointRegistry.GetSnapshot(service);
         if (snapshot.HasReadyEndpoints && !requiresActivationFence)
             return snapshot;
@@ -556,8 +481,12 @@ public sealed class FunctionHttpGateway(
             if (activation is FunctionEndpointSnapshot activatedSnapshot)
                 return activatedSnapshot;
 
-            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "activation_failed",
-                "The Function revision could not be activated.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "activation_failed",
+                "The Function revision could not be activated.",
+                cancellationToken);
             return null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -603,8 +532,12 @@ public sealed class FunctionHttpGateway(
         var endpointOrder = endpointSelector.Order(snapshot);
         if (endpointOrder.Count == 0)
         {
-            await WriteErrorAsync(context, StatusCodes.Status503ServiceUnavailable, "no_ready_agents",
-                "The Function revision has no ready Agent endpoints.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "no_ready_agents",
+                "The Function revision has no ready Agent endpoints.",
+                cancellationToken);
             return;
         }
 
@@ -622,21 +555,13 @@ public sealed class FunctionHttpGateway(
                 continue;
             }
 
-            var reservationToken = reservation.ReservationToken
-                                   ?? throw new InvalidOperationException(
-                                       "A successful Function Agent reservation must include its token.");
-            var outcome = await TryExecuteEndpointAsync(
-                context,
-                endpoint,
-                reservationToken,
-                dispatch);
+            var reservationToken = reservation.ReservationToken ??
+                throw new InvalidOperationException("A successful Function Agent reservation must include its token.");
+            var outcome = await TryExecuteEndpointAsync(context, endpoint, reservationToken, dispatch);
             if (outcome == EndpointExecutionOutcome.Handled)
                 return;
             if (outcome == EndpointExecutionOutcome.CapacityRejected)
-            {
                 hadCapacityRejection = true;
-                continue;
-            }
         }
 
         await WriteErrorAsync(
@@ -677,7 +602,7 @@ public sealed class FunctionHttpGateway(
         var payload = new HttpFunctionInvocationPayload(
             context.Request.Method,
             NormalizeHandlerPath(invocation.HandlerPath),
-            context.Request.QueryString.Value ?? string.Empty,
+            context.Request.QueryString.Value ?? "",
             ForwardHeaders(context.Request.Headers),
             body);
         return new FunctionHttpAttempt(attemptId, deadlineUtc, reserveRequest, payload);
@@ -704,8 +629,12 @@ public sealed class FunctionHttpGateway(
         }
         catch (OperationCanceledException) when (dispatch.ExecutionTimeout.IsCancellationRequested)
         {
-            await WriteErrorAsync(context, StatusCodes.Status504GatewayTimeout, "execution_deadline_exceeded",
-                "The Function execution deadline elapsed.", context.RequestAborted);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status504GatewayTimeout,
+                "execution_deadline_exceeded",
+                "The Function execution deadline elapsed.",
+                context.RequestAborted);
             return EndpointReservationResult.Handled();
         }
         catch (OperationCanceledException) when (dispatch.DistributedAdmission.IsLost)
@@ -726,22 +655,29 @@ public sealed class FunctionHttpGateway(
             await WriteAgentErrorAsync(context, reservation.Error, dispatch.RequestCancellation);
             return EndpointReservationResult.Handled();
         }
+
         if (reservation.Value is null ||
-            !string.Equals(
-                reservation.Value.AttemptId,
-                dispatch.Attempt.AttemptId,
-                StringComparison.Ordinal) ||
+            !string.Equals(reservation.Value.AttemptId, dispatch.Attempt.AttemptId, StringComparison.Ordinal) ||
             string.IsNullOrWhiteSpace(reservation.Value.ReservationToken))
         {
-            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
-                "The Function Agent returned a different attempt identity.", dispatch.RequestCancellation);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status502BadGateway,
+                "agent_attempt_mismatch",
+                "The Function Agent returned a different attempt identity.",
+                dispatch.RequestCancellation);
             return EndpointReservationResult.Handled();
         }
+
         if (reservation.Value.ExpiresAtUtc <= timeProvider.GetUtcNow() ||
             reservation.Value.ExpiresAtUtc > dispatch.Attempt.DeadlineUtc)
         {
-            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "invalid_agent_response",
-                "The Function Agent returned an invalid reservation.", dispatch.RequestCancellation);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status502BadGateway,
+                "invalid_agent_response",
+                "The Function Agent returned an invalid reservation.",
+                dispatch.RequestCancellation);
             return EndpointReservationResult.Handled();
         }
 
@@ -774,10 +710,9 @@ public sealed class FunctionHttpGateway(
                     dispatch.Attempt.Payload),
                 dispatch.PreStartDeadline);
         }
-        catch (OperationCanceledException) when (
-            dispatch.DistributedAdmission.IsLost &&
-            !dispatch.RequestCancellation.IsCancellationRequested &&
-            !dispatch.ExecutionTimeout.IsCancellationRequested)
+        catch (OperationCanceledException) when (dispatch.DistributedAdmission.IsLost &&
+                                                 !dispatch.RequestCancellation.IsCancellationRequested &&
+                                                 !dispatch.ExecutionTimeout.IsCancellationRequested)
         {
             // Execute may have crossed the Agent boundary. Reconcile on that same Agent
             // without tying the observation to the now-lost admission heartbeat.
@@ -802,11 +737,17 @@ public sealed class FunctionHttpGateway(
 
         await ReleaseAdmissionBestEffortAsync(dispatch.DistributedAdmission);
         dispatch.PendingAdmission.Dispose();
-        if (started.Value is null ||
-            !string.Equals(started.Value.AttemptId, dispatch.Attempt.AttemptId, StringComparison.Ordinal))
+        if (started.Value is null || !string.Equals(
+                started.Value.AttemptId,
+                dispatch.Attempt.AttemptId,
+                StringComparison.Ordinal))
         {
-            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
-                "The Function Agent returned a different attempt identity.", dispatch.RequestCancellation);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status502BadGateway,
+                "agent_attempt_mismatch",
+                "The Function Agent returned a different attempt identity.",
+                dispatch.RequestCancellation);
             return EndpointExecutionOutcome.Handled;
         }
 
@@ -866,10 +807,7 @@ public sealed class FunctionHttpGateway(
         while (timeProvider.GetUtcNow() < deadlineUtc)
         {
             var remaining = deadlineUtc - timeProvider.GetUtcNow();
-            var waitMilliseconds = (int)Math.Clamp(
-                remaining.TotalMilliseconds,
-                0,
-                options.AgentLongPollMilliseconds);
+            var waitMilliseconds = (int)Math.Clamp(remaining.TotalMilliseconds, 0, options.AgentLongPollMilliseconds);
             FunctionAgentProtocolResponse<FunctionAttemptStatusResponse> observation;
             try
             {
@@ -886,9 +824,8 @@ public sealed class FunctionHttpGateway(
                 if (cancellationToken.IsCancellationRequested)
                     break;
                 consecutiveTransportFailures++;
-                var backoff = TimeSpan.FromMilliseconds(Math.Min(
-                    1000,
-                    100 * Math.Pow(2, Math.Min(consecutiveTransportFailures - 1, 4))));
+                var backoff = TimeSpan.FromMilliseconds(
+                    Math.Min(1000, 100 * Math.Pow(2, Math.Min(consecutiveTransportFailures - 1, 4))));
                 try
                 {
                     await Task.Delay(backoff, timeProvider, cancellationToken);
@@ -897,6 +834,7 @@ public sealed class FunctionHttpGateway(
                 {
                     break;
                 }
+
                 continue;
             }
 
@@ -904,21 +842,34 @@ public sealed class FunctionHttpGateway(
             if (!observation.IsSuccess || observation.StatusCode != HttpStatusCode.OK ||
                 observation.Value?.Status is null)
             {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "attempt_reconciliation_failed",
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status502BadGateway,
+                    "attempt_reconciliation_failed",
                     "The Function attempt could not be reconciled.",
                     context.RequestAborted);
                 return;
             }
+
             if (!string.Equals(observation.Value.AgentInstanceId, endpoint.TargetUid, StringComparison.Ordinal))
             {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_identity_mismatch",
-                    "The Function Agent identity did not match the selected endpoint.", context.RequestAborted);
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status502BadGateway,
+                    "agent_identity_mismatch",
+                    "The Function Agent identity did not match the selected endpoint.",
+                    context.RequestAborted);
                 return;
             }
+
             if (!string.Equals(observation.Value.Status.AttemptId, attemptId, StringComparison.Ordinal))
             {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "agent_attempt_mismatch",
-                    "The Function Agent returned a different attempt identity.", context.RequestAborted);
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status502BadGateway,
+                    "agent_attempt_mismatch",
+                    "The Function Agent returned a different attempt identity.",
+                    context.RequestAborted);
                 return;
             }
 
@@ -938,16 +889,18 @@ public sealed class FunctionHttpGateway(
                                 completed.StartedAtUtc));
                         startedMeterWritten = true;
                     }
-                    await WriteCompletionMeterAsync(
-                        meterDimensions,
-                        invocationId,
-                        completed);
+
+                    await WriteCompletionMeterAsync(meterDimensions, invocationId, completed);
                     await WriteCompletionAsync(context, completed, context.RequestAborted);
                     return;
                 case ExpiredFunctionAttemptStatus:
                 case UnknownFunctionAttemptStatus:
-                    await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "attempt_state_unknown",
-                        "The Function attempt state is unknown; it was not executed again.", context.RequestAborted);
+                    await WriteErrorAsync(
+                        context,
+                        StatusCodes.Status502BadGateway,
+                        "attempt_state_unknown",
+                        "The Function attempt state is unknown; it was not executed again.",
+                        context.RequestAborted);
                     return;
                 case ReservedFunctionAttemptStatus:
                     break;
@@ -965,15 +918,18 @@ public sealed class FunctionHttpGateway(
                                 started.StartedAtUtc));
                         startedMeterWritten = true;
                     }
+
                     break;
             }
         }
 
         if (!context.RequestAborted.IsCancellationRequested)
-        {
-            await WriteErrorAsync(context, StatusCodes.Status504GatewayTimeout, "execution_deadline_exceeded",
-                "The Function execution deadline elapsed.", context.RequestAborted);
-        }
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status504GatewayTimeout,
+                "execution_deadline_exceeded",
+                "The Function execution deadline elapsed.",
+                context.RequestAborted);
     }
 
     private Task WriteCompletionMeterAsync(
@@ -988,12 +944,11 @@ public sealed class FunctionHttpGateway(
             FunctionAttemptOutcome.PermanentFailure => FunctionMeterOutcome.PermanentFailure,
             FunctionAttemptOutcome.TimedOut => FunctionMeterOutcome.TimedOut,
             FunctionAttemptOutcome.Cancelled => FunctionMeterOutcome.Cancelled,
-            _ => FunctionMeterOutcome.PlatformFailure
+            _ => FunctionMeterOutcome.PlatformFailure,
         };
-        var duration = Math.Max(
-            0,
-            (long)(completed.CompletedAtUtc - completed.StartedAtUtc).TotalMilliseconds);
-        return TryWritePostStartMeterAsync(FunctionMeterEvent.CreateFact(
+        var duration = Math.Max(0, (long)(completed.CompletedAtUtc - completed.StartedAtUtc).TotalMilliseconds);
+        return TryWritePostStartMeterAsync(
+            FunctionMeterEvent.CreateFact(
                 dimensions,
                 invocationId,
                 attemptNumber: 1,
@@ -1017,9 +972,7 @@ public sealed class FunctionHttpGateway(
         }
     }
 
-    private static Task WriteAdmissionLostAsync(
-        HttpContext context,
-        CancellationToken cancellationToken) =>
+    private static Task WriteAdmissionLostAsync(HttpContext context, CancellationToken cancellationToken) =>
         WriteErrorAsync(
             context,
             StatusCodes.Status503ServiceUnavailable,
@@ -1044,15 +997,18 @@ public sealed class FunctionHttpGateway(
         CancellationToken cancellationToken)
     {
         if (completed.Outcome == FunctionAttemptOutcome.Succeeded &&
-            completed.Result is HttpFunctionInvocationResult httpResult &&
-            httpResult.Headers is not null)
+            completed.Result is HttpFunctionInvocationResult httpResult && httpResult.Headers is not null)
         {
             if (httpResult.StatusCode is < 200 or > 599 ||
-                httpResult.Body is { Length: var bodyLength } && bodyLength > options.MaxResponseBodyBytes ||
+                (httpResult.Body is { Length: var bodyLength } && bodyLength > options.MaxResponseBodyBytes) ||
                 !ResponseMetadataIsWithinLimits(httpResult.Headers))
             {
-                await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "invalid_handler_response",
-                    "The Function handler response metadata exceeded its limit.", cancellationToken);
+                await WriteErrorAsync(
+                    context,
+                    StatusCodes.Status502BadGateway,
+                    "invalid_handler_response",
+                    "The Function handler response metadata exceeded its limit.",
+                    cancellationToken);
                 return;
             }
 
@@ -1064,6 +1020,7 @@ public sealed class FunctionHttpGateway(
                     continue;
                 context.Response.Headers.Append(header.Name, new StringValues(header.Values.ToArray()));
             }
+
             if (!HttpMethods.IsHead(context.Request.Method) &&
                 httpResult.StatusCode is not StatusCodes.Status204NoContent and not StatusCodes.Status304NotModified &&
                 httpResult.Body is { Length: > 0 })
@@ -1073,8 +1030,12 @@ public sealed class FunctionHttpGateway(
 
         if (completed.Outcome == FunctionAttemptOutcome.Succeeded)
         {
-            await WriteErrorAsync(context, StatusCodes.Status502BadGateway, "invalid_handler_response",
-                "The Function Agent returned an invalid handler result.", cancellationToken);
+            await WriteErrorAsync(
+                context,
+                StatusCodes.Status502BadGateway,
+                "invalid_handler_response",
+                "The Function Agent returned an invalid handler result.",
+                cancellationToken);
             return;
         }
 
@@ -1083,7 +1044,7 @@ public sealed class FunctionHttpGateway(
             FunctionAttemptOutcome.TimedOut => (StatusCodes.Status504GatewayTimeout, "execution_deadline_exceeded"),
             FunctionAttemptOutcome.Cancelled => (StatusCodes.Status502BadGateway, "function_cancelled"),
             FunctionAttemptOutcome.PlatformFailure => (StatusCodes.Status502BadGateway, "function_runtime_failed"),
-            _ => (StatusCodes.Status500InternalServerError, "function_failed")
+            _ => (StatusCodes.Status500InternalServerError, "function_failed"),
         };
         await WriteErrorAsync(
             context,
@@ -1102,12 +1063,12 @@ public sealed class FunctionHttpGateway(
         {
             headerBytes += Encoding.UTF8.GetByteCount(name);
             foreach (var value in values)
-                headerBytes += Encoding.UTF8.GetByteCount(value ?? string.Empty);
+                headerBytes += Encoding.UTF8.GetByteCount(value ?? "");
             if (headerBytes > options.MaxHeaderBytes)
                 return false;
         }
 
-        var pathAndQuery = (request.Path.Value ?? string.Empty) + request.QueryString.Value;
+        var pathAndQuery = (request.Path.Value ?? "") + request.QueryString.Value;
         return Encoding.UTF8.GetByteCount(pathAndQuery) <= options.MaxPathAndQueryBytes;
     }
 
@@ -1126,6 +1087,7 @@ public sealed class FunctionHttpGateway(
             if (bytes > options.MaxHeaderBytes)
                 return false;
         }
+
         return true;
     }
 
@@ -1145,24 +1107,21 @@ public sealed class FunctionHttpGateway(
                 throw new FunctionRequestBodyTooLargeException();
             buffer.Write(chunk, 0, read);
         }
+
         return buffer.Length == 0 ? null : buffer.ToArray();
     }
 
     private IReadOnlyList<FunctionHttpHeader> ForwardHeaders(IHeaderDictionary headers)
     {
         var connectionHeaders = headers.Connection
-            .SelectMany(value => (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .SelectMany(value => (value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
             .Select(value => value.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return headers
-            .Where(header =>
-                options.ForwardedRequestHeaders.Contains(header.Key) &&
-                !SensitiveRequestHeaders.Contains(header.Key) &&
-                !HopByHopHeaders.Contains(header.Key) &&
+            .Where(header => options.ForwardedRequestHeaders.Contains(header.Key) &&
+                !SensitiveRequestHeaders.Contains(header.Key) && !HopByHopHeaders.Contains(header.Key) &&
                 !connectionHeaders.Contains(header.Key))
-            .Select(header => new FunctionHttpHeader(
-                header.Key,
-                header.Value.Select(value => value ?? string.Empty).ToArray()))
+            .Select(header => new FunctionHttpHeader(header.Key, header.Value.Select(value => value ?? "").ToArray()))
             .ToArray();
     }
 
@@ -1170,11 +1129,10 @@ public sealed class FunctionHttpGateway(
     {
         var port when port == options.PublicPort => FunctionExposure.Public,
         var port when port == options.InternalPort => FunctionExposure.Internal,
-        _ => null
+        _ => null,
     };
 
-    private static string NormalizeHandlerPath(string path) =>
-        "/" + path.Trim('/');
+    private static string NormalizeHandlerPath(string path) => "/" + path.Trim('/');
 
     private static bool IsPreStartRejection(FunctionProtocolError? error) =>
         error?.Code is PoleFunctionProtocolErrors.CapacityExhausted or PoleFunctionProtocolErrors.AgentDraining;
@@ -1185,35 +1143,31 @@ public sealed class FunctionHttpGateway(
     private static bool IsTransportFailure(Exception exception) =>
         exception is HttpRequestException or FunctionAgentProtocolException or OperationCanceledException;
 
-    private static bool HeaderIsSafe(FunctionHttpHeader header) =>
-        !string.IsNullOrWhiteSpace(header.Name) &&
-        header.Name.All(IsHeaderTokenCharacter) &&
-        header.Values is not null &&
-        header.Values.All(value => value is not null && !value.Contains('\r') && !value.Contains('\n'));
+    private static bool HeaderIsSafe(FunctionHttpHeader header) => !string.IsNullOrWhiteSpace(header.Name) &&
+        header.Name.All(IsHeaderTokenCharacter) && header.Values is not null && header.Values.All(value =>
+            value is not null && !value.Contains('\r') && !value.Contains('\n'));
 
-    private static bool IsHeaderTokenCharacter(char character) =>
-        character is >= '0' and <= '9' or >= 'A' and <= 'Z' or >= 'a' and <= 'z' or
-            '!' or '#' or '$' or '%' or '&' or '\'' or '*' or '+' or '-' or '.' or '^' or '_' or '`' or '|' or '~';
+    private static bool IsHeaderTokenCharacter(char character) => character is >= '0' and <= '9' or >= 'A' and <= 'Z'
+        or >= 'a' and <= 'z' or '!' or '#' or '$' or '%' or '&' or '\'' or '*' or '+' or '-' or '.' or '^' or '_' or '`'
+        or '|' or '~';
 
-    private static HashSet<string> ConnectionNominatedHeaders(IReadOnlyList<FunctionHttpHeader> headers) =>
-        headers
-            .Where(header => string.Equals(header.Name, "Connection", StringComparison.OrdinalIgnoreCase) &&
-                             header.Values is not null)
-            .SelectMany(header => header.Values)
-            .SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            .Select(value => value.Trim())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private static HashSet<string> ConnectionNominatedHeaders(IReadOnlyList<FunctionHttpHeader> headers) => headers
+        .Where(header => string.Equals(header.Name, "Connection", StringComparison.OrdinalIgnoreCase) &&
+            header.Values is not null)
+        .SelectMany(header => header.Values)
+        .SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        .Select(value => value.Trim())
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static Task WriteAgentErrorAsync(
         HttpContext context,
         FunctionProtocolError? error,
-        CancellationToken cancellationToken) =>
-        WriteErrorAsync(
-            context,
-            StatusCodes.Status502BadGateway,
-            error?.Code ?? "invalid_agent_response",
-            "The Function Agent rejected the request.",
-            cancellationToken);
+        CancellationToken cancellationToken) => WriteErrorAsync(
+        context,
+        StatusCodes.Status502BadGateway,
+        error?.Code ?? "invalid_agent_response",
+        "The Function Agent rejected the request.",
+        cancellationToken);
 
     private static Task WriteErrorAsync(
         HttpContext context,
@@ -1223,15 +1177,91 @@ public sealed class FunctionHttpGateway(
         CancellationToken cancellationToken)
     {
         context.Response.StatusCode = statusCode;
-        if (statusCode == StatusCodes.Status429TooManyRequests &&
-            !context.Response.Headers.ContainsKey("Retry-After"))
+        if (statusCode == StatusCodes.Status429TooManyRequests && !context.Response.Headers.ContainsKey("Retry-After"))
             context.Response.Headers.RetryAfter = "1";
         return context.Response.WriteAsJsonAsync(new FunctionGatewayError(code, message), cancellationToken);
+    }
+
+    private sealed record FunctionHttpInvocation(
+        string NormalizedRoute,
+        string HandlerPath,
+        FunctionExposure Exposure,
+        string InvocationId,
+        long ReservedBytes,
+        ResolvedFunctionHttpRoute Resolved,
+        FunctionRevisionCoordinationKey CoordinationKey,
+        FunctionMeterDimensions MeterDimensions
+    );
+
+    private sealed record FunctionHttpAdmission(
+        FunctionAdmissionLease Lease,
+        bool RequiresActivationFence
+    );
+
+    private readonly record struct FunctionRequestBodyResult(
+        bool Succeeded,
+        byte[]? Body
+    );
+
+    private sealed record FunctionHttpAttempt(
+        string AttemptId,
+        DateTimeOffset DeadlineUtc,
+        ReserveFunctionAttemptRequest ReserveRequest,
+        HttpFunctionInvocationPayload Payload
+    );
+
+    private sealed record FunctionHttpDispatch(
+        FunctionHttpInvocation Invocation,
+        FunctionHttpAttempt Attempt,
+        FunctionAdmissionLease DistributedAdmission,
+        FunctionPendingAdmissionLease PendingAdmission,
+        CancellationTokenSource ExecutionTimeout,
+        CancellationToken ExecutionDeadline,
+        CancellationToken PreStartDeadline,
+        CancellationToken RequestCancellation
+    );
+
+    private enum EndpointReservationOutcome
+    {
+        Reserved,
+        Handled,
+        Unavailable,
+        CapacityRejected,
+    }
+
+    private enum EndpointExecutionOutcome
+    {
+        Handled,
+        CapacityRejected,
+    }
+
+    private readonly record struct EndpointReservationResult
+    {
+        private EndpointReservationResult(EndpointReservationOutcome outcome, string? reservationToken = null)
+        {
+            Outcome = outcome;
+            ReservationToken = reservationToken;
+        }
+
+        public EndpointReservationOutcome Outcome { get; }
+
+        public string? ReservationToken { get; }
+
+        public static EndpointReservationResult Reserved(string reservationToken) => new(
+            EndpointReservationOutcome.Reserved,
+            reservationToken);
+
+        public static EndpointReservationResult Handled() => new(EndpointReservationOutcome.Handled);
+
+        public static EndpointReservationResult Unavailable() => new(EndpointReservationOutcome.Unavailable);
+
+        public static EndpointReservationResult CapacityRejected() => new(EndpointReservationOutcome.CapacityRejected);
     }
 }
 
 public sealed record FunctionGatewayError(
     string Code,
-    string Message);
+    string Message
+);
 
 internal sealed class FunctionRequestBodyTooLargeException : Exception;

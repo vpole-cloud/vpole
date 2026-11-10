@@ -38,8 +38,8 @@ public static class DeploymentTargetEndpoints
         }
 
         /// <summary>
-        /// The server composes this group separately from platform administration so tenant
-        /// authorization and the active tenant header apply to placement discovery.
+        ///     The server composes this group separately from platform administration so tenant
+        ///     authorization and the active tenant header apply to placement discovery.
         /// </summary>
         public IEndpointRouteBuilder MapDeploymentTargetAvailabilityEndpoints()
         {

@@ -7,92 +7,87 @@ using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Mediator;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
 
-public sealed record ResourceDeploymentNotFound(string DeploymentId);
+public sealed record ResourceDeploymentNotFound(
+    string DeploymentId
+);
 
-public sealed record ResourceDeploymentNotRetryable(string DeploymentId);
+public sealed record ResourceDeploymentNotRetryable(
+    string DeploymentId
+);
 
-public sealed record ResourceDeploymentRetryConflict(string DeploymentId);
+public sealed record ResourceDeploymentRetryConflict(
+    string DeploymentId
+);
 
 public union RetryResourceDeploymentError(
     ResourceDeploymentNotFound,
     ResourceDeploymentNotRetryable,
     ResourceDeploymentRetryConflict);
 
-public union RetryResourceDeploymentOutcome(
-    ResourceDeploymentDto,
-    RetryResourceDeploymentError);
+public union RetryResourceDeploymentOutcome(ResourceDeploymentDto, RetryResourceDeploymentError);
 
 /// <summary>
-/// Retries one deployment inside a caller-owned transaction so the state
-/// mutation and reconciliation outbox write commit atomically.
+///     Retries one deployment inside a caller-owned transaction so the state
+///     mutation and reconciliation outbox write commit atomically.
 /// </summary>
-public delegate Task<RetryResourceDeploymentOutcome>
-    RetryResourceDeployment(
-        string tenantId,
-        string deploymentId,
-        long expectedRevision,
-        ResourceDeploymentOperation expectedOperation,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<RetryResourceDeploymentOutcome> RetryResourceDeployment(
+    string tenantId,
+    string deploymentId,
+    long expectedRevision,
+    ResourceDeploymentOperation expectedOperation,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public sealed record RetryResourceDeploymentRequest(
     [FromRoute] string DeploymentId,
     [FromTenantHeader] string TenantId,
     [FromQuery] long? ExpectedRevision = null,
-    [FromQuery] string? ExpectedOperation = null)
-    : IMediatorRequest<RetryResourceDeploymentOutcome>, ITenantWriteOperation;
+    [FromQuery] string? ExpectedOperation = null
+) : IMediatorRequest<RetryResourceDeploymentOutcome>, ITenantWriteOperation;
 
 public sealed class RetryResourceDeploymentHandler(
-    RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome>
-        runMongoTransaction,
-    RetryResourceDeployment retryResourceDeployment)
-    : IMediatorOutcomeHandler<
-        RetryResourceDeploymentRequest,
-        RetryResourceDeploymentOutcome>
+    RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome> runMongoTransaction,
+    RetryResourceDeployment retryResourceDeployment
+) : IMediatorOutcomeHandler<RetryResourceDeploymentRequest, RetryResourceDeploymentOutcome>
 {
     public Task<RetryResourceDeploymentOutcome> HandleAsync(
         RetryResourceDeploymentRequest request,
-        CancellationToken cancellationToken = default) =>
-        runMongoTransaction(
-            async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runMongoTransaction(
+        async (transaction, ct) =>
+        {
+            var result = await retryResourceDeployment(
+                request.TenantId,
+                request.DeploymentId,
+                request.ExpectedRevision!.Value,
+                Enum.Parse<ResourceDeploymentOperation>(request.ExpectedOperation!),
+                transaction.Session,
+                ct);
+            return result switch
             {
-                var result = await retryResourceDeployment(
-                    request.TenantId,
-                    request.DeploymentId,
-                    request.ExpectedRevision!.Value,
-                    Enum.Parse<ResourceDeploymentOperation>(request.ExpectedOperation!),
-                    transaction.Session,
-                    ct);
-                return result switch
-                {
-                    ResourceDeploymentDto deployment => transaction.Commit(deployment),
-                    RetryResourceDeploymentError error => Abort(transaction, error)
-                };
-            },
-            cancellationToken);
+                ResourceDeploymentDto deployment => transaction.Commit(deployment),
+                RetryResourceDeploymentError error => Abort(transaction, error),
+            };
+        },
+        cancellationToken);
 
-    private static MongoTransactionDecision<RetryResourceDeploymentOutcome>
-        Abort(
-            MongoTransactionContext<RetryResourceDeploymentOutcome> transaction,
-            RetryResourceDeploymentError error) =>
-        transaction.Abort(error);
+    private static MongoTransactionDecision<RetryResourceDeploymentOutcome> Abort(
+        MongoTransactionContext<RetryResourceDeploymentOutcome> transaction,
+        RetryResourceDeploymentError error) => transaction.Abort(error);
 }
 
-public sealed class RetryResourceDeploymentRequestValidator
-    : AbstractValidator<RetryResourceDeploymentRequest>
+public sealed class RetryResourceDeploymentRequestValidator : AbstractValidator<RetryResourceDeploymentRequest>
 {
     public RetryResourceDeploymentRequestValidator()
     {
-        RuleFor(request => request.DeploymentId)
-            .MongoObjectId("Resource deployment ID");
+        RuleFor(request => request.DeploymentId).MongoObjectId("Resource deployment ID");
         RuleFor(request => request.ExpectedRevision).NotNull().GreaterThan(0);
         RuleFor(request => request.ExpectedOperation).Must(value => value is "Apply" or "Delete");
     }
@@ -100,24 +95,21 @@ public sealed class RetryResourceDeploymentRequestValidator
 
 public static class RetryResourceDeploymentEndpoint
 {
-    public static IEndpointRouteBuilder MapRetryResourceDeploymentEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapRetryResourceDeploymentEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{DeploymentId}/retry", async (
-                IMediator mediator,
-                [AsParameters] RetryResourceDeploymentRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(
-                    outcome => outcome switch
+        app.MapPost(
+                "/{DeploymentId}/retry",
+                async (
+                    IMediator mediator, [AsParameters] RetryResourceDeploymentRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
                     {
-                        ResourceDeploymentDto deployment =>
-                            Results.Accepted(value: deployment),
-                        RetryResourceDeploymentError error =>
-                            ResourceDeploymentHttpMappings.MapRetryError(error)
+                        ResourceDeploymentDto deployment => Results.Accepted(value: deployment),
+                        RetryResourceDeploymentError error => ResourceDeploymentHttpMappings.MapRetryError(error),
                     });
-            })
+                })
             .WithName("RetryResourceDeployment")
             .WithSummary("Requests another attempt for a failed resource deployment.")
             .Produces<ResourceDeploymentDto>(StatusCodes.Status202Accepted)

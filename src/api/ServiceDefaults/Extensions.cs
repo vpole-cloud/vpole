@@ -20,7 +20,8 @@ public static class Extensions
     private const string HealthEndpointPath = "/health";
     private const string AlivenessEndpointPath = "/alive";
 
-    extension<TBuilder>(TBuilder builder) where TBuilder : IHostApplicationBuilder
+    extension<TBuilder>(TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
     {
         public TBuilder AddServiceDefaults()
         {
@@ -59,7 +60,8 @@ public static class Extensions
                 logging.IncludeScopes = true;
             });
 
-            builder.Services.AddOpenTelemetry()
+            builder.Services
+                .AddOpenTelemetry()
                 .WithMetrics(metrics =>
                 {
                     metrics.AddAspNetCoreInstrumentation()
@@ -80,9 +82,8 @@ public static class Extensions
                         .AddAspNetCoreInstrumentation(aspTracing =>
                             // Exclude health check requests from tracing
                             aspTracing.Filter = context =>
-                                !context.Request.Path.StartsWithSegments(HealthEndpointPath)
-                                && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-                        )
+                                !context.Request.Path.StartsWithSegments(HealthEndpointPath) &&
+                                !context.Request.Path.StartsWithSegments(AlivenessEndpointPath))
                         // Uncomment the following line to enable gRPC instrumentation (requires the OpenTelemetry.Instrumentation.GrpcNetClient package)
                         //.AddGrpcClientInstrumentation()
                         .AddHttpClientInstrumentation();
@@ -98,9 +99,7 @@ public static class Extensions
             var useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
 
             if (useOtlpExporter)
-            {
                 builder.Services.AddOpenTelemetry().UseOtlpExporter();
-            }
 
             // Uncomment the following lines to enable the Azure Monitor exporter (requires the Azure.Monitor.OpenTelemetry.AspNetCore package)
             //if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
@@ -114,7 +113,8 @@ public static class Extensions
 
         public TBuilder AddDefaultHealthChecks()
         {
-            builder.Services.AddHealthChecks()
+            builder.Services
+                .AddHealthChecks()
                 // Add a default liveness check to ensure app is responsive
                 .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
@@ -132,10 +132,11 @@ public static class Extensions
             app.MapHealthChecks(HealthEndpointPath);
 
             // Only health checks tagged with the "live" tag must pass for app to be considered alive
-            app.MapHealthChecks(AlivenessEndpointPath,
+            app.MapHealthChecks(
+                AlivenessEndpointPath,
                 new HealthCheckOptions
                 {
-                    Predicate = r => r.Tags.Contains("live")
+                    Predicate = r => r.Tags.Contains("live"),
                 });
             app.MapOpenApi();
             app.MapScalarApiReference(options =>

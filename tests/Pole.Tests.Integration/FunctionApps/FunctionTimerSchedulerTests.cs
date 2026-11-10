@@ -1,7 +1,5 @@
-using System.Collections.Immutable;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Timers;
@@ -11,8 +9,9 @@ using Xunit;
 namespace Pole.Tests.Integration.FunctionApps;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed class FunctionTimerSchedulerTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-18T12:10:30Z");
 
@@ -26,7 +25,8 @@ public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
         await scheduler.RunOnceAsync(CancellationToken.None);
         await scheduler.RunOnceAsync(CancellationToken.None);
 
-        var invocation = await DbContext.FunctionInvocations.Find(FilterDefinition<FunctionInvocation>.Empty)
+        var invocation = await DbContext.FunctionInvocations
+            .Find(FilterDefinition<FunctionInvocation>.Empty)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Pending, invocation.State);
         Assert.True(invocation.IsPastDue);
@@ -56,7 +56,8 @@ public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
 
         await CreateScheduler().RunOnceAsync(CancellationToken.None);
 
-        var invocations = await DbContext.FunctionInvocations.Find(candidate => candidate.TriggerId == timer.TriggerId)
+        var invocations = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.TriggerId == timer.TriggerId)
             .ToListAsync();
         Assert.Equal(2, invocations.Count);
         Assert.Single(invocations, invocation => invocation.State == FunctionInvocationState.Pending);
@@ -77,8 +78,9 @@ public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
             CreateScheduler().RunOnceAsync(CancellationToken.None),
             CreateScheduler().RunOnceAsync(CancellationToken.None));
 
-        Assert.Equal(1, await DbContext.FunctionInvocations.CountDocumentsAsync(
-            FilterDefinition<FunctionInvocation>.Empty));
+        Assert.Equal(
+            1,
+            await DbContext.FunctionInvocations.CountDocumentsAsync(FilterDefinition<FunctionInvocation>.Empty));
         var advanced = await DbContext.FunctionTimerStates.Find(candidate => candidate.Id == timer.Id).SingleAsync();
         Assert.True(advanced.NextOccurrenceUtc > Now);
     }
@@ -99,22 +101,23 @@ public sealed class FunctionTimerSchedulerTests(MongoReplicaSetFixture fixture)
             NullLogger<FunctionTimerScheduler>.Instance);
     }
 
-    private static FunctionTimerState CreateTimer(DateTimeOffset nextOccurrenceUtc) =>
-        FunctionTimerState.Create(
-            "tenant-1",
-            "app-1",
-            "revision-1",
-            "trigger-1",
-            "cleanup",
-            "* * * * *",
-            1,
-            TimerConcurrencyPolicy.Forbid,
-            TimerMisfirePolicy.FireOnce,
-            new FunctionRetryPolicy(3, [5, 30]),
-            nextOccurrenceUtc,
-            nextOccurrenceUtc.AddMinutes(-1));
+    private static FunctionTimerState CreateTimer(DateTimeOffset nextOccurrenceUtc) => FunctionTimerState.Create(
+        "tenant-1",
+        "app-1",
+        "revision-1",
+        "trigger-1",
+        "cleanup",
+        "* * * * *",
+        1,
+        TimerConcurrencyPolicy.Forbid,
+        TimerMisfirePolicy.FireOnce,
+        new FunctionRetryPolicy(3, [5, 30]),
+        nextOccurrenceUtc,
+        nextOccurrenceUtc.AddMinutes(-1));
 
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset now
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
     }

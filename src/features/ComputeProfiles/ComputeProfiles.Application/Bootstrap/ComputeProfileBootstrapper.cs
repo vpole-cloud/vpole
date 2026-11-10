@@ -3,37 +3,31 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Application.Catalog;
-using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Bootstrap;
 
-public delegate Task BootstrapComputeProfiles(
-    CancellationToken cancellationToken = default);
+public delegate Task BootstrapComputeProfiles(CancellationToken cancellationToken = default);
 
 public sealed class ComputeProfileBootstrapper(
     IServiceScopeFactory serviceScopeFactory,
     TimeProvider timeProvider,
-    ILogger<ComputeProfileBootstrapper> logger)
+    ILogger<ComputeProfileBootstrapper> logger
+)
 {
     public async Task BootstrapAsync(CancellationToken cancellationToken = default)
     {
         await using var scope = serviceScopeFactory.CreateAsyncScope();
-        var loadDefault = scope.ServiceProvider
-            .GetRequiredService<LoadDefaultComputeProfile>();
+        var loadDefault = scope.ServiceProvider.GetRequiredService<LoadDefaultComputeProfile>();
         if (await loadDefault(cancellationToken) is not null)
             return;
 
-        var lookupDefaultDeploymentTarget = scope.ServiceProvider
-            .GetRequiredService<LookupDefaultDeploymentTarget>();
+        var lookupDefaultDeploymentTarget = scope.ServiceProvider.GetRequiredService<LookupDefaultDeploymentTarget>();
         var targetResult = await lookupDefaultDeploymentTarget(cancellationToken);
         if (targetResult is not DeploymentTargetLookupDto target)
-        {
             throw new InvalidOperationException(
                 "The default compute profile cannot be bootstrapped because no default deployment target is configured.");
-        }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var profile = ComputeProfileFactory.Create(
@@ -50,18 +44,15 @@ public sealed class ComputeProfileBootstrapper(
                 ResourceTypeId.Create("pole/web-service"),
                 ResourceTypeId.Create("pole/redis"),
                 ResourceTypeId.Create("pole/postgresql"),
-                ResourceTypeId.Create("pole/function-app")
+                ResourceTypeId.Create("pole/function-app"),
             ],
             AllTenantsComputeProfileAccess.Create(),
             [ComputeProfileTargetMapping.Create(target.Id)],
             isEnabled: true,
             isDefault: true,
-            new ComputeProfileFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now));
+            new ComputeProfileFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
 
-        var persistCreated = scope.ServiceProvider
-            .GetRequiredService<PersistCreatedComputeProfile>();
+        var persistCreated = scope.ServiceProvider.GetRequiredService<PersistCreatedComputeProfile>();
         try
         {
             var persisted = await persistCreated(profile, cancellationToken);
@@ -83,18 +74,16 @@ public sealed class ComputeProfileBootstrapper(
         if (await loadDefault(cancellationToken) is not null)
             return;
 
-        throw new InvalidOperationException(
-            "The default compute profile could not be bootstrapped.");
+        throw new InvalidOperationException("The default compute profile could not be bootstrapped.");
     }
 
-    private static bool IsDuplicateKey(MongoException exception) =>
-        exception switch
+    private static bool IsDuplicateKey(MongoException exception) => exception switch
+    {
+        MongoWriteException
         {
-            MongoWriteException
-            {
-                WriteError.Category: ServerErrorCategory.DuplicateKey
-            } => true,
-            MongoCommandException { Code: 11000 or 11001 or 12582 } => true,
-            _ => false
-        };
+            WriteError.Category: ServerErrorCategory.DuplicateKey,
+        } => true,
+        MongoCommandException { Code: 11000 or 11001 or 12582 } => true,
+        _ => false,
+    };
 }

@@ -18,7 +18,7 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
             new KubernetesNodeAffinityExpression(
                 "topology.kubernetes.io/zone",
                 ComputeNodeAffinityOperator.In,
-                ["ua-1", "ua-2"])
+                ["ua-1", "ua-2"]),
         ]);
         var compute = new KubernetesComputeConfiguration(
             new KubernetesComputeResourceValues(750, 768),
@@ -34,7 +34,7 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
                     ComputeTolerationOperator.Equal,
                     "gpu",
                     ComputeTaintEffect.NoSchedule,
-                    TolerationSeconds: null)
+                    TolerationSeconds: null),
             ],
             RuntimeClassName: "kata");
 
@@ -51,17 +51,14 @@ public sealed class ResolvedComputeConfigurationKubernetesTests
         Assert.Equal("kata", podSpec.RuntimeClassName);
 
         var required = Assert.Single(
-            podSpec.Affinity.NodeAffinity
-                .RequiredDuringSchedulingIgnoredDuringExecution
-                .NodeSelectorTerms);
+            podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms);
         var expression = Assert.Single(required.MatchExpressions);
         Assert.Equal("topology.kubernetes.io/zone", expression.Key);
         Assert.Equal("In", expression.OperatorProperty);
         Assert.Equal(["ua-1", "ua-2"], expression.Values);
         Assert.Equal(
             75,
-            Assert.Single(podSpec.Affinity.NodeAffinity
-                .PreferredDuringSchedulingIgnoredDuringExecution).Weight);
+            Assert.Single(podSpec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution).Weight);
 
         var toleration = Assert.Single(podSpec.Tolerations);
         Assert.Equal("dedicated", toleration.Key);

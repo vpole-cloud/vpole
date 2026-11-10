@@ -29,9 +29,9 @@ public sealed class RealtimeOptionsValidator : IValidateOptions<RealtimeOptions>
             return ValidateOptionsResult.Fail(
                 "Realtime:SessionLifetime must be positive and no longer than five minutes.");
         if (options.AllowedOrigins.Length == 0 || options.AllowedOrigins.Any(origin =>
-                !Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
-                uri.Scheme is not ("http" or "https") || uri.AbsolutePath != "/" ||
-                uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.UserInfo.Length != 0 || origin.EndsWith('/')))
+                !Uri.TryCreate(origin, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
+                uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
+                uri.UserInfo.Length != 0 || origin.EndsWith('/')))
             return ValidateOptionsResult.Fail(
                 "Realtime:AllowedOrigins must contain exact HTTP(S) origins without trailing slashes.");
         return ValidateOptionsResult.Success;

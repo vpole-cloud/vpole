@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Multitenancy.Primitives;
 using Pole.Dns;
+using Pole.Multitenancy.Primitives;
 using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Domain;
@@ -35,7 +35,8 @@ public sealed record ResourceDeployment(
     ImmutableList<ResourceDeploymentEndpoint> Endpoints,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    long ReferenceFence) : ITenantOwned
+    long ReferenceFence
+) : ITenantOwned
 {
     public ResourceDeployment RequestReconciliation(
         ResolvedResourcePlacement resolvedPlacement,
@@ -54,31 +55,25 @@ public sealed record ResourceDeployment(
             nameof(requestedAtUtc));
         var nextResourceRevision = resourceRevision is null
             ? ResourceRevision
-            : ResourceDeploymentValueGuard.Positive(
-                resourceRevision.Value,
-                nameof(resourceRevision));
+            : ResourceDeploymentValueGuard.Positive(resourceRevision.Value, nameof(resourceRevision));
         if (nextResourceRevision < ResourceRevision)
-        {
             throw new InvalidOperationException(
                 "A resource deployment cannot move to an older logical resource revision.");
-        }
         var nextFixedReplicas = fixedReplicas is null
             ? FixedReplicas
-            : ResourceDeploymentValueGuard.PositiveInt(
-                fixedReplicas.Value,
-                nameof(fixedReplicas));
+            : ResourceDeploymentValueGuard.PositiveInt(fixedReplicas.Value, nameof(fixedReplicas));
         var nextGeneration = checked(DesiredGeneration + 1);
         var nextState = State is ReconcilingResourceDeploymentState
             ? State
-            : runtimeCellReady
-                ? new PendingResourceDeploymentState(
+            :
+            runtimeCellReady
+                ?
+                new PendingResourceDeploymentState(
                     nextGeneration,
                     ResourceDeploymentOperation.Apply,
                     AttemptCount: 0,
                     normalizedRequestedAtUtc)
-                : new WaitingForRuntimeCellResourceDeploymentState(
-                    nextGeneration,
-                    normalizedRequestedAtUtc);
+                : new WaitingForRuntimeCellResourceDeploymentState(nextGeneration, normalizedRequestedAtUtc);
 
         return this with
         {
@@ -89,7 +84,7 @@ public sealed record ResourceDeployment(
             DesiredGeneration = nextGeneration,
             DesiredOperation = ResourceDeploymentOperation.Apply,
             State = nextState,
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
@@ -115,7 +110,8 @@ public sealed record ResourceDeployment(
             Revision = checked(Revision + 1),
             DesiredGeneration = generation,
             State = new PreparedResourceDeploymentState(generation),
-            UpdatedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(requestedAtUtc, UpdatedAtUtc, nameof(requestedAtUtc))
+            UpdatedAtUtc
+            = ResourceDeploymentValueGuard.UpdatedUtc(requestedAtUtc, UpdatedAtUtc, nameof(requestedAtUtc)),
         };
     }
 
@@ -138,23 +134,16 @@ public sealed record ResourceDeployment(
                 DesiredOperation,
                 AttemptCount: 0,
                 normalizedRequestedAtUtc),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
-    public ResourceDeployment RequestDeletion(
-        DateTime requestedAtUtc,
-        long? resourceRevision = null)
+    public ResourceDeployment RequestDeletion(DateTime requestedAtUtc, long? resourceRevision = null)
     {
         if (State is DeletedResourceDeploymentState)
             return this;
-        if (DesiredOperation == ResourceDeploymentOperation.Delete &&
-            State is not FailedResourceDeploymentState)
-        {
-            return resourceRevision is null
-                ? this
-                : AdvanceResourceRevision(resourceRevision.Value, requestedAtUtc);
-        }
+        if (DesiredOperation == ResourceDeploymentOperation.Delete && State is not FailedResourceDeploymentState)
+            return resourceRevision is null ? this : AdvanceResourceRevision(resourceRevision.Value, requestedAtUtc);
 
         var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
             requestedAtUtc,
@@ -163,14 +152,10 @@ public sealed record ResourceDeployment(
         var nextGeneration = checked(DesiredGeneration + 1);
         var nextResourceRevision = resourceRevision is null
             ? ResourceRevision
-            : ResourceDeploymentValueGuard.Positive(
-                resourceRevision.Value,
-                nameof(resourceRevision));
+            : ResourceDeploymentValueGuard.Positive(resourceRevision.Value, nameof(resourceRevision));
         if (nextResourceRevision < ResourceRevision)
-        {
             throw new InvalidOperationException(
                 "A resource deployment cannot move to an older logical resource revision.");
-        }
         return this with
         {
             ResourceRevision = nextResourceRevision,
@@ -184,17 +169,15 @@ public sealed record ResourceDeployment(
                     ResourceDeploymentOperation.Delete,
                     AttemptCount: 0,
                     normalizedRequestedAtUtc),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
     /// <summary>
-    /// Stamps this physical deployment with a newer logical desired-state revision
-    /// without requesting another physical reconciliation generation.
+    ///     Stamps this physical deployment with a newer logical desired-state revision
+    ///     without requesting another physical reconciliation generation.
     /// </summary>
-    public ResourceDeployment AdvanceResourceRevision(
-        long resourceRevision,
-        DateTime requestedAtUtc)
+    public ResourceDeployment AdvanceResourceRevision(long resourceRevision, DateTime requestedAtUtc)
     {
         var normalizedResourceRevision = ResourceDeploymentValueGuard.Positive(
             resourceRevision,
@@ -202,10 +185,8 @@ public sealed record ResourceDeployment(
         if (normalizedResourceRevision == ResourceRevision)
             return this;
         if (normalizedResourceRevision < ResourceRevision)
-        {
             throw new InvalidOperationException(
                 "A resource deployment cannot move to an older logical resource revision.");
-        }
 
         var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
             requestedAtUtc,
@@ -215,7 +196,7 @@ public sealed record ResourceDeployment(
         {
             ResourceRevision = normalizedResourceRevision,
             Revision = checked(Revision + 1),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
@@ -223,11 +204,8 @@ public sealed record ResourceDeployment(
     // resolves its durable release by this exact desired generation and resource revision.
     public ResourceDeployment RequestVerification(DateTime requestedAtUtc)
     {
-        if (State is not AppliedResourceDeploymentState ||
-            DesiredOperation != ResourceDeploymentOperation.Apply)
-        {
+        if (State is not AppliedResourceDeploymentState || DesiredOperation != ResourceDeploymentOperation.Apply)
             throw new InvalidOperationException("Only an applied deployment can request verification.");
-        }
 
         var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
             requestedAtUtc,
@@ -241,19 +219,15 @@ public sealed record ResourceDeployment(
                 DesiredOperation,
                 AttemptCount: 0,
                 normalizedRequestedAtUtc),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
     public ResourceDeployment Retry(DateTime requestedAtUtc)
     {
-        if (State is not FailedResourceDeploymentState failed ||
-            failed.Generation != DesiredGeneration ||
-            failed.Operation != DesiredOperation ||
-            !failed.Retryable)
-        {
+        if (State is not FailedResourceDeploymentState failed || failed.Generation != DesiredGeneration ||
+            failed.Operation != DesiredOperation || !failed.Retryable)
             throw new InvalidOperationException("Only the current failed deployment operation can be retried.");
-        }
 
         var normalizedRequestedAtUtc = ResourceDeploymentValueGuard.UpdatedUtc(
             requestedAtUtc,
@@ -267,7 +241,7 @@ public sealed record ResourceDeployment(
                 DesiredOperation,
                 failed.AttemptCount,
                 normalizedRequestedAtUtc),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
@@ -293,7 +267,9 @@ public sealed record ResourceDeployment(
             leaseExpiresAtUtc,
             nameof(leaseExpiresAtUtc));
         if (normalizedLeaseExpiresAtUtc <= normalizedStartedAtUtc)
-            throw new ArgumentException("The reconciliation lease must expire after it starts.", nameof(leaseExpiresAtUtc));
+            throw new ArgumentException(
+                "The reconciliation lease must expire after it starts.",
+                nameof(leaseExpiresAtUtc));
 
         return this with
         {
@@ -305,7 +281,7 @@ public sealed record ResourceDeployment(
                 checked(pending.AttemptCount + 1),
                 normalizedStartedAtUtc,
                 normalizedLeaseExpiresAtUtc),
-            UpdatedAtUtc = normalizedStartedAtUtc
+            UpdatedAtUtc = normalizedStartedAtUtc,
         };
     }
 
@@ -327,22 +303,17 @@ public sealed record ResourceDeployment(
         var normalizedEndpoints = operation == ResourceDeploymentOperation.Apply
             ? ResourceDeploymentEndpoint.Normalize(endpoints)
             : ImmutableList<ResourceDeploymentEndpoint>.Empty;
-        var hasNewerIntent =
-            DesiredGeneration != expectedGeneration ||
-            DesiredOperation != operation;
+        var hasNewerIntent = DesiredGeneration != expectedGeneration || DesiredOperation != operation;
         ResourceDeploymentState nextState = hasNewerIntent
-            ? new PendingResourceDeploymentState(
+            ?
+            new PendingResourceDeploymentState(
                 DesiredGeneration,
                 DesiredOperation,
                 AttemptCount: 0,
                 normalizedCompletedAtUtc)
             : operation == ResourceDeploymentOperation.Apply
-                ? new AppliedResourceDeploymentState(
-                    expectedGeneration,
-                    normalizedCompletedAtUtc)
-                : new DeletedResourceDeploymentState(
-                    expectedGeneration,
-                    normalizedCompletedAtUtc);
+                ? new AppliedResourceDeploymentState(expectedGeneration, normalizedCompletedAtUtc)
+                : new DeletedResourceDeploymentState(expectedGeneration, normalizedCompletedAtUtc);
 
         return this with
         {
@@ -352,7 +323,7 @@ public sealed record ResourceDeployment(
             Endpoints = operation == ResourceDeploymentOperation.Apply
                 ? normalizedEndpoints
                 : ImmutableList<ResourceDeploymentEndpoint>.Empty,
-            UpdatedAtUtc = normalizedCompletedAtUtc
+            UpdatedAtUtc = normalizedCompletedAtUtc,
         };
     }
 
@@ -374,14 +345,12 @@ public sealed record ResourceDeployment(
         if (normalizedFailedAtUtc < reconciling.StartedAtUtc)
             throw new ArgumentException("The operation cannot fail before it starts.", nameof(failedAtUtc));
 
-        var normalizedRetryAtUtc = ResourceDeploymentValueGuard.Utc(
-            retryNotBeforeUtc,
-            nameof(retryNotBeforeUtc));
+        var normalizedRetryAtUtc = ResourceDeploymentValueGuard.Utc(retryNotBeforeUtc, nameof(retryNotBeforeUtc));
         if (normalizedRetryAtUtc < normalizedFailedAtUtc)
-            throw new ArgumentException("The retry time cannot be before the failed attempt.", nameof(retryNotBeforeUtc));
-        var hasNewerIntent =
-            DesiredGeneration != expectedGeneration ||
-            DesiredOperation != operation;
+            throw new ArgumentException(
+                "The retry time cannot be before the failed attempt.",
+                nameof(retryNotBeforeUtc));
+        var hasNewerIntent = DesiredGeneration != expectedGeneration || DesiredOperation != operation;
         return this with
         {
             Revision = checked(Revision + 1),
@@ -406,7 +375,7 @@ public sealed record ResourceDeployment(
                     reconciling.AttemptCount,
                     normalizedFailedAtUtc,
                     normalizedRetryAtUtc),
-            UpdatedAtUtc = normalizedFailedAtUtc
+            UpdatedAtUtc = normalizedFailedAtUtc,
         };
     }
 
@@ -427,7 +396,7 @@ public sealed record ResourceDeployment(
                 DesiredOperation,
                 ((ReconcilingResourceDeploymentState)State).AttemptCount,
                 normalizedRequestedAtUtc),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
@@ -439,12 +408,11 @@ public sealed record ResourceDeployment(
         EnsureCurrentOperation(expectedGeneration, operation, allowNewerIntent: true);
         var normalizedClaimId = ResourceDeploymentValueGuard.ObjectId(claimId, nameof(claimId));
         if (State is not ReconcilingResourceDeploymentState reconciling ||
-            reconciling.Generation != expectedGeneration ||
-            reconciling.Operation != operation ||
-            !string.Equals(reconciling.ClaimId, normalizedClaimId, StringComparison.Ordinal))
-        {
+            reconciling.Generation != expectedGeneration || reconciling.Operation != operation || !string.Equals(
+                reconciling.ClaimId,
+                normalizedClaimId,
+                StringComparison.Ordinal))
             throw new InvalidOperationException("The deployment claim changed while the operation was in progress.");
-        }
 
         return reconciling;
     }
@@ -456,11 +424,8 @@ public sealed record ResourceDeployment(
     {
         if (expectedGeneration < 1)
             throw new ArgumentOutOfRangeException(nameof(expectedGeneration), "Generation must be positive.");
-        if (!allowNewerIntent &&
-            (DesiredGeneration != expectedGeneration || DesiredOperation != operation))
-        {
+        if (!allowNewerIntent && (DesiredGeneration != expectedGeneration || DesiredOperation != operation))
             throw new InvalidOperationException("The desired deployment operation changed.");
-        }
     }
 
     private void EnsureSamePlacement(ResolvedResourcePlacement placement)
@@ -469,31 +434,25 @@ public sealed record ResourceDeployment(
             !string.Equals(
                 ResolvedPlacement.DeploymentTargetId,
                 placement.DeploymentTargetId,
-                StringComparison.Ordinal) ||
-            !string.Equals(
+                StringComparison.Ordinal) || !string.Equals(
                 ResolvedPlacement.KubernetesNamespace,
                 placement.KubernetesNamespace,
                 StringComparison.Ordinal))
-        {
             throw new InvalidOperationException(
                 "Resource placement cannot be moved to another runtime cell, target, or namespace.");
-        }
     }
 
     private void EnsureNotDeleted()
     {
-        if (DesiredOperation == ResourceDeploymentOperation.Delete ||
-            State is DeletedResourceDeploymentState)
-        {
+        if (DesiredOperation == ResourceDeploymentOperation.Delete || State is DeletedResourceDeploymentState)
             throw new InvalidOperationException("A deployment pending deletion cannot be reconciled.");
-        }
     }
 }
 
 public enum ResourceDeploymentOperation
 {
     Apply,
-    Delete
+    Delete,
 }
 
 public static class ResourceDeploymentStateKinds
@@ -516,24 +475,28 @@ public static class ResourceDeploymentStateKinds
     typeof(AppliedResourceDeploymentState),
     typeof(FailedResourceDeploymentState),
     typeof(DeletedResourceDeploymentState))]
-public abstract record ResourceDeploymentState(long Generation);
+public abstract record ResourceDeploymentState(
+    long Generation
+);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.Prepared)]
-public sealed record PreparedResourceDeploymentState(long Generation) : ResourceDeploymentState(Generation);
+public sealed record PreparedResourceDeploymentState(
+    long Generation
+) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.WaitingForRuntimeCell)]
 public sealed record WaitingForRuntimeCellResourceDeploymentState(
     long Generation,
-    DateTime RequestedAtUtc)
-    : ResourceDeploymentState(Generation);
+    DateTime RequestedAtUtc
+) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.Pending)]
 public sealed record PendingResourceDeploymentState(
     long Generation,
     ResourceDeploymentOperation Operation,
     int AttemptCount,
-    DateTime RequestedAtUtc)
-    : ResourceDeploymentState(Generation);
+    DateTime RequestedAtUtc
+) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.Reconciling)]
 public sealed record ReconcilingResourceDeploymentState(
@@ -543,14 +506,14 @@ public sealed record ReconcilingResourceDeploymentState(
     string ClaimId,
     int AttemptCount,
     DateTime StartedAtUtc,
-    DateTime LeaseExpiresAtUtc)
-    : ResourceDeploymentState(Generation);
+    DateTime LeaseExpiresAtUtc
+) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.Applied)]
 public sealed record AppliedResourceDeploymentState(
     long Generation,
-    DateTime AppliedAtUtc)
-    : ResourceDeploymentState(Generation);
+    DateTime AppliedAtUtc
+) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.Failed)]
 public sealed record FailedResourceDeploymentState(
@@ -561,14 +524,14 @@ public sealed record FailedResourceDeploymentState(
     bool Retryable,
     int AttemptCount,
     DateTime FailedAtUtc,
-    DateTime RetryNotBeforeUtc)
-    : ResourceDeploymentState(Generation);
+    DateTime RetryNotBeforeUtc
+) : ResourceDeploymentState(Generation);
 
 [BsonDiscriminator(ResourceDeploymentStateKinds.Deleted)]
 public sealed record DeletedResourceDeploymentState(
     long Generation,
-    DateTime DeletedAtUtc)
-    : ResourceDeploymentState(Generation);
+    DateTime DeletedAtUtc
+) : ResourceDeploymentState(Generation);
 
 public sealed record ResolvedResourcePlacement(
     [property: BsonRepresentation(BsonType.ObjectId)]
@@ -581,7 +544,8 @@ public sealed record ResolvedResourcePlacement(
     ResolvedIngressConfiguration? Ingress,
     ResolvedStorageConfiguration? Storage,
     ResolvedComputeConfiguration Compute,
-    DateTime ResolvedAtUtc)
+    DateTime ResolvedAtUtc
+)
 {
     public static ResolvedResourcePlacement Create(
         string runtimeCellId,
@@ -592,72 +556,56 @@ public sealed record ResolvedResourcePlacement(
         ResolvedIngressConfiguration? ingress,
         ResolvedStorageConfiguration? storage,
         ResolvedComputeConfiguration compute,
-        DateTime resolvedAtUtc) =>
-        new(
-            ResourceDeploymentValueGuard.ObjectId(runtimeCellId, nameof(runtimeCellId)),
-            ResourceDeploymentValueGuard.ObjectId(deploymentTargetId, nameof(deploymentTargetId)),
-            ResourceDeploymentValueGuard.KubernetesNamespace(
-                kubernetesNamespace,
-                nameof(kubernetesNamespace)),
-            ResourceDeploymentValueGuard.Positive(
-                runtimeCellGeneration,
-                nameof(runtimeCellGeneration)),
-            ResourceDeploymentValueGuard.PositiveOrZero(
-                targetWorkloadConfigurationRevision,
-                nameof(targetWorkloadConfigurationRevision)),
-            ingress,
-            storage,
-            compute ?? throw new ArgumentNullException(nameof(compute)),
-            ResourceDeploymentValueGuard.Utc(resolvedAtUtc, nameof(resolvedAtUtc)));
+        DateTime resolvedAtUtc) => new(
+        ResourceDeploymentValueGuard.ObjectId(runtimeCellId, nameof(runtimeCellId)),
+        ResourceDeploymentValueGuard.ObjectId(deploymentTargetId, nameof(deploymentTargetId)),
+        ResourceDeploymentValueGuard.KubernetesNamespace(kubernetesNamespace, nameof(kubernetesNamespace)),
+        ResourceDeploymentValueGuard.Positive(runtimeCellGeneration, nameof(runtimeCellGeneration)),
+        ResourceDeploymentValueGuard.PositiveOrZero(
+            targetWorkloadConfigurationRevision,
+            nameof(targetWorkloadConfigurationRevision)),
+        ingress,
+        storage,
+        compute ?? throw new ArgumentNullException(nameof(compute)),
+        ResourceDeploymentValueGuard.Utc(resolvedAtUtc, nameof(resolvedAtUtc)));
 }
 
 public sealed record ResolvedIngressConfiguration(
     string IngressClassName,
     string ClusterIssuerName,
     string? PublicBaseDomain,
-    ImmutableList<string> Hostnames)
+    ImmutableList<string> Hostnames
+)
 {
-    public static ResolvedIngressConfiguration Create(
-        string ingressClassName,
-        string clusterIssuerName) =>
+    public static ResolvedIngressConfiguration Create(string ingressClassName, string clusterIssuerName) =>
         Create(ingressClassName, clusterIssuerName, null, []);
 
     public static ResolvedIngressConfiguration Create(
         string ingressClassName,
         string clusterIssuerName,
         string? publicBaseDomain,
-        IEnumerable<string>? hostnames) =>
-        new(
-            ResourceDeploymentValueGuard.Required(
-                ingressClassName,
-                nameof(ingressClassName),
-                ResourceDeploymentValueGuard.MaximumKubernetesNameLength),
-            ResourceDeploymentValueGuard.Required(
-                clusterIssuerName,
-                nameof(clusterIssuerName),
-                ResourceDeploymentValueGuard.MaximumKubernetesNameLength),
-            publicBaseDomain is null
-                ? null
-                : DnsName.Create(publicBaseDomain).Value,
-            NormalizeHostnames(publicBaseDomain, hostnames));
+        IEnumerable<string>? hostnames) => new(
+        ResourceDeploymentValueGuard.Required(
+            ingressClassName,
+            nameof(ingressClassName),
+            ResourceDeploymentValueGuard.MaximumKubernetesNameLength),
+        ResourceDeploymentValueGuard.Required(
+            clusterIssuerName,
+            nameof(clusterIssuerName),
+            ResourceDeploymentValueGuard.MaximumKubernetesNameLength),
+        publicBaseDomain is null ? null : DnsName.Create(publicBaseDomain).Value,
+        NormalizeHostnames(publicBaseDomain, hostnames));
 
-    private static ImmutableList<string> NormalizeHostnames(
-        string? publicBaseDomain,
-        IEnumerable<string>? hostnames)
+    private static ImmutableList<string> NormalizeHostnames(string? publicBaseDomain, IEnumerable<string>? hostnames)
     {
-        var baseDomain = publicBaseDomain is null
-            ? null
-            : DnsName.Create(publicBaseDomain);
-        var normalized = (hostnames ?? [])
-            .Select(hostname => DnsName.Create(hostname))
+        var baseDomain = publicBaseDomain is null ? null : DnsName.Create(publicBaseDomain);
+        var normalized = (hostnames ?? []).Select(hostname => DnsName.Create(hostname))
             .Select(hostname =>
             {
                 if (baseDomain is not null && !hostname.IsSameOrDescendantOf(baseDomain))
-                {
                     throw new ArgumentException(
                         "Ingress hostnames must be under the public base domain.",
                         nameof(hostnames));
-                }
 
                 return hostname.Value;
             })
@@ -673,44 +621,40 @@ public sealed record ResolvedStorageConfiguration(
     [property: BsonRepresentation(BsonType.ObjectId)]
     string StorageProfileId,
     long StorageProfileRevision,
-    string StorageClassName)
+    string StorageClassName
+)
 {
     public static ResolvedStorageConfiguration Create(
         string storageProfileId,
         long storageProfileRevision,
-        string storageClassName) =>
-        new(
-            ResourceDeploymentValueGuard.ObjectId(
-                storageProfileId,
-                nameof(storageProfileId)),
-            ResourceDeploymentValueGuard.Positive(
-                storageProfileRevision,
-                nameof(storageProfileRevision)),
-            ResourceDeploymentValueGuard.Required(
-                storageClassName,
-                nameof(storageClassName),
-                ResourceDeploymentValueGuard.MaximumKubernetesNameLength));
+        string storageClassName) => new(
+        ResourceDeploymentValueGuard.ObjectId(storageProfileId, nameof(storageProfileId)),
+        ResourceDeploymentValueGuard.Positive(storageProfileRevision, nameof(storageProfileRevision)),
+        ResourceDeploymentValueGuard.Required(
+            storageClassName,
+            nameof(storageClassName),
+            ResourceDeploymentValueGuard.MaximumKubernetesNameLength));
 }
 
 public sealed record ResourceDeploymentEndpoint(
     string Kind,
     string Host,
     int Port,
-    string Scheme)
+    string Scheme
+)
 {
     public static ResourceDeploymentEndpoint Create(
         string kind,
         string host,
         int port,
-        string scheme) =>
-        new(
-            ResourceDeploymentValueGuard.Required(
-                kind,
-                nameof(kind),
-                ResourceDeploymentValueGuard.MaximumEndpointKindLength),
-            NormalizeHost(host),
-            NormalizePort(port),
-            ResourceDeploymentValueGuard.Scheme(scheme, nameof(scheme)));
+        string scheme) => new(
+        ResourceDeploymentValueGuard.Required(
+            kind,
+            nameof(kind),
+            ResourceDeploymentValueGuard.MaximumEndpointKindLength),
+        NormalizeHost(host),
+        NormalizePort(port),
+        ResourceDeploymentValueGuard.Scheme(scheme, nameof(scheme)));
 
     internal static ImmutableList<ResourceDeploymentEndpoint> Normalize(
         IEnumerable<ResourceDeploymentEndpoint> endpoints)
@@ -727,33 +671,25 @@ public sealed record ResourceDeploymentEndpoint(
             .ToImmutableList();
     }
 
-    private static string NormalizeHost(string host) =>
-        ResourceDeploymentValueGuard.Required(
-            host,
-            nameof(host),
-            ResourceDeploymentValueGuard.MaximumEndpointHostLength);
+    private static string NormalizeHost(string host) => ResourceDeploymentValueGuard.Required(
+        host,
+        nameof(host),
+        ResourceDeploymentValueGuard.MaximumEndpointHostLength);
 
-    private static int NormalizePort(int port) =>
-        port is >= 1 and <= 65535
-            ? port
-            : throw new ArgumentOutOfRangeException(nameof(port), "Endpoint port is invalid.");
+    private static int NormalizePort(int port) => port is >= 1 and <= 65535
+        ? port
+        : throw new ArgumentOutOfRangeException(nameof(port), "Endpoint port is invalid.");
 }
 
 public static class ResourceDeploymentFactory
 {
-    public sealed record CreateOptions(
-    string Id,
-    DateTime CreatedAtUtc,
-    long ResourceRevision,
-    int FixedReplicas,
-    bool DeferredActivation);
-
-    public static CreateOptions DefaultOptions => new(
-        ObjectId.GenerateNewId().ToString(),
-        DateTime.UtcNow,
-        ResourceRevision: 1,
-        FixedReplicas: 1,
-        DeferredActivation: false);
+    public static CreateOptions DefaultOptions =>
+        new(
+            ObjectId.GenerateNewId().ToString(),
+            DateTime.UtcNow,
+            ResourceRevision: 1,
+            FixedReplicas: 1,
+            DeferredActivation: false);
 
     public static ResourceDeployment Create(
         string tenantId,
@@ -772,21 +708,11 @@ public static class ResourceDeploymentFactory
             throw new ArgumentException("Resource type is required.", nameof(resourceType));
 
         var id = ResourceDeploymentValueGuard.ObjectId(options.Id, nameof(options.Id));
-        var normalizedTenantId = ResourceDeploymentValueGuard.ObjectId(
-            tenantId,
-            nameof(tenantId));
-        var normalizedResourceId = ResourceDeploymentValueGuard.ObjectId(
-            resourceId,
-            nameof(resourceId));
-        var normalizedGroupId = ResourceDeploymentValueGuard.ObjectId(
-            resourceGroupId,
-            nameof(resourceGroupId));
-        var normalizedScopeId = ResourceDeploymentValueGuard.ObjectId(
-            isolationScopeId,
-            nameof(isolationScopeId));
-        var createdAtUtc = ResourceDeploymentValueGuard.Utc(
-            options.CreatedAtUtc,
-            nameof(options.CreatedAtUtc));
+        var normalizedTenantId = ResourceDeploymentValueGuard.ObjectId(tenantId, nameof(tenantId));
+        var normalizedResourceId = ResourceDeploymentValueGuard.ObjectId(resourceId, nameof(resourceId));
+        var normalizedGroupId = ResourceDeploymentValueGuard.ObjectId(resourceGroupId, nameof(resourceGroupId));
+        var normalizedScopeId = ResourceDeploymentValueGuard.ObjectId(isolationScopeId, nameof(isolationScopeId));
+        var createdAtUtc = ResourceDeploymentValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc));
         var resourceRevision = ResourceDeploymentValueGuard.Positive(
             options.ResourceRevision,
             nameof(options.ResourceRevision));
@@ -796,14 +722,13 @@ public static class ResourceDeploymentFactory
         const long initialGeneration = 1;
         var placementKey = placementCapability switch
         {
-            ResourcePlacementCapability.SingleTarget =>
-                $"{resourceType.Value}:{normalizedResourceId}:single",
+            ResourcePlacementCapability.SingleTarget => $"{resourceType.Value}:{normalizedResourceId}:single",
             ResourcePlacementCapability.MultiTarget =>
                 $"{resourceType.Value}:{normalizedResourceId}:cell:{resolvedPlacement.RuntimeCellId}",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(placementCapability),
                 placementCapability,
-                "Unsupported placement capability.")
+                "Unsupported placement capability."),
         };
 
         return new ResourceDeployment(
@@ -825,20 +750,28 @@ public static class ResourceDeploymentFactory
             ObservedGeneration: 0,
             options.DeferredActivation
                 ? new PreparedResourceDeploymentState(initialGeneration)
-                : runtimeCellReady
-                ? new PendingResourceDeploymentState(
-                    initialGeneration,
-                    ResourceDeploymentOperation.Apply,
-                    AttemptCount: 0,
-                    createdAtUtc)
-                : new WaitingForRuntimeCellResourceDeploymentState(
-                    initialGeneration,
-                    createdAtUtc),
+                :
+                runtimeCellReady
+                    ?
+                    new PendingResourceDeploymentState(
+                        initialGeneration,
+                        ResourceDeploymentOperation.Apply,
+                        AttemptCount: 0,
+                        createdAtUtc)
+                    : new WaitingForRuntimeCellResourceDeploymentState(initialGeneration, createdAtUtc),
             ImmutableList<ResourceDeploymentEndpoint>.Empty,
             createdAtUtc,
             createdAtUtc,
             ReferenceFence: 0L);
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        long ResourceRevision,
+        int FixedReplicas,
+        bool DeferredActivation
+    );
 }
 
 internal static class ResourceDeploymentValueGuard
@@ -850,33 +783,31 @@ internal static class ResourceDeploymentValueGuard
     public const int MaximumEndpointHostLength = 253;
     public const int MaximumDisplayNameLength = 80;
 
-    public static string Required(string? value, string parameterName, int maximumLength)
+    public static string Required(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("The value is required.", parameterName);
 
         var normalized = value.Trim();
         if (normalized.Length > maximumLength)
-        {
-            throw new ArgumentException(
-                $"The value must be {maximumLength} characters or less.",
-                parameterName);
-        }
+            throw new ArgumentException($"The value must be {maximumLength} characters or less.", parameterName);
 
         return normalized;
     }
 
-    public static string Optional(string? value, string parameterName, int maximumLength)
+    public static string Optional(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
         if (value is null)
             throw new ArgumentNullException(parameterName);
         var normalized = value.Trim();
         if (normalized.Length > maximumLength)
-        {
-            throw new ArgumentException(
-                $"The value must be {maximumLength} characters or less.",
-                parameterName);
-        }
+            throw new ArgumentException($"The value must be {maximumLength} characters or less.", parameterName);
 
         return normalized;
     }
@@ -892,38 +823,28 @@ internal static class ResourceDeploymentValueGuard
     public static string KubernetesNamespace(string? value, string parameterName)
     {
         var normalized = Required(value, parameterName, 63);
-        if (normalized.Any(character =>
-                !(char.IsAsciiLetterOrDigit(character) || character == '-')) ||
-            !char.IsAsciiLetterOrDigit(normalized[0]) ||
-            !char.IsAsciiLetterOrDigit(normalized[^1]))
-        {
+        if (normalized.Any(character => !(char.IsAsciiLetterOrDigit(character) || character == '-')) ||
+            !char.IsAsciiLetterOrDigit(normalized[0]) || !char.IsAsciiLetterOrDigit(normalized[^1]))
             throw new ArgumentException("The value must be a Kubernetes DNS label.", parameterName);
-        }
         return normalized.ToLowerInvariant();
     }
 
     public static string Scheme(string? value, string parameterName)
     {
         var normalized = Required(value, parameterName, 32).ToLowerInvariant();
-        if (normalized.Any(character =>
-                !(char.IsAsciiLetterOrDigit(character) ||
-                  character is '+' or '-' or '.')) ||
+        if (normalized.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '+' or '-' or '.')) ||
             !char.IsAsciiLetter(normalized[0]))
-        {
             throw new ArgumentException("The value must be a URI scheme.", parameterName);
-        }
         return normalized;
     }
 
-    public static long Positive(long value, string parameterName) =>
-        value > 0
-            ? value
-            : throw new ArgumentOutOfRangeException(parameterName, "The value must be positive.");
+    public static long Positive(long value, string parameterName) => value > 0
+        ? value
+        : throw new ArgumentOutOfRangeException(parameterName, "The value must be positive.");
 
-    public static long PositiveOrZero(long value, string parameterName) =>
-        value >= 0
-            ? value
-            : throw new ArgumentOutOfRangeException(parameterName, "The value cannot be negative.");
+    public static long PositiveOrZero(long value, string parameterName) => value >= 0
+        ? value
+        : throw new ArgumentOutOfRangeException(parameterName, "The value cannot be negative.");
 
     public static DateTime Utc(DateTime value, string parameterName)
     {
@@ -933,16 +854,13 @@ internal static class ResourceDeploymentValueGuard
         {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
         };
     }
 
-    public static int PositiveInt(int value, string parameterName) =>
-        value > 0
-            ? value
-            : throw new ArgumentOutOfRangeException(
-                parameterName,
-                "The value must be positive.");
+    public static int PositiveInt(int value, string parameterName) => value > 0
+        ? value
+        : throw new ArgumentOutOfRangeException(parameterName, "The value must be positive.");
 
     public static DateTime UpdatedUtc(
         DateTime value,

@@ -7,18 +7,37 @@ namespace Pole.Features.ComputeProfiles.Application.Resolution;
 
 internal sealed class MongoResolveNamedComputeProfile(
     IMongoCollection<ComputeProfile> profiles,
-    ResolveComputeProfiles resolve)
+    ResolveComputeProfiles resolve
+)
 {
-    public async Task<ResolveNamedComputeProfileOutcome> InvokeAsync(NamedComputeProfileRequest request,
+    public async Task<ResolveNamedComputeProfileOutcome> InvokeAsync(
+        NamedComputeProfileRequest request,
         CancellationToken ct = default)
     {
-        var candidates = await profiles.Find(ComputeProfileFilters.NamedForWorkload(request.Name, request.TenantId,
-            request.DeploymentTargetId, request.ResourceType))
-            .Limit(2).ToListAsync(ct);
-        if (candidates.Count == 0) return new NamedComputeProfileUnavailable(request.Name);
-        if (candidates.Count != 1) return new NamedComputeProfileAmbiguous(request.Name);
-        var outcome = await resolve(new(request.TenantId, request.ResourceType,
-            [new(request.DeploymentTargetId, candidates[0].Id, request.Revision)]), ct);
+        var candidates = await profiles
+            .Find(
+                ComputeProfileFilters.NamedForWorkload(
+                    request.Name,
+                    request.TenantId,
+                    request.DeploymentTargetId,
+                    request.ResourceType))
+            .Limit(2)
+            .ToListAsync(ct);
+        if (candidates.Count == 0)
+            return new NamedComputeProfileUnavailable(request.Name);
+        if (candidates.Count != 1)
+            return new NamedComputeProfileAmbiguous(request.Name);
+        var outcome = await resolve(
+            new ComputeProfileBatchResolutionRequest(
+                request.TenantId,
+                request.ResourceType,
+                [
+                    new ComputeProfileTargetResolutionRequest(
+                        request.DeploymentTargetId,
+                        candidates[0].Id,
+                        request.Revision),
+                ]),
+            ct);
         return outcome switch
         {
             IReadOnlyList<ResolvedComputeProfile> values => values.Single(),
@@ -26,8 +45,8 @@ internal sealed class MongoResolveNamedComputeProfile(
             {
                 ComputeProfileUnavailable unavailable => unavailable,
                 ComputeProfileNotFound => new NamedComputeProfileUnavailable(request.Name),
-                DefaultComputeProfileNotConfigured => new NamedComputeProfileUnavailable(request.Name)
-            }
+                DefaultComputeProfileNotConfigured => new NamedComputeProfileUnavailable(request.Name),
+            },
         };
     }
 }

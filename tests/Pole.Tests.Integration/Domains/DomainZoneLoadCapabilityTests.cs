@@ -1,22 +1,17 @@
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.Dns;
-using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class DomainZoneLoadCapabilityTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
 
@@ -53,14 +48,11 @@ public sealed class DomainZoneLoadCapabilityTests(MongoReplicaSetFixture fixture
     private static TenantDomainZone CreateZone(
         string tenantId,
         string deploymentTargetId,
-        string label) =>
-        TenantDomainZoneFactory.CreateManagedReservation(
-            tenantId,
-            deploymentTargetId,
-            label,
-            DnsName.Create("apps.example.test"),
-            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
-            new TenantDomainZoneFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                DateTime.UtcNow));
+        string label) => TenantDomainZoneFactory.CreateManagedReservation(
+        tenantId,
+        deploymentTargetId,
+        label,
+        DnsName.Create("apps.example.test"),
+        "zone-" + ObjectId.GenerateNewId(),
+        new TenantDomainZoneFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
 }

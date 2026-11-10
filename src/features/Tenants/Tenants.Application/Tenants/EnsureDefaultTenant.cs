@@ -8,18 +8,16 @@ using Pole.ResultType;
 
 namespace Pole.Features.Tenants.Application.Tenants;
 
-public delegate Task EnsureDefaultTenant(
-    Tenant tenant,
-    CancellationToken cancellationToken = default);
+public delegate Task EnsureDefaultTenant(Tenant tenant, CancellationToken cancellationToken = default);
 
 internal sealed class MongoEnsureDefaultTenant(
     IMongoCollection<Tenant> _tenants,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<Unit> runTransaction)
+    RunMongoOutcomeTransaction<Unit> runTransaction
+)
 {
-    public Task InvokeAsync(
-        Tenant tenant,
-        CancellationToken cancellationToken = default) => runTransaction(async (transaction, ct) =>
+    public Task InvokeAsync(Tenant tenant, CancellationToken cancellationToken = default) => runTransaction(
+        async (transaction, ct) =>
         {
             var result = await _tenants.UpdateOneAsync(
                 transaction.Session,
@@ -29,9 +27,13 @@ internal sealed class MongoEnsureDefaultTenant(
                 ct);
             if (result.MatchedCount != 0)
                 return transaction.Abort(Unit.Value);
-            await storeOutboxWrites(transaction.Session,
-                tenant.Members.Select(member => member.UserId).Distinct(StringComparer.Ordinal)
-                    .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId)).ToArray(),
+            await storeOutboxWrites(
+                transaction.Session,
+                tenant.Members
+                    .Select(member => member.UserId)
+                    .Distinct(StringComparer.Ordinal)
+                    .Select(userId => TenantAccessEventExtensions.MembershipChanged(tenant.Id, userId))
+                    .ToArray(),
                 ct);
             return transaction.Commit(Unit.Value);
         },

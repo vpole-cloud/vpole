@@ -4,23 +4,13 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
-using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Outbox.Application;
-using Pole.Features.Outbox.Application.Mongo;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
 
@@ -31,8 +21,7 @@ internal static class ComputeProfileTestData
     public const string TenantId = "507f1f77bcf86cd799439098";
     public const string OtherTenantId = "507f1f77bcf86cd799439099";
 
-    public static readonly DateTime CreatedAtUtc =
-        new(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
+    public static readonly DateTime CreatedAtUtc = new(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc);
 
     public static ComputeProfile CreateProfile(
         string targetId,
@@ -42,23 +31,21 @@ internal static class ComputeProfileTestData
         IEnumerable<ResourceTypeId>? resourceTypes = null,
         string? id = null,
         string displayName = "General purpose",
-        string? technicalName = null) =>
-        ComputeProfileFactory.Create(technicalName ?? "profile-" + (id ?? ObjectId.GenerateNewId().ToString()),
-            displayName,
-            "Persistence test profile",
-            ComputeProfileResourceRequirements.Create(
-                ComputeProfileResourceQuantity.Create(250, 256),
-                ComputeProfileResourceQuantity.Create(1000, 1024)),
-            ComputeArchitecture.Amd64,
-            [ComputeProfileExtendedResource.Create("nvidia.com/gpu", 1)],
-            resourceTypes ?? [ResourceTypeId.Create("pole/web-service")],
-            tenantAccess ?? AllTenantsComputeProfileAccess.Create(),
-            [CreateMapping(targetId)],
-            isEnabled,
-            isDefault,
-            new ComputeProfileFactory.CreateOptions(
-                id ?? ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc));
+        string? technicalName = null) => ComputeProfileFactory.Create(
+        technicalName ?? "profile-" + (id ?? ObjectId.GenerateNewId().ToString()),
+        displayName,
+        "Persistence test profile",
+        ComputeProfileResourceRequirements.Create(
+            ComputeProfileResourceQuantity.Create(250, 256),
+            ComputeProfileResourceQuantity.Create(1000, 1024)),
+        ComputeArchitecture.Amd64,
+        [ComputeProfileExtendedResource.Create("nvidia.com/gpu", 1)],
+        resourceTypes ?? [ResourceTypeId.Create("pole/web-service")],
+        tenantAccess ?? AllTenantsComputeProfileAccess.Create(),
+        [CreateMapping(targetId)],
+        isEnabled,
+        isDefault,
+        new ComputeProfileFactory.CreateOptions(id ?? ObjectId.GenerateNewId().ToString(), CreatedAtUtc));
 
     public static ComputeProfileTargetMapping CreateMapping(string targetId)
     {
@@ -67,7 +54,7 @@ internal static class ComputeProfileTestData
             ComputeProfileNodeAffinityExpression.Create(
                 "pole.io/node-pool",
                 ComputeNodeAffinityOperator.In,
-                ["general"])
+                ["general"]),
         ]);
         return ComputeProfileTargetMapping.Create(
             targetId,
@@ -80,7 +67,7 @@ internal static class ComputeProfileTestData
                     ComputeTolerationOperator.Exists,
                     null,
                     ComputeTaintEffect.NoExecute,
-                    60)
+                    60),
             ],
             "runc");
     }
@@ -89,7 +76,8 @@ internal static class ComputeProfileTestData
     {
         id ??= ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create(id == TestData.DefaultDeploymentTargetId ? "lab" : "target-" + id,
+        return DeploymentTargetFactory.Create(
+                id == TestData.DefaultDeploymentTargetId ? "lab" : "target-" + id,
                 "Compute profile target",
                 $"kubernetes:kube-system:{id}",
                 DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
@@ -122,19 +110,18 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         services.AddSingleton(store.ResourceDeployments);
         services.AddSingleton<MongoEnsureComputeProfileUnreferenced>();
         services.AddSingleton<EnsureComputeProfileUnreferenced>(provider =>
-            provider
-                .GetRequiredService<MongoEnsureComputeProfileUnreferenced>()
-                .InvokeAsync);
+            provider.GetRequiredService<MongoEnsureComputeProfileUnreferenced>().InvokeAsync);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton<RunMongoOutcomeTransaction<DeleteComputeProfileOutcome>>(provider => provider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<DeleteComputeProfileOutcome>);
+            .InvokeOutcomeAsync);
         if (applyTargetReferenceChanges is null)
         {
-            services.AddSingleton(new MongoApplyDeploymentTargetReferenceChanges(
-                store.DeploymentTargets,
-                store.DeploymentTargetReferences,
-                TimeProvider.System));
+            services.AddSingleton(
+                new MongoApplyDeploymentTargetReferenceChanges(
+                    store.DeploymentTargets,
+                    store.DeploymentTargetReferences,
+                    TimeProvider.System));
             services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(provider => provider
                 .GetRequiredService<MongoApplyDeploymentTargetReferenceChanges>()
                 .InvokeAsync);
@@ -152,12 +139,12 @@ internal sealed class ComputeProfilePersistenceTestHost : IDisposable
         _scope = _provider.CreateScope();
     }
 
-    public T GetRequiredService<T>() where T : notnull =>
-        _scope.ServiceProvider.GetRequiredService<T>();
-
     public void Dispose()
     {
         _scope.Dispose();
         _provider.Dispose();
     }
+
+    public T GetRequiredService<T>()
+        where T : notnull => _scope.ServiceProvider.GetRequiredService<T>();
 }

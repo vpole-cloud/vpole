@@ -1,22 +1,21 @@
-using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
-using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Migrations;
 using Pole.Features.StorageProfiles.Application.Catalog;
+using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
+using Pole.Features.StorageProfiles.Migrations;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
+public sealed class StorageProfileGitOpsContractsTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
 {
     private IMongoCollection<StorageProfileRevision> History =>
         Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions");
@@ -29,10 +28,19 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
     public void FactoryRejectsInvalidTechnicalNames(string name)
     {
         var profile = Candidate();
-        Assert.Throws<ArgumentException>(() => StorageProfileFactory.Create(name, profile.DisplayName,
-            profile.Description, profile.MediaType, profile.PerformanceTier, profile.IsEnabled, profile.IsDefault,
-            profile.TargetMappings, [ResourceTypeId.Create("third-party/widget")], profile.TenantAccess,
-            profile.SizeLimits, StorageProfileFactory.DefaultOptions));
+        Assert.Throws<ArgumentException>(() => StorageProfileFactory.Create(
+            name,
+            profile.DisplayName,
+            profile.Description,
+            profile.MediaType,
+            profile.PerformanceTier,
+            profile.IsEnabled,
+            profile.IsDefault,
+            profile.TargetMappings,
+            [ResourceTypeId.Create("third-party/widget")],
+            profile.TenantAccess,
+            profile.SizeLimits,
+            StorageProfileFactory.DefaultOptions));
     }
 
     [Fact]
@@ -46,8 +54,9 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         Assert.Single(results, result => result.Value is StorageProfile);
         Assert.Single(results, result => result.Value is StorageProfileTechnicalNameConflict);
         Assert.Equal(1, await History.CountDocumentsAsync(Builders<StorageProfileRevision>.Filter.Empty));
-        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(
-            "pole.storage-profiles/v1/storage-profile-catalog-changed"));
+        Assert.Equal(
+            1,
+            await DbContext.CountAllOutboxMessagesAsync("pole.storage-profiles/v1/storage-profile-catalog-changed"));
     }
 
     [Fact]
@@ -64,9 +73,11 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         Assert.Equal(profile.ToBson(), revision.Snapshot.ToBson());
         var roundTrip = BsonSerializer.Deserialize<StorageProfileRevision>(revision.ToBson());
         Assert.Equal(revision.ToBson(), roundTrip.ToBson());
-        Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(
-            "pole.storage-profiles/v1/storage-profile-catalog-changed"));
-        await Assert.ThrowsAsync<ArgumentException>(() => update(profile,
+        Assert.Equal(
+            1,
+            await DbContext.CountAllOutboxMessagesAsync("pole.storage-profiles/v1/storage-profile-catalog-changed"));
+        await Assert.ThrowsAsync<ArgumentException>(() => update(
+            profile,
             profile with { TechnicalName = "renamed", Revision = 2 }));
     }
 
@@ -79,10 +90,10 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
             Revision = 2,
             TargetMappings = [StorageProfileTargetMapping.Create(TestData.DefaultDeploymentTargetId, "fast")],
             SizeLimits = StorageProfileSizeLimits.Create(1, 20),
-            UpdatedAtUtc = profile.UpdatedAtUtc.AddSeconds(1)
+            UpdatedAtUtc = profile.UpdatedAtUtc.AddSeconds(1),
         };
-        Assert.IsType<StorageProfile>((await Services.GetRequiredService<PersistUpdatedStorageProfile>()(
-            profile, replacement)).Value);
+        Assert.IsType<StorageProfile>(
+            (await Services.GetRequiredService<PersistUpdatedStorageProfile>()(profile, replacement)).Value);
         var resolve = Services.GetRequiredService<ResolveNamedStorageProfile>();
         var request = Named(profile, 10);
         var historical = Assert.IsType<ResolvedStorageProfile>((await resolve(request, default)).Value);
@@ -94,8 +105,9 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         var restricted = replacement with
         {
             Revision = 3,
-            TenantAccess = StorageProfileTenantAccess.Create(StorageProfileTenantAccessMode.SelectedTenants,
-                [ObjectId.GenerateNewId().ToString()])
+            TenantAccess = StorageProfileTenantAccess.Create(
+                StorageProfileTenantAccessMode.SelectedTenants,
+                [ObjectId.GenerateNewId().ToString()]),
         };
         await Services.GetRequiredService<PersistUpdatedStorageProfile>()(replacement, restricted);
         Assert.IsType<NamedStorageProfileUnavailable>((await resolve(request, default)).Value);
@@ -107,8 +119,13 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         var profile = await CreateAsync();
         var read = Services.GetRequiredService<ResolveStorageProfilePlanningSnapshot>();
         var fence = Services.GetRequiredService<FenceStorageProfilePlanningSnapshot>();
-        var request = new StorageProfilePlanningRequest(Data.TenantId,
-            ResourceTypeId.Create("third-party/widget"), profile.Id, TestData.DefaultDeploymentTargetId, 10, 1);
+        var request = new StorageProfilePlanningRequest(
+            Data.TenantId,
+            ResourceTypeId.Create("third-party/widget"),
+            profile.Id,
+            TestData.DefaultDeploymentTargetId,
+            10,
+            1);
         StorageProfilePlanningSnapshot snapshot;
         using (var session = await Fixture.Database.Client.StartSessionAsync())
         {
@@ -136,12 +153,15 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
         var replacement = profile with
         {
             Revision = 2,
-            TargetMappings = [StorageProfileTargetMapping.Create(TestData.DefaultDeploymentTargetId, "fast")]
+            TargetMappings = [StorageProfileTargetMapping.Create(TestData.DefaultDeploymentTargetId, "fast")],
         };
         await Services.GetRequiredService<PersistUpdatedStorageProfile>()(profile, replacement);
         var fence = Services.GetRequiredService<FenceStorageProfileResolution>();
-        var input = new StorageProfileResolutionFenceRequest(profile.Id, 1,
-            TestData.DefaultDeploymentTargetId, "standard");
+        var input = new StorageProfileResolutionFenceRequest(
+            profile.Id,
+            1,
+            TestData.DefaultDeploymentTargetId,
+            "standard");
         using var session = await Fixture.Database.Client.StartSessionAsync();
         session.StartTransaction();
         Assert.IsType<StorageProfileResolutionFenceRejected>((await fence(input, session)).Value);
@@ -156,10 +176,12 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
     [Fact]
     public async Task DefaultDemotionRetainsBothRevisionsInSameTransaction()
     {
-        var original = await DbContext.StorageProfiles.Find(item => item.Id == TestData.DefaultStorageProfileId)
+        var original = await DbContext.StorageProfiles
+            .Find(item => item.Id == TestData.DefaultStorageProfileId)
             .SingleAsync();
         await CreateAsync(isDefault: true);
-        var history = await History.Find(item => item.StorageProfileId == original.Id).SortBy(item => item.Revision)
+        var history = await History.Find(item => item.StorageProfileId == original.Id)
+            .SortBy(item => item.Revision)
             .ToListAsync();
         Assert.Equal(new long[] { 1, 2 }, history.Select(item => item.Revision));
         Assert.True(history[0].Snapshot.IsDefault);
@@ -169,14 +191,19 @@ public sealed class StorageProfileGitOpsContractsTests(MongoReplicaSetFixture fi
     private async Task<StorageProfile> CreateAsync(bool isDefault = false)
     {
         var profile = Candidate() with { IsDefault = isDefault };
-        return Assert.IsType<StorageProfile>((await Services.GetRequiredService<PersistCreatedStorageProfile>()(
-            profile)).Value);
+        return Assert.IsType<StorageProfile>(
+            (await Services.GetRequiredService<PersistCreatedStorageProfile>()(profile)).Value);
     }
 
-    private NamedStorageProfileRequest Named(StorageProfile profile, int size) =>
-        new(Data.TenantId, ResourceTypeId.Create("third-party/widget"), profile.TechnicalName,
-            TestData.DefaultDeploymentTargetId, size, 1);
+    private NamedStorageProfileRequest Named(StorageProfile profile, int size) => new(
+        Data.TenantId,
+        ResourceTypeId.Create("third-party/widget"),
+        profile.TechnicalName,
+        TestData.DefaultDeploymentTargetId,
+        size,
+        1);
 
-    private static StorageProfile Candidate() =>
-        TestData.SeedStorageProfile(ObjectId.GenerateNewId().ToString(), isDefault: false);
+    private static StorageProfile Candidate() => TestData.SeedStorageProfile(
+        ObjectId.GenerateNewId().ToString(),
+        isDefault: false);
 }

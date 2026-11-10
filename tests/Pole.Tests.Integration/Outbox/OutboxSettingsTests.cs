@@ -3,8 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pole.Features.Outbox.Application;
-using Pole.Server.Extensions;
-using Pole.Platform.Hosting;
 using Xunit;
 
 namespace Pole.Tests.Integration.Outbox;
@@ -38,7 +36,7 @@ public sealed class OutboxSettingsTests
     {
         var settings = new OutboxSettings
         {
-            ProcessingCronExpression = expression
+            ProcessingCronExpression = expression,
         };
 
         var validation = _validator.Validate(null, settings);
@@ -60,7 +58,7 @@ public sealed class OutboxSettingsTests
     {
         var settings = new OutboxSettings
         {
-            ProcessingCronExpression = expression
+            ProcessingCronExpression = expression,
         };
 
         var validation = _validator.Validate(null, settings);
@@ -68,9 +66,7 @@ public sealed class OutboxSettingsTests
         Assert.True(validation.Failed);
         Assert.Contains(
             validation.Failures,
-            failure => failure.Contains(
-                nameof(OutboxSettings.ProcessingCronExpression),
-                StringComparison.Ordinal));
+            failure => failure.Contains(nameof(OutboxSettings.ProcessingCronExpression), StringComparison.Ordinal));
     }
 
     [Fact]
@@ -84,7 +80,7 @@ public sealed class OutboxSettingsTests
             MaximumRetryDelay = TimeSpan.FromSeconds(-1),
             PublishedRetentionDays = 0,
             AbandonedRetentionDays = -1,
-            CleanupBatchSize = 0
+            CleanupBatchSize = 0,
         };
 
         var validation = _validator.Validate(null, settings);
@@ -107,7 +103,7 @@ public sealed class OutboxSettingsTests
             InitialRetryDelay = TimeSpan.FromMinutes(2),
             MaximumRetryDelay = TimeSpan.FromMinutes(1),
             PublishedRetentionDays = 10,
-            AbandonedRetentionDays = 9
+            AbandonedRetentionDays = 9,
         };
 
         var validation = _validator.Validate(null, settings);
@@ -121,14 +117,14 @@ public sealed class OutboxSettingsTests
     public async Task ProcessingTriggerInterval_DispatchesWithoutWaitingForTheCronSchedule()
     {
         var trigger = new RecordingOutboxProcessingTrigger();
-        using var services = new ServiceCollection()
-            .AddSingleton<IOutboxProcessingTrigger>(trigger)
+        using var services = new ServiceCollection().AddSingleton<IOutboxProcessingTrigger>(trigger)
             .BuildServiceProvider();
         using var service = new OutboxProcessingTriggerService(
-            Options.Create(new OutboxSettings
-            {
-                ProcessingTriggerInterval = TimeSpan.FromMilliseconds(10)
-            }),
+            Options.Create(
+                new OutboxSettings
+                {
+                    ProcessingTriggerInterval = TimeSpan.FromMilliseconds(10),
+                }),
             services.GetRequiredService<IServiceScopeFactory>(),
             TimeProvider.System,
             NullLogger<OutboxProcessingTriggerService>.Instance);
@@ -149,11 +145,11 @@ public sealed class OutboxSettingsTests
     [Fact]
     public void AddOutboxFeature_WiresValidationIntoOptionsPipeline()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Outbox:ProcessingCronExpression"] = "not-a-cron"
-            })
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Outbox:ProcessingCronExpression"] = "not-a-cron",
+                })
             .Build();
         var services = new ServiceCollection();
         services.AddOutboxFeature(configuration);
@@ -163,12 +159,9 @@ public sealed class OutboxSettingsTests
             _ = provider.GetRequiredService<IOptions<OutboxSettings>>().Value);
     }
 
-    private static void AssertFailureFor(
-        IEnumerable<string> failures,
-        string propertyName) =>
-        Assert.Contains(
-            failures,
-            failure => failure.Contains(propertyName, StringComparison.Ordinal));
+    private static void AssertFailureFor(IEnumerable<string> failures, string propertyName) => Assert.Contains(
+        failures,
+        failure => failure.Contains(propertyName, StringComparison.Ordinal));
 
     private sealed class RecordingOutboxProcessingTrigger : IOutboxProcessingTrigger
     {
@@ -176,8 +169,7 @@ public sealed class OutboxSettingsTests
 
         public int Count => Volatile.Read(ref _count);
 
-        public TaskCompletionSource FirstTrigger { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstTrigger { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task TriggerAsync(CancellationToken cancellationToken)
         {

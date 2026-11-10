@@ -25,7 +25,8 @@ public static class TestWait
                 deadline.Token.ThrowIfCancellationRequested();
                 // Bound the awaited probe itself, including a transport that ignores cancellation.
                 var pending = probe(deadline.Token);
-                _ = pending.ContinueWith(task => _ = task.Exception,
+                _ = pending.ContinueWith(
+                    task => _ = task.Exception,
                     CancellationToken.None,
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
@@ -37,7 +38,8 @@ public static class TestWait
                 await Task.Delay(interval, deadline.Token);
             }
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested &&
+                                                 !cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException(message);
         }

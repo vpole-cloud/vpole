@@ -7,25 +7,28 @@ public sealed record TenantDto(
     string Id,
     string Name,
     TenantRole Role,
-    bool IsDefault);
+    bool IsDefault
+);
 
 public sealed record TenantMemberDto(
     string Id,
     string TenantId,
     string UserId,
     string Email,
-    TenantRole Role);
+    TenantRole Role
+);
 
 public static class TenantDtoExtensions
 {
-    public static TenantDto ToDto(this Tenant tenant, TenantRole role, bool isDefault = false) =>
-        new(
-            tenant.Id,
-            tenant.Name,
-            role,
-            isDefault);
+    public static TenantDto ToDto(
+        this Tenant tenant,
+        TenantRole role,
+        bool isDefault = false) => new(tenant.Id, tenant.Name, role, isDefault);
 
-    public static TenantMemberDto ToDto(this TenantMember member) =>
-        new(member.Id, member.TenantId, member.UserId, member.Email, member.Role);
+    public static TenantMemberDto ToDto(this TenantMember member) => new(
+        member.Id,
+        member.TenantId,
+        member.UserId,
+        member.Email,
+        member.Role);
 }
-

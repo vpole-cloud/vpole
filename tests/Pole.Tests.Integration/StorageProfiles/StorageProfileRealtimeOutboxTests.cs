@@ -4,11 +4,10 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.Realtime.Contracts;
-using Pole.Features.StorageProfiles.Application.Common;
-using Pole.Features.StorageProfiles.Application.Catalog;
 using Pole.Features.StorageProfiles.Application;
+using Pole.Features.StorageProfiles.Application.Catalog;
+using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Realtime;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.StorageProfiles.Events;
@@ -19,8 +18,9 @@ using Xunit;
 namespace Pole.Tests.Integration.StorageProfiles;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
+public sealed class StorageProfileRealtimeOutboxTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageCatalog)
 {
     private const string EventType = "pole.storage-profiles/v1/storage-profile-catalog-changed";
 
@@ -28,35 +28,41 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
     public async Task AcceptedCreateAndUpdatePersistOnlyCatalogIdentityAndRevisionWithTrace()
     {
         var candidate = Candidate();
-        using var trace = TraceContext.Push(new("0123456789abcdef0123456789abcdef", "storage-catalog-realtime"));
+        using var trace = TraceContext.Push(
+            new TraceContextSnapshot("0123456789abcdef0123456789abcdef", "storage-catalog-realtime"));
         var create = Services.GetRequiredService<PersistCreatedStorageProfile>();
         Assert.Equal(candidate.Id, Assert.IsType<StorageProfile>((await create(candidate)).Value).Id);
         var replacement = candidate with
         {
             DisplayName = "Changed private catalog name",
             Revision = 2,
-            UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1)
+            UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1),
         };
         var update = Services.GetRequiredService<PersistUpdatedStorageProfile>();
         Assert.IsType<StorageProfile>((await update(candidate, replacement)).Value);
         var messages = await DbContext.OutboxMessages.Find(message => message.EventType == EventType).ToListAsync();
         Assert.Equal(2, messages.Count);
-        Assert.Equal(new long[] { 1, 2 },
+        Assert.Equal(
+            new long[] { 1, 2 },
             messages.Select(message =>
-                JsonSerializer.Deserialize<StorageProfileCatalogChangedEvent>(message.PayloadJson,
-                    EventExtensions.SerializerOptions)!.Revision).Order().ToArray());
+                    JsonSerializer.Deserialize<StorageProfileCatalogChangedEvent>(
+                        message.PayloadJson,
+                        EventExtensions.SerializerOptions)!.Revision)
+                .Order()
+                .ToArray());
         foreach (var message in messages)
         {
             Assert.Null(message.TenantId);
             Assert.Equal("0123456789abcdef0123456789abcdef", message.TraceId);
             Assert.Equal("storage-catalog-realtime", message.CorrelationId);
-            var payload =
-                JsonSerializer.Deserialize<StorageProfileCatalogChangedEvent>(message.PayloadJson,
-                    EventExtensions.SerializerOptions)!;
+            var payload = JsonSerializer.Deserialize<StorageProfileCatalogChangedEvent>(
+                message.PayloadJson,
+                EventExtensions.SerializerOptions)!;
             Assert.Equal(candidate.Id, payload.StorageProfileId);
             Assert.Equal("", payload.EventCore.TenantId);
             using var json = JsonDocument.Parse(message.PayloadJson);
-            Assert.Equal(new[] { "eventCore", "revision", "storageProfileId", "technicalName" },
+            Assert.Equal(
+                new[] { "eventCore", "revision", "storageProfileId", "technicalName" },
                 json.RootElement.EnumerateObject().Select(property => property.Name).Order().ToArray());
             Assert.DoesNotContain(candidate.DisplayName, message.PayloadJson);
             Assert.DoesNotContain(replacement.DisplayName, message.PayloadJson);
@@ -73,24 +79,30 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         if (updating)
             await DbContext.StorageProfiles.InsertOneAsync(candidate);
         var defaultBefore = await DbContext.StorageProfiles
-            .Find(profile => profile.Id == TestData.DefaultStorageProfileId).SingleAsync();
+            .Find(profile => profile.Id == TestData.DefaultStorageProfileId)
+            .SingleAsync();
         var realStore = Services.GetRequiredService<StoreOutboxWrites>();
-        StoreOutboxWrites failingStore = async (session, writes, ct) =>
+        StoreOutboxWrites failingStore = async (
+            session, writes,
+            ct) =>
         {
             await realStore(session, writes, ct);
             throw new InvalidOperationException("controlled outbox failure");
         };
         if (updating)
         {
-            var persistence = new MongoPersistUpdatedStorageProfile(DbContext.StorageProfiles,
+            var persistence = new MongoPersistUpdatedStorageProfile(
+                DbContext.StorageProfiles,
                 Services.GetRequiredService<RunMongoOutcomeTransaction<PersistUpdatedStorageProfileOutcome>>(),
-                failingStore, Services.GetRequiredService<StorageProfileHistory>());
-            await Assert.ThrowsAsync<InvalidOperationException>(() => persistence.InvokeAsync(candidate,
+                failingStore,
+                Services.GetRequiredService<StorageProfileHistory>());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => persistence.InvokeAsync(
+                candidate,
                 candidate with
                 {
                     IsDefault = true,
                     Revision = 2,
-                    UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1)
+                    UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1),
                 }));
             var persisted = await DbContext.StorageProfiles.Find(profile => profile.Id == candidate.Id).SingleAsync();
             Assert.False(persisted.IsDefault);
@@ -98,19 +110,21 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         }
         else
         {
-            var persistence = new MongoPersistCreatedStorageProfile(DbContext.StorageProfiles,
+            var persistence = new MongoPersistCreatedStorageProfile(
+                DbContext.StorageProfiles,
                 Services.GetRequiredService<RunMongoOutcomeTransaction<PersistCreatedStorageProfileOutcome>>(),
-                failingStore, Services.GetRequiredService<StorageProfileHistory>());
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                persistence.InvokeAsync(candidate with
+                failingStore,
+                Services.GetRequiredService<StorageProfileHistory>());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => persistence.InvokeAsync(
+                candidate with
                 {
-                    IsDefault = true
+                    IsDefault = true,
                 }));
             Assert.False(await DbContext.StorageProfiles.Find(profile => profile.Id == candidate.Id).AnyAsync());
         }
 
-        var defaultAfter =
-            await DbContext.StorageProfiles.Find(profile => profile.Id == defaultBefore.Id).SingleAsync();
+        var defaultAfter
+            = await DbContext.StorageProfiles.Find(profile => profile.Id == defaultBefore.Id).SingleAsync();
         Assert.True(defaultAfter.IsDefault);
         Assert.Equal(defaultBefore.Revision, defaultAfter.Revision);
         Assert.Equal(defaultBefore.UpdatedAtUtc, defaultAfter.UpdatedAtUtc);
@@ -129,19 +143,21 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
         {
             DisplayName = "Accepted",
             Revision = 2,
-            UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1)
+            UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(1),
         };
         Assert.IsType<StorageProfile>((await update(candidate, replacement)).Value);
-        Assert.IsType<StorageProfileRevisionConflict>((await update(candidate,
+        Assert.IsType<StorageProfileRevisionConflict>(
+            (await update(
+                candidate,
                 candidate with
                 {
                     IsDefault = true,
                     Revision = 2,
-                    UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(2)
-                }))
-            .Value);
+                    UpdatedAtUtc = candidate.UpdatedAtUtc.AddSeconds(2),
+                })).Value);
         var activeDefault = await DbContext.StorageProfiles
-            .Find(profile => profile.Id == TestData.DefaultStorageProfileId).SingleAsync();
+            .Find(profile => profile.Id == TestData.DefaultStorageProfileId)
+            .SingleAsync();
         Assert.True(activeDefault.IsDefault);
         Assert.Equal(1, activeDefault.Revision);
         Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(EventType));
@@ -152,7 +168,8 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
     {
         var changes = new List<RealtimeChange>();
         var eligibility = new List<string>();
-        var consumer = new NotifyStorageProfileCatalogChangedConsumer((change, _) =>
+        var consumer = new NotifyStorageProfileCatalogChangedConsumer(
+            (change, _) =>
             {
                 changes.Add(change);
                 return Task.CompletedTask;
@@ -174,7 +191,7 @@ public sealed class StorageProfileRealtimeOutboxTests(MongoReplicaSetFixture fix
     private static StorageProfile Candidate() => TestData.SeedStorageProfile(
             ObjectId.GenerateNewId().ToString(),
             isDefault: false) with
-    {
-        DisplayName = "Private storage catalog name"
-    };
+        {
+            DisplayName = "Private storage catalog name",
+        };
 }

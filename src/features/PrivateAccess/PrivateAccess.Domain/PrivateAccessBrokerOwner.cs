@@ -15,7 +15,8 @@ public sealed record PrivateAccessBrokerOwner(
     long Epoch,
     string? InstanceId,
     string? InternalOrigin,
-    DateTime LeaseExpiresAtUtc) : ITenantOwned
+    DateTime LeaseExpiresAtUtc
+) : ITenantOwned
 {
     public PrivateAccessBrokerOwner Reset(long generation, long revision) => this with
     {
@@ -24,15 +25,13 @@ public sealed record PrivateAccessBrokerOwner(
         Epoch = checked(Epoch + 1),
         InstanceId = null,
         InternalOrigin = null,
-        LeaseExpiresAtUtc = DateTime.UnixEpoch
+        LeaseExpiresAtUtc = DateTime.UnixEpoch,
     };
 
     public static void ValidateOrigin(string internalOrigin)
     {
-        if (!Uri.TryCreate(internalOrigin, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length != 0 ||
-            uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
-            uri.AbsolutePath != "/")
+        if (!Uri.TryCreate(internalOrigin, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
             throw new ArgumentException("The broker's internal origin must be HTTPS.", nameof(internalOrigin));
     }
 }
@@ -54,8 +53,15 @@ public static class PrivateAccessBrokerOwnerFactory
         if (revision < 1)
             throw new ArgumentOutOfRangeException(nameof(revision));
 
-        return new PrivateAccessBrokerOwner(gatewayId, tenantId,
-            deploymentTargetId, generation, revision,
-            0, null, null, DateTime.UnixEpoch);
+        return new PrivateAccessBrokerOwner(
+            gatewayId,
+            tenantId,
+            deploymentTargetId,
+            generation,
+            revision,
+            0,
+            null,
+            null,
+            DateTime.UnixEpoch);
     }
 }

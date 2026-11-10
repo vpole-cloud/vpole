@@ -1,7 +1,7 @@
-using Pole.Features.GitOps.Primitives;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Primitives;
 using Xunit;
 
 namespace Pole.Features.GitOps.Tests;
@@ -11,19 +11,24 @@ public sealed class RepositorySourceDomainTests
     private static readonly DateTime Now = new(2026, 10, 29, 0, 0, 0, DateTimeKind.Utc);
     private static readonly GitSourceIdentity Identity = new("tenant", "source");
 
-    private static readonly GitRepositoryLocation Repository =
-        new("Example", "connection", "repository", "main", "deploy");
+    private static readonly GitRepositoryLocation Repository = new(
+        "Example",
+        "connection",
+        "repository",
+        "main",
+        "deploy");
 
-    private static readonly GitPendingRequest Pending = new(new(GitRunTrigger.Poll, null), null);
+    private static readonly GitPendingRequest Pending = new(new GitRunInitiator(GitRunTrigger.Poll, null), null);
     private static readonly string Commit = new('a', 40);
 
     [Fact]
     public void Source_factory_sets_explicit_defaults_and_pause_retains_identity()
     {
-        var source = RepositorySourceFactory.Create(Identity,
+        var source = RepositorySourceFactory.Create(
+            Identity,
             Repository,
-            new(TimeSpan.FromMinutes(5)),
-            new("creator", Now),
+            new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+            new GitSourceAudit("creator", Now),
             "creation",
             "hash",
             "https://example.test/repository");
@@ -46,8 +51,14 @@ public sealed class RepositorySourceDomainTests
     [Fact]
     public void Detached_and_deleted_sources_are_terminal_and_keep_audit()
     {
-        var source = RepositorySourceFactory.Create(Identity, Repository, new(TimeSpan.FromMinutes(5)),
-            new("creator", Now), "creation", "hash", "https://example.test/repository");
+        var source = RepositorySourceFactory.Create(
+            Identity,
+            Repository,
+            new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+            new GitSourceAudit("creator", Now),
+            "creation",
+            "hash",
+            "https://example.test/repository");
         var detaching = source.BeginDetach();
         Assert.Equal(GitSourceActivity.Detaching, detaching.Activity);
         Assert.Throws<InvalidOperationException>(() => detaching.CompleteDetach(1));
@@ -72,12 +83,25 @@ public sealed class RepositorySourceDomainTests
     [Fact]
     public void Factory_can_explicitly_select_prune_and_initializes_inventory_revision()
     {
-        var source = RepositorySourceFactory.Create(Identity, Repository, new(TimeSpan.FromMinutes(5)),
-            new("creator", Now), "creation", "hash", "https://example.test/repository", GitPrunePolicy.Prune);
+        var source = RepositorySourceFactory.Create(
+            Identity,
+            Repository,
+            new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+            new GitSourceAudit("creator", Now),
+            "creation",
+            "hash",
+            "https://example.test/repository",
+            GitPrunePolicy.Prune);
         Assert.Equal(GitPrunePolicy.Prune, source.Prune);
-        Assert.Throws<ArgumentOutOfRangeException>(() => RepositorySourceFactory.Create(Identity, Repository,
-            new(TimeSpan.FromMinutes(5)), new("creator", Now), "creation", "hash",
-            "https://example.test/repository", (GitPrunePolicy)99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RepositorySourceFactory.Create(
+            Identity,
+            Repository,
+            new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+            new GitSourceAudit("creator", Now),
+            "creation",
+            "hash",
+            "https://example.test/repository",
+            (GitPrunePolicy)99));
         Assert.Equal(0, GitSynchronizationStateFactory.Create(Identity, Now).InventoryRevision);
         Assert.Throws<InvalidOperationException>(() => source.Resume());
     }
@@ -85,9 +109,14 @@ public sealed class RepositorySourceDomainTests
     [Fact]
     public void Pause_can_interrupt_partial_detach_without_reviving_old_authority()
     {
-        var source = RepositorySourceFactory.Create(new("tenant", "source"),
-            new("GitHub", "connection", "repository", "main", ""), new(TimeSpan.FromMinutes(5)),
-            new("actor", DateTime.UtcNow), "key", "hash", "https://example.test/repo");
+        var source = RepositorySourceFactory.Create(
+            new GitSourceIdentity("tenant", "source"),
+            new GitRepositoryLocation("GitHub", "connection", "repository", "main", ""),
+            new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+            new GitSourceAudit("actor", DateTime.UtcNow),
+            "key",
+            "hash",
+            "https://example.test/repo");
         var detaching = source.BeginDetach();
         var paused = detaching.Pause();
         Assert.Equal(GitSourceActivity.Paused, paused.Activity);
@@ -103,11 +132,12 @@ public sealed class RepositorySourceDomainTests
     [InlineData("a//b")]
     [InlineData("a/")]
     [InlineData("C:/path")]
-    public void Source_factory_rejects_unsafe_directory(string directory) =>
-        Assert.Throws<ArgumentException>(() => RepositorySourceFactory.Create(Identity,
+    public void Source_factory_rejects_unsafe_directory(string directory) => Assert.Throws<ArgumentException>(() =>
+        RepositorySourceFactory.Create(
+            Identity,
             Repository with { ManifestDirectory = directory },
-            new(TimeSpan.FromMinutes(5)),
-            new("creator", Now),
+            new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+            new GitSourceAudit("creator", Now),
             "creation",
             "hash",
             "https://example.test/repository"));
@@ -121,14 +151,17 @@ public sealed class RepositorySourceDomainTests
         state = state.RequestSync(Pending).Observe("sha").BeginRun("run").Attempt("sha");
         var stamp = new GitRunStamp(Identity, "run", 1, 1, 1);
         state = state.RequestSync(Pending).Observe("new-sha");
-        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(stamp with { Generation = 2 },
+        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(
+            stamp with { Generation = 2 },
             GitRunCompletion.ConfigurationApplied));
-        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(stamp with { Fence = 2 },
+        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(
+            stamp with { Fence = 2 },
             GitRunCompletion.ConfigurationApplied));
-        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(stamp with
-        {
-            Source = new("other-tenant", "source")
-        },
+        Assert.Throws<InvalidOperationException>(() => state.CompleteRun(
+            stamp with
+            {
+                Source = new GitSourceIdentity("other-tenant", "source"),
+            },
             GitRunCompletion.ConfigurationApplied));
 
         var completed = state.CompleteRun(stamp, GitRunCompletion.ConfigurationApplied);
@@ -144,8 +177,10 @@ public sealed class RepositorySourceDomainTests
     public void Blocked_run_does_not_advance_applied_commit()
     {
         var state = GitSynchronizationStateFactory.Create(Identity, Now)
-            .RequestSync(Pending).BeginRun("run").Attempt("sha");
-        var completed = state.CompleteRun(new(Identity, "run", 1, 1, 1), GitRunCompletion.Blocked);
+            .RequestSync(Pending)
+            .BeginRun("run")
+            .Attempt("sha");
+        var completed = state.CompleteRun(new GitRunStamp(Identity, "run", 1, 1, 1), GitRunCompletion.Blocked);
         Assert.Null(completed.Commits.FullyApplied);
         Assert.Equal("sha", completed.Commits.Attempted);
     }
@@ -153,7 +188,7 @@ public sealed class RepositorySourceDomainTests
     [Fact]
     public void Claim_expiry_and_attempt_fence_reject_stale_completion()
     {
-        var run = NewRun().Pin(Commit).Accept(new(Commit, "hash", "pole.io/v1alpha1", [], []));
+        var run = NewRun().Pin(Commit).Accept(new GitAcceptedSnapshot(Commit, "hash", "pole.io/v1alpha1", [], []));
         RoundTrip(run);
         var first = new GitRunLease("worker-a", 1, Now.AddMinutes(1));
         run = run.Claim(first, Now);
@@ -161,16 +196,16 @@ public sealed class RepositorySourceDomainTests
         var second = new GitRunLease("worker-b", 2, Now.AddMinutes(3));
         Assert.Throws<InvalidOperationException>(() => run.Claim(second, Now));
         Assert.Throws<InvalidOperationException>(() => run.Complete(
-            new(first.WorkerId, first.Attempt),
+            new GitClaimIdentity(first.WorkerId, first.Attempt),
             GitRunCompletion.ConfigurationApplied,
             Now.AddMinutes(1)));
         run = run.Claim(second, Now.AddMinutes(2));
         Assert.Throws<InvalidOperationException>(() => run.Complete(
-            new(first.WorkerId, first.Attempt),
+            new GitClaimIdentity(first.WorkerId, first.Attempt),
             GitRunCompletion.ConfigurationApplied,
             Now.AddMinutes(2)));
         run = run.Complete(
-            new(second.WorkerId, second.Attempt),
+            new GitClaimIdentity(second.WorkerId, second.Attempt),
             GitRunCompletion.ConfigurationApplied,
             Now.AddMinutes(2));
         RoundTrip(run);
@@ -187,12 +222,13 @@ public sealed class RepositorySourceDomainTests
         RoundTrip(run);
         var lease = new GitRunLease("worker", 1, Now.AddMinutes(2));
         run = run.Claim(lease, Now);
-        Assert.Throws<InvalidOperationException>(() => run.Complete(new("worker", 1),
+        Assert.Throws<InvalidOperationException>(() => run.Complete(
+            new GitClaimIdentity("worker", 1),
             GitRunCompletion.ConfigurationApplied,
             Now));
-        run = run.Complete(new("worker", 1), GitRunCompletion.Failed, Now) with
+        run = run.Complete(new GitClaimIdentity("worker", 1), GitRunCompletion.Failed, Now) with
         {
-            Diagnostics = [new("RepositoryNotFound", null, null, null)]
+            Diagnostics = [new GitRunDiagnostic("RepositoryNotFound", null, null, null)],
         };
         Assert.IsType<GitInputUnresolved>(run.Input);
         RoundTrip(run);
@@ -201,12 +237,16 @@ public sealed class RepositorySourceDomainTests
     [Fact]
     public void Download_retry_retains_commit_and_needs_due_time_and_next_attempt()
     {
-        var run = NewRun().Claim(new("worker", 1, Now.AddMinutes(2)), Now).Pin(Commit);
+        var run = NewRun().Claim(new GitRunLease("worker", 1, Now.AddMinutes(2)), Now).Pin(Commit);
         Assert.Throws<InvalidOperationException>(() => run.Pin(new string('b', 40)));
-        run = run.Delay(new("worker", 1), Now, Now.AddMinutes(1), new("Unavailable", null, null, null));
+        run = run.Delay(
+            new GitClaimIdentity("worker", 1),
+            Now,
+            Now.AddMinutes(1),
+            new GitRunDiagnostic("Unavailable", null, null, null));
         RoundTrip(run);
-        Assert.Throws<InvalidOperationException>(() => run.Claim(new("next", 2, Now.AddMinutes(2)), Now));
-        run = run.Claim(new("next", 2, Now.AddMinutes(3)), Now.AddMinutes(1));
+        Assert.Throws<InvalidOperationException>(() => run.Claim(new GitRunLease("next", 2, Now.AddMinutes(2)), Now));
+        run = run.Claim(new GitRunLease("next", 2, Now.AddMinutes(3)), Now.AddMinutes(1));
         Assert.Equal(Commit, run.Commit);
         Assert.Equal(1, run.ConsecutiveFailures);
         RoundTrip(run);
@@ -215,16 +255,16 @@ public sealed class RepositorySourceDomainTests
     [Fact]
     public void Heartbeat_does_not_change_claim_identity()
     {
-        var run = NewRun().Claim(new("worker", 1, Now.AddMinutes(1)), Now);
-        run = run with { State = new GitRunClaimed(new("worker", 1, Now.AddMinutes(3))) };
-        run = run.Complete(new("worker", 1), GitRunCompletion.Failed, Now.AddMinutes(2));
+        var run = NewRun().Claim(new GitRunLease("worker", 1, Now.AddMinutes(1)), Now);
+        run = run with { State = new GitRunClaimed(new GitRunLease("worker", 1, Now.AddMinutes(3))) };
+        run = run.Complete(new GitClaimIdentity("worker", 1), GitRunCompletion.Failed, Now.AddMinutes(2));
         Assert.IsType<GitRunFinished>(run.State);
     }
 
     private static GitReconciliationRun NewRun() => GitReconciliationRunFactory.Create(
-        new(Identity, "run", 1, 1, 1),
+        new GitRunStamp(Identity, "run", 1, 1, 1),
         Repository,
-        new(GitRunTrigger.Poll, null),
+        new GitRunInitiator(GitRunTrigger.Poll, null),
         Now,
         new GitInputUnresolved(),
         null);
@@ -233,10 +273,18 @@ public sealed class RepositorySourceDomainTests
     public void Operation_and_inventory_current_schema_round_trip_without_feature_registration()
     {
         var resource = new GitResourceIdentity("Widget", "demo", "id");
-        var expected = new GitResourcePreconditions(resource, "source", [new("Widget/id", 4)], "hash");
-        var stamp = new GitPlanStamp(new(Identity, "run", 1, 1, 1), resource, DeclarationPhase.Configure);
-        var decision = new GitPlanDecision(GitPlannedAction.Update, expected,
-            new("desired", "{}"), [], ["tags", "description", "tags"]);
+        var expected = new GitResourcePreconditions(
+            resource,
+            "source",
+            [new GitResourceVersion("Widget/id", 4)],
+            "hash");
+        var stamp = new GitPlanStamp(new GitRunStamp(Identity, "run", 1, 1, 1), resource, DeclarationPhase.Configure);
+        var decision = new GitPlanDecision(
+            GitPlannedAction.Update,
+            expected,
+            new GitManagedConfiguration("desired", "{}"),
+            [],
+            ["tags", "description", "tags"]);
         var operation = GitPlannedOperationFactory.Create(stamp, decision, Now);
         Assert.Equal<string>(["description", "tags"], operation.Decision.ChangedFields);
         RoundTrip(operation);
@@ -250,7 +298,8 @@ public sealed class RepositorySourceDomainTests
         Assert.Equal(projections, BsonSerializer.Deserialize<GitManagedProjections>(projections.ToBson()));
     }
 
-    private static void RoundTrip<T>(T value) where T : notnull
+    private static void RoundTrip<T>(T value)
+        where T : notnull
     {
         var bson = value.ToBsonDocument();
         Assert.True(bson.Contains("_id"));

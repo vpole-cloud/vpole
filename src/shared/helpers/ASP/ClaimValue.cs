@@ -1,10 +1,13 @@
-﻿using System.Globalization;
+﻿using System.Collections;
+using System.Globalization;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;
 
 namespace Pole.ASP.Helpers;
 
-public readonly record struct ClaimValue(string Value)
+public readonly record struct ClaimValue(
+    string Value
+)
 {
     // Minimal APIs will auto-discover this for parameters of type ClaimValue
     public static ValueTask<ClaimValue> BindAsync(HttpContext context, ParameterInfo parameter)
@@ -12,7 +15,9 @@ public readonly record struct ClaimValue(string Value)
         var claimType = parameter.GetCustomAttribute<FromClaimAttribute>()?.ClaimType;
         var claimValue = context.User?.Claims.FirstOrDefault(x => x.Type == claimType)?.Value;
         if (string.IsNullOrWhiteSpace(claimValue))
-            throw new BadHttpRequestException($"Required claim '{claimType}' is missing.", StatusCodes.Status401Unauthorized);
+            throw new BadHttpRequestException(
+                $"Required claim '{claimType}' is missing.",
+                StatusCodes.Status401Unauthorized);
 
         return ValueTask.FromResult(new ClaimValue(claimValue));
     }
@@ -21,21 +26,22 @@ public readonly record struct ClaimValue(string Value)
     public static implicit operator Guid(ClaimValue c) => Guid.Parse(c.Value);
 }
 
-public readonly record struct ClaimValue<T>(T Value)
+public readonly record struct ClaimValue<T>(
+    T Value
+)
 {
     public static ValueTask<ClaimValue<T>> BindAsync(HttpContext context, ParameterInfo parameter)
     {
         var claimType = parameter.GetCustomAttribute<FromClaimAttribute>()?.ClaimType;
         var claimValues = string.IsNullOrWhiteSpace(claimType)
             ? []
-            : context.User.Claims
-                .Where(x => x.Type == claimType)
-                .Select(x => x.Value)
-                .ToList();
+            : context.User.Claims.Where(x => x.Type == claimType).Select(x => x.Value).ToList();
 
         var isOptional = IsOptional(parameter);
         if (claimValues.Count == 0 && !isOptional)
-            throw new BadHttpRequestException($"Required claim '{claimType}' is missing.", StatusCodes.Status401Unauthorized);
+            throw new BadHttpRequestException(
+                $"Required claim '{claimType}' is missing.",
+                StatusCodes.Status401Unauthorized);
 
         return ValueTask.FromResult(new ClaimValue<T>(ConvertClaimValues<T>(claimValues, isOptional)));
     }
@@ -54,11 +60,9 @@ public readonly record struct ClaimValue<T>(T Value)
 
         if (IsGenericList(effectiveType, out var elementType))
         {
-            var list = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
+            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
             foreach (var value in values)
-            {
                 list.Add(ConvertSingleValue(value, elementType));
-            }
 
             return (TValue)list;
         }
@@ -106,7 +110,6 @@ public readonly record struct ClaimValue<T>(T Value)
         return false;
     }
 
-    private static bool IsClaimValueType(Type type) =>
-        type == typeof(ClaimValue) ||
-        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ClaimValue<>);
+    private static bool IsClaimValueType(Type type) => type == typeof(ClaimValue) ||
+        (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ClaimValue<>));
 }

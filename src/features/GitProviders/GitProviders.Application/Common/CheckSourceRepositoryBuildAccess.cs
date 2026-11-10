@@ -12,7 +12,8 @@ internal sealed class SourceRepositoryBuildAccessChecker(
     LoadSourceRepository loadRepository,
     LoadTenantIdentity loadTenant,
     LoadGitProviderConnection loadConnection,
-    IGitHubAppClient client)
+    IGitHubAppClient client
+)
 {
     public async Task<CheckSourceRepositoryBuildAccessOutcome> InvokeAsync(
         SourceRepositoryReferenceRequest request,
@@ -32,13 +33,17 @@ internal sealed class SourceRepositoryBuildAccessChecker(
 
         try
         {
-            await client.GetRepositoryAsync(connection.ExternalInstallationId, repository.ExternalRepositoryId,
+            await client.GetRepositoryAsync(
+                connection.ExternalInstallationId,
+                repository.ExternalRepositoryId,
                 cancellationToken);
             return repository.ToBuildSnapshot();
         }
         catch (GitHubApiException exception) when (!exception.IsRateLimited &&
-            (exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ||
-             exception.StatusCode == HttpStatusCode.NotFound && exception.Target == GitHubRequestTarget.Installation))
+                                                   (exception.StatusCode is HttpStatusCode.Unauthorized
+                                                           or HttpStatusCode.Forbidden ||
+                                                       (exception.StatusCode == HttpStatusCode.NotFound &&
+                                                           exception.Target == GitHubRequestTarget.Installation)))
         {
             return new SourceRepositoryAccessDenied();
         }
@@ -47,7 +52,8 @@ internal sealed class SourceRepositoryBuildAccessChecker(
             return new SourceRepositoryRemoteNotFound();
         }
         catch (Exception exception) when (exception is GitHubApiException or HttpRequestException or JsonException ||
-            exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+                                          (exception is OperationCanceledException &&
+                                              !cancellationToken.IsCancellationRequested))
         {
             return new SourceRepositoryUnavailable();
         }

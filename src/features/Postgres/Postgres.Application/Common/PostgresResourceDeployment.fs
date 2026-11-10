@@ -13,45 +13,33 @@ type PostgresResourceDeployment =
 
 [<RequireQualifiedAccess>]
 module PostgresResourceDeploymentMappings =
-    let private affinityTerm (term : ComputeNodeAffinityTermValue) =
+    let private affinityTerm (term: ComputeNodeAffinityTermValue) =
         term.Expressions
         |> Seq.map (fun expression ->
-            ResourceDeploymentNodeAffinityExpression(
-                expression.Key,
-                expression.Operator,
-                expression.Values))
+            ResourceDeploymentNodeAffinityExpression(expression.Key, expression.Operator, expression.Values))
         |> ImmutableList.CreateRange
         |> ResourceDeploymentNodeAffinityTerm
 
-    let compute (profile : ResolvedComputeProfile) =
+    let compute (profile: ResolvedComputeProfile) =
         ResourceDeploymentComputeConfiguration(
             profile.ComputeProfileId,
             profile.ComputeProfileRevision,
             profile.DeploymentTargetId,
             profile.DisplayName,
-            ResourceDeploymentComputeResourceValues(
-                profile.Requests.CpuMillis,
-                profile.Requests.MemoryMi),
-            ResourceDeploymentComputeResourceValues(
-                profile.Limits.CpuMillis,
-                profile.Limits.MemoryMi),
+            ResourceDeploymentComputeResourceValues(profile.Requests.CpuMillis, profile.Requests.MemoryMi),
+            ResourceDeploymentComputeResourceValues(profile.Limits.CpuMillis, profile.Limits.MemoryMi),
             profile.Architecture,
             profile.ExtendedResources
-            |> Seq.map (fun resource ->
-                ResourceDeploymentExtendedResource(resource.Name, resource.Quantity))
+            |> Seq.map (fun resource -> ResourceDeploymentExtendedResource(resource.Name, resource.Quantity))
             |> ImmutableList.CreateRange,
             profile.NodeSelector
-            |> Seq.map (fun selector ->
-                ResourceDeploymentNodeSelector(selector.Key, selector.Value))
+            |> Seq.map (fun selector -> ResourceDeploymentNodeSelector(selector.Key, selector.Value))
             |> ImmutableList.CreateRange,
             profile.RequiredNodeAffinity
             |> Seq.map affinityTerm
             |> ImmutableList.CreateRange,
             profile.PreferredNodeAffinity
-            |> Seq.map (fun term ->
-                ResourceDeploymentPreferredNodeAffinityTerm(
-                    term.Weight,
-                    affinityTerm term.Term))
+            |> Seq.map (fun term -> ResourceDeploymentPreferredNodeAffinityTerm(term.Weight, affinityTerm term.Term))
             |> ImmutableList.CreateRange,
             profile.Tolerations
             |> Seq.map (fun toleration ->
@@ -60,51 +48,37 @@ module PostgresResourceDeploymentMappings =
                     toleration.Operator,
                     toleration.Value,
                     toleration.Effect,
-                    toleration.TolerationSeconds))
+                    toleration.TolerationSeconds
+                ))
             |> ImmutableList.CreateRange,
-            profile.RuntimeClassName)
+            profile.RuntimeClassName
+        )
 
-    let storage (profile : ResolvedStorageProfile) =
-        ResourceDeploymentStorageConfiguration(
-            profile.ProfileId,
-            profile.ProfileRevision,
-            profile.StorageClassName)
+    let storage (profile: ResolvedStorageProfile) =
+        ResourceDeploymentStorageConfiguration(profile.ProfileId, profile.ProfileRevision, profile.StorageClassName)
 
-    let private kubernetesAffinityTerm (term : ResourceDeploymentNodeAffinityTerm) =
+    let private kubernetesAffinityTerm (term: ResourceDeploymentNodeAffinityTerm) =
         KubernetesNodeAffinityTerm(
             term.Expressions
             |> Seq.map (fun expression ->
-                KubernetesNodeAffinityExpression(
-                    expression.Key,
-                    expression.Operator,
-                    expression.Values))
-            |> ResizeArray)
+                KubernetesNodeAffinityExpression(expression.Key, expression.Operator, expression.Values))
+            |> ResizeArray
+        )
 
-    let kubernetesCompute (compute : ResourceDeploymentComputeConfiguration) =
+    let kubernetesCompute (compute: ResourceDeploymentComputeConfiguration) =
         KubernetesComputeConfiguration(
-            KubernetesComputeResourceValues(
-                compute.Requests.CpuMillis,
-                compute.Requests.MemoryMi),
-            KubernetesComputeResourceValues(
-                compute.Limits.CpuMillis,
-                compute.Limits.MemoryMi),
+            KubernetesComputeResourceValues(compute.Requests.CpuMillis, compute.Requests.MemoryMi),
+            KubernetesComputeResourceValues(compute.Limits.CpuMillis, compute.Limits.MemoryMi),
             compute.Architecture,
             compute.ExtendedResources
-            |> Seq.map (fun resource ->
-                KubernetesExtendedResource(resource.Name, resource.Quantity))
+            |> Seq.map (fun resource -> KubernetesExtendedResource(resource.Name, resource.Quantity))
             |> ResizeArray,
             compute.NodeSelector
-            |> Seq.map (fun selector ->
-                KubernetesNodeSelector(selector.Key, selector.Value))
+            |> Seq.map (fun selector -> KubernetesNodeSelector(selector.Key, selector.Value))
             |> ResizeArray,
-            compute.RequiredNodeAffinity
-            |> Seq.map kubernetesAffinityTerm
-            |> ResizeArray,
+            compute.RequiredNodeAffinity |> Seq.map kubernetesAffinityTerm |> ResizeArray,
             compute.PreferredNodeAffinity
-            |> Seq.map (fun term ->
-                KubernetesPreferredNodeAffinityTerm(
-                    term.Weight,
-                    kubernetesAffinityTerm term.Term))
+            |> Seq.map (fun term -> KubernetesPreferredNodeAffinityTerm(term.Weight, kubernetesAffinityTerm term.Term))
             |> ResizeArray,
             compute.Tolerations
             |> Seq.map (fun toleration ->
@@ -113,6 +87,8 @@ module PostgresResourceDeploymentMappings =
                     toleration.Operator,
                     toleration.Value,
                     toleration.Effect,
-                    toleration.TolerationSeconds))
+                    toleration.TolerationSeconds
+                ))
             |> ResizeArray,
-            compute.RuntimeClassName)
+            compute.RuntimeClassName
+        )

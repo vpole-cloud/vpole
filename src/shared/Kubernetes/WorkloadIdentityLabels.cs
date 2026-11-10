@@ -9,7 +9,8 @@ public sealed record WorkloadIdentityLabels(
     string DeploymentTargetId,
     string ResourceType,
     string ResourceId,
-    string ResourceDeploymentId)
+    string ResourceDeploymentId
+)
 {
     public Dictionary<string, string> ToDictionary() => new(StringComparer.Ordinal)
     {
@@ -20,6 +21,6 @@ public sealed record WorkloadIdentityLabels(
         ["pole.io/deployment-target-id"] = DeploymentTargetId,
         ["pole.io/resource-type"] = ResourceType,
         ["pole.io/resource-id"] = ResourceId,
-        ["pole.io/resource-deployment-id"] = ResourceDeploymentId
+        ["pole.io/resource-deployment-id"] = ResourceDeploymentId,
     };
 }

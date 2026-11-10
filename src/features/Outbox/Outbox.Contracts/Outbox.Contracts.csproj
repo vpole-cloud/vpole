@@ -9,10 +9,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\\..\\..\\shared\\Events\\Events.csproj" />
+        <ProjectReference Include="..\\..\\..\\shared\\Events\\Events.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="MongoDB.Driver" />
+        <PackageReference Include="MongoDB.Driver"/>
     </ItemGroup>
 </Project>

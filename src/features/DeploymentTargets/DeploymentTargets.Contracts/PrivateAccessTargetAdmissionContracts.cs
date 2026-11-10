@@ -4,7 +4,8 @@ namespace Pole.Features.DeploymentTargets.Contracts;
 
 public sealed record PrivateAccessDeploymentTargetReady(
     string DeploymentTargetId,
-    long Revision);
+    long Revision
+);
 
 public sealed record PrivateAccessDeploymentTargetUnavailable;
 

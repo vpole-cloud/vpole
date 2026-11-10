@@ -3,55 +3,14 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Workloads;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
 public sealed class RedisResourceDeploymentObserver(
     LoadRedisById loadResource,
-    IKubernetesClientProvider clients) : IResourceDeploymentObserver, IResourceDeploymentDiagnosticsProvider,
-    IResourceDeploymentBoundObserver
+    IKubernetesClientProvider clients
+) : IResourceDeploymentObserver, IResourceDeploymentDiagnosticsProvider, IResourceDeploymentBoundObserver
 {
-    private async Task<OwnedKubernetesWorkload?> ResolveDiagnosticsAsync(
-        ResourceDeploymentReconciliationSnapshot deployment,
-        CancellationToken ct)
-    {
-        if (deployment.ResourceType != RedisResourceDeployment.ResourceType)
-            return null;
-        var resource = await loadResource(deployment.TenantId, deployment.ResourceId, ct);
-        if (resource is null)
-            return null;
-        var identity = new WorkloadIdentityLabels(deployment.TenantId,
-            deployment.ResourceGroupId,
-            deployment.IsolationScopeId,
-            deployment.RuntimeCellId,
-            deployment.Placement.DeploymentTargetId,
-            RedisResourceDeployment.KubernetesResourceTypeLabel,
-            deployment.ResourceId,
-            deployment.Id);
-        var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, ct);
-        return await KubernetesWorkloadDiagnostics.StatefulSetAsync(client,
-            resource.Name,
-            deployment.Placement.KubernetesNamespace,
-            identity,
-            deployment.DesiredGeneration,
-            KubernetesWorkloadObservation.TemplateGenerationAnnotation,
-            false,
-            ct);
-    }
-
-    public async Task<WorkloadDiagnostics> DiscoverAsync(ResourceDeploymentReconciliationSnapshot deployment,
-        CancellationToken cancellationToken = default) =>
-        await KubernetesWorkloadDiagnostics.DiscoverAsync(await ResolveDiagnosticsAsync(deployment, cancellationToken),
-            cancellationToken);
-
-    public Task<RuntimeLogOpenResult> OpenLogsAsync(ResourceDeploymentReconciliationSnapshot deployment,
-        RuntimeLogSelection selection,
-        CancellationToken cancellationToken = default) =>
-        KubernetesWorkloadDiagnostics.OpenAsync(ct => ResolveDiagnosticsAsync(deployment, ct),
-            selection,
-            cancellationToken);
-
     public async Task<ResourceDeploymentBoundObservation> ObserveBoundAsync(
         ResourceDeploymentObservationContext context,
         string bindingId,
@@ -59,11 +18,14 @@ public sealed class RedisResourceDeploymentObserver(
     {
         var deployment = context.Deployment;
         if (deployment.ResourceType != RedisResourceDeployment.ResourceType)
-            return new(null, new UnavailableWorkloadObservation("ResourceTypeMismatch"));
+            return new ResourceDeploymentBoundObservation(
+                null,
+                new UnavailableWorkloadObservation("ResourceTypeMismatch"));
         var resource = await loadResource(deployment.TenantId, deployment.ResourceId, cancellationToken);
         if (resource is null)
-            return new(null, new UnavailableWorkloadObservation("ResourceNotFound"));
-        var identity = new WorkloadIdentityLabels(deployment.TenantId,
+            return new ResourceDeploymentBoundObservation(null, new UnavailableWorkloadObservation("ResourceNotFound"));
+        var identity = new WorkloadIdentityLabels(
+            deployment.TenantId,
             deployment.ResourceGroupId,
             deployment.IsolationScopeId,
             deployment.RuntimeCellId,
@@ -75,7 +37,8 @@ public sealed class RedisResourceDeploymentObserver(
         var namespaceName = deployment.Placement.KubernetesNamespace;
         if (!await MatchesAsync())
             return Changed();
-        var observed = await KubernetesWorkloadObservation.StatefulSetAsync(client,
+        var observed = await KubernetesWorkloadObservation.StatefulSetAsync(
+            client,
             resource.Name,
             namespaceName,
             identity,
@@ -83,7 +46,8 @@ public sealed class RedisResourceDeploymentObserver(
             KubernetesWorkloadObservation.TemplateGenerationAnnotation,
             false,
             cancellationToken);
-        var workload = await KubernetesWorkloadDiagnostics.StatefulSetAsync(client,
+        var workload = await KubernetesWorkloadDiagnostics.StatefulSetAsync(
+            client,
             resource.Name,
             namespaceName,
             identity,
@@ -96,26 +60,43 @@ public sealed class RedisResourceDeploymentObserver(
         var diagnostics = await KubernetesWorkloadDiagnostics.DiscoverAsync(workload, cancellationToken);
         if (!await MatchesAsync())
             return Changed();
-        return new(bindingId, observed)
+        return new ResourceDeploymentBoundObservation(bindingId, observed)
         {
-            Diagnostics = diagnostics
+            Diagnostics = diagnostics,
         };
 
-        Task<bool> MatchesAsync() => KubernetesWorkloadObservation.MatchesStatefulSetBindingAsync(client,
+        Task<bool> MatchesAsync() => KubernetesWorkloadObservation.MatchesStatefulSetBindingAsync(
+            client,
             resource.Name,
             namespaceName,
             identity,
             bindingId,
             cancellationToken);
 
-        static ResourceDeploymentBoundObservation Changed() =>
-            new(null, new UnavailableWorkloadObservation("BindingChanged"))
-            {
-                Diagnostics = new UnavailableWorkloadDiagnostics("BindingChanged")
-            };
+        static ResourceDeploymentBoundObservation Changed() => new(
+            null,
+            new UnavailableWorkloadObservation("BindingChanged"))
+        {
+            Diagnostics = new UnavailableWorkloadDiagnostics("BindingChanged"),
+        };
     }
 
-    public async Task<WorkloadObservation> ObserveAsync(ResourceDeploymentReconciliationSnapshot deployment,
+    public async Task<WorkloadDiagnostics> DiscoverAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        CancellationToken cancellationToken = default) => await KubernetesWorkloadDiagnostics.DiscoverAsync(
+        await ResolveDiagnosticsAsync(deployment, cancellationToken),
+        cancellationToken);
+
+    public Task<RuntimeLogOpenResult> OpenLogsAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        RuntimeLogSelection selection,
+        CancellationToken cancellationToken = default) => KubernetesWorkloadDiagnostics.OpenAsync(
+        ct => ResolveDiagnosticsAsync(deployment, ct),
+        selection,
+        cancellationToken);
+
+    public async Task<WorkloadObservation> ObserveAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
         CancellationToken cancellationToken = default)
     {
         if (deployment.ResourceType != RedisResourceDeployment.ResourceType)
@@ -123,7 +104,8 @@ public sealed class RedisResourceDeploymentObserver(
         var resource = await loadResource(deployment.TenantId, deployment.ResourceId, cancellationToken);
         if (resource is null)
             return new UnavailableWorkloadObservation("ResourceNotFound");
-        var identity = new WorkloadIdentityLabels(deployment.TenantId,
+        var identity = new WorkloadIdentityLabels(
+            deployment.TenantId,
             deployment.ResourceGroupId,
             deployment.IsolationScopeId,
             deployment.RuntimeCellId,
@@ -132,7 +114,8 @@ public sealed class RedisResourceDeploymentObserver(
             deployment.ResourceId,
             deployment.Id);
         var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, cancellationToken);
-        return await KubernetesWorkloadObservation.StatefulSetAsync(client,
+        return await KubernetesWorkloadObservation.StatefulSetAsync(
+            client,
             resource.Name,
             deployment.Placement.KubernetesNamespace,
             identity,
@@ -140,5 +123,35 @@ public sealed class RedisResourceDeploymentObserver(
             KubernetesWorkloadObservation.TemplateGenerationAnnotation,
             false,
             cancellationToken);
+    }
+
+    private async Task<OwnedKubernetesWorkload?> ResolveDiagnosticsAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        CancellationToken ct)
+    {
+        if (deployment.ResourceType != RedisResourceDeployment.ResourceType)
+            return null;
+        var resource = await loadResource(deployment.TenantId, deployment.ResourceId, ct);
+        if (resource is null)
+            return null;
+        var identity = new WorkloadIdentityLabels(
+            deployment.TenantId,
+            deployment.ResourceGroupId,
+            deployment.IsolationScopeId,
+            deployment.RuntimeCellId,
+            deployment.Placement.DeploymentTargetId,
+            RedisResourceDeployment.KubernetesResourceTypeLabel,
+            deployment.ResourceId,
+            deployment.Id);
+        var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, ct);
+        return await KubernetesWorkloadDiagnostics.StatefulSetAsync(
+            client,
+            resource.Name,
+            deployment.Placement.KubernetesNamespace,
+            identity,
+            deployment.DesiredGeneration,
+            KubernetesWorkloadObservation.TemplateGenerationAnnotation,
+            false,
+            ct);
     }
 }

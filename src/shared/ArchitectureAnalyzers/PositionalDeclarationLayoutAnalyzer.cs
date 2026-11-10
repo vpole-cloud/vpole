@@ -30,8 +30,10 @@ public sealed class PositionalDeclarationLayoutAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeTree(SyntaxTreeAnalysisContext context)
     {
-        foreach (var parameters in context.Tree.GetRoot(context.CancellationToken)
-                     .DescendantNodes().OfType<ParameterListSyntax>())
+        foreach (var parameters in context.Tree
+                     .GetRoot(context.CancellationToken)
+                     .DescendantNodes()
+                     .OfType<ParameterListSyntax>())
         {
             var declaration = parameters.Parent!;
             if (declaration is not RecordDeclarationSyntax)
@@ -45,11 +47,13 @@ public sealed class PositionalDeclarationLayoutAnalyzer : DiagnosticAnalyzer
                 var span = parameter.GetLocation().GetLineSpan();
                 if (span.StartLinePosition.Line <= previousLine)
                 {
-                    var name = declaration.ChildTokens().FirstOrDefault(token =>
-                        token.IsKind(SyntaxKind.IdentifierToken)).ValueText;
+                    var name = declaration.ChildTokens()
+                        .FirstOrDefault(token => token.IsKind(SyntaxKind.IdentifierToken))
+                        .ValueText;
                     context.ReportDiagnostic(Diagnostic.Create(Rule, parameters.GetLocation(), name));
                     break;
                 }
+
                 previousLine = span.EndLinePosition.Line;
             }
         }

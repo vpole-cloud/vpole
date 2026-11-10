@@ -5,14 +5,17 @@ namespace Pole.Features.DeploymentTargets.Domain;
 public sealed record DeploymentTargetWorkloadConfiguration(
     long Revision,
     DeploymentTargetIngressConfiguration? Ingress,
-    DeploymentTargetNetworkSources NetworkSources)
+    DeploymentTargetNetworkSources NetworkSources
+)
 {
     public DeploymentTargetNetworkPolicy NetworkPolicy { get; init; } = DeploymentTargetNetworkPolicy.Unknown;
 
     public static DeploymentTargetWorkloadConfiguration Create(
         DeploymentTargetIngressConfiguration? ingress,
-        DeploymentTargetNetworkSources networkSources) =>
-        new(Revision: 1, NormalizeIngress(ingress), networkSources.Validate());
+        DeploymentTargetNetworkSources networkSources) => new(
+        Revision: 1,
+        NormalizeIngress(ingress),
+        networkSources.Validate());
 
     public DeploymentTargetWorkloadConfiguration Reconfigure(
         DeploymentTargetIngressConfiguration? ingress,
@@ -27,39 +30,34 @@ public sealed record DeploymentTargetWorkloadConfiguration(
                 normalizedIngress,
                 networkSources)
             {
-                NetworkPolicy = NetworkPolicy
+                NetworkPolicy = NetworkPolicy,
             };
     }
 
-    private static DeploymentTargetIngressConfiguration? NormalizeIngress(
-        DeploymentTargetIngressConfiguration? ingress) =>
-        ingress is null
-            ? null
-            : DeploymentTargetIngressConfiguration.Create(
-                ingress.IngressClassName,
-                ingress.ClusterIssuerName,
-                ingress.PublicBaseDomain);
+    private static DeploymentTargetIngressConfiguration?
+        NormalizeIngress(DeploymentTargetIngressConfiguration? ingress) => ingress is null
+        ? null
+        : DeploymentTargetIngressConfiguration.Create(
+            ingress.IngressClassName,
+            ingress.ClusterIssuerName,
+            ingress.PublicBaseDomain);
 }
 
 public sealed record DeploymentTargetIngressConfiguration(
     string IngressClassName,
     string ClusterIssuerName,
-    string? PublicBaseDomain)
+    string? PublicBaseDomain
+)
 {
     public const int MaximumNameLength = 253;
 
     public static DeploymentTargetIngressConfiguration Create(
         string ingressClassName,
         string clusterIssuerName,
-        string? publicBaseDomain = null) =>
-        new(
-            DeploymentTargetValueGuard.KubernetesResourceName(
-                ingressClassName,
-                nameof(ingressClassName)),
-            DeploymentTargetValueGuard.KubernetesResourceName(
-                clusterIssuerName,
-                nameof(clusterIssuerName)),
-            NormalizePublicBaseDomain(publicBaseDomain));
+        string? publicBaseDomain = null) => new(
+        DeploymentTargetValueGuard.KubernetesResourceName(ingressClassName, nameof(ingressClassName)),
+        DeploymentTargetValueGuard.KubernetesResourceName(clusterIssuerName, nameof(clusterIssuerName)),
+        NormalizePublicBaseDomain(publicBaseDomain));
 
     public static bool IsValidPublicBaseDomain(string? value) =>
         !string.IsNullOrWhiteSpace(value) && DnsName.TryCreate(value, out _);
@@ -97,17 +95,11 @@ public sealed record DeploymentTargetIngressConfiguration(
 
     private static bool IsValidDnsLabel(string label)
     {
-        if (label.Length is < 1 or > 63 ||
-            !IsLowerAlphaNumeric(label[0]) ||
-            !IsLowerAlphaNumeric(label[^1]))
-        {
+        if (label.Length is < 1 or > 63 || !IsLowerAlphaNumeric(label[0]) || !IsLowerAlphaNumeric(label[^1]))
             return false;
-        }
 
-        return label.All(character =>
-            IsLowerAlphaNumeric(character) || character == '-');
+        return label.All(character => IsLowerAlphaNumeric(character) || character == '-');
     }
 
-    private static bool IsLowerAlphaNumeric(char character) =>
-        character is >= 'a' and <= 'z' or >= '0' and <= '9';
+    private static bool IsLowerAlphaNumeric(char character) => character is >= 'a' and <= 'z' or >= '0' and <= '9';
 }

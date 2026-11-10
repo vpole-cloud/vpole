@@ -6,12 +6,14 @@ public sealed record WebServiceSpecSnapshot(
     WebServiceImageSnapshot Image,
     WebServiceConfigSnapshot Config,
     AutoscalingSpecSnapshot? Autoscaling,
-    WebServiceProbeSpecSnapshot Probes);
+    WebServiceProbeSpecSnapshot Probes
+);
 
 public sealed record WebServiceProbeSpecSnapshot(
     WebServiceProbeConfigSnapshot Startup,
     WebServiceProbeConfigSnapshot Liveness,
-    WebServiceProbeConfigSnapshot Readiness);
+    WebServiceProbeConfigSnapshot Readiness
+);
 
 public sealed record WebServiceProbeConfigSnapshot(
     string Path,
@@ -20,45 +22,57 @@ public sealed record WebServiceProbeConfigSnapshot(
     int PeriodSeconds = 10,
     int TimeoutSeconds = 5,
     int FailureThreshold = 3,
-    int SuccessThreshold = 1);
+    int SuccessThreshold = 1
+);
 
 public sealed record AutoscalingSpecSnapshot(
     int MinReplicas,
     int MaxReplicas,
-    AutoscalingMetricSnapshot Metric);
+    AutoscalingMetricSnapshot Metric
+);
 
 public sealed record AutoscalingMetricSnapshot(
     string Type,
-    int TargetAverageUtilization);
+    int TargetAverageUtilization
+);
 
 public sealed record WebServiceConfigSnapshot(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableList<PortMappingSnapshot> PortMappings)
+    ImmutableList<PortMappingSnapshot> PortMappings
+)
 {
-    public ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot> ConnectionEnvironmentReferences { get; init; } = ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>.Empty;
-    public ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot> SecretEnvironmentReferences { get; init; } = ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot>.Empty;
+    public ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>
+        ConnectionEnvironmentReferences { get; init; }
+        = ImmutableDictionary<string, ConnectionEnvironmentReferenceSnapshot>.Empty;
+
+    public ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot> SecretEnvironmentReferences { get; init; }
+        = ImmutableDictionary<string, SecretEnvironmentReferenceSnapshot>.Empty;
 }
 
 public sealed record ConnectionEnvironmentReferenceSnapshot(
     string ConnectionId,
     string ValueKind,
-    string? ConfigurationKey = null);
+    string? ConfigurationKey = null
+);
 
 public sealed record SecretEnvironmentReferenceSnapshot(
     string SecretId,
-    string Key);
+    string Key
+);
 
 public sealed record PortMappingSnapshot(
     int ServicePort,
     string TargetPort,
     string Protocol,
-    string Name);
+    string Name
+);
 
 public sealed record WebServiceImageInfoSnapshot(
     string Server,
     string Name,
     string Tag = "latest",
-    string? SecretName = null) : WebServiceImageSnapshot
+    string? SecretName = null
+) : WebServiceImageSnapshot
 {
     public string FullImageName => $"{Server}/{Name}:{Tag}";
 }

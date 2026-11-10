@@ -14,7 +14,8 @@ public sealed record EncryptedValue(
     int ContentEncryptionAlgorithmVersion,
     byte[] Ciphertext,
     byte[] Nonce,
-    byte[] AuthenticationTag)
+    byte[] AuthenticationTag
+)
 {
     public override string ToString() =>
         $"EncryptedValue(format={FormatVersion}, provider={KeyProviderId}, contentAlgorithm={ContentEncryptionAlgorithm})";

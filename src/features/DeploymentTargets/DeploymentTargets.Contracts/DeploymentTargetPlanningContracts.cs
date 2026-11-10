@@ -4,9 +4,12 @@ namespace Pole.Features.DeploymentTargets.Contracts;
 
 public sealed record DeploymentTargetPlanningSnapshot(
     DeploymentTargetAdmissionRequest Request,
-    DeploymentTargetLookupDto Target);
+    DeploymentTargetLookupDto Target
+);
 
-public sealed record DeploymentTargetPlanningUnavailable(DeploymentTargetNewWorkloadAdmissionError Error);
+public sealed record DeploymentTargetPlanningUnavailable(
+    DeploymentTargetNewWorkloadAdmissionError Error
+);
 
 public sealed record DeploymentTargetPlanningFenced;
 
@@ -26,8 +29,8 @@ public delegate Task<ResolveDeploymentTargetPlanningSnapshotOutcome> ResolveDepl
     CancellationToken cancellationToken);
 
 /// <summary>
-/// Takes real write fences without changing business revisions. A rejected guard requires
-/// the caller to abort the entire transaction, including any preceding guards.
+///     Takes real write fences without changing business revisions. A rejected guard requires
+///     the caller to abort the entire transaction, including any preceding guards.
 /// </summary>
 public delegate Task<FenceDeploymentTargetPlanningSnapshotOutcome> FenceDeploymentTargetPlanningSnapshot(
     DeploymentTargetPlanningSnapshot request,

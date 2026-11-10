@@ -11,9 +11,11 @@ namespace Pole.Features.StorageProfiles.Application.Discovery.Observation;
 public sealed class KubernetesStorageObservationSource(
     StorageObservationNativeReader native,
     StorageObservationOptions options,
-    TimeProvider clock) : IStorageObservationSource
+    TimeProvider clock
+) : IStorageObservationSource
 {
-    public async IAsyncEnumerable<StorageObservationChange> WatchAsync(StorageObservationContext context,
+    public async IAsyncEnumerable<StorageObservationChange> WatchAsync(
+        StorageObservationContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await using var session = new SourceSession(native, context, options, clock, cancellationToken);
@@ -23,29 +25,34 @@ public sealed class KubernetesStorageObservationSource(
 
     private abstract record NativeItem(
         string Uid,
-        string Key);
+        string Key
+    );
 
     private sealed record ClassItem(
         string Uid,
         string Key,
-        StorageClassObservation Value) : NativeItem(Uid, Key);
+        StorageClassObservation Value
+    ) : NativeItem(Uid, Key);
 
     private sealed record VolumeItem(
         string Uid,
         string Key,
-        PersistentVolumeObservation Value) : NativeItem(Uid, Key);
+        PersistentVolumeObservation Value
+    ) : NativeItem(Uid, Key);
 
     private sealed record ClaimItem(
         string Uid,
         string Key,
-        PersistentVolumeClaimObservation Value) : NativeItem(Uid, Key);
+        PersistentVolumeClaimObservation Value
+    ) : NativeItem(Uid, Key);
 
     private sealed record NativeMessage(
         string Stream,
         KubernetesListWatchChangeKind Kind,
         NativeItem[]? Items = null,
         WatchEventType? Type = null,
-        NativeItem? Item = null);
+        NativeItem? Item = null
+    );
 
     private sealed class StreamState
     {
@@ -60,10 +67,8 @@ public sealed class KubernetesStorageObservationSource(
 
     private sealed class SourceSession : IAsyncDisposable
     {
-        private readonly StorageObservationNativeReader native;
-        private readonly StorageObservationContext context;
-        private readonly StorageObservationOptions options;
         private readonly TimeProvider clock;
+        private readonly StorageObservationContext context;
         private readonly CancellationTokenSource lifetime;
 
         private readonly Channel<NativeMessage> messages = Channel.CreateBounded<NativeMessage>(
@@ -71,21 +76,26 @@ public sealed class KubernetesStorageObservationSource(
             {
                 FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,
-                SingleWriter = false
+                SingleWriter = false,
             });
+
+        private readonly StorageObservationNativeReader native;
+        private readonly StorageObservationOptions options;
+
+        private readonly List<Task> pumps = [];
 
         private readonly Dictionary<string, StreamState> streams = new(StringComparer.Ordinal)
         {
-            ["classes"] = new(),
-            ["volumes"] = new(),
-            ["claims"] = new()
+            ["classes"] = new StreamState(),
+            ["volumes"] = new StreamState(),
+            ["claims"] = new StreamState(),
         };
 
-        private readonly List<Task> pumps = [];
-        private string? sourceId;
         private bool covered;
+        private string? sourceId;
 
-        internal SourceSession(StorageObservationNativeReader native,
+        internal SourceSession(
+            StorageObservationNativeReader native,
             StorageObservationContext context,
             StorageObservationOptions options,
             TimeProvider clock,
@@ -98,101 +108,124 @@ public sealed class KubernetesStorageObservationSource(
             lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
         }
 
+        public async ValueTask DisposeAsync()
+        {
+            await lifetime.CancelAsync();
+            try
+            {
+                await Task.WhenAll(pumps);
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+            {
+            }
+
+            lifetime.Dispose();
+        }
+
         internal async IAsyncEnumerable<StorageObservationChange> RunAsync(
             [EnumeratorCancellation] CancellationToken ct)
         {
             Start();
             while (await messages.Reader.WaitToReadAsync(ct))
+            while (messages.Reader.TryRead(out var message))
             {
-                while (messages.Reader.TryRead(out var message))
+                var state = streams[message.Stream];
+                if (message.Kind == KubernetesListWatchChangeKind.Unavailable)
                 {
-                    var state = streams[message.Stream];
-                    if (message.Kind == KubernetesListWatchChangeKind.Unavailable)
-                    {
-                        state.Ready = false;
-                        covered = false;
-                        sourceId = null;
-                        yield return new(StorageObservationChangeKind.Unavailable);
-                        continue;
-                    }
+                    state.Ready = false;
+                    covered = false;
+                    sourceId = null;
+                    yield return new StorageObservationChange(StorageObservationChangeKind.Unavailable);
+                    continue;
+                }
 
-                    var membershipChanged = false;
-                    if (message.Kind == KubernetesListWatchChangeKind.Listed)
+                var membershipChanged = false;
+                if (message.Kind == KubernetesListWatchChangeKind.Listed)
+                {
+                    membershipChanged = !state.Items
+                        .Keys
+                        .ToHashSet(StringComparer.Ordinal)
+                        .SetEquals(message.Items!.Select(item => item.Uid));
+                    state.Items.Clear();
+                    foreach (var item in message.Items!)
+                        if (!state.Items.TryAdd(item.Uid, item))
+                            throw new SourceUnavailableException();
+
+                    state.Listed = true;
+                }
+                else if (message.Kind == KubernetesListWatchChangeKind.Changed && message.Item is { } item)
+                {
+                    if (message.Type == WatchEventType.Deleted)
                     {
-                        membershipChanged = !state.Items.Keys.ToHashSet(StringComparer.Ordinal)
-                            .SetEquals(message.Items!.Select(item => item.Uid));
-                        state.Items.Clear();
-                        foreach (var item in message.Items!)
+                        membershipChanged = state.Items.Remove(item.Uid);
+                    }
+                    else
+                    {
+                        membershipChanged = !state.Items.ContainsKey(item.Uid);
+                        foreach (var old in state.Items
+                                     .Values
+                                     .Where(old => old.Key == item.Key && old.Uid != item.Uid)
+                                     .ToArray())
                         {
-                            if (!state.Items.TryAdd(item.Uid, item))
-                                throw new SourceUnavailableException();
+                            state.Items.Remove(old.Uid);
+                            membershipChanged = true;
                         }
 
-                        state.Listed = true;
-                    }
-                    else if (message.Kind == KubernetesListWatchChangeKind.Changed && message.Item is { } item)
-                    {
-                        if (message.Type == WatchEventType.Deleted)
-                            membershipChanged = state.Items.Remove(item.Uid);
-                        else
+                        if (state.Items.Count >= options.MaximumItemsPerKind && !state.Items.ContainsKey(item.Uid))
                         {
-                            membershipChanged = !state.Items.ContainsKey(item.Uid);
-                            foreach (var old in state.Items.Values
-                                         .Where(old => old.Key == item.Key && old.Uid != item.Uid).ToArray())
-                            {
-                                state.Items.Remove(old.Uid);
-                                membershipChanged = true;
-                            }
-
-                            if (state.Items.Count >= options.MaximumItemsPerKind && !state.Items.ContainsKey(item.Uid))
-                            {
-                                covered = false;
-                                sourceId = null;
-                                lifetime.Cancel();
-                                yield return new(StorageObservationChangeKind.Unavailable);
-                                throw new SourceUnavailableException();
-                            }
-
-                            state.Items[item.Uid] = item;
+                            covered = false;
+                            sourceId = null;
+                            lifetime.Cancel();
+                            yield return new StorageObservationChange(StorageObservationChangeKind.Unavailable);
+                            throw new SourceUnavailableException();
                         }
-                    }
-                    else if (message.Kind == KubernetesListWatchChangeKind.Ready)
-                        state.Ready = true;
 
-                    if (covered && membershipChanged)
-                    {
-                        covered = false;
-                        sourceId = null;
-                        // Fence old cuts before any replacement state is accepted.
-                        yield return new(StorageObservationChangeKind.Unavailable);
+                        state.Items[item.Uid] = item;
                     }
+                }
+                else if (message.Kind == KubernetesListWatchChangeKind.Ready)
+                {
+                    state.Ready = true;
+                }
 
-                    if (!streams.Values.All(stream => stream.Listed && stream.Ready))
-                        continue;
-                    var inventory = Cut();
-                    if (inventory is null)
-                    {
-                        covered = false;
-                        sourceId = null;
-                        lifetime.Cancel();
-                        yield return new(StorageObservationChangeKind.Unavailable);
-                        throw new SourceUnavailableException();
-                    }
+                if (covered && membershipChanged)
+                {
+                    covered = false;
+                    sourceId = null;
+                    // Fence old cuts before any replacement state is accepted.
+                    yield return new StorageObservationChange(StorageObservationChangeKind.Unavailable);
+                }
 
-                    if (!covered)
-                    {
-                        covered = true;
-                        sourceId = Guid.NewGuid().ToString("N");
-                        yield return new(StorageObservationChangeKind.Ready, sourceId, inventory);
-                    }
-                    else if (message.Kind is KubernetesListWatchChangeKind.Listed
-                             or KubernetesListWatchChangeKind.Changed)
-                        yield return new(StorageObservationChangeKind.Changed, sourceId, inventory);
+                if (!streams.Values.All(stream => stream.Listed && stream.Ready))
+                    continue;
+                var inventory = Cut();
+                if (inventory is null)
+                {
+                    covered = false;
+                    sourceId = null;
+                    lifetime.Cancel();
+                    yield return new StorageObservationChange(StorageObservationChangeKind.Unavailable);
+                    throw new SourceUnavailableException();
+                }
+
+                if (!covered)
+                {
+                    covered = true;
+                    sourceId = Guid.NewGuid().ToString("N");
+                    yield return new StorageObservationChange(StorageObservationChangeKind.Ready, sourceId, inventory);
+                }
+                else if (message.Kind is KubernetesListWatchChangeKind.Listed or KubernetesListWatchChangeKind.Changed)
+                {
+                    yield return new StorageObservationChange(
+                        StorageObservationChangeKind.Changed,
+                        sourceId,
+                        inventory);
                 }
             }
         }
 
-        private StorageInventoryObservation? Cut() => StorageObservationValueMappings.Sanitize(new(
+        private StorageInventoryObservation? Cut() => StorageObservationValueMappings.Sanitize(
+            new StorageInventoryObservation(
                 streams["classes"].Items.Values.Cast<ClassItem>().Select(item => item.Value).ToArray(),
                 streams["volumes"].Items.Values.Cast<VolumeItem>().Select(item => item.Value).ToArray(),
                 streams["claims"].Items.Values.Cast<ClaimItem>().Select(item => item.Value).ToArray(),
@@ -201,60 +234,88 @@ public sealed class KubernetesStorageObservationSource(
 
         private void Start()
         {
-            Add<V1StorageClass>("classes",
+            Add<V1StorageClass>(
+                "classes",
                 async (next, ct) =>
                 {
-                    var page = await native.ReadNativeAsync(context,
-                        (client, token) =>
-                            client.StorageV1.ListStorageClassAsync(limit: 100,
-                                continueParameter: next,
-                                cancellationToken: token),
+                    var page = await native.ReadNativeAsync(
+                        context,
+                        (client, token) => client.StorageV1.ListStorageClassAsync(
+                            limit: 100,
+                            continueParameter: next,
+                            cancellationToken: token),
                         ct);
-                    return new(page.Items.ToArray(), page.Metadata?.ResourceVersion, page.Metadata?.ContinueProperty);
+                    return new KubernetesListPage<V1StorageClass>(
+                        page.Items.ToArray(),
+                        page.Metadata?.ResourceVersion,
+                        page.Metadata?.ContinueProperty);
                 },
-                (version, error, ct) => WatchAsync(ct,
-                    client => client.StorageV1.WatchListStorageClassAsync(resourceVersion: version,
+                (
+                    version, error,
+                    ct) => WatchAsync(
+                    ct,
+                    client => client.StorageV1.WatchListStorageClassAsync(
+                        resourceVersion: version,
                         allowWatchBookmarks: true,
                         timeoutSeconds: 300,
                         onError: error,
                         cancellationToken: ct)),
                 item => item.Metadata,
-                item => new ClassItem(Uid(item.Metadata),
+                item => new ClassItem(
+                    Uid(item.Metadata),
                     item.Metadata.Name,
                     StorageObservationValueMappings.From(KubernetesStorageDiscovery.MapStorageClass(item))));
-            Add<V1PersistentVolume>("volumes",
+            Add<V1PersistentVolume>(
+                "volumes",
                 async (next, ct) =>
                 {
-                    var page = await native.ReadNativeAsync(context,
-                        (client, token) =>
-                            client.CoreV1.ListPersistentVolumeAsync(limit: 100,
-                                continueParameter: next,
-                                cancellationToken: token),
+                    var page = await native.ReadNativeAsync(
+                        context,
+                        (client, token) => client.CoreV1.ListPersistentVolumeAsync(
+                            limit: 100,
+                            continueParameter: next,
+                            cancellationToken: token),
                         ct);
-                    return new(page.Items.ToArray(), page.Metadata?.ResourceVersion, page.Metadata?.ContinueProperty);
+                    return new KubernetesListPage<V1PersistentVolume>(
+                        page.Items.ToArray(),
+                        page.Metadata?.ResourceVersion,
+                        page.Metadata?.ContinueProperty);
                 },
-                (version, error, ct) => WatchAsync(ct,
-                    client => client.CoreV1.WatchListPersistentVolumeAsync(resourceVersion: version,
+                (
+                    version, error,
+                    ct) => WatchAsync(
+                    ct,
+                    client => client.CoreV1.WatchListPersistentVolumeAsync(
+                        resourceVersion: version,
                         allowWatchBookmarks: true,
                         timeoutSeconds: 300,
                         onError: error,
                         cancellationToken: ct)),
                 item => item.Metadata,
-                item => new VolumeItem(Uid(item.Metadata),
+                item => new VolumeItem(
+                    Uid(item.Metadata),
                     item.Metadata.Name,
                     StorageObservationValueMappings.From(KubernetesStorageDiscovery.MapPersistentVolume(item))));
-            Add<V1PersistentVolumeClaim>("claims",
+            Add<V1PersistentVolumeClaim>(
+                "claims",
                 async (next, ct) =>
                 {
-                    var page = await native.ReadNativeAsync(context,
-                        (client, token) =>
-                            client.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(limit: 100,
-                                continueParameter: next,
-                                cancellationToken: token),
+                    var page = await native.ReadNativeAsync(
+                        context,
+                        (client, token) => client.CoreV1.ListPersistentVolumeClaimForAllNamespacesAsync(
+                            limit: 100,
+                            continueParameter: next,
+                            cancellationToken: token),
                         ct);
-                    return new(page.Items.ToArray(), page.Metadata?.ResourceVersion, page.Metadata?.ContinueProperty);
+                    return new KubernetesListPage<V1PersistentVolumeClaim>(
+                        page.Items.ToArray(),
+                        page.Metadata?.ResourceVersion,
+                        page.Metadata?.ContinueProperty);
                 },
-                (version, error, ct) => WatchAsync(ct,
+                (
+                    version, error,
+                    ct) => WatchAsync(
+                    ct,
                     client => client.CoreV1.WatchListPersistentVolumeClaimForAllNamespacesAsync(
                         resourceVersion: version,
                         allowWatchBookmarks: true,
@@ -262,7 +323,8 @@ public sealed class KubernetesStorageObservationSource(
                         onError: error,
                         cancellationToken: ct)),
                 item => item.Metadata,
-                item => new ClaimItem(Uid(item.Metadata),
+                item => new ClaimItem(
+                    Uid(item.Metadata),
                     item.Metadata.NamespaceProperty + "/" + item.Metadata.Name,
                     StorageObservationValueMappings.From(KubernetesStorageDiscovery.MapPersistentVolumeClaim(item))));
         }
@@ -271,7 +333,8 @@ public sealed class KubernetesStorageObservationSource(
             ? uid
             : throw new SourceUnavailableException();
 
-        private async IAsyncEnumerable<(WatchEventType Type, T Item)> WatchAsync<T>(CancellationToken ct,
+        private async IAsyncEnumerable<(WatchEventType Type, T Item)> WatchAsync<T>(
+            CancellationToken ct,
             Func<IKubernetes, IAsyncEnumerable<(WatchEventType Type, T Item)>> watch,
             [EnumeratorCancellation] CancellationToken enumeratorToken = default)
         {
@@ -281,13 +344,15 @@ public sealed class KubernetesStorageObservationSource(
                 yield return item;
         }
 
-        private void Add<T>(string stream,
+        private void Add<T>(
+            string stream,
             Func<string?, CancellationToken, Task<KubernetesListPage<T>>> list,
             Func<string, Action<Exception>, CancellationToken, IAsyncEnumerable<(WatchEventType Type, T Item)>> watch,
             Func<T, V1ObjectMeta> metadata,
             Func<T, NativeItem> project) => pumps.Add(PumpAsync(stream, list, watch, metadata, project));
 
-        private async Task PumpAsync<T>(string stream,
+        private async Task PumpAsync<T>(
+            string stream,
             Func<string?, CancellationToken, Task<KubernetesListPage<T>>> list,
             Func<string, Action<Exception>, CancellationToken, IAsyncEnumerable<(WatchEventType Type, T Item)>> watch,
             Func<T, V1ObjectMeta> metadata,
@@ -298,14 +363,17 @@ public sealed class KubernetesStorageObservationSource(
             {
                 try
                 {
-                    await foreach (var change in KubernetesListWatch.WatchAsync(list,
+                    await foreach (var change in KubernetesListWatch.WatchAsync(
+                                       list,
                                        watch,
                                        item => metadata(item).ResourceVersion,
                                        clock,
                                        options.MaximumItemsPerKind,
                                        lifetime.Token))
                     {
-                        await messages.Writer.WriteAsync(new(stream,
+                        await messages.Writer.WriteAsync(
+                            new NativeMessage(
+                                stream,
                                 change.Kind,
                                 change.Items?.Select(project).ToArray(),
                                 change.Type,
@@ -323,27 +391,14 @@ public sealed class KubernetesStorageObservationSource(
                 {
                     if (lifetime.IsCancellationRequested)
                         return;
-                    await messages.Writer.WriteAsync(new(stream, KubernetesListWatchChangeKind.Unavailable),
+                    await messages.Writer.WriteAsync(
+                        new NativeMessage(stream, KubernetesListWatchChangeKind.Unavailable),
                         lifetime.Token);
                 }
 
                 await Task.Delay(retry, clock, lifetime.Token);
                 retry = TimeSpan.FromMilliseconds(Math.Min(30_000, retry.TotalMilliseconds * 2));
             }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await lifetime.CancelAsync();
-            try
-            {
-                await Task.WhenAll(pumps);
-            }
-            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
-            {
-            }
-
-            lifetime.Dispose();
         }
     }
 }

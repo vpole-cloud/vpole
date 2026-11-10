@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.PrivateAccess.Events</AssemblyName>
-    <RootNamespace>Pole.Features.PrivateAccess.Events</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../../shared/Events/Events.csproj" />
-    <PackageReference Include="MassTransit" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.PrivateAccess.Events</AssemblyName>
+        <RootNamespace>Pole.Features.PrivateAccess.Events</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../../shared/Events/Events.csproj"/>
+        <PackageReference Include="MassTransit"/>
+    </ItemGroup>
 </Project>

@@ -4,7 +4,9 @@ using Pole.Workloads;
 namespace Pole.Features.ResourceDeployments.Contracts;
 
 public sealed record ResourceDeploymentReferenceUnavailable;
+
 public sealed record ResourceDeploymentReferencesAdmitted;
+
 public union AdmitResourceDeploymentReferencesOutcome(
     ResourceDeploymentReferencesAdmitted,
     ResourceDeploymentReferenceUnavailable);
@@ -21,4 +23,5 @@ public sealed record AdmitResourceDeploymentReferencesRequest(
     ResourceTypeId ConsumerType,
     string ConsumerId,
     bool AllDeployments,
-    IReadOnlyCollection<string> DeploymentIds);
+    IReadOnlyCollection<string> DeploymentIds
+);

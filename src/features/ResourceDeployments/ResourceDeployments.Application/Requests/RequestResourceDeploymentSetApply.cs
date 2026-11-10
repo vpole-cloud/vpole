@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -16,16 +14,15 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
     LoadResourcePlacementsInTransaction loadResourcePlacements,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
         ResourceDeploymentSetApplyRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment mutations");
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
         ResourceDeploymentMutationSupport.EnsureSetIsNonEmptyAndUnique(
             request.Deployments,
@@ -34,11 +31,8 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
         if (request.Deployments.Any(item => item.IngressChange is null or ReplaceIngress { Configuration: null }))
             throw new ArgumentException("Every deployment must specify a valid ingress change.", nameof(request));
 
-        var deploymentIds = request.Deployments
-            .Select(item => item.ResourceDeploymentId)
-            .ToArray();
-        var current = await resourceDeployments
-            .Find(
+        var deploymentIds = request.Deployments.Select(item => item.ResourceDeploymentId).ToArray();
+        var current = await resourceDeployments.Find(
                 session,
                 ResourceDeploymentFilters.ForResourceDeploymentIds(
                     request.TenantId,
@@ -47,22 +41,17 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                     deploymentIds))
             .ToListAsync(cancellationToken);
         if (current.Count != request.Deployments.Count)
-        {
-            return new ResourceDeploymentMutationError(
-                new ResourceDeploymentMutationNotFound(request.ResourceId));
-        }
+            return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
 
         var byId = current.ToDictionary(deployment => deployment.Id, StringComparer.Ordinal);
         foreach (var item in request.Deployments)
         {
             var deployment = byId[item.ResourceDeploymentId];
             if (deployment.Revision != item.ExpectedDeploymentRevision ||
-                request.Activation == ResourceDeploymentActivation.KeepPrepared &&
-                deployment.State is not PreparedResourceDeploymentState)
-            {
+                (request.Activation == ResourceDeploymentActivation.KeepPrepared &&
+                    deployment.State is not PreparedResourceDeploymentState))
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, item.ResourceDeploymentId));
-            }
 
             var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
                 request.ResourceId,
@@ -72,32 +61,21 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 return computeExpectation.Value;
             if (deployment.DesiredOperation == ResourceDeploymentOperation.Delete ||
                 deployment.State is DeletedResourceDeploymentState)
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentPendingDeletion(request.ResourceId, item.ResourceDeploymentId));
-            }
-            if (item.ReplacementCompute is not null &&
-                !string.Equals(
+            if (item.ReplacementCompute is not null && !string.Equals(
                     item.ReplacementCompute.DeploymentTargetId,
                     deployment.ResolvedPlacement.DeploymentTargetId,
                     StringComparison.Ordinal))
-            {
                 return new ResourceDeploymentMutationError(
-                    new ResourceDeploymentReplacementTargetMismatch(
-                        request.ResourceId,
-                        item.ResourceDeploymentId));
-            }
+                    new ResourceDeploymentReplacementTargetMismatch(request.ResourceId, item.ResourceDeploymentId));
             if (item.IngressChange is ReplaceIngress replaceIngress &&
                 deployment.ResolvedPlacement.Ingress is not null &&
                 !ResourceDeploymentMutationSupport.HasSameIngressIdentity(
                     deployment.ResolvedPlacement.Ingress,
                     replaceIngress.Configuration))
-            {
                 return new ResourceDeploymentMutationError(
-                    new ResourceDeploymentIngressConfigurationChanged(
-                        request.ResourceId,
-                        item.ResourceDeploymentId));
-            }
+                    new ResourceDeploymentIngressConfigurationChanged(request.ResourceId, item.ResourceDeploymentId));
         }
 
         var runtimeCells = await loadResourcePlacements(
@@ -106,17 +84,11 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 RuntimeCellIds: current.Select(deployment => deployment.RuntimeCellId).ToArray()),
             session: session,
             cancellationToken: cancellationToken);
-        var runtimeCellsById = runtimeCells.ToDictionary(
-            placement => placement.RuntimeCellId,
-            StringComparer.Ordinal);
-        if (runtimeCellsById.Count != current
-                .Select(deployment => deployment.RuntimeCellId)
+        var runtimeCellsById = runtimeCells.ToDictionary(placement => placement.RuntimeCellId, StringComparer.Ordinal);
+        if (runtimeCellsById.Count != current.Select(deployment => deployment.RuntimeCellId)
                 .Distinct(StringComparer.Ordinal)
                 .Count())
-        {
-            return new ResourceDeploymentMutationError(
-                new ResourceDeploymentPlacementUnavailable(request.ResourceId));
-        }
+            return new ResourceDeploymentMutationError(new ResourceDeploymentPlacementUnavailable(request.ResourceId));
 
         foreach (var deployment in current)
         {
@@ -124,15 +96,12 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
             if (!string.Equals(
                     runtimeCell.DeploymentTargetId,
                     deployment.ResolvedPlacement.DeploymentTargetId,
-                    StringComparison.Ordinal) ||
-                !string.Equals(
+                    StringComparison.Ordinal) || !string.Equals(
                     runtimeCell.KubernetesNamespace,
                     deployment.ResolvedPlacement.KubernetesNamespace,
                     StringComparison.Ordinal))
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentPlacementUnavailable(request.ResourceId, deployment.Id));
-            }
         }
 
         var computeFenceRequests = request.Deployments
@@ -148,18 +117,11 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
             .ToArray();
         if (computeFenceRequests.Length > 0)
         {
-            var computeFence = await fenceResolvedComputeProfiles(
-                computeFenceRequests,
-                session,
-                cancellationToken);
+            var computeFence = await fenceResolvedComputeProfiles(computeFenceRequests, session, cancellationToken);
             if (computeFence is ComputeProfileResolutionFenceRejected)
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentComputeConfigurationChanged(
-                        computeFenceRequests
-                            .Select(fence => fence.ComputeProfileId)
-                            .ToArray()));
-            }
+                        computeFenceRequests.Select(fence => fence.ComputeProfileId).ToArray()));
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -176,20 +138,27 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 ClearIngress => placement with { Ingress = null },
                 ReplaceIngress replaceIngress => placement with
                 {
-                    Ingress = replaceIngress.Configuration.ToDomain()
+                    Ingress = replaceIngress.Configuration.ToDomain(),
                 },
-                _ => throw new ArgumentException("An ingress change is required.", nameof(request))
+                _ => throw new ArgumentException("An ingress change is required.", nameof(request)),
             };
 
-            updated.Add(request.Activation switch
-            {
-                ResourceDeploymentActivation.KeepPrepared => deployment.ConfigurePrepared(placement, now,
-                    request.ResourceRevision, item.FixedReplicas ?? deployment.FixedReplicas),
-                ResourceDeploymentActivation.Reconcile => deployment.RequestReconciliation(placement,
-                    runtimeCellsById[deployment.RuntimeCellId].State == ResourcePlacementState.Ready,
-                    now, request.ResourceRevision, item.FixedReplicas),
-                _ => throw new ArgumentOutOfRangeException(nameof(request))
-            });
+            updated.Add(
+                request.Activation switch
+                {
+                    ResourceDeploymentActivation.KeepPrepared => deployment.ConfigurePrepared(
+                        placement,
+                        now,
+                        request.ResourceRevision,
+                        item.FixedReplicas ?? deployment.FixedReplicas),
+                    ResourceDeploymentActivation.Reconcile => deployment.RequestReconciliation(
+                        placement,
+                        runtimeCellsById[deployment.RuntimeCellId].State == ResourcePlacementState.Ready,
+                        now,
+                        request.ResourceRevision,
+                        item.FixedReplicas),
+                    _ => throw new ArgumentOutOfRangeException(nameof(request)),
+                });
         }
 
         foreach (var deployment in updated)
@@ -201,20 +170,16 @@ internal sealed class MongoRequestResourceDeploymentSetApply(
                 deployment,
                 cancellationToken: cancellationToken);
             if (replacement.ModifiedCount != 1)
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, original.Id));
-            }
         }
 
         await storeOutboxWrites(
             session,
-            updated
-                .Where(deployment => deployment.State is PendingResourceDeploymentState)
+            updated.Where(deployment => deployment.State is PendingResourceDeploymentState)
                 .Select(deployment => deployment.ToCurrentRequestWrite())
                 .ToArray(),
             cancellationToken);
-        return new MutatedResourceDeployments(
-            await isolation.ProjectAsync(updated, cancellationToken));
+        return new MutatedResourceDeployments(await isolation.ProjectAsync(updated, cancellationToken));
     }
 }

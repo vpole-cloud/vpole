@@ -1,4 +1,3 @@
-using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Testing;
 

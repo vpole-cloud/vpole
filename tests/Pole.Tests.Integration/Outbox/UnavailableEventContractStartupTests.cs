@@ -4,17 +4,19 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Delivery;
-using Pole.Features.Outbox.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Outbox;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class UnavailableEventContractStartupTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
+public sealed class UnavailableEventContractStartupTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task MissingEventContract_FailsStartupWithoutChangingPendingMessages_AndRestoringItsVersionedContractUnblocksStartup()
+    public async Task
+        MissingEventContract_FailsStartupWithoutChangingPendingMessages_AndRestoringItsVersionedContractUnblocksStartup()
     {
         var messages = Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages");
         var now = DateTime.UtcNow;
@@ -25,7 +27,8 @@ public sealed class UnavailableEventContractStartupTests(MongoReplicaSetFixture 
         var retained = await messages.Find(message => message.Id == pending.Id).SingleAsync();
         Assert.IsType<PendingOutboxMessageState>(retained.State);
 
-        var restored = new EnsurePendingOutboxEventsRegistered(messages,
+        var restored = new EnsurePendingOutboxEventsRegistered(
+            messages,
             new OutboxEventAssemblyCatalog([new FixtureAssembly()]));
         await restored.InvokeAsync();
 
@@ -33,11 +36,13 @@ public sealed class UnavailableEventContractStartupTests(MongoReplicaSetFixture 
         await missing.InvokeAsync();
         Assert.Equal(1, await messages.CountDocumentsAsync(message => message.Id == pending.Id));
     }
+
     [EntityName("acme.test/v1/created")]
     private sealed record FixtureEvent : IPoleEvent
     {
-        public EventCore EventCore { get; init; } = EventCore.Create();
+        public EventCore EventCore { get; } = EventCore.Create();
     }
+
     private sealed class FixtureAssembly : Assembly
     {
         public override string FullName => "OutboxEventContractFixture";

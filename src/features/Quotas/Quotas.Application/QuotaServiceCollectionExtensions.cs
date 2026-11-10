@@ -6,7 +6,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Application.Services;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Contracts.HttpMapping;
@@ -15,9 +14,7 @@ namespace Pole.Features.Quotas.Application;
 
 public static class QuotaServiceCollectionExtensions
 {
-    public static IServiceCollection AddQuotasFeature(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddQuotasFeature(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         services.AddHttpProblemMappings(QuotaContractHttpMappings.All);
@@ -55,8 +52,7 @@ public static class QuotaServiceCollectionExtensions
         services.AddQuotaPersistence();
         services.TryAddScoped<IQuotaUsageRelease, QuotaUsageRelease>();
         services.TryAddScoped<IQuotaAdmissionExecutor, QuotaAdmissionExecutor>();
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IHostedService, QuotaCatalogStartupService>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, QuotaCatalogStartupService>());
 
         return services;
     }
@@ -73,7 +69,9 @@ public static class QuotaServiceCollectionExtensions
         }
     }
 
-    private sealed class QuotaCatalogStartupService(QuotaCatalog catalog) : IHostedService
+    private sealed class QuotaCatalogStartupService(
+        QuotaCatalog catalog
+    ) : IHostedService
     {
         private readonly QuotaCatalog catalog = catalog;
 

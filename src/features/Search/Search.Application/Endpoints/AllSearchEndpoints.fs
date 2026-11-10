@@ -9,10 +9,8 @@ open Pole.Features.Search.Application.Endpoints
 [<AbstractClass; Sealed>]
 type SearchEndpoints =
     [<Extension>]
-    static member MapSearchEndpoints(endpoints : IEndpointRouteBuilder) =
-        endpoints.MapGroup("/search")
-            .WithTags("Search")
-            .MapGetSearchEndpoint()
+    static member MapSearchEndpoints(endpoints: IEndpointRouteBuilder) =
+        endpoints.MapGroup("/search").WithTags("Search").MapGetSearchEndpoint()
         |> ignore
-        endpoints
 
+        endpoints

@@ -2,7 +2,6 @@ using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Execution.ContainerBuild;
 using Pole.Features.SourceBuilds.Domain;
 using Xunit;
@@ -21,12 +20,28 @@ public sealed class BuildKitClientTests
         var runner = new RecordingProcessRunner(async spec =>
         {
             Assert.NotNull(spec.Output);
-            await spec.Output(SourceBuildLogStream.StandardError, "useful build failure: registry-", CancellationToken.None);
+            await spec.Output(
+                SourceBuildLogStream.StandardError,
+                "useful build failure: registry-",
+                CancellationToken.None);
             await spec.Output(SourceBuildLogStream.StandardError, "secret; final diagnostic\n", CancellationToken.None);
             throw new OperationCanceledException();
         });
-        var result = await CreateClient(runner).InvokeAsync(new(context.Path, "FROM scratch", new("harbor.test", "project", "service", "tag"), "robot$user", "registry-secret",
-            (_, text, _) => { output.Append(text); return Task.CompletedTask; }));
+        var result = await CreateClient(runner)
+            .InvokeAsync(
+                new BuildKitBuildRequest(
+                    context.Path,
+                    "FROM scratch",
+                    new RegistryPushTarget("harbor.test", "project", "service", "tag"),
+                    "robot$user",
+                    "registry-secret",
+                    (
+                        _, text,
+                        _) =>
+                    {
+                        output.Append(text);
+                        return Task.CompletedTask;
+                    }));
         Assert.IsType<BuildKitTimedOut>(Assert.IsType<BuildContainerImageError>(result.Value).Value);
         Assert.Contains("useful build failure", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("final diagnostic", output.ToString(), StringComparison.Ordinal);
@@ -75,10 +90,14 @@ public sealed class BuildKitClientTests
         using var context = new TemporaryDirectory();
         var runner = new RecordingProcessRunner(async spec =>
         {
-            Assert.DoesNotContain(spec.Arguments, argument => argument.Contains("registry-secret", StringComparison.Ordinal));
-            Assert.Contains(spec.Arguments, argument =>
-                argument == "type=image,name=harbor.test/pole-test/web-services/service-1:build-1,push=true");
-            var dockerConfig = System.IO.Path.Combine(spec.EnvironmentVariables["DOCKER_CONFIG"], "config.json");
+            Assert.DoesNotContain(
+                spec.Arguments,
+                argument => argument.Contains("registry-secret", StringComparison.Ordinal));
+            Assert.Contains(
+                spec.Arguments,
+                argument => argument ==
+                    "type=image,name=harbor.test/pole-test/web-services/service-1:build-1,push=true");
+            var dockerConfig = Path.Combine(spec.EnvironmentVariables["DOCKER_CONFIG"], "config.json");
             var configJson = await File.ReadAllTextAsync(dockerConfig);
             Assert.DoesNotContain("registry-secret", configJson, StringComparison.Ordinal);
             Assert.Contains("harbor.test", configJson, StringComparison.Ordinal);
@@ -87,16 +106,17 @@ public sealed class BuildKitClientTests
             await File.WriteAllTextAsync(
                 spec.Arguments[metadataIndex + 1],
                 $$"""{ "containerimage.digest": "{{Digest}}" }""");
-            return new ProcessResult(0, "build output", string.Empty);
+            return new ProcessResult(0, "build output", "");
         });
         var client = CreateClient(runner);
 
-        var result = await client.InvokeAsync(new BuildKitBuildRequest(
-            context.Path,
-            "FROM scratch",
-            new RegistryPushTarget("harbor.test", "pole-test", "web-services/service-1", "build-1"),
-            "robot$build",
-            "registry-secret"));
+        var result = await client.InvokeAsync(
+            new BuildKitBuildRequest(
+                context.Path,
+                "FROM scratch",
+                new RegistryPushTarget("harbor.test", "pole-test", "web-services/service-1", "build-1"),
+                "robot$build",
+                "registry-secret"));
 
         var image = Assert.IsType<SourceBuildArtifact>(result.Value);
         Assert.Equal(Digest, image.Digest);
@@ -112,12 +132,13 @@ public sealed class BuildKitClientTests
             new ProcessResult(1, "registry-secret from build", "failed to authorize registry-secret")));
         var client = CreateClient(runner);
 
-        var result = await client.InvokeAsync(new BuildKitBuildRequest(
-            context.Path,
-            "FROM scratch",
-            new RegistryPushTarget("harbor.test", "pole-test", "service", "tag"),
-            "robot$build",
-            "registry-secret"));
+        var result = await client.InvokeAsync(
+            new BuildKitBuildRequest(
+                context.Path,
+                "FROM scratch",
+                new RegistryPushTarget("harbor.test", "pole-test", "service", "tag"),
+                "robot$build",
+                "registry-secret"));
 
         var error = Assert.IsType<BuildContainerImageError>(result.Value);
         var failure = Assert.IsType<BuildKitBuildRejected>(error.Value);
@@ -130,15 +151,16 @@ public sealed class BuildKitClientTests
     {
         using var context = new TemporaryDirectory();
         var runner = new RecordingProcessRunner(_ => Task.FromResult(
-            new ProcessResult(1, string.Empty, "dial tcp harbor.test:5000: registry-secret")));
+            new ProcessResult(1, "", "dial tcp harbor.test:5000: registry-secret")));
         var client = CreateClient(runner);
 
-        var result = await client.InvokeAsync(new BuildKitBuildRequest(
-            context.Path,
-            "FROM scratch",
-            new RegistryPushTarget("harbor.test:5000", "pole-test", "service", "tag"),
-            "robot$build",
-            "registry-secret"));
+        var result = await client.InvokeAsync(
+            new BuildKitBuildRequest(
+                context.Path,
+                "FROM scratch",
+                new RegistryPushTarget("harbor.test:5000", "pole-test", "service", "tag"),
+                "robot$build",
+                "registry-secret"));
 
         var error = Assert.IsType<BuildContainerImageError>(result.Value);
         var failure = Assert.IsType<BuildKitBuildRejected>(error.Value);
@@ -146,24 +168,24 @@ public sealed class BuildKitClientTests
         Assert.Contains("configured target registry", failure.Classification, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static BuildKitClient CreateClient(RecordingProcessRunner runner) =>
-        new(runner.InvokeAsync, new BuildKitOptions
+    private static BuildKitClient CreateClient(RecordingProcessRunner runner) => new(
+        runner.InvokeAsync,
+        new BuildKitOptions
         {
             Enabled = true,
             Address = "tcp://buildkit.test:1234",
             BuildctlPath = "buildctl",
-            TimeoutMinutes = 1
+            TimeoutMinutes = 1,
         },
         NullLogger<BuildKitClient>.Instance);
 
     private sealed class RecordingProcessRunner(
-        Func<ProcessSpec, Task<ProcessResult>> callback)
+        Func<ProcessSpec, Task<ProcessResult>> callback
+    )
     {
         public ProcessSpec? LastSpec { get; private set; }
 
-        public Task<ProcessResult> InvokeAsync(
-            ProcessSpec spec,
-            CancellationToken cancellationToken = default)
+        public Task<ProcessResult> InvokeAsync(ProcessSpec spec, CancellationToken cancellationToken = default)
         {
             LastSpec = spec;
             return callback(spec);

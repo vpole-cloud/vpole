@@ -18,19 +18,19 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesTests
         var settings = ValidSettings();
         settings[Prefix + "Cidrs:functions/gateway"] = "192.0.2.9/32";
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        var options = configuration.GetSection(DeploymentTargetOptions.SectionName)
-            .Get<DeploymentTargetOptions>()!;
+        var options = configuration.GetSection(DeploymentTargetOptions.SectionName).Get<DeploymentTargetOptions>()!;
 
         Assert.True(new DeploymentTargetOptionsValidator().Validate(Options.DefaultName, options).Succeeded);
         var sources = options.Bootstrap.WorkloadConfiguration.NetworkSources.ToDomain();
         var ingress = Assert.IsType<DeploymentTargetPodNetworkSource>(sources.Get("public-ingress"));
         Assert.Equal("kube-system", ingress.Namespace);
         Assert.Equal("traefik", ingress.PodLabels["app.kubernetes.io/name"]);
-        Assert.Equal("192.0.2.9/32", Assert.IsType<DeploymentTargetCidrNetworkSource>(sources.Get("functions/gateway")).Cidr);
+        Assert.Equal(
+            "192.0.2.9/32",
+            Assert.IsType<DeploymentTargetCidrNetworkSource>(sources.Get("functions/gateway")).Cidr);
         Assert.Null(sources.Get("postgres/operator"));
 
-        options.Bootstrap.WorkloadConfiguration.NetworkSources.Pods[
-            "public-ingress"].PodLabels.Clear();
+        options.Bootstrap.WorkloadConfiguration.NetworkSources.Pods["public-ingress"].PodLabels.Clear();
         Assert.Equal("traefik", ingress.PodLabels["app.kubernetes.io/name"]);
     }
 
@@ -45,8 +45,7 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesTests
         var settings = ValidSettings();
         settings[Prefix + key] = value;
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        using var host = new HostBuilder()
-            .ConfigureServices(services =>
+        using var host = new HostBuilder().ConfigureServices(services =>
             {
                 services.AddOptions<DeploymentTargetOptions>()
                     .Bind(configuration.GetSection(DeploymentTargetOptions.SectionName))
@@ -72,6 +71,6 @@ public sealed class DeploymentTargetBootstrapNetworkSourcesTests
     private static Dictionary<string, string?> ValidSettings() => new()
     {
         [Prefix + "Pods:public-ingress:Namespace"] = "kube-system",
-        [Prefix + "Pods:public-ingress:PodLabels:app.kubernetes.io/name"] = "traefik"
+        [Prefix + "Pods:public-ingress:PodLabels:app.kubernetes.io/name"] = "traefik",
     };
 }

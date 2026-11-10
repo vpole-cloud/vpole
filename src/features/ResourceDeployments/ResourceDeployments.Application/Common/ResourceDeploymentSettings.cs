@@ -12,12 +12,9 @@ public sealed class ResourceDeploymentSettings
     public int MaximumRetryDelaySeconds { get; init; } = 900;
 }
 
-public sealed class ResourceDeploymentSettingsValidator
-    : IValidateOptions<ResourceDeploymentSettings>
+public sealed class ResourceDeploymentSettingsValidator : IValidateOptions<ResourceDeploymentSettings>
 {
-    public ValidateOptionsResult Validate(
-        string? name,
-        ResourceDeploymentSettings options)
+    public ValidateOptionsResult Validate(string? name, ResourceDeploymentSettings options)
     {
         var failures = new List<string>();
         if (options.RecoveryBatchSize is < 1 or > 1000)
@@ -28,19 +25,16 @@ public sealed class ResourceDeploymentSettingsValidator
             failures.Add("ResourceDeployments:InitialRetryDelaySeconds must be between 1 and 3600.");
         if (options.MaximumRetryDelaySeconds < options.InitialRetryDelaySeconds ||
             options.MaximumRetryDelaySeconds > 86400)
-        {
             failures.Add(
                 "ResourceDeployments:MaximumRetryDelaySeconds must be at least the initial delay and no more than 86400.");
-        }
 
-        return failures.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(failures);
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }
 
 public sealed class ResourceDeploymentRetryDelayPolicy(
-    ResourceDeploymentSettings settings)
+    ResourceDeploymentSettings settings
+)
 {
     public TimeSpan Calculate(int attemptCount)
     {
@@ -50,7 +44,7 @@ public sealed class ResourceDeploymentRetryDelayPolicy(
         var exponent = Math.Clamp(attemptCount - 1, 0, 30);
         var multiplier = 1L << exponent;
         var seconds = Math.Min(
-            checked((long)settings.InitialRetryDelaySeconds * multiplier),
+            checked(settings.InitialRetryDelaySeconds * multiplier),
             settings.MaximumRetryDelaySeconds);
         return TimeSpan.FromSeconds(seconds);
     }

@@ -8,15 +8,15 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FSharp.Core" />
+        <PackageReference Include="FSharp.Core"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="SearchDocument.fs" />
+        <Compile Include="SearchDocument.fs"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
-      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
+        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Models\Models.csproj"/>
     </ItemGroup>
 </Project>

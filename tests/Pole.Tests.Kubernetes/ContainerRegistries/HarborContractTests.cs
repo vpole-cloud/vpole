@@ -4,7 +4,6 @@ using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Execution.ContainerBuild;
 using Pole.Features.SourceBuilds.Domain;
 using Pole.Testing;
@@ -13,7 +12,9 @@ using Xunit;
 namespace Pole.Tests.Kubernetes.ContainerRegistries;
 
 [Collection(HarborContractCollection.Name)]
-public sealed class HarborContractTests(HarborContractFixture fixture)
+public sealed class HarborContractTests(
+    HarborContractFixture fixture
+)
 {
     [HarborContractFact]
     [Trait("Category", "HarborContract")]
@@ -22,17 +23,17 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
         var options = fixture.HarborOptions;
         using var handler = new HttpClientHandler { UseCookies = false };
         using var httpClient = new HttpClient(handler);
-        var client = new HarborContainerRegistryClient(
-            httpClient,
-            options);
+        var client = new HarborContainerRegistryClient(httpClient, options);
         var projectName = $"pole-contract-{Guid.NewGuid():N}"[..30];
         var attemptId = Guid.NewGuid().ToString("N");
         await using var resources = new TestResourceScope("Harbor provisioning contract");
-        resources.Defer($"delete Harbor project '{projectName}'", async token =>
-        {
-            var cleanup = await client.DeleteProjectAsync(projectName, token);
-            Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
-        });
+        resources.Defer(
+            $"delete Harbor project '{projectName}'",
+            async token =>
+            {
+                var cleanup = await client.DeleteProjectAsync(projectName, token);
+                Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
+            });
 
         var result = await client.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("contract-test", projectName, attemptId));
@@ -53,20 +54,20 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
         var options = fixture.HarborOptions;
         using var handler = new HttpClientHandler { UseCookies = false };
         using var httpClient = new HttpClient(handler);
-        var registryClient = new HarborContainerRegistryClient(
-            httpClient,
-            options);
+        var registryClient = new HarborContainerRegistryClient(httpClient, options);
         var projectName = $"pole-buildkit-contract-{Guid.NewGuid():N}"[..30];
         var attemptId = Guid.NewGuid().ToString("N");
         using var context = new TemporaryDirectory();
         var completed = false;
         await using var resources = new TestResourceScope("Harbor BuildKit contract");
-        resources.Defer($"delete Harbor project '{projectName}'", async token =>
-        {
-            var cleanup = await registryClient.DeleteProjectAsync(projectName, token);
-            if (completed)
-                Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
-        });
+        resources.Defer(
+            $"delete Harbor project '{projectName}'",
+            async token =>
+            {
+                var cleanup = await registryClient.DeleteProjectAsync(projectName, token);
+                if (completed)
+                    Assert.IsType<RegistryProjectDeleted>(cleanup.Value);
+            });
 
         var projectResult = await registryClient.ProvisionProjectAsync(
             new RegistryProjectProvisioningRequest("buildkit-contract-test", projectName, attemptId));
@@ -80,7 +81,7 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
                 Enabled = true,
                 Address = fixture.BuildKitAddress,
                 BuildctlPath = fixture.BuildctlPath,
-                TimeoutMinutes = 5
+                TimeoutMinutes = 5,
             },
             NullLogger<BuildKitClient>.Instance);
         var target = new RegistryPushTarget(
@@ -89,27 +90,25 @@ public sealed class HarborContractTests(HarborContractFixture fixture)
             "web-services/buildkit-contract",
             $"run-{Guid.NewGuid():N}");
 
-        var buildResult = await buildKit.InvokeAsync(new BuildKitBuildRequest(
-            context.Path,
-            "FROM scratch\nLABEL pole.contract-test=buildkit\n",
-            target,
-            provisioned.BuildCredential.Username,
-            provisioned.BuildCredential.Secret));
+        var buildResult = await buildKit.InvokeAsync(
+            new BuildKitBuildRequest(
+                context.Path,
+                "FROM scratch\nLABEL pole.contract-test=buildkit\n",
+                target,
+                provisioned.BuildCredential.Username,
+                provisioned.BuildCredential.Secret));
 
         var build = Assert.IsType<SourceBuildArtifact>(buildResult.Value);
         Assert.Equal(target.Reference, build.Reference);
         Assert.StartsWith("sha256:", build.Digest, StringComparison.Ordinal);
         completed = true;
     }
-
 }
 
 public sealed class HarborBuildKitContractFactAttribute : FactAttribute
 {
-    public HarborBuildKitContractFactAttribute()
-    {
+    public HarborBuildKitContractFactAttribute() =>
         Skip = KubernetesLabSelection.GetOptInSkipReason("harbor", "buildkit");
-    }
 }
 
 internal sealed class TemporaryDirectory : IDisposable
@@ -131,17 +130,14 @@ internal sealed class TemporaryDirectory : IDisposable
 
 public sealed class HarborContractFactAttribute : FactAttribute
 {
-    public HarborContractFactAttribute()
-    {
-        Skip = KubernetesLabSelection.GetOptInSkipReason("harbor");
-    }
+    public HarborContractFactAttribute() => Skip = KubernetesLabSelection.GetOptInSkipReason("harbor");
 }
 
 public sealed class HarborContractFixture : IAsyncLifetime
 {
     private readonly KubernetesLabState _state;
-    private KubernetesPortForwardSession? _harborForward;
     private KubernetesPortForwardSession? _buildKitForward;
+    private KubernetesPortForwardSession? _harborForward;
 
     public HarborContractFixture()
     {
@@ -151,23 +147,22 @@ public sealed class HarborContractFixture : IAsyncLifetime
 
     public HarborOptions HarborOptions { get; private set; } = null!;
     public string BuildKitAddress { get; private set; } = null!;
-    public string BuildctlPath => _state.BuildctlPath
-        ?? throw new InvalidOperationException("The selected lab does not expose buildctl.");
+
+    public string BuildctlPath =>
+        _state.BuildctlPath ?? throw new InvalidOperationException("The selected lab does not expose buildctl.");
 
     public async Task InitializeAsync()
     {
-        var services = _state.Services
-                       ?? throw new InvalidOperationException("The selected lab does not expose Harbor and BuildKit services.");
-        var credentials = JsonSerializer.Deserialize<Dictionary<string, string>>(
-                              await File.ReadAllTextAsync(services.Harbor.CredentialsPath))
-                          ?? throw new InvalidOperationException("The lab Harbor credentials file is malformed.");
+        var services = _state.Services ??
+            throw new InvalidOperationException("The selected lab does not expose Harbor and BuildKit services.");
+        var credentials
+            = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                await File.ReadAllTextAsync(services.Harbor.CredentialsPath)) ??
+            throw new InvalidOperationException("The lab Harbor credentials file is malformed.");
         if (!credentials.TryGetValue("username", out var username) ||
-            !credentials.TryGetValue("password", out var password) ||
-            string.IsNullOrWhiteSpace(username) ||
+            !credentials.TryGetValue("password", out var password) || string.IsNullOrWhiteSpace(username) ||
             string.IsNullOrWhiteSpace(password))
-        {
             throw new InvalidOperationException("The lab Harbor credentials file is incomplete.");
-        }
         if (services.Harbor.TargetKey != services.BuildKit.TargetKey)
             throw new InvalidOperationException("The lab Harbor and BuildKit services must use the same target.");
         var serviceTarget = _state.GetRequiredTarget(services.Harbor.TargetKey);
@@ -198,7 +193,7 @@ public sealed class HarborContractFixture : IAsyncLifetime
             RegistryHost = services.Harbor.RegistryHost,
             Username = username,
             Password = password,
-            RobotDurationDays = -1
+            RobotDurationDays = -1,
         };
         BuildKitAddress = $"tcp://127.0.0.1:{_buildKitForward.LocalPort}";
     }

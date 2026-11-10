@@ -18,8 +18,9 @@ public static class PrivateAccessRuntime
         services.AddOptions<PrivateAccessBrokerOptions>()
             .Bind(configuration.GetSection(PrivateAccessBrokerOptions.Section))
             .ValidateOnStart();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<PrivateAccessBrokerOptions>,
-            PrivateAccessBrokerOptionsValidator>());
+        services.TryAddEnumerable(
+            ServiceDescriptor
+                .Singleton<IValidateOptions<PrivateAccessBrokerOptions>, PrivateAccessBrokerOptionsValidator>());
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<PrivateAccessGatewayRegistry>();
         services.AddSingleton<PrivateAccessGatewayRendezvous>();
@@ -45,39 +46,49 @@ public static class PrivateAccessRuntime
 
     public static WebApplicationBuilder ConfigurePrivateAccessListener(this WebApplicationBuilder builder)
     {
-        var options = builder.Configuration.GetSection(PrivateAccessBrokerOptions.Section)
+        var options = builder.Configuration
+            .GetSection(PrivateAccessBrokerOptions.Section)
             .Get<PrivateAccessBrokerOptions>();
         if (options?.Enabled != true)
             return builder;
         var endpointUrl = builder.Configuration["Kestrel:Endpoints:PrivateAccessGateway:Url"];
-        if (!Uri.TryCreate(endpointUrl, UriKind.Absolute, out var endpointUri) ||
-            endpointUri.Scheme != "https" || endpointUri.Port != options.GatewayPort)
-            throw new InvalidOperationException("Configure the PrivateAccessGateway HTTPS Kestrel endpoint on PrivateAccess:GatewayPort.");
+        if (!Uri.TryCreate(endpointUrl, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != "https" ||
+            endpointUri.Port != options.GatewayPort)
+            throw new InvalidOperationException(
+                "Configure the PrivateAccessGateway HTTPS Kestrel endpoint on PrivateAccess:GatewayPort.");
         var internalUrl = builder.Configuration["Kestrel:Endpoints:PrivateAccessInternal:Url"];
-        if (!Uri.TryCreate(internalUrl, UriKind.Absolute, out var internalUri) ||
-            internalUri.Scheme != "https" || internalUri.Port != options.InternalPort)
+        if (!Uri.TryCreate(internalUrl, UriKind.Absolute, out var internalUri) || internalUri.Scheme != "https" ||
+            internalUri.Port != options.InternalPort)
             throw new InvalidOperationException(
                 "Configure the PrivateAccessInternal HTTPS Kestrel endpoint on PrivateAccess:InternalPort.");
-        var peer = new PrivateAccessInternalIdentity(options.InternalCertificatePath,
-            options.InternalCertificatePassword, options.InternalCertificateSha256Pin);
+        var peer = new PrivateAccessInternalIdentity(
+            options.InternalCertificatePath,
+            options.InternalCertificatePassword,
+            options.InternalCertificateSha256Pin);
         builder.Services.AddSingleton(peer);
-        builder.WebHost.ConfigureKestrel((context, server) =>
-            server.Configure(context.Configuration.GetSection("Kestrel"))
-                .Endpoint("PrivateAccessGateway", endpoint =>
+        builder.WebHost.ConfigureKestrel((context, server) => server
+            .Configure(context.Configuration.GetSection("Kestrel"))
+            .Endpoint(
+                "PrivateAccessGateway",
+                endpoint =>
                 {
                     endpoint.HttpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
                     // TLS establishes possession. The route admits only a fresh database-backed
                     // exact certificate pin, rather than trusting arbitrary self-signed chains.
-                    endpoint.HttpsOptions.ClientCertificateValidation = (certificate, _, _) =>
-                        certificate.NotBefore.ToUniversalTime() <= DateTime.UtcNow &&
+                    endpoint.HttpsOptions.ClientCertificateValidation = (
+                            certificate, _,
+                            _) => certificate.NotBefore.ToUniversalTime() <= DateTime.UtcNow &&
                         certificate.NotAfter.ToUniversalTime() > DateTime.UtcNow;
                 })
-                .Endpoint("PrivateAccessInternal", endpoint =>
+            .Endpoint(
+                "PrivateAccessInternal",
+                endpoint =>
                 {
                     endpoint.HttpsOptions.ServerCertificate = peer.Certificate;
                     endpoint.HttpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
-                    endpoint.HttpsOptions.ClientCertificateValidation = (certificate, _, _) =>
-                        peer.Matches(certificate);
+                    endpoint.HttpsOptions.ClientCertificateValidation = (
+                        certificate, _,
+                        _) => peer.Matches(certificate);
                 }));
         return builder;
     }
@@ -88,9 +99,9 @@ public static class PrivateAccessRuntime
         if (options.Enabled)
         {
             var drain = app.Services.GetRequiredService<PrivateAccessDrainState>();
-            app.Services.GetRequiredService<IHostApplicationLifetime>()
-                .ApplicationStopping.Register(drain.Begin);
+            app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(drain.Begin);
         }
+
         app.Use(async (context, next) =>
         {
             if (options.Enabled && context.Connection.LocalPort == options.GatewayPort &&
@@ -100,18 +111,21 @@ public static class PrivateAccessRuntime
                 context.Response.StatusCode = 404;
                 return;
             }
+
             if (options.Enabled && context.Connection.LocalPort == options.InternalPort &&
                 !context.Request.Path.StartsWithSegments("/_private-access/relay"))
             {
                 context.Response.StatusCode = 404;
                 return;
             }
+
             if (options.Enabled && context.Request.Path.StartsWithSegments("/_private-access/relay") &&
                 context.Connection.LocalPort != options.InternalPort)
             {
                 context.Response.StatusCode = 404;
                 return;
             }
+
             await next(context);
         });
         app.UseWebSockets();
@@ -119,11 +133,16 @@ public static class PrivateAccessRuntime
     }
 }
 
-public sealed class PrivateAccessSessionCapacity(IOptions<PrivateAccessBrokerOptions> options) : IDisposable
+public sealed class PrivateAccessSessionCapacity(
+    IOptions<PrivateAccessBrokerOptions> options
+) : IDisposable
 {
     public SemaphoreSlim Sessions { get; } = new(options.Value.MaximumSessions, options.Value.MaximumSessions);
+
     public SemaphoreSlim Gateways { get; } = new(
-        options.Value.MaximumGatewayControls, options.Value.MaximumGatewayControls);
+        options.Value.MaximumGatewayControls,
+        options.Value.MaximumGatewayControls);
+
     public void Dispose()
     {
         Sessions.Dispose();

@@ -1,8 +1,5 @@
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
@@ -22,7 +19,8 @@ internal sealed class MongoFailFunctionRevision(
     StoreOutboxWrites storeOutboxWrites,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     MongoFunctionRevisionLifecycleStore lifecycleStore,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<FunctionRevisionLifecycleOutcome> InvokeAsync(
         string tenantId,
@@ -31,11 +29,7 @@ internal sealed class MongoFailFunctionRevision(
         FunctionRevisionFailure failure,
         CancellationToken cancellationToken = default)
     {
-        var loaded = await lifecycleStore.LoadAsync(
-            tenantId,
-            functionAppId,
-            revisionId,
-            cancellationToken);
+        var loaded = await lifecycleStore.LoadAsync(tenantId, functionAppId, revisionId, cancellationToken);
         FunctionRevisionLifecycleState state;
         switch (loaded)
         {
@@ -49,12 +43,10 @@ internal sealed class MongoFailFunctionRevision(
             default:
                 throw new InvalidOperationException("Unsupported Function revision lifecycle state.");
         }
-        if (state.App.PendingRevisionId is null &&
-            state.Revision.Status is FailedFunctionRevisionStatus failed &&
+
+        if (state.App.PendingRevisionId is null && state.Revision.Status is FailedFunctionRevisionStatus failed &&
             failed.Failure == failure)
-        {
             return new FunctionRevisionLifecycleCompleted();
-        }
         if (state.App.PendingRevisionId != revisionId)
             return new FunctionRevisionNotPending(functionAppId, revisionId);
         if (state.App.DesiredState != FunctionAppDesiredState.Enabled)
@@ -63,60 +55,55 @@ internal sealed class MongoFailFunctionRevision(
         var targetAllocation = state.ActiveRevision is null
             ? new FunctionQuotaAllocation(1, 0, 0, 0)
             : FunctionQuotaAllocation.FromRevision(state.ActiveRevision.Spec);
-        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
-            FunctionQuotaAllocation,
-            FunctionRevisionLifecycleOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation,
-                global::Pole.Features.Functions.Application.Common.FunctionRevisionLifecycleOutcome>(
-                TenantId: tenantId,
-                ResourceKey: FunctionAppQuotaResourceKey.Create(functionAppId),
-                Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(state.App.AdmittedQuota, targetAllocation),
-                QuotaError: quotaError => quotaError,
-                MutationCallback: async (transaction, transactionCancellationToken) =>
-                {
-                    var now = timeProvider.GetUtcNow();
-                    var failedRevision = state.Revision.Fail(failure);
-                    var revisionUpdate = await functionRevisions.UpdateOneAsync(
-                        transaction.Session,
-                        FunctionRevisionLifecycleFilters.RevisionInOneOfStatuses(
-                            tenantId,
-                            functionAppId,
-                            revisionId,
-                            FunctionRevisionLifecycleFilters.ProvisioningStatus(),
-                            FunctionRevisionLifecycleFilters.ReadyStatus()),
-                        Builders<FunctionRevision>.Update
-                            .Set(revision => revision.Status, failedRevision.Status),
-                        cancellationToken: transactionCancellationToken);
-                    if (revisionUpdate.MatchedCount != 1)
+        return await
+            quotaAdmissionExecutor.ExecuteOutcomeAsync<FunctionQuotaAllocation, FunctionRevisionLifecycleOutcome>(
+                new ExecuteQuotaAdmissionRequest<FunctionQuotaAllocation, FunctionRevisionLifecycleOutcome>(
+                    TenantId: tenantId,
+                    ResourceKey: FunctionAppQuotaResourceKey.Create(functionAppId),
+                    Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(
+                        state.App.AdmittedQuota,
+                        targetAllocation),
+                    QuotaError: quotaError => quotaError,
+                    MutationCallback: async (transaction, transactionCancellationToken) =>
                     {
-                        return transaction.Abort(new FunctionRevisionConcurrencyConflict(
-                            functionAppId,
-                            revisionId));
-                    }
+                        var now = timeProvider.GetUtcNow();
+                        var failedRevision = state.Revision.Fail(failure);
+                        var revisionUpdate = await functionRevisions.UpdateOneAsync(
+                            transaction.Session,
+                            FunctionRevisionLifecycleFilters.RevisionInOneOfStatuses(
+                                tenantId,
+                                functionAppId,
+                                revisionId,
+                                FunctionRevisionLifecycleFilters.ProvisioningStatus(),
+                                FunctionRevisionLifecycleFilters.ReadyStatus()),
+                            Builders<FunctionRevision>.Update.Set(revision => revision.Status, failedRevision.Status),
+                            cancellationToken: transactionCancellationToken);
+                        if (revisionUpdate.MatchedCount != 1)
+                            return transaction.Abort(
+                                new FunctionRevisionConcurrencyConflict(functionAppId, revisionId));
 
-                    var appUpdate = await functionApps.UpdateOneAsync(
-                        transaction.Session,
-                        FunctionRevisionLifecycleFilters.PendingApp(
-                            tenantId,
-                            functionAppId,
-                            revisionId),
-                        Builders<FunctionApp>.Update
-                            .Set(app => app.PendingRevisionId, null)
-                            .Set(app => app.Status, state.App.ActiveRevisionId is null
-                                ? FunctionAppStatus.Failed
-                                : FunctionAppStatus.Ready)
-                            .Set(app => app.AdmittedQuota, targetAllocation)
-                            .Set(app => app.UpdatedAtUtc, now),
-                        cancellationToken: transactionCancellationToken);
-                    if (appUpdate.MatchedCount != 1)
-                        return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
+                        var appUpdate = await functionApps.UpdateOneAsync(
+                            transaction.Session,
+                            FunctionRevisionLifecycleFilters.PendingApp(tenantId, functionAppId, revisionId),
+                            Builders<FunctionApp>.Update
+                                .Set(app => app.PendingRevisionId, null)
+                                .Set(
+                                    app => app.Status,
+                                    state.App.ActiveRevisionId is null
+                                        ? FunctionAppStatus.Failed
+                                        : FunctionAppStatus.Ready)
+                                .Set(app => app.AdmittedQuota, targetAllocation)
+                                .Set(app => app.UpdatedAtUtc, now),
+                            cancellationToken: transactionCancellationToken);
+                        if (appUpdate.MatchedCount != 1)
+                            return transaction.Abort(new FunctionAppConcurrencyConflict(functionAppId));
 
-                    await storeOutboxWrites(
-                        transaction.Session,
-                        [OutboxWrite.Create(state.Revision.ToFailedEvent(state.App, failure))],
-                        transactionCancellationToken);
-                    return transaction.Commit(new FunctionRevisionLifecycleCompleted());
-                }),
-            cancellationToken: cancellationToken);
+                        await storeOutboxWrites(
+                            transaction.Session,
+                            [OutboxWrite.Create(state.Revision.ToFailedEvent(state.App, failure))],
+                            transactionCancellationToken);
+                        return transaction.Commit(new FunctionRevisionLifecycleCompleted());
+                    }),
+                cancellationToken: cancellationToken);
     }
 }

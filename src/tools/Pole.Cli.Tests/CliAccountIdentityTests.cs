@@ -17,7 +17,9 @@ public sealed class CliAccountIdentityTests
 
         Assert.NotEqual(key, CliAccountIdentity.GetAccountKey(Jwt("account-two"), issuer, server));
         Assert.NotEqual(key, CliAccountIdentity.GetAccountKey(token, issuer, new Uri("https://other-pole.example/")));
-        Assert.NotEqual(key, CliAccountIdentity.GetAccountKey(token, new Uri("https://other-identity.example/"), server));
+        Assert.NotEqual(
+            key,
+            CliAccountIdentity.GetAccountKey(token, new Uri("https://other-identity.example/"), server));
     }
 
     private static string Jwt(string subject)

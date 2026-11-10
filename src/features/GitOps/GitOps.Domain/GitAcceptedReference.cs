@@ -6,4 +6,5 @@ public sealed record GitAcceptedReference(
     [property: BsonId] string Id,
     GitSourceIdentity Source,
     string ConsumerResourceId,
-    GitResourceIdentity Target);
+    GitResourceIdentity Target
+);

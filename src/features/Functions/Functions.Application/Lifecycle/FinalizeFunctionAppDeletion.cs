@@ -1,30 +1,26 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Lifecycle;
 
-public sealed record FunctionAppDeletionFinalizationConflict(string FunctionAppId);
+public sealed record FunctionAppDeletionFinalizationConflict(
+    string FunctionAppId
+);
 
 public sealed record FunctionAppDeletionFinalized;
 
-public union FinalizeFunctionAppDeletionOutcome(
-    FunctionAppDeletionFinalized,
-    FunctionAppDeletionFinalizationConflict);
+public union FinalizeFunctionAppDeletionOutcome(FunctionAppDeletionFinalized, FunctionAppDeletionFinalizationConflict);
 
-public delegate Task<FinalizeFunctionAppDeletionOutcome>
-    FinalizeFunctionAppDeletion(
-        string tenantId,
-        string functionAppId,
-        string resourceDeploymentId,
-        CancellationToken cancellationToken = default);
+public delegate Task<FinalizeFunctionAppDeletionOutcome> FinalizeFunctionAppDeletion(
+    string tenantId,
+    string functionAppId,
+    string resourceDeploymentId,
+    CancellationToken cancellationToken = default);
 
 internal sealed class MongoFinalizeFunctionAppDeletion(
     IMongoCollection<FunctionApp> functionApps,
@@ -37,23 +33,18 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
     GetExactResourceDeploymentFinalizationReadiness getDeploymentReadiness,
     PurgeExactDeletedResourceDeployment purgeDeployment,
     IResourceRegistrar resourceRegistrar,
-    RunMongoOutcomeTransaction<FinalizeFunctionAppDeletionOutcome>
-        runMongoTransaction)
+    RunMongoOutcomeTransaction<FinalizeFunctionAppDeletionOutcome> runMongoTransaction
+)
 {
     public Task<FinalizeFunctionAppDeletionOutcome> InvokeAsync(
         string tenantId,
         string functionAppId,
         string resourceDeploymentId,
-        CancellationToken cancellationToken = default) =>
-        runMongoTransaction(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runMongoTransaction(
+        async (transaction, ct) =>
         {
-            var appFilter = FunctionAppDeletionFilters.App(
-                tenantId,
-                functionAppId,
-                resourceDeploymentId);
-            var app = await functionApps
-                .Find(transaction.Session, appFilter)
-                .FirstOrDefaultAsync(ct);
+            var appFilter = FunctionAppDeletionFilters.App(tenantId, functionAppId, resourceDeploymentId);
+            var app = await functionApps.Find(transaction.Session, appFilter).FirstOrDefaultAsync(ct);
             if (app is null)
                 return transaction.Commit(Finalized());
 
@@ -68,11 +59,7 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
             if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
                 return transaction.Commit(Finalized());
 
-            await DeleteOwnedDocumentsAsync(
-                transaction.Session,
-                tenantId,
-                functionAppId,
-                ct);
+            await DeleteOwnedDocumentsAsync(transaction.Session, tenantId, functionAppId, ct);
             var deleted = await functionApps.DeleteOneAsync(
                 transaction.Session,
                 filter: appFilter,
@@ -103,7 +90,8 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
                 return transaction.Abort(Conflict(functionAppId));
 
             return transaction.Commit(Finalized());
-        }, cancellationToken);
+        },
+        cancellationToken);
 
     private async Task DeleteOwnedDocumentsAsync(
         IClientSessionHandle session,
@@ -137,10 +125,8 @@ internal sealed class MongoFinalizeFunctionAppDeletion(
             cancellationToken: cancellationToken);
     }
 
-    private static FinalizeFunctionAppDeletionOutcome Finalized() =>
-        new FunctionAppDeletionFinalized();
+    private static FinalizeFunctionAppDeletionOutcome Finalized() => new FunctionAppDeletionFinalized();
 
-    private static FinalizeFunctionAppDeletionOutcome Conflict(
-        string functionAppId) =>
+    private static FinalizeFunctionAppDeletionOutcome Conflict(string functionAppId) =>
         new FunctionAppDeletionFinalizationConflict(functionAppId);
 }

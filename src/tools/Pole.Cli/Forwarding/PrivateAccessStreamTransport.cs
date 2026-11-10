@@ -7,21 +7,27 @@ namespace Pole.Cli.Forwarding;
 
 public interface IPrivateAccessStreamTransport
 {
-    Task<IPrivateAccessConnection> OpenAsync(Uri server, string ticket, CancellationToken cancellationToken);
+    Task<IPrivateAccessConnection> OpenAsync(
+        Uri server,
+        string ticket,
+        CancellationToken cancellationToken);
 }
 
 public interface IPrivateAccessConnection : IAsyncDisposable
 {
     ValueTask<PrivateAccessReadResult> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken);
     ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken);
+
     ValueTask CompleteWritesAsync(CancellationToken cancellationToken);
+
     // Must abort the underlying transport and unblock any pending read or write.
     void Abort();
 }
 
 public readonly record struct PrivateAccessReadResult(
     int BytesRead,
-    bool RemoteClosed);
+    bool RemoteClosed
+);
 
 public interface IPrivateAccessConnectionFactory
 {
@@ -34,7 +40,8 @@ public interface IPrivateAccessConnectionFactory
 public sealed class AuthorizedPrivateAccessConnectionFactory(
     Uri server,
     IPrivateAccessSessionSource sessionSource,
-    IPrivateAccessStreamTransport streamTransport) : IPrivateAccessConnectionFactory
+    IPrivateAccessStreamTransport streamTransport
+) : IPrivateAccessConnectionFactory
 {
     public async Task<IPrivateAccessConnection> OpenAsync(
         string tenantId,
@@ -48,23 +55,10 @@ public sealed class AuthorizedPrivateAccessConnectionFactory(
 
 public sealed class WebSocketPrivateAccessStreamTransport : IPrivateAccessStreamTransport
 {
-    internal static SocketsHttpHandler CreateNoRedirectHandler() => new() { AllowAutoRedirect = false };
-
-    internal static Uri GetEndpoint(Uri server)
-    {
-        CliTokenStore.ValidateServer(server);
-        if (server.Scheme != Uri.UriSchemeHttps)
-            throw new InvalidOperationException("Private Access forwarding requires an HTTPS Pole server.");
-        return new UriBuilder(server)
-        {
-            Scheme = "wss",
-            Path = "/private-access/streams",
-            Query = string.Empty,
-            Fragment = string.Empty
-        }.Uri;
-    }
-
-    public async Task<IPrivateAccessConnection> OpenAsync(Uri server, string ticket, CancellationToken cancellationToken)
+    public async Task<IPrivateAccessConnection> OpenAsync(
+        Uri server,
+        string ticket,
+        CancellationToken cancellationToken)
     {
         if (!PrivateAccessApiClient.IsHttpToken(ticket))
             throw new InvalidOperationException("The one-use Private Access ticket is invalid.");
@@ -85,13 +79,31 @@ public sealed class WebSocketPrivateAccessStreamTransport : IPrivateAccessStream
             throw;
         }
     }
+
+    internal static SocketsHttpHandler CreateNoRedirectHandler() => new() { AllowAutoRedirect = false };
+
+    internal static Uri GetEndpoint(Uri server)
+    {
+        CliTokenStore.ValidateServer(server);
+        if (server.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("Private Access forwarding requires an HTTPS Pole server.");
+        return new UriBuilder(server)
+        {
+            Scheme = "wss",
+            Path = "/private-access/streams",
+            Query = "",
+            Fragment = "",
+        }.Uri;
+    }
 }
 
-internal sealed class WebSocketPrivateAccessConnection(WebSocket socket) : IPrivateAccessConnection
+internal sealed class WebSocketPrivateAccessConnection(
+    WebSocket socket
+) : IPrivateAccessConnection
 {
     private readonly PrivateAccessFrameWriter writer = new(socket);
-    private byte[]? currentPayload;
     private int currentOffset;
+    private byte[]? currentPayload;
     private bool readClosed;
     private bool remoteClosed;
     private bool writeClosed;
@@ -112,6 +124,7 @@ internal sealed class WebSocketPrivateAccessConnection(WebSocket socket) : IPriv
                     currentPayload = null;
                     currentOffset = 0;
                 }
+
                 return new PrivateAccessReadResult(count, false);
             }
 
@@ -135,6 +148,7 @@ internal sealed class WebSocketPrivateAccessConnection(WebSocket socket) : IPriv
                     throw new InvalidDataException("The user Private Access stream sent an unsupported control frame.");
             }
         }
+
         return new PrivateAccessReadResult(0, remoteClosed);
     }
 
@@ -169,6 +183,7 @@ internal sealed class WebSocketPrivateAccessConnection(WebSocket socket) : IPriv
                 socket.Abort();
             }
         }
+
         writer.Dispose();
         socket.Dispose();
     }

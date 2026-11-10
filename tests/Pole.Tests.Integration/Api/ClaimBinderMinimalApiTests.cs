@@ -1,13 +1,12 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
+using Pole.Tests.Integration.Http;
 using Xunit;
 
 namespace Pole.Tests.Integration.Api;
@@ -44,10 +43,7 @@ public sealed class ClaimBinderMinimalApiTests
     public async Task RegisteringFromClaimBinderProvider_DoesNotChangeMinimalApiBinding()
     {
         await using var app = await StartApp(
-            app =>
-            {
-                app.MapGet("/claim", ([FromClaim("sub")] string userId) => Results.Ok(userId));
-            },
+            app => { app.MapGet("/claim", ([FromClaim("sub")] string userId) => Results.Ok(userId)); },
             services =>
             {
                 services.Configure<MvcOptions>(options =>
@@ -78,7 +74,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("missing")] ClaimValue missingClaim) => Results.Ok(missingClaim.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("missing")] ClaimValue missingClaim) => Results.Ok(missingClaim.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -91,7 +89,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([AsParameters] ClaimValuePropertyRequest request) => Results.Ok(request.Role.Value));
+            app.MapGet(
+                "/claim",
+                ([AsParameters] ClaimValuePropertyRequest request) => Results.Ok(request.Role.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -119,7 +119,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("tenant_count")] ClaimValue<int> tenantCount) => Results.Ok(tenantCount.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("tenant_count")] ClaimValue<int> tenantCount) => Results.Ok(tenantCount.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -133,13 +135,17 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("session_id")] ClaimValue<Guid> sessionId) => Results.Ok(sessionId.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("session_id")] ClaimValue<Guid> sessionId) => Results.Ok(sessionId.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(Guid.Parse("98d8387c-a23e-4cba-9c2d-9ece8ab74d8a"), await response.Content.ReadFromJsonAsync<Guid>());
+        Assert.Equal(
+            Guid.Parse("98d8387c-a23e-4cba-9c2d-9ece8ab74d8a"),
+            await response.Content.ReadFromJsonAsync<Guid>());
     }
 
     [Fact]
@@ -147,7 +153,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim(ClaimTypes.Role)] ClaimValue<List<string>> roles) => Results.Ok(roles.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim(ClaimTypes.Role)] ClaimValue<List<string>> roles) => Results.Ok(roles.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -161,7 +169,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("missing")] ClaimValue<List<string>> missingValues) => Results.Ok(missingValues.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("missing")] ClaimValue<List<string>> missingValues) => Results.Ok(missingValues.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -174,7 +184,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([AsParameters] GenericClaimValuePropertyRequest request) => Results.Ok(request.Roles.Value));
+            app.MapGet(
+                "/claim",
+                ([AsParameters] GenericClaimValuePropertyRequest request) => Results.Ok(request.Roles.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -188,7 +200,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("missing")] ClaimValue<string?> missingValue) => Results.Ok(missingValue.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("missing")] ClaimValue<string?> missingValue) => Results.Ok(missingValue.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -202,7 +216,9 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("missing")] ClaimValue<int?> missingValue) => Results.Ok(missingValue.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("missing")] ClaimValue<int?> missingValue) => Results.Ok(missingValue.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -216,7 +232,10 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([FromClaim("missing")] ClaimValue<List<string>?> missingValues) => Results.Ok(missingValues.Value));
+            app.MapGet(
+                "/claim",
+                ([FromClaim("missing")] ClaimValue<List<string>?> missingValues) =>
+                    Results.Ok(missingValues.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -230,7 +249,10 @@ public sealed class ClaimBinderMinimalApiTests
     {
         await using var app = await StartApp(app =>
         {
-            app.MapGet("/claim", ([AsParameters] OptionalGenericClaimValuePropertyRequest request) => Results.Ok(request.OptionalRole.Value));
+            app.MapGet(
+                "/claim",
+                ([AsParameters] OptionalGenericClaimValuePropertyRequest request) =>
+                    Results.Ok(request.OptionalRole.Value));
         });
 
         var response = await app.GetTestClient().GetAsync("/claim");
@@ -261,14 +283,16 @@ public sealed class ClaimBinderMinimalApiTests
         });
         app.Use((context, next) =>
         {
-            context.User = new ClaimsPrincipal(new ClaimsIdentity(
-            [
-                new Claim("sub", "user-1"),
-                new Claim(ClaimTypes.Role, "platform-admin"),
-                new Claim(ClaimTypes.Role, "tenant-owner"),
-                new Claim("tenant_count", "3"),
-                new Claim("session_id", "98d8387c-a23e-4cba-9c2d-9ece8ab74d8a")
-            ], "test"));
+            context.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [
+                        new Claim("sub", "user-1"),
+                        new Claim(ClaimTypes.Role, "platform-admin"),
+                        new Claim(ClaimTypes.Role, "tenant-owner"),
+                        new Claim("tenant_count", "3"),
+                        new Claim("session_id", "98d8387c-a23e-4cba-9c2d-9ece8ab74d8a"),
+                    ],
+                    "test"));
             return next(context);
         });
         mapEndpoints(app);
@@ -277,23 +301,21 @@ public sealed class ClaimBinderMinimalApiTests
     }
 
     private sealed record MinimalClaimRequest(
-        [FromClaim("sub")] string UserId);
+        [FromClaim("sub")] string UserId
+    );
 
     private sealed record ClaimValuePropertyRequest
     {
-        [FromClaim(ClaimTypes.Role)]
-        public required ClaimValue Role { get; init; }
+        [FromClaim(ClaimTypes.Role)] public required ClaimValue Role { get; init; }
     }
 
     private sealed record GenericClaimValuePropertyRequest
     {
-        [FromClaim(ClaimTypes.Role)]
-        public required ClaimValue<List<string>> Roles { get; init; }
+        [FromClaim(ClaimTypes.Role)] public required ClaimValue<List<string>> Roles { get; init; }
     }
 
     private sealed record OptionalGenericClaimValuePropertyRequest
     {
-        [FromClaim("missing")]
-        public required ClaimValue<string?> OptionalRole { get; init; }
+        [FromClaim("missing")] public required ClaimValue<string?> OptionalRole { get; init; }
     }
 }

@@ -1,9 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
 
@@ -15,7 +11,8 @@ public delegate Task PersistCurrentWebServiceRelease(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistCurrentWebServiceRelease(
-    IMongoCollection<WebServiceRelease> releases)
+    IMongoCollection<WebServiceRelease> releases
+)
 {
     public async Task InvokeAsync(
         IClientSessionHandle session,
@@ -31,9 +28,6 @@ internal sealed class MongoPersistCurrentWebServiceRelease(
                 .Set(item => item.CompletedAtUtc, release.RequestedAtUtc)
                 .Set(item => item.FailureMessage, null),
             cancellationToken: cancellationToken);
-        await releases.InsertOneAsync(
-            session,
-            release,
-            cancellationToken: cancellationToken);
+        await releases.InsertOneAsync(session, release, cancellationToken: cancellationToken);
     }
 }

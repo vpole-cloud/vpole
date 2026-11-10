@@ -4,14 +4,9 @@ using MongoDB.Driver;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Secrets.Domain;
@@ -23,7 +18,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant1)]
-public sealed class WebServiceDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class WebServiceDriftTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task WebServiceSameCommitRepairsFullManagedConfigurationAndKeepsServerCredentials()
@@ -34,48 +31,67 @@ public sealed class WebServiceDriftTests(MongoReplicaSetFixture fixture) : Decla
         var service = await Service();
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id).SingleAsync();
         var connectionResult = await Services.GetRequiredService<PersistResourceConnectionCreation>()(
-            new(service.TenantId, "self-http", WebServiceResourceDeployment.ResourceType, service.Id,
-                WebServiceResourceDeployment.ResourceType, service.Id, "http"));
+            new CreateResourceConnectionCommand(
+                service.TenantId,
+                "self-http",
+                WebServiceResourceDeployment.ResourceType,
+                service.Id,
+                WebServiceResourceDeployment.ResourceType,
+                service.Id,
+                "http"));
         var connection = Assert.IsType<ResourceConnection>(connectionResult.Value);
-        var connectionReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
-            .Add("SELF_HOST", new(connection.Id, "Host", null));
-        await WebServices.ReplaceOneAsync(item => item.Id == service.Id, service with
-        {
-            Revision = service.Revision + 1,
-            Spec = service.Spec with
+        var connectionReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add(
+            "SELF_HOST",
+            new ConnectionEnvironmentReference(connection.Id, "Host", null));
+        await WebServices.ReplaceOneAsync(
+            item => item.Id == service.Id,
+            service with
             {
-                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(service.Spec.Image) with
-                { Tag = "manual", SecretName = "server-pull-secret" },
-                Config = service.Spec.Config with { ConnectionEnvironmentReferences = connectionReferences }
-            }
-        });
-        await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == placement.Id, placement with
-        {
-            Revision = placement.Revision + 1,
-            ResolvedPlacement = placement.ResolvedPlacement with
-            {
-                Compute = placement.ResolvedPlacement.Compute with
+                Revision = service.Revision + 1,
+                Spec = service.Spec with
                 {
-                    Limits = placement.ResolvedPlacement.Compute.Limits with
-                    { CpuMillis = placement.ResolvedPlacement.Compute.Limits.CpuMillis + 1 }
-                }
-            }
-        });
+                    Image = Assert.IsType<ImageInfo>(service.Spec.Image) with
+                    {
+                        Tag = "manual", SecretName = "server-pull-secret",
+                    },
+                    Config = service.Spec.Config with { ConnectionEnvironmentReferences = connectionReferences },
+                },
+            });
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == placement.Id,
+            placement with
+            {
+                Revision = placement.Revision + 1,
+                ResolvedPlacement = placement.ResolvedPlacement with
+                {
+                    Compute = placement.ResolvedPlacement.Compute with
+                    {
+                        Limits = placement.ResolvedPlacement.Compute.Limits with
+                        {
+                            CpuMillis = placement.ResolvedPlacement.Compute.Limits.CpuMillis + 1,
+                        },
+                    },
+                },
+            });
         var releases = await Releases();
         var result = await Apply();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         var repaired = await Service();
         Assert.Equal(service.Spec.Image.ResolvedImage!.Tag, repaired.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal("server-pull-secret", repaired.Spec.Image.ResolvedImage!.SecretName);
-        Assert.Equal(connectionReferences.OrderBy(item => item.Key),
+        Assert.Equal(
+            connectionReferences.OrderBy(item => item.Key),
             repaired.Spec.Config.ConnectionEnvironmentReferences.OrderBy(item => item.Key));
         Assert.Equal(releases + 1, await Releases());
         var physical = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
         Assert.Equal(placement.ResolvedPlacement.Compute.Limits, physical.ResolvedPlacement.Compute.Limits);
         var queries = Services.GetRequiredService<GitRepositoryQueries>();
-        var operations = (await queries.OperationsAsync(Data.TenantId, source, result.Context!.RunId, 1, 20,
-            default))!.Items.Where(item => item.Kind == "WebService").ToArray();
-        Assert.Equal(GitPlannedAction.NoOp,
+        var operations = (await queries.OperationsAsync(Data.TenantId, source, result.Context!.RunId, 1, 20, default))!
+            .Items
+            .Where(item => item.Kind == "WebService")
+            .ToArray();
+        Assert.Equal(
+            GitPlannedAction.NoOp,
             operations.Single(item => item.Phase == DeclarationPhase.Prepare).Plan!.Action);
         var configure = operations.Single(item => item.Phase == DeclarationPhase.Configure).Plan!;
         Assert.Equal(GitPlannedAction.Update, configure.Action);
@@ -83,11 +99,13 @@ public sealed class WebServiceDriftTests(MongoReplicaSetFixture fixture) : Decla
         Assert.Contains("configuration.compute.resolution.limits.cpuMillis", configure.ChangedFields);
 
         await Supply("second-rotation-private");
-        await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == physical.Id, physical with
-        {
-            ObservedGeneration = physical.DesiredGeneration,
-            State = new AppliedResourceDeploymentState(physical.DesiredGeneration, DateTime.UtcNow)
-        });
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == physical.Id,
+            physical with
+            {
+                ObservedGeneration = physical.DesiredGeneration,
+                State = new AppliedResourceDeploymentState(physical.DesiredGeneration, DateTime.UtcNow),
+            });
         var events = await BusinessEvents();
         var stable = await Apply();
         Assert.Equal(repaired.Revision, (await Service()).Revision);
@@ -109,26 +127,30 @@ public sealed class WebServiceDriftTests(MongoReplicaSetFixture fixture) : Decla
         var events = await BusinessEvents();
         var releases = await Releases();
         var intercepted = false;
-        var mutations = new BeforeNoOp(Services.GetRequiredService<IGitOpsMutations>(), async (operation, ct) =>
-        {
-            if (intercepted || operation.Declaration.Address.Kind != "WebService" ||
-                operation.Phase != DeclarationPhase.Configure)
-                return;
-            intercepted = true;
-            await Secrets.UpdateOneAsync(item => item.Id == secret.Id,
-                Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
-        });
+        var mutations = new BeforeNoOp(
+            Services.GetRequiredService<IGitOpsMutations>(),
+            async (operation, ct) =>
+            {
+                if (intercepted || operation.Declaration.Address.Kind != "WebService" ||
+                    operation.Phase != DeclarationPhase.Configure)
+                    return;
+                intercepted = true;
+                await Secrets.UpdateOneAsync(
+                    item => item.Id == secret.Id,
+                    Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1),
+                    cancellationToken: ct);
+            });
         var pipeline = new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations);
-        var result = await pipeline.SubmitAsync(new(Data.TenantId, source), Snapshot());
+        var result = await pipeline.SubmitAsync(new GitSourceIdentity(Data.TenantId, source), Snapshot());
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.Equal(service.Revision, (await Service()).Revision);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(releases, await Releases());
-        var operations = await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(Data.TenantId,
-            source, result.Context!.RunId, 1, 20, default);
+        var operations = await Services.GetRequiredService<GitRepositoryQueries>()
+            .OperationsAsync(Data.TenantId, source, result.Context!.RunId, 1, 20, default);
         var plan = operations!.Items.Single(item => item.Kind == "WebService" &&
-            item.Phase == DeclarationPhase.Configure)
+                item.Phase == DeclarationPhase.Configure)
             .Plan!;
         Assert.Equal(2, plan.Revision);
         Assert.Equal(GitPlannedAction.NoOp, plan.Action);

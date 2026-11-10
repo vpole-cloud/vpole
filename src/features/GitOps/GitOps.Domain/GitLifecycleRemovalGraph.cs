@@ -4,7 +4,8 @@ namespace Pole.Features.GitOps.Domain;
 
 public static class GitLifecycleRemovalGraph
 {
-    public static bool IsAcyclic(IEnumerable<GitPreviewOperation> operations,
+    public static bool IsAcyclic(
+        IEnumerable<GitPreviewOperation> operations,
         IEnumerable<GitPreviewDependencySet> dependencies)
     {
         var destructive = operations
@@ -16,6 +17,7 @@ public static class GitLifecycleRemovalGraph
             graph[(action.Id, GitLifecycleStep.BeginRemoval)] = [];
             graph[(action.Id, GitLifecycleStep.RemovalCompleted)] = [(action.Id, GitLifecycleStep.BeginRemoval)];
         }
+
         foreach (var set in dependencies)
         {
             if (!destructive.TryGetValue(set.Target, out var target))
@@ -45,6 +47,7 @@ public static class GitLifecycleRemovalGraph
                 }
             }
         }
+
         while (graph.Count > 0)
         {
             var ready = graph.Where(item => item.Value.Count == 0).Select(item => item.Key).ToArray();
@@ -55,6 +58,7 @@ public static class GitLifecycleRemovalGraph
             foreach (var predecessors in graph.Values)
                 predecessors.ExceptWith(ready);
         }
+
         return true;
     }
 }

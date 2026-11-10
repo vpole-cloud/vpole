@@ -1,4 +1,5 @@
 using k8s;
+using k8s.Models;
 using Pole.Testing;
 using Xunit;
 
@@ -9,7 +10,9 @@ namespace Pole.Tests.Kubernetes;
 [Trait(TestTraits.Concern, "Topology")]
 [Trait(TestTraits.Scope, TestTraits.Scopes.Topology)]
 [Trait(TestTraits.Feature, "ComputeProfiles")]
-public sealed class KubernetesLabTopologyTests(KubernetesClusterFixture fixture)
+public sealed class KubernetesLabTopologyTests(
+    KubernetesClusterFixture fixture
+)
 {
     [KubernetesFact("topology")]
     public async Task Topology_profile_has_deterministic_compute_pools_and_taint()
@@ -17,17 +20,12 @@ public sealed class KubernetesLabTopologyTests(KubernetesClusterFixture fixture)
         var nodes = await fixture.Client.CoreV1.ListNodeAsync();
         var pools = nodes.Items
             .Where(node => node.Metadata.Labels.ContainsKey("pole.dev/compute-pool"))
-            .ToDictionary(
-                node => node.Metadata.Labels["pole.dev/compute-pool"],
-                node => node,
-                StringComparer.Ordinal);
+            .ToDictionary(node => node.Metadata.Labels["pole.dev/compute-pool"], node => node, StringComparer.Ordinal);
 
         Assert.Equal(["general", "isolated", "memory"], pools.Keys.Order(StringComparer.Ordinal).ToArray());
         Assert.Contains(
             pools["isolated"].Spec.Taints,
-            taint => taint.Key == "pole.dev/dedicated" &&
-                     taint.Value == "isolated" &&
-                     taint.Effect == "NoSchedule");
+            taint => taint.Key == "pole.dev/dedicated" && taint.Value == "isolated" && taint.Effect == "NoSchedule");
     }
 
     [KubernetesFact("topology")]
@@ -62,72 +60,71 @@ public sealed class KubernetesLabTopologyTests(KubernetesClusterFixture fixture)
         Assert.Equal("isolated", isolatedNode.Metadata.Labels["pole.dev/compute-pool"]);
     }
 
-    private static k8s.Models.V1Pod BuildPod(
+    private static V1Pod BuildPod(
         string name,
         string pool,
         string architecture,
         bool useAffinity,
-        bool tolerateIsolated) =>
-        new()
+        bool tolerateIsolated) => new()
+    {
+        Metadata = new V1ObjectMeta { Name = name },
+        Spec = new V1PodSpec
         {
-            Metadata = new k8s.Models.V1ObjectMeta { Name = name },
-            Spec = new k8s.Models.V1PodSpec
-            {
-                Containers =
-                [
-                    new k8s.Models.V1Container
-                    {
-                        Name = name,
-                        Image = "registry.k8s.io/pause:3.10"
-                    }
-                ],
-                NodeSelector = new Dictionary<string, string>
+            Containers =
+            [
+                new V1Container
                 {
-                    ["kubernetes.io/arch"] = architecture,
-                    ["pole.dev/compute-pool"] = useAffinity ? "isolated" : pool
+                    Name = name,
+                    Image = "registry.k8s.io/pause:3.10",
                 },
-                Affinity = useAffinity
-                    ? new k8s.Models.V1Affinity
+            ],
+            NodeSelector = new Dictionary<string, string>
+            {
+                ["kubernetes.io/arch"] = architecture,
+                ["pole.dev/compute-pool"] = useAffinity ? "isolated" : pool,
+            },
+            Affinity = useAffinity
+                ? new V1Affinity
+                {
+                    NodeAffinity = new V1NodeAffinity
                     {
-                        NodeAffinity = new k8s.Models.V1NodeAffinity
+                        RequiredDuringSchedulingIgnoredDuringExecution = new V1NodeSelector
                         {
-                            RequiredDuringSchedulingIgnoredDuringExecution = new k8s.Models.V1NodeSelector
-                            {
-                                NodeSelectorTerms =
-                                [
-                                    new k8s.Models.V1NodeSelectorTerm
-                                    {
-                                        MatchExpressions =
-                                        [
-                                            new k8s.Models.V1NodeSelectorRequirement
-                                            {
-                                                Key = "pole.dev/compute-pool",
-                                                OperatorProperty = "In",
-                                                Values = [pool]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                    : null,
-                Tolerations = tolerateIsolated
-                    ?
-                    [
-                        new k8s.Models.V1Toleration
-                        {
-                            Key = "pole.dev/dedicated",
-                            OperatorProperty = "Equal",
-                            Value = "isolated",
-                            Effect = "NoSchedule"
-                        }
-                    ]
-                    : null
-            }
-        };
+                            NodeSelectorTerms =
+                            [
+                                new V1NodeSelectorTerm
+                                {
+                                    MatchExpressions =
+                                    [
+                                        new V1NodeSelectorRequirement
+                                        {
+                                            Key = "pole.dev/compute-pool",
+                                            OperatorProperty = "In",
+                                            Values = [pool],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    },
+                }
+                : null,
+            Tolerations = tolerateIsolated
+                ?
+                [
+                    new V1Toleration
+                    {
+                        Key = "pole.dev/dedicated",
+                        OperatorProperty = "Equal",
+                        Value = "isolated",
+                        Effect = "NoSchedule",
+                    },
+                ]
+                : null,
+        },
+    };
 
-    private async Task<k8s.Models.V1Pod> WaitForSchedulingAsync(string name, string namespaceName)
+    private async Task<V1Pod> WaitForSchedulingAsync(string name, string namespaceName)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
         while (DateTimeOffset.UtcNow < deadline)

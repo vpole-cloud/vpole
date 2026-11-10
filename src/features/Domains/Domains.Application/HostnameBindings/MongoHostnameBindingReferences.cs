@@ -1,15 +1,14 @@
 using MongoDB.Driver;
-using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
 namespace Pole.Features.Domains.Application.HostnameBindings;
 
-internal sealed class MongoHostnameBindingReferences(IMongoCollection<HostnameBinding> bindings)
+internal sealed class MongoHostnameBindingReferences(
+    IMongoCollection<HostnameBinding> bindings
+)
 {
     public async Task<NamedHostnameBindingOutcome> ResolveAsync(
         NamedHostnameBindingRequest request,

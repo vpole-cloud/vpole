@@ -26,15 +26,14 @@ public sealed record ResolvedStorageProfileDto(
 
 public static class ResolvedStorageProfileExtensions
 {
-    public static ResolvedStorageProfileDto ToDto(this ResolvedStorageProfile profile) =>
-        new(
-            profile.ProfileId,
-            profile.ProfileRevision,
-            profile.DeploymentTargetId,
-            profile.DisplayName,
-            profile.StorageClassName,
-            profile.MediaType.ToString(),
-            profile.PerformanceTier.ToString());
+    public static ResolvedStorageProfileDto ToDto(this ResolvedStorageProfile profile) => new(
+        profile.ProfileId,
+        profile.ProfileRevision,
+        profile.DeploymentTargetId,
+        profile.DisplayName,
+        profile.StorageClassName,
+        profile.MediaType.ToString(),
+        profile.PerformanceTier.ToString());
 }
 
 public sealed record StorageProfileResolutionRequest(
@@ -46,40 +45,52 @@ public sealed record StorageProfileResolutionRequest(
     long? Revision = null
 );
 
-public sealed record StorageProfileNotFound(string StorageProfileId);
+public sealed record StorageProfileNotFound(
+    string StorageProfileId
+);
 
 public sealed record StorageProfileRevisionUnavailable(
     string StorageProfileId,
-    long Revision);
+    long Revision
+);
 
-public sealed record StorageProfileDisabled(string StorageProfileId);
+public sealed record StorageProfileDisabled(
+    string StorageProfileId
+);
 
 public sealed record StorageProfileTenantAccessDenied(
     string StorageProfileId,
-    string TenantId);
+    string TenantId
+);
 
 public sealed record StorageProfileResourceTypeNotAllowed(
     string StorageProfileId,
-    ResourceTypeId ResourceType);
+    ResourceTypeId ResourceType
+);
 
 public sealed record StorageProfileSizeNotAllowed(
     string StorageProfileId,
-    int SizeGb);
+    int SizeGb
+);
 
 public sealed record StorageProfileDeploymentTargetNotConfigured(
     string StorageProfileId,
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);
 
 public sealed record StorageProfileStorageClassUnavailable(
     string StorageProfileId,
     string DeploymentTargetId,
-    string StorageClassName);
+    string StorageClassName
+);
 
 /// <summary>
-/// The configured deployment target cannot currently be queried for storage
-/// classes. Provider details are deliberately not exposed at this boundary.
+///     The configured deployment target cannot currently be queried for storage
+///     classes. Provider details are deliberately not exposed at this boundary.
 /// </summary>
-public sealed record StorageProfileDiscoveryUnavailable(string DeploymentTargetId);
+public sealed record StorageProfileDiscoveryUnavailable(
+    string DeploymentTargetId
+);
 
 public union StorageProfileResolutionError(
     StorageProfileNotFound,
@@ -93,29 +104,30 @@ public union StorageProfileResolutionError(
     StorageProfileDiscoveryUnavailable);
 
 /// <summary>
-/// Resolves a storage profile into the immutable storage-class snapshot used by
-/// a workload deployment. Structural request violations throw; expected
-/// availability and policy decisions are represented by the closed error union.
+///     Resolves a storage profile into the immutable storage-class snapshot used by
+///     a workload deployment. Structural request violations throw; expected
+///     availability and policy decisions are represented by the closed error union.
 /// </summary>
-public delegate Task<ResolveStorageProfileOutcome>
-    ResolveStorageProfile(
-        StorageProfileResolutionRequest request,
-        CancellationToken cancellationToken = default);
+public delegate Task<ResolveStorageProfileOutcome> ResolveStorageProfile(
+    StorageProfileResolutionRequest request,
+    CancellationToken cancellationToken = default);
 
 public sealed record StorageProfileResolutionFenceRequest(
     string StorageProfileId,
     long StorageProfileRevision,
     string DeploymentTargetId,
     string StorageClassName,
-    long? PolicyRevision = null);
+    long? PolicyRevision = null
+);
 
-public sealed record StorageProfileResolutionFenceRejected(string StorageProfileId);
+public sealed record StorageProfileResolutionFenceRejected(
+    string StorageProfileId
+);
 
-public delegate Task<FenceStorageProfileResolutionOutcome>
-    FenceStorageProfileResolution(
-        StorageProfileResolutionFenceRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<FenceStorageProfileResolutionOutcome> FenceStorageProfileResolution(
+    StorageProfileResolutionFenceRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 public static class PoleStorageLabels
 {
@@ -126,9 +138,7 @@ public static class PoleStorageLabels
     public const string ResourceName = "pole.io/resource-name";
 }
 
-public union ResolveStorageProfileOutcome(
-    ResolvedStorageProfile,
-    StorageProfileResolutionError);
+public union ResolveStorageProfileOutcome(ResolvedStorageProfile, StorageProfileResolutionError);
 
 public sealed record StorageProfileResolutionFenced;
 

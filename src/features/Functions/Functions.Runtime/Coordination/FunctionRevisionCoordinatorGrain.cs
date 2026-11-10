@@ -1,60 +1,23 @@
-using Orleans.Runtime;
 using Pole.Features.Functions.Runtime.Gateway;
 
 namespace Pole.Features.Functions.Runtime.Coordination;
 
 public sealed class FunctionRevisionCoordinatorGrain(
-    [PersistentState(
-        FunctionCoordinationStorage.RevisionStateName,
-        FunctionCoordinationStorage.ProviderName)]
+    [PersistentState(FunctionCoordinationStorage.RevisionStateName, FunctionCoordinationStorage.ProviderName)]
     IPersistentState<FunctionRevisionCoordinatorState> persistentState,
     FunctionGatewayOptions gatewayOptions,
     FunctionCoordinationOptions coordinationOptions,
-    TimeProvider timeProvider) : Grain, IFunctionRevisionCoordinatorGrain
+    TimeProvider timeProvider
+) : Grain, IFunctionRevisionCoordinatorGrain
 {
-    private sealed record AdmissionFingerprint(
-        string InvocationId,
-        string HandlerName,
-        FunctionAdmissionTriggerKind TriggerKind,
-        long ReservedBytes);
-
-    private sealed record AdmissionLease(
-        AdmissionFingerprint Fingerprint,
-        FunctionAdmissionToken Token);
-
     private readonly Dictionary<string, AdmissionLease> admissions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> handlerAdmissions = new(StringComparer.Ordinal);
+    private long admissionBytes;
+    private int admissionRequests;
+    private string coordinatorIncarnation = "";
     private FunctionRevisionCoordinationKey key = null!;
-    private string coordinatorIncarnation = string.Empty;
     private DateTimeOffset scaleDownBlockedUntilUtc;
     private FunctionScalerOwnershipToken? scalerOwnership;
-    private int admissionRequests;
-    private long admissionBytes;
-
-    public override Task OnActivateAsync(CancellationToken cancellationToken)
-    {
-        if (!FunctionRevisionCoordinationKey.TryParse(this.GetPrimaryKeyString(), out var parsedKey))
-        {
-            throw new InvalidOperationException(
-                $"Invalid Function revision coordinator grain key '{this.GetPrimaryKeyString()}'.");
-        }
-
-        key = parsedKey!;
-        coordinatorIncarnation = Guid.NewGuid().ToString("N");
-        scaleDownBlockedUntilUtc = timeProvider.GetUtcNow()
-            .AddSeconds(coordinationOptions.RecoveryGraceSeconds);
-        if (persistentState.State.SchemaVersion > FunctionRevisionCoordinatorState.CurrentSchemaVersion)
-        {
-            throw new InvalidOperationException(
-                $"Function revision coordination schema {persistentState.State.SchemaVersion} is newer than " +
-                $"supported schema {FunctionRevisionCoordinatorState.CurrentSchemaVersion}.");
-        }
-
-        if (persistentState.State.SchemaVersion == 0)
-            persistentState.State.SchemaVersion = FunctionRevisionCoordinatorState.CurrentSchemaVersion;
-
-        return base.OnActivateAsync(cancellationToken);
-    }
 
     public async Task<FunctionAdmissionDecision> AcquireAdmissionAsync(FunctionAdmissionRequest request)
     {
@@ -69,7 +32,6 @@ public sealed class FunctionRevisionCoordinatorGrain(
             request.TriggerKind,
             request.ReservedBytes);
         if (admissions.TryGetValue(request.AdmissionId, out var existing))
-        {
             return existing.Fingerprint == fingerprint
                 ? new FunctionAdmissionDecision(
                     FunctionAdmissionDecisionKind.Granted,
@@ -78,32 +40,24 @@ public sealed class FunctionRevisionCoordinatorGrain(
                     0,
                     persistentState.State.AdmissionFenceRequired)
                 : AdmissionRejected(FunctionAdmissionRejection.IdempotencyConflict);
-        }
 
         if (GetActiveScaleDownBarrierExpiry(persistentState.State, now) is { } barrierExpiresAtUtc)
-        {
             return AdmissionRejected(
                 FunctionAdmissionRejection.RevisionQuiescing,
                 RetryAfterMilliseconds(barrierExpiresAtUtc, now));
-        }
 
         if (admissionRequests >= gatewayOptions.MaxPendingRequestsPerRevision)
-        {
             return AdmissionRejected(
                 FunctionAdmissionRejection.RequestLimitExceeded,
                 GetAdmissionRetryAfterMilliseconds(now));
-        }
 
         if (request.ReservedBytes > gatewayOptions.MaxPendingBytesPerRevision - admissionBytes)
-        {
             return AdmissionRejected(
                 FunctionAdmissionRejection.ByteLimitExceeded,
                 GetAdmissionRetryAfterMilliseconds(now));
-        }
 
         var clearedExpiredBarrier = HasExpiredScaleDownBarrier(persistentState.State, now);
         if (clearedExpiredBarrier)
-        {
             await PersistAsync(state =>
             {
                 CleanExpiredTransitions(state, now);
@@ -111,7 +65,6 @@ public sealed class FunctionRevisionCoordinatorGrain(
                 // Admissions must force a newer generation write before user code may start.
                 state.AdmissionFenceRequired = true;
             });
-        }
 
         var token = new FunctionAdmissionToken(
             request.AdmissionId,
@@ -121,8 +74,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
         admissions.Add(request.AdmissionId, new AdmissionLease(fingerprint, token));
         admissionRequests = checked(admissionRequests + 1);
         admissionBytes = checked(admissionBytes + request.ReservedBytes);
-        handlerAdmissions[request.HandlerName] = checked(
-            handlerAdmissions.GetValueOrDefault(request.HandlerName) + 1);
+        handlerAdmissions[request.HandlerName] = checked(handlerAdmissions.GetValueOrDefault(request.HandlerName) + 1);
         DelayDeactivation(TimeSpan.FromSeconds(coordinationOptions.InitialAdmissionLeaseSeconds));
         return new FunctionAdmissionDecision(
             FunctionAdmissionDecisionKind.Granted,
@@ -136,82 +88,56 @@ public sealed class FunctionRevisionCoordinatorGrain(
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredAdmissions(now);
-        if (request.Token is null ||
-            string.IsNullOrWhiteSpace(request.Token.AdmissionId) ||
+        if (request.Token is null || string.IsNullOrWhiteSpace(request.Token.AdmissionId) ||
             string.IsNullOrWhiteSpace(request.Token.LeaseId) ||
             string.IsNullOrWhiteSpace(request.Token.CoordinatorIncarnation))
-        {
-            return Task.FromResult(new FunctionAdmissionRenewalDecision(
-                FunctionAdmissionRenewalDecisionKind.InvalidRequest,
-                null));
-        }
+            return Task.FromResult(
+                new FunctionAdmissionRenewalDecision(FunctionAdmissionRenewalDecisionKind.InvalidRequest, null));
 
-        if (!string.Equals(
-                request.Token.CoordinatorIncarnation,
-                coordinatorIncarnation,
-                StringComparison.Ordinal))
-        {
-            return Task.FromResult(new FunctionAdmissionRenewalDecision(
-                FunctionAdmissionRenewalDecisionKind.Stale,
-                null));
-        }
+        if (!string.Equals(request.Token.CoordinatorIncarnation, coordinatorIncarnation, StringComparison.Ordinal))
+            return Task.FromResult(
+                new FunctionAdmissionRenewalDecision(FunctionAdmissionRenewalDecisionKind.Stale, null));
 
         if (!admissions.TryGetValue(request.Token.AdmissionId, out var admission))
-        {
-            return Task.FromResult(new FunctionAdmissionRenewalDecision(
-                FunctionAdmissionRenewalDecisionKind.Expired,
-                null));
-        }
+            return Task.FromResult(
+                new FunctionAdmissionRenewalDecision(FunctionAdmissionRenewalDecisionKind.Expired, null));
 
         if (!string.Equals(admission.Token.LeaseId, request.Token.LeaseId, StringComparison.Ordinal))
-        {
-            return Task.FromResult(new FunctionAdmissionRenewalDecision(
-                FunctionAdmissionRenewalDecisionKind.Stale,
-                null));
-        }
+            return Task.FromResult(
+                new FunctionAdmissionRenewalDecision(FunctionAdmissionRenewalDecisionKind.Stale, null));
 
         var renewedToken = admission.Token with
         {
-            ExpiresAtUtc = now.AddSeconds(coordinationOptions.AdmissionLeaseSeconds)
+            ExpiresAtUtc = now.AddSeconds(coordinationOptions.AdmissionLeaseSeconds),
         };
         admissions[request.Token.AdmissionId] = admission with { Token = renewedToken };
         DelayDeactivation(TimeSpan.FromSeconds(coordinationOptions.AdmissionLeaseSeconds));
-        return Task.FromResult(new FunctionAdmissionRenewalDecision(
-            FunctionAdmissionRenewalDecisionKind.Renewed,
-            renewedToken));
+        return Task.FromResult(
+            new FunctionAdmissionRenewalDecision(FunctionAdmissionRenewalDecisionKind.Renewed, renewedToken));
     }
 
     public Task<FunctionAdmissionReleaseDecision> ReleaseAdmissionAsync(FunctionAdmissionReleaseRequest request)
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredAdmissions(now);
-        if (string.IsNullOrWhiteSpace(request.AdmissionId) ||
-            string.IsNullOrWhiteSpace(request.LeaseId) ||
+        if (string.IsNullOrWhiteSpace(request.AdmissionId) || string.IsNullOrWhiteSpace(request.LeaseId) ||
             string.IsNullOrWhiteSpace(request.CoordinatorIncarnation))
             return Task.FromResult(FunctionAdmissionReleaseDecision.InvalidRequest);
 
         if (!admissions.TryGetValue(request.AdmissionId, out var admission))
             return Task.FromResult(FunctionAdmissionReleaseDecision.AlreadyReleasedOrExpired);
 
-        if (!string.Equals(
-                request.CoordinatorIncarnation,
-                coordinatorIncarnation,
-                StringComparison.Ordinal))
-        {
+        if (!string.Equals(request.CoordinatorIncarnation, coordinatorIncarnation, StringComparison.Ordinal))
             return Task.FromResult(FunctionAdmissionReleaseDecision.Stale);
-        }
 
         if (!string.Equals(request.LeaseId, admission.Token.LeaseId, StringComparison.Ordinal))
-        {
             return Task.FromResult(FunctionAdmissionReleaseDecision.Stale);
-        }
 
         RemoveAdmission(request.AdmissionId, admission);
         return Task.FromResult(FunctionAdmissionReleaseDecision.Released);
     }
 
-    public async Task<FunctionActivationBeginDecision> BeginActivationAsync(
-        FunctionActivationBeginRequest request)
+    public async Task<FunctionActivationBeginDecision> BeginActivationAsync(FunctionActivationBeginRequest request)
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredAdmissions(now);
@@ -222,14 +148,9 @@ public sealed class FunctionRevisionCoordinatorGrain(
         if (currentActivation is not null && IsActive(currentActivation, now))
         {
             if (currentActivation.DesiredReplicas != request.DesiredReplicas)
-            {
-                return string.Equals(
-                    currentActivation.OperationId,
-                    request.OperationId,
-                    StringComparison.Ordinal)
+                return string.Equals(currentActivation.OperationId, request.OperationId, StringComparison.Ordinal)
                     ? ActivationRejected(FunctionActivationRejection.InvalidRequest)
                     : ActivationBusy(currentActivation.ExpiresAtUtc, now);
-            }
 
             return new FunctionActivationBeginDecision(
                 FunctionActivationBeginDecisionKind.Granted,
@@ -240,13 +161,11 @@ public sealed class FunctionRevisionCoordinatorGrain(
 
         var pendingScale = persistentState.State.PendingScaleIntent;
         if (pendingScale is not null && IsActive(pendingScale, now))
-        {
             return new FunctionActivationBeginDecision(
                 FunctionActivationBeginDecisionKind.Busy,
                 null,
                 FunctionActivationRejection.ScaleTransitionInProgress,
                 RetryAfterMilliseconds(pendingScale.ExpiresAtUtc, now));
-        }
 
         FunctionActivationIntent? activation = null;
         await PersistAsync(state =>
@@ -286,21 +205,15 @@ public sealed class FunctionRevisionCoordinatorGrain(
         if (lastCompletion is not null &&
             string.Equals(lastCompletion.LeaseId, request.LeaseId, StringComparison.Ordinal) &&
             lastCompletion.Generation == request.Generation)
-        {
             return lastCompletion.Outcome == request.Outcome
                 ? FunctionActivationCompleteDecision.AlreadyCompleted
                 : FunctionActivationCompleteDecision.Stale;
-        }
 
         var activation = persistentState.State.ActivationIntent;
-        if (activation is null ||
-            !IsActive(activation, now) ||
+        if (activation is null || !IsActive(activation, now) ||
             !string.Equals(activation.LeaseId, request.LeaseId, StringComparison.Ordinal) ||
-            activation.Generation != request.Generation ||
-            persistentState.State.Generation != request.Generation)
-        {
+            activation.Generation != request.Generation || persistentState.State.Generation != request.Generation)
             return FunctionActivationCompleteDecision.Stale;
-        }
 
         await PersistAsync(state =>
         {
@@ -317,8 +230,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
         return FunctionActivationCompleteDecision.Completed;
     }
 
-    public Task<FunctionScalerOwnershipDecision> TryAcquireScalerOwnershipAsync(
-        FunctionScalerOwnershipRequest request)
+    public Task<FunctionScalerOwnershipDecision> TryAcquireScalerOwnershipAsync(FunctionScalerOwnershipRequest request)
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredScalerOwnership(now);
@@ -329,17 +241,17 @@ public sealed class FunctionRevisionCoordinatorGrain(
         {
             if (string.Equals(scalerOwnership.OperationId, request.OperationId, StringComparison.Ordinal) &&
                 string.Equals(scalerOwnership.OwnerId, request.OwnerId, StringComparison.Ordinal))
-            {
-                return Task.FromResult(new FunctionScalerOwnershipDecision(
-                    FunctionScalerOwnershipDecisionKind.Granted,
-                    scalerOwnership,
-                    0));
-            }
+                return Task.FromResult(
+                    new FunctionScalerOwnershipDecision(
+                        FunctionScalerOwnershipDecisionKind.Granted,
+                        scalerOwnership,
+                        0));
 
-            return Task.FromResult(new FunctionScalerOwnershipDecision(
-                FunctionScalerOwnershipDecisionKind.Busy,
-                null,
-                RetryAfterMilliseconds(scalerOwnership.ExpiresAtUtc, now)));
+            return Task.FromResult(
+                new FunctionScalerOwnershipDecision(
+                    FunctionScalerOwnershipDecisionKind.Busy,
+                    null,
+                    RetryAfterMilliseconds(scalerOwnership.ExpiresAtUtc, now)));
         }
 
         scalerOwnership = new FunctionScalerOwnershipToken(
@@ -349,14 +261,11 @@ public sealed class FunctionRevisionCoordinatorGrain(
             coordinatorIncarnation,
             now.AddSeconds(coordinationOptions.ScalerOwnershipLeaseSeconds));
         DelayDeactivation(TimeSpan.FromSeconds(coordinationOptions.ScalerOwnershipLeaseSeconds));
-        return Task.FromResult(new FunctionScalerOwnershipDecision(
-            FunctionScalerOwnershipDecisionKind.Granted,
-            scalerOwnership,
-            0));
+        return Task.FromResult(
+            new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Granted, scalerOwnership, 0));
     }
 
-    public Task<FunctionScalerOwnershipDecision> RenewScalerOwnershipAsync(
-        FunctionScalerOwnershipToken token)
+    public Task<FunctionScalerOwnershipDecision> RenewScalerOwnershipAsync(FunctionScalerOwnershipToken token)
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredScalerOwnership(now);
@@ -365,28 +274,20 @@ public sealed class FunctionRevisionCoordinatorGrain(
 
         scalerOwnership = scalerOwnership! with
         {
-            ExpiresAtUtc = now.AddSeconds(coordinationOptions.ScalerOwnershipLeaseSeconds)
+            ExpiresAtUtc = now.AddSeconds(coordinationOptions.ScalerOwnershipLeaseSeconds),
         };
         DelayDeactivation(TimeSpan.FromSeconds(coordinationOptions.ScalerOwnershipLeaseSeconds));
-        return Task.FromResult(new FunctionScalerOwnershipDecision(
-            FunctionScalerOwnershipDecisionKind.Granted,
-            scalerOwnership,
-            0));
+        return Task.FromResult(
+            new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Granted, scalerOwnership, 0));
     }
 
-    public Task<FunctionScalerOwnershipReleaseDecision> ReleaseScalerOwnershipAsync(
-        FunctionScalerOwnershipToken token)
+    public Task<FunctionScalerOwnershipReleaseDecision> ReleaseScalerOwnershipAsync(FunctionScalerOwnershipToken token)
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredScalerOwnership(now);
-        if (token is null ||
-            string.IsNullOrWhiteSpace(token.OperationId) ||
-            string.IsNullOrWhiteSpace(token.OwnerId) ||
-            string.IsNullOrWhiteSpace(token.LeaseId) ||
-            string.IsNullOrWhiteSpace(token.CoordinatorIncarnation))
-        {
+        if (token is null || string.IsNullOrWhiteSpace(token.OperationId) || string.IsNullOrWhiteSpace(token.OwnerId) ||
+            string.IsNullOrWhiteSpace(token.LeaseId) || string.IsNullOrWhiteSpace(token.CoordinatorIncarnation))
             return Task.FromResult(FunctionScalerOwnershipReleaseDecision.InvalidRequest);
-        }
 
         if (scalerOwnership is null)
             return Task.FromResult(FunctionScalerOwnershipReleaseDecision.AlreadyReleasedOrExpired);
@@ -397,8 +298,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
         return Task.FromResult(FunctionScalerOwnershipReleaseDecision.Released);
     }
 
-    public async Task<FunctionQuiescingDecision> BeginQuiescingAsync(
-        FunctionQuiescingBeginRequest request)
+    public async Task<FunctionQuiescingDecision> BeginQuiescingAsync(FunctionQuiescingBeginRequest request)
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredAdmissions(now);
@@ -409,46 +309,33 @@ public sealed class FunctionRevisionCoordinatorGrain(
 
         var current = persistentState.State.QuiescingIntent;
         if (current is not null && IsActive(current, now))
-        {
             return string.Equals(current.OperationId, request.OperationId, StringComparison.Ordinal)
-                ? new FunctionQuiescingDecision(
-                    FunctionQuiescingDecisionKind.Granted,
-                    ToLease(current),
-                    0)
+                ? new FunctionQuiescingDecision(FunctionQuiescingDecisionKind.Granted, ToLease(current), 0)
                 : QuiescingDecision(
                     FunctionQuiescingDecisionKind.Busy,
                     RetryAfterMilliseconds(current.ExpiresAtUtc, now));
-        }
 
         if (now < scaleDownBlockedUntilUtc)
-        {
             return QuiescingDecision(
                 FunctionQuiescingDecisionKind.RecoveryGrace,
                 RetryAfterMilliseconds(scaleDownBlockedUntilUtc, now));
-        }
 
         if (admissionRequests != 0)
-        {
             return QuiescingDecision(
                 FunctionQuiescingDecisionKind.ActiveAdmissions,
                 GetAdmissionRetryAfterMilliseconds(now));
-        }
 
         var activation = persistentState.State.ActivationIntent;
         if (activation is not null && IsActive(activation, now))
-        {
             return QuiescingDecision(
                 FunctionQuiescingDecisionKind.Busy,
                 RetryAfterMilliseconds(activation.ExpiresAtUtc, now));
-        }
 
         var scale = persistentState.State.PendingScaleIntent;
         if (scale is not null && IsActive(scale, now))
-        {
             return QuiescingDecision(
                 FunctionQuiescingDecisionKind.Busy,
                 RetryAfterMilliseconds(scale.ExpiresAtUtc, now));
-        }
 
         FunctionQuiescingIntent? quiescing = null;
         await PersistAsync(state =>
@@ -464,10 +351,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
             state.QuiescingIntent = quiescing;
         });
         DelayDeactivation(TimeSpan.FromSeconds(coordinationOptions.ScaleTransitionLeaseSeconds));
-        return new FunctionQuiescingDecision(
-            FunctionQuiescingDecisionKind.Granted,
-            ToLease(quiescing!),
-            0);
+        return new FunctionQuiescingDecision(FunctionQuiescingDecisionKind.Granted, ToLease(quiescing!), 0);
     }
 
     public async Task<FunctionQuiescingCompleteDecision> CompleteQuiescingAsync(
@@ -481,13 +365,10 @@ public sealed class FunctionRevisionCoordinatorGrain(
             return FunctionQuiescingCompleteDecision.Stale;
 
         var quiescing = persistentState.State.QuiescingIntent;
-        if (quiescing is null ||
-            !IsActive(quiescing, now) ||
+        if (quiescing is null || !IsActive(quiescing, now) ||
             !string.Equals(quiescing.LeaseId, request.LeaseId, StringComparison.Ordinal) ||
             quiescing.Epoch != request.Epoch)
-        {
             return FunctionQuiescingCompleteDecision.Stale;
-        }
 
         if (persistentState.State.PendingScaleIntent is not null)
             return FunctionQuiescingCompleteDecision.Busy;
@@ -507,8 +388,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
     {
         var now = timeProvider.GetUtcNow();
         PurgeExpiredAdmissions(now);
-        if (string.IsNullOrWhiteSpace(request.OperationId) ||
-            request.DesiredReplicas < 0 ||
+        if (string.IsNullOrWhiteSpace(request.OperationId) || request.DesiredReplicas < 0 ||
             request.ObservedReplicas < 0)
             return ScaleDecision(FunctionScaleBeginDecisionKind.Rejected);
         if (!IsValidScalerToken(request.ScalerToken, now))
@@ -520,48 +400,34 @@ public sealed class FunctionRevisionCoordinatorGrain(
         if (currentScale is not null && IsActive(currentScale, now))
         {
             if (currentScale.Generation != persistentState.State.Generation)
-            {
                 return string.Equals(currentScale.OperationId, request.OperationId, StringComparison.Ordinal)
                     ? ScaleDecision(FunctionScaleBeginDecisionKind.Stale)
                     : ScaleDecision(
                         FunctionScaleBeginDecisionKind.Busy,
                         RetryAfterMilliseconds(currentScale.ExpiresAtUtc, now));
-            }
 
             if (!string.Equals(currentScale.OperationId, request.OperationId, StringComparison.Ordinal))
-            {
                 return ScaleDecision(
                     FunctionScaleBeginDecisionKind.Busy,
                     RetryAfterMilliseconds(currentScale.ExpiresAtUtc, now));
-            }
 
             if (currentScale.DesiredReplicas != request.DesiredReplicas ||
                 currentScale.QuiescingEpoch != request.QuiescingEpoch)
-            {
                 return ScaleDecision(FunctionScaleBeginDecisionKind.Rejected);
-            }
 
             if (currentScale.QuiescingEpoch is { } currentEpoch &&
-                (effectiveState.QuiescingIntent is not { } currentQuiescing ||
-                 !IsActive(currentQuiescing, now) ||
-                 currentQuiescing.Epoch != currentEpoch))
-            {
+                (effectiveState.QuiescingIntent is not { } currentQuiescing || !IsActive(currentQuiescing, now) ||
+                    currentQuiescing.Epoch != currentEpoch))
                 return ScaleDecision(FunctionScaleBeginDecisionKind.Stale);
-            }
 
-            return new FunctionScaleBeginDecision(
-                FunctionScaleBeginDecisionKind.Granted,
-                ToLease(currentScale),
-                0);
+            return new FunctionScaleBeginDecision(FunctionScaleBeginDecisionKind.Granted, ToLease(currentScale), 0);
         }
 
         var activation = effectiveState.ActivationIntent;
         if (activation is not null && IsActive(activation, now))
-        {
             return ScaleDecision(
                 FunctionScaleBeginDecisionKind.Busy,
                 RetryAfterMilliseconds(activation.ExpiresAtUtc, now));
-        }
 
         var isScaleDown = IsScaleDown(
             effectiveState.DesiredReplicas,
@@ -571,25 +437,19 @@ public sealed class FunctionRevisionCoordinatorGrain(
         if (isScaleDown)
         {
             if (now < scaleDownBlockedUntilUtc)
-            {
                 return ScaleDecision(
                     FunctionScaleBeginDecisionKind.RecoveryGrace,
                     RetryAfterMilliseconds(scaleDownBlockedUntilUtc, now));
-            }
 
             if (admissionRequests != 0)
-            {
                 return ScaleDecision(
                     FunctionScaleBeginDecisionKind.ActiveAdmissions,
                     GetAdmissionRetryAfterMilliseconds(now));
-            }
 
             var quiescing = effectiveState.QuiescingIntent;
             if (request.QuiescingEpoch is null)
                 return ScaleDecision(FunctionScaleBeginDecisionKind.QuiescingRequired);
-            if (quiescing is null ||
-                !IsActive(quiescing, now) ||
-                quiescing.Epoch != request.QuiescingEpoch)
+            if (quiescing is null || !IsActive(quiescing, now) || quiescing.Epoch != request.QuiescingEpoch)
                 return ScaleDecision(FunctionScaleBeginDecisionKind.Stale);
             scaleDownQuiescing = quiescing;
         }
@@ -622,10 +482,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
             state.PendingScaleIntent = scale;
         });
         DelayDeactivation(scale!.ExpiresAtUtc - now);
-        return new FunctionScaleBeginDecision(
-            FunctionScaleBeginDecisionKind.Granted,
-            ToLease(scale!),
-            0);
+        return new FunctionScaleBeginDecision(FunctionScaleBeginDecisionKind.Granted, ToLease(scale!), 0);
     }
 
     public async Task<FunctionScaleCompleteDecision> CompleteScaleAsync(FunctionScaleCompleteRequest request)
@@ -640,21 +497,15 @@ public sealed class FunctionRevisionCoordinatorGrain(
         if (lastCompletion is not null &&
             string.Equals(lastCompletion.IntentId, request.IntentId, StringComparison.Ordinal) &&
             lastCompletion.Generation == request.Generation)
-        {
             return lastCompletion.Outcome == request.Outcome
                 ? FunctionScaleCompleteDecision.AlreadyCompleted
                 : FunctionScaleCompleteDecision.Stale;
-        }
 
         var scale = persistentState.State.PendingScaleIntent;
-        if (scale is null ||
-            !IsActive(scale, now) ||
+        if (scale is null || !IsActive(scale, now) ||
             !string.Equals(scale.IntentId, request.IntentId, StringComparison.Ordinal) ||
-            scale.Generation != request.Generation ||
-            persistentState.State.Generation != request.Generation)
-        {
+            scale.Generation != request.Generation || persistentState.State.Generation != request.Generation)
             return FunctionScaleCompleteDecision.Stale;
-        }
 
         await PersistAsync(state =>
         {
@@ -674,39 +525,57 @@ public sealed class FunctionRevisionCoordinatorGrain(
         var now = timeProvider.GetUtcNow();
         PurgeExpiredAdmissions(now);
         PurgeExpiredScalerOwnership(now);
-        return Task.FromResult(new FunctionRevisionCoordinatorSnapshot(
-            key,
-            coordinatorIncarnation,
-            persistentState.State.Generation,
-            persistentState.State.DesiredReplicas,
-            scaleDownBlockedUntilUtc,
-            new FunctionAdmissionSnapshot(
-                admissionRequests,
-                admissionBytes,
-                new Dictionary<string, int>(handlerAdmissions, StringComparer.Ordinal)),
-            persistentState.State.ActivationIntent,
-            persistentState.State.QuiescingIntent,
-            persistentState.State.PendingScaleIntent,
-            scalerOwnership));
+        return Task.FromResult(
+            new FunctionRevisionCoordinatorSnapshot(
+                key,
+                coordinatorIncarnation,
+                persistentState.State.Generation,
+                persistentState.State.DesiredReplicas,
+                scaleDownBlockedUntilUtc,
+                new FunctionAdmissionSnapshot(
+                    admissionRequests,
+                    admissionBytes,
+                    new Dictionary<string, int>(handlerAdmissions, StringComparer.Ordinal)),
+                persistentState.State.ActivationIntent,
+                persistentState.State.QuiescingIntent,
+                persistentState.State.PendingScaleIntent,
+                scalerOwnership));
     }
 
-    private bool IsValid(FunctionAdmissionRequest request) =>
-        !string.IsNullOrWhiteSpace(request.AdmissionId) &&
-        !string.IsNullOrWhiteSpace(request.InvocationId) &&
-        !string.IsNullOrWhiteSpace(request.HandlerName) &&
-        request.ReservedBytes >= 0 &&
-        request.ReservedBytes <= gatewayOptions.MaxRequestBodyBytes;
+    public override Task OnActivateAsync(CancellationToken cancellationToken)
+    {
+        if (!FunctionRevisionCoordinationKey.TryParse(this.GetPrimaryKeyString(), out var parsedKey))
+            throw new InvalidOperationException(
+                $"Invalid Function revision coordinator grain key '{this.GetPrimaryKeyString()}'.");
+
+        key = parsedKey!;
+        coordinatorIncarnation = Guid.NewGuid().ToString("N");
+        scaleDownBlockedUntilUtc = timeProvider.GetUtcNow().AddSeconds(coordinationOptions.RecoveryGraceSeconds);
+        if (persistentState.State.SchemaVersion > FunctionRevisionCoordinatorState.CurrentSchemaVersion)
+            throw new InvalidOperationException(
+                $"Function revision coordination schema {persistentState.State.SchemaVersion} is newer than " +
+                $"supported schema {FunctionRevisionCoordinatorState.CurrentSchemaVersion}.");
+
+        if (persistentState.State.SchemaVersion == 0)
+            persistentState.State.SchemaVersion = FunctionRevisionCoordinatorState.CurrentSchemaVersion;
+
+        return base.OnActivateAsync(cancellationToken);
+    }
+
+    private bool IsValid(FunctionAdmissionRequest request) => !string.IsNullOrWhiteSpace(request.AdmissionId) &&
+        !string.IsNullOrWhiteSpace(request.InvocationId) && !string.IsNullOrWhiteSpace(request.HandlerName) &&
+        request.ReservedBytes >= 0 && request.ReservedBytes <= gatewayOptions.MaxRequestBodyBytes;
 
     private bool IsValidScalerToken(FunctionScalerOwnershipToken? token, DateTimeOffset now)
     {
         PurgeExpiredScalerOwnership(now);
-        return token is not null &&
-               scalerOwnership is not null &&
-               token.ExpiresAtUtc > now &&
-               string.Equals(token.OperationId, scalerOwnership.OperationId, StringComparison.Ordinal) &&
-               string.Equals(token.OwnerId, scalerOwnership.OwnerId, StringComparison.Ordinal) &&
-               string.Equals(token.LeaseId, scalerOwnership.LeaseId, StringComparison.Ordinal) &&
-               string.Equals(token.CoordinatorIncarnation, coordinatorIncarnation, StringComparison.Ordinal);
+        return token is not null && scalerOwnership is not null && token.ExpiresAtUtc > now &&
+            string.Equals(token.OperationId, scalerOwnership.OperationId, StringComparison.Ordinal) &&
+            string.Equals(token.OwnerId, scalerOwnership.OwnerId, StringComparison.Ordinal) &&
+            string.Equals(token.LeaseId, scalerOwnership.LeaseId, StringComparison.Ordinal) && string.Equals(
+                token.CoordinatorIncarnation,
+                coordinatorIncarnation,
+                StringComparison.Ordinal);
     }
 
     private void PurgeExpiredScalerOwnership(DateTimeOffset now)
@@ -717,12 +586,9 @@ public sealed class FunctionRevisionCoordinatorGrain(
 
     private void PurgeExpiredAdmissions(DateTimeOffset now)
     {
-        foreach (var (admissionId, admission) in admissions
-                     .Where(pair => pair.Value.Token.ExpiresAtUtc <= now)
+        foreach (var (admissionId, admission) in admissions.Where(pair => pair.Value.Token.ExpiresAtUtc <= now)
                      .ToArray())
-        {
             RemoveAdmission(admissionId, admission);
-        }
     }
 
     private void RemoveAdmission(string admissionId, AdmissionLease admission)
@@ -742,9 +608,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
     {
         if (admissions.Count == 0)
             return 1;
-        return RetryAfterMilliseconds(
-            admissions.Values.Min(admission => admission.Token.ExpiresAtUtc),
-            now);
+        return RetryAfterMilliseconds(admissions.Values.Min(admission => admission.Token.ExpiresAtUtc), now);
     }
 
     private async Task PersistAsync(Action<FunctionRevisionCoordinatorState> mutation)
@@ -764,9 +628,7 @@ public sealed class FunctionRevisionCoordinatorGrain(
         }
     }
 
-    private static void CleanExpiredTransitions(
-        FunctionRevisionCoordinatorState state,
-        DateTimeOffset now)
+    private static void CleanExpiredTransitions(FunctionRevisionCoordinatorState state, DateTimeOffset now)
     {
         var changed = false;
         if (state.ActivationIntent?.ExpiresAtUtc <= now)
@@ -811,24 +673,19 @@ public sealed class FunctionRevisionCoordinatorGrain(
         DateTimeOffset now)
     {
         DateTimeOffset? expiresAtUtc = state.QuiescingIntent is { ExpiresAtUtc: var quiescingExpiry } &&
-                                           quiescingExpiry > now
-            ? quiescingExpiry
-            : null;
+            quiescingExpiry > now
+                ? quiescingExpiry
+                : null;
         if (state.PendingScaleIntent is { QuiescingEpoch: not null, ExpiresAtUtc: var scaleExpiry } &&
-            scaleExpiry > now &&
-            (expiresAtUtc is null || scaleExpiry > expiresAtUtc))
-        {
+            scaleExpiry > now && (expiresAtUtc is null || scaleExpiry > expiresAtUtc))
             expiresAtUtc = scaleExpiry;
-        }
 
         return expiresAtUtc;
     }
 
-    private static bool HasExpiredScaleDownBarrier(
-        FunctionRevisionCoordinatorState state,
-        DateTimeOffset now) =>
-        state.QuiescingIntent?.ExpiresAtUtc <= now ||
-        state.PendingScaleIntent is { QuiescingEpoch: not null } scale && scale.ExpiresAtUtc <= now;
+    private static bool HasExpiredScaleDownBarrier(FunctionRevisionCoordinatorState state, DateTimeOffset now) =>
+        state.QuiescingIntent?.ExpiresAtUtc <= now || (state.PendingScaleIntent is { QuiescingEpoch: not null } scale &&
+            scale.ExpiresAtUtc <= now);
 
     private static bool IsScaleDown(
         int? persistedDesiredReplicas,
@@ -836,14 +693,11 @@ public sealed class FunctionRevisionCoordinatorGrain(
         int requestedDesiredReplicas) =>
         requestedDesiredReplicas < Math.Max(persistedDesiredReplicas ?? 0, observedReplicas);
 
-    private static bool IsActive(FunctionActivationIntent? intent, DateTimeOffset now) =>
-        intent?.ExpiresAtUtc > now;
+    private static bool IsActive(FunctionActivationIntent? intent, DateTimeOffset now) => intent?.ExpiresAtUtc > now;
 
-    private static bool IsActive(FunctionQuiescingIntent? intent, DateTimeOffset now) =>
-        intent?.ExpiresAtUtc > now;
+    private static bool IsActive(FunctionQuiescingIntent? intent, DateTimeOffset now) => intent?.ExpiresAtUtc > now;
 
-    private static bool IsActive(FunctionScaleIntent? intent, DateTimeOffset now) =>
-        intent?.ExpiresAtUtc > now;
+    private static bool IsActive(FunctionScaleIntent? intent, DateTimeOffset now) => intent?.ExpiresAtUtc > now;
 
     private static FunctionActivationLease ToLease(FunctionActivationIntent intent) => new(
         intent.OperationId,
@@ -874,20 +728,18 @@ public sealed class FunctionRevisionCoordinatorGrain(
         retryAfterMilliseconds,
         false);
 
-    private static FunctionActivationBeginDecision ActivationRejected(
-        FunctionActivationRejection rejection) => new(
+    private static FunctionActivationBeginDecision ActivationRejected(FunctionActivationRejection rejection) => new(
         FunctionActivationBeginDecisionKind.Rejected,
         null,
         rejection,
         0);
 
-    private static FunctionActivationBeginDecision ActivationBusy(
-        DateTimeOffset expiresAtUtc,
-        DateTimeOffset now) => new(
-        FunctionActivationBeginDecisionKind.Busy,
-        null,
-        FunctionActivationRejection.None,
-        RetryAfterMilliseconds(expiresAtUtc, now));
+    private static FunctionActivationBeginDecision ActivationBusy(DateTimeOffset expiresAtUtc, DateTimeOffset now) =>
+        new(
+            FunctionActivationBeginDecisionKind.Busy,
+            null,
+            FunctionActivationRejection.None,
+            RetryAfterMilliseconds(expiresAtUtc, now));
 
     private static FunctionScalerOwnershipDecision ScalerOwnershipRejected() => new(
         FunctionScalerOwnershipDecisionKind.Rejected,
@@ -907,4 +759,16 @@ public sealed class FunctionRevisionCoordinatorGrain(
         var milliseconds = Math.Ceiling((expiresAtUtc - now).TotalMilliseconds);
         return (int)Math.Clamp(milliseconds, 1, int.MaxValue);
     }
+
+    private sealed record AdmissionFingerprint(
+        string InvocationId,
+        string HandlerName,
+        FunctionAdmissionTriggerKind TriggerKind,
+        long ReservedBytes
+    );
+
+    private sealed record AdmissionLease(
+        AdmissionFingerprint Fingerprint,
+        FunctionAdmissionToken Token
+    );
 }

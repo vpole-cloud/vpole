@@ -4,7 +4,8 @@ namespace Pole.Features.DeploymentTargets.Contracts;
 
 public sealed record NamedDomainReservationTargetRequest(
     string TenantId,
-    string TechnicalName);
+    string TechnicalName
+);
 
 public delegate Task<ResolveNamedDeploymentTargetOutcome> ResolveNamedDomainReservationTarget(
     NamedDomainReservationTargetRequest request,
@@ -12,15 +13,18 @@ public delegate Task<ResolveNamedDeploymentTargetOutcome> ResolveNamedDomainRese
 
 public sealed record DomainReservationTargetPlanningRequest(
     string TenantId,
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);
 
 public sealed record DomainReservationTargetPlanningSnapshot(
     DomainReservationTargetPlanningRequest Request,
     long TargetRevision,
-    DeploymentTargetPublicIngressDto PublicIngress);
+    DeploymentTargetPublicIngressDto PublicIngress
+);
 
 public sealed record DomainReservationTargetPlanningUnavailable(
-    DeploymentTargetDomainReservationAdmissionError Error);
+    DeploymentTargetDomainReservationAdmissionError Error
+);
 
 public union ResolveDomainReservationTargetPlanningSnapshotOutcome(
     DomainReservationTargetPlanningSnapshot,
@@ -40,8 +44,7 @@ public union FenceDomainReservationTargetPlanningSnapshotOutcome(
     DomainReservationTargetPlanningFenced,
     DomainReservationTargetPlanningChanged);
 
-public delegate Task<FenceDomainReservationTargetPlanningSnapshotOutcome>
-    FenceDomainReservationTargetPlanningSnapshot(
-        DomainReservationTargetPlanningSnapshot request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken);
+public delegate Task<FenceDomainReservationTargetPlanningSnapshotOutcome> FenceDomainReservationTargetPlanningSnapshot(
+    DomainReservationTargetPlanningSnapshot request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken);

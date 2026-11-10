@@ -3,7 +3,6 @@ using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
@@ -29,9 +28,7 @@ public sealed class DeploymentTargetNetworkPolicyTests
         Assert.Equal(enforcement.ToString(), dto.Enforcement.ToString());
         Assert.Equal(NetworkPolicyEvidenceSource.OperatorAttestation, dto.EvidenceSource);
         Assert.Equal(target.CreatedAtUtc, dto.LastCheckedAtUtc);
-        Assert.Equal(
-            admitted,
-            DeploymentTargetAdmissionSupport.AdmitForWorkload(target) is DeploymentTargetLookupDto);
+        Assert.Equal(admitted, DeploymentTargetAdmissionSupport.AdmitForWorkload(target) is DeploymentTargetLookupDto);
         Assert.Equal(
             admitted,
             DeploymentTargetAdmissionSupport.AdmitDefaultForNewWorkload(target) is DeploymentTargetLookupDto);
@@ -43,7 +40,8 @@ public sealed class DeploymentTargetNetworkPolicyTests
         var target = Target();
         Assert.Equal(NetworkPolicyEnforcementStatus.Unknown, target.ToNetworkPolicyDto().Enforcement);
         Assert.Equal(NetworkPolicyEvidenceSource.None, target.ToNetworkPolicyDto().EvidenceSource);
-        Assert.IsType<DeploymentTargetWorkloadAdmissionError>(DeploymentTargetAdmissionSupport.AdmitForWorkload(target).Value);
+        Assert.IsType<DeploymentTargetWorkloadAdmissionError>(
+            DeploymentTargetAdmissionSupport.AdmitForWorkload(target).Value);
     }
 
     [Fact]
@@ -54,7 +52,8 @@ public sealed class DeploymentTargetNetworkPolicyTests
         Assert.Equal(NetworkPolicyEnforcementStatus.Unknown, second.ToNetworkPolicyDto().Enforcement);
         var rotated = first.ReplaceConnectionCredential(
             first.ClusterIdentity,
-            DeploymentTargetConnectionFactory.CreateInCluster(2), first.UpdatedAtUtc.AddMinutes(1));
+            DeploymentTargetConnectionFactory.CreateInCluster(2),
+            first.UpdatedAtUtc.AddMinutes(1));
         Assert.Equal(NetworkPolicyEnforcementStatus.Unknown, rotated.ToNetworkPolicyDto().Enforcement);
         Assert.Equal(NetworkPolicyReadiness.EnforcementRequired, rotated.ToNetworkPolicyDto().Readiness);
         Assert.Equal(
@@ -80,9 +79,13 @@ public sealed class DeploymentTargetNetworkPolicyTests
         Assert.Equal(target.WorkloadConfiguration.Revision + 1, attested.WorkloadConfiguration.Revision);
         Assert.Equal(checkedAtUtc, attested.UpdatedAtUtc);
         Assert.Throws<ArgumentException>(() => target.AttestNetworkPolicy(
-            NetworkPolicyEnforcement.Supported, false, target.UpdatedAtUtc.AddSeconds(-1)));
+            NetworkPolicyEnforcement.Supported,
+            false,
+            target.UpdatedAtUtc.AddSeconds(-1)));
         Assert.Throws<ArgumentOutOfRangeException>(() => target.AttestNetworkPolicy(
-            (NetworkPolicyEnforcement)99, false, checkedAtUtc));
+            (NetworkPolicyEnforcement)99,
+            false,
+            checkedAtUtc));
     }
 
     [Fact]
@@ -98,8 +101,8 @@ public sealed class DeploymentTargetNetworkPolicyTests
                     CanCreate: false,
                     CanUpdate: true,
                     CanPatch: true,
-                    CanDelete: true)
-            }
+                    CanDelete: true),
+            },
         };
 
         var readiness = withoutPolicyCreate.ToNetworkPolicyDto();
@@ -114,7 +117,8 @@ public sealed class DeploymentTargetNetworkPolicyTests
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create("target-" + id,
+        return DeploymentTargetFactory.Create(
+            "target-" + id,
             "Target",
             $"cluster:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(1),
@@ -123,17 +127,16 @@ public sealed class DeploymentTargetNetworkPolicyTests
                 1,
                 now,
                 "v1.35.0",
-                new(true, true, true, true, true),
-                new(true, true, true, true, true)),
+                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
             DeploymentTargetWorkloadConfiguration.Create(null, DeploymentTargetNetworkSources.None),
             true,
             true,
-            new(id, now));
+            new DeploymentTargetFactory.CreateOptions(id, now));
     }
 
     internal static DeploymentTarget Attest(
         DeploymentTarget target,
         NetworkPolicyEnforcement enforcement,
-        bool allow) =>
-        target.AttestNetworkPolicy(enforcement, allow, target.UpdatedAtUtc);
+        bool allow) => target.AttestNetworkPolicy(enforcement, allow, target.UpdatedAtUtc);
 }

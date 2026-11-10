@@ -1,10 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
-using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Application.Revisions;
@@ -12,14 +7,16 @@ namespace Pole.Features.Functions.Application.Revisions;
 public sealed record FunctionAppRevisionReferences(
     FunctionRevision? ActiveRevision,
     FunctionRevision? PendingRevision,
-    FunctionRevision? LatestConfiguration);
+    FunctionRevision? LatestConfiguration
+);
 
 public delegate Task<FunctionAppRevisionReferences> LoadFunctionAppRevisionReferences(
     FunctionApp functionApp,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadFunctionAppRevisionReferences(
-    IMongoCollection<FunctionRevision> functionRevisions)
+    IMongoCollection<FunctionRevision> functionRevisions
+)
 {
     public async Task<FunctionAppRevisionReferences> InvokeAsync(
         FunctionApp functionApp,
@@ -28,9 +25,8 @@ internal sealed class MongoLoadFunctionAppRevisionReferences(
         var revisionIds = new[]
             {
                 functionApp.ActiveRevisionId,
-                functionApp.PendingRevisionId
-            }
-            .Where(id => id is not null)
+                functionApp.PendingRevisionId,
+            }.Where(id => id is not null)
             .Cast<string>()
             .ToArray();
         if (revisionIds.Length == 0 && functionApp.NextRevisionNumber == 1)

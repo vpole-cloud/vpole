@@ -38,10 +38,10 @@ public static class SourceBuildApplicationRegistration
         services.TryAddSingleton(provider =>
             provider.GetRequiredService<IOptions<SourceBuildExecutionOptions>>().Value);
         services.Configure<BuildKitOptions>(configuration.GetSection(BuildKitOptions.SectionName));
-        services.TryAddSingleton(provider =>
-            provider.GetRequiredService<IOptions<BuildKitOptions>>().Value);
+        services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<BuildKitOptions>>().Value);
         services.TryAddSingleton(TimeProvider.System);
-        services.AddOptions<SourceBuildLogOptions>().Bind(configuration.GetSection(SourceBuildLogOptions.SectionName))
+        services.AddOptions<SourceBuildLogOptions>()
+            .Bind(configuration.GetSection(SourceBuildLogOptions.SectionName))
             .Validate(options => options.Valid, "SourceBuildLogs limits are outside the supported bounds.")
             .ValidateOnStart();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<SourceBuildLogOptions>>().Value);
@@ -77,12 +77,13 @@ public static class SourceBuildApplicationRegistration
         services.AddCapability<SourceBuildPromotion, CompleteSourceBuildPromotion>(implementation =>
             implementation.CompleteAsync);
 
-        services.AddCapability<SourceBuildConfigurationReferences, LoadSourceBuildConfigurationReference>(
-            implementation => implementation.LoadAsync);
-        services.AddCapability<SourceBuildConfigurationReferences, FindNamedSourceBuildConfiguration>(
-            implementation => implementation.FindNamedAsync);
-        services.AddCapability<SourceBuildConfigurationReferences, FenceSourceBuildConfiguration>(
-            implementation => implementation.FenceAsync);
+        services
+            .AddCapability<SourceBuildConfigurationReferences, LoadSourceBuildConfigurationReference>(implementation =>
+                implementation.LoadAsync);
+        services.AddCapability<SourceBuildConfigurationReferences, FindNamedSourceBuildConfiguration>(implementation =>
+            implementation.FindNamedAsync);
+        services.AddCapability<SourceBuildConfigurationReferences, FenceSourceBuildConfiguration>(implementation =>
+            implementation.FenceAsync);
         services.AddCapability<MongoLoadSourceBuildConfiguration, LoadSourceBuildConfiguration>(implementation =>
             implementation.InvokeAsync);
         services.AddCapability<MongoLoadSourceBuildConfigurations, LoadSourceBuildConfigurations>(implementation =>
@@ -133,8 +134,7 @@ public static class SourceBuildApplicationRegistration
         services.TryAddSingleton<ExtractRepositoryArchive>(provider =>
             provider.GetRequiredService<RepositoryArchiveExtractor>().InvokeAsync);
         services.TryAddSingleton<ProcessRunner>();
-        services.TryAddSingleton<RunProcess>(provider =>
-            provider.GetRequiredService<ProcessRunner>().InvokeAsync);
+        services.TryAddSingleton<RunProcess>(provider => provider.GetRequiredService<ProcessRunner>().InvokeAsync);
         services.TryAddSingleton<BuildKitClient>();
         services.TryAddSingleton<BuildContainerImage>(provider =>
             provider.GetRequiredService<BuildKitClient>().InvokeAsync);
@@ -147,14 +147,14 @@ public static class SourceBuildApplicationRegistration
         return services;
     }
 
-    public static IServiceProvider ScheduleSourceBuildRecurringJobs(
-        this IServiceProvider services)
+    public static IServiceProvider ScheduleSourceBuildRecurringJobs(this IServiceProvider services)
     {
         RecurringJob.AddOrUpdate<SourceBuildQueueRecoveryJob>(
             "recover-source-build-queue",
             job => job.RecoverAsync(),
             Cron.Minutely);
-        RecurringJob.AddOrUpdate<SourceBuildLogRecoveryJob>("recover-source-build-logs",
+        RecurringJob.AddOrUpdate<SourceBuildLogRecoveryJob>(
+            "recover-source-build-logs",
             job => job.RecoverAsync(),
             Cron.Minutely);
         return services;
@@ -167,7 +167,6 @@ public static class SourceBuildApplicationRegistration
         where TDelegate : Delegate
     {
         services.TryAddScoped<TImplementation>();
-        services.TryAddScoped(provider =>
-            bind(provider.GetRequiredService<TImplementation>()));
+        services.TryAddScoped(provider => bind(provider.GetRequiredService<TImplementation>()));
     }
 }

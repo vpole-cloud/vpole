@@ -2,13 +2,13 @@ using MongoDB.Driver;
 
 namespace Pole.Features.ResourceGroups.Contracts;
 
-public sealed record IsolationScopeReferenced(string IsolationScopeId);
+public sealed record IsolationScopeReferenced(
+    string IsolationScopeId
+);
 
 public sealed record IsolationScopeUnreferenced;
 
-public union EnsureIsolationScopeUnreferencedOutcome(
-    IsolationScopeUnreferenced,
-    IsolationScopeReferenced);
+public union EnsureIsolationScopeUnreferencedOutcome(IsolationScopeUnreferenced, IsolationScopeReferenced);
 
 /// <summary>Feature-owned contributions join the deletion transaction; no foreign collections are exposed.</summary>
 public interface IIsolationScopeReferenceGuard
@@ -22,4 +22,5 @@ public interface IIsolationScopeReferenceGuard
 public sealed record EnsureIsolationScopeUnreferencedRequest(
     string TenantId,
     string ResourceGroupId,
-    string IsolationScopeId);
+    string IsolationScopeId
+);

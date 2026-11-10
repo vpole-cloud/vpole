@@ -1,27 +1,6 @@
-using System.Net;
-using Pole.Tests.Integration.Http;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Features.ComputeProfiles.Application.Common;
-using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Migrations;
-using Pole.Features.ComputeProfiles.Application;
-using Pole.Features.Outbox.Domain;
-using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Endpoints;
-using Pole.Features.DeploymentTargets.Migrations;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.Secrets.Domain;
-using Pole.Tests.Integration.ComputeProfiles;
-using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;

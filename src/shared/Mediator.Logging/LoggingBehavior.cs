@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging;
 namespace Pole.Mediator;
 
 public sealed class LoggingBehavior<TRequest, TResponse>(
-    ILogger<LoggingBehavior<TRequest, TResponse>> logger)
-    : IPipelineBehavior<TRequest, TResponse>
+    ILogger<LoggingBehavior<TRequest, TResponse>> logger
+) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {

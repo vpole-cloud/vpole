@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.WebUtilities;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Setup;
 using Pole.Features.GitProviders.Domain;
@@ -11,10 +13,11 @@ internal sealed class GitHubSetupService(
     GitHubSetupTokenService tokenService,
     IDataProtectionProvider dataProtectionProvider,
     GitHubAppOptions options,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
-    private readonly IDataProtector _protector =
-        dataProtectionProvider.CreateProtector("Pole.GitHubApp.PkceVerifier.v1");
+    private readonly IDataProtector _protector
+        = dataProtectionProvider.CreateProtector("Pole.GitHubApp.PkceVerifier.v1");
 
     public async Task<string> HandleInstallationCallbackAsync(
         string? installationId,
@@ -26,11 +29,8 @@ internal sealed class GitHubSetupService(
             return FrontendRedirect("error", "not-configured");
         if (string.IsNullOrWhiteSpace(installationId) || string.IsNullOrWhiteSpace(state))
             return FrontendRedirect("error", "invalid-installation-callback");
-        if (!string.IsNullOrWhiteSpace(setupAction) &&
-            setupAction is not ("install" or "update"))
-        {
+        if (!string.IsNullOrWhiteSpace(setupAction) && setupAction is not ("install" or "update"))
             return FrontendRedirect("error", "unsupported-setup-action");
-        }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var attempt = await setupPersistence.FindAwaitingInstallationAsync(
@@ -57,10 +57,7 @@ internal sealed class GitHubSetupService(
                     installation.AccountLogin,
                     ParseAccountType(installation.AccountType),
                     ParseRepositorySelection(installation.RepositorySelection)));
-            var updated = await setupPersistence.PromoteToOAuthAsync(
-                attempt.Id,
-                oauthSetup,
-                cancellationToken);
+            var updated = await setupPersistence.PromoteToOAuthAsync(attempt.Id, oauthSetup, cancellationToken);
             if (updated is null)
                 return FrontendRedirect("error", "setup-already-used");
 
@@ -71,11 +68,9 @@ internal sealed class GitHubSetupService(
                 ["redirect_uri"] = options.OAuthCallbackUrl,
                 ["state"] = oauthState,
                 ["code_challenge"] = challenge,
-                ["code_challenge_method"] = "S256"
+                ["code_challenge_method"] = "S256",
             };
-            return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(
-                $"{options.WebBaseUrl.TrimEnd('/')}/login/oauth/authorize",
-                query);
+            return QueryHelpers.AddQueryString($"{options.WebBaseUrl.TrimEnd('/')}/login/oauth/authorize", query);
         }
         catch (GitHubApiException)
         {
@@ -94,10 +89,7 @@ internal sealed class GitHubSetupService(
             return FrontendRedirect("error", "invalid-oauth-callback");
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var attempt = await setupPersistence.ConsumeOAuthAsync(
-            tokenService.Hash(state),
-            now,
-            cancellationToken);
+        var attempt = await setupPersistence.ConsumeOAuthAsync(tokenService.Hash(state), now, cancellationToken);
         if (attempt?.State is not AwaitingGitHubOAuth oauthSetup)
             return FrontendRedirect("error", "expired-or-invalid-state");
 
@@ -122,10 +114,10 @@ internal sealed class GitHubSetupService(
                 LinkedGitProviderConnection linked => FrontendRedirect("connected", linked.Id),
                 GitProviderConnectionOwnershipRejected => FrontendRedirect("error", "installation-already-linked"),
                 GitProviderConnectionNameConflict => FrontendRedirect("error", "connection-name-conflict"),
-                GitProviderConnectionNameMismatch => FrontendRedirect("error", "connection-name-mismatch")
+                GitProviderConnectionNameMismatch => FrontendRedirect("error", "connection-name-mismatch"),
             };
         }
-        catch (Exception exception) when (exception is GitHubApiException or System.Security.Cryptography.CryptographicException)
+        catch (Exception exception) when (exception is GitHubApiException or CryptographicException)
         {
             return FrontendRedirect("error", "oauth-verification-failed");
         }
@@ -136,17 +128,14 @@ internal sealed class GitHubSetupService(
         var query = new Dictionary<string, string?>
         {
             ["view"] = "integrations",
-            ["github"] = status
+            ["github"] = status,
         };
         query[status == "connected" ? "connectionId" : "reason"] = value;
-        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(
-            options.FrontendBaseUrl.TrimEnd('/') + "/",
-            query);
+        return QueryHelpers.AddQueryString(options.FrontendBaseUrl.TrimEnd('/') + "/", query);
     }
 
     private static bool HasContentsReadPermission(GitHubInstallation installation) =>
-        installation.Permissions.TryGetValue("contents", out var permission) &&
-        permission is "read" or "write";
+        installation.Permissions.TryGetValue("contents", out var permission) && permission is "read" or "write";
 
     private static GitProviderAccountType ParseAccountType(string value) =>
         value.Equals("Organization", StringComparison.OrdinalIgnoreCase)

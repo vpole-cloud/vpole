@@ -1,4 +1,3 @@
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Primitives;
@@ -14,24 +13,24 @@ public sealed class FunctionAppCountQuota : Quota<FunctionQuotaAllocation>
 }
 
 public sealed class FunctionAppQuotaProfile(
-    FunctionAppCountQuota functionAppCountQuota) : QuotaProfile<FunctionQuotaAllocation>
+    FunctionAppCountQuota functionAppCountQuota
+) : QuotaProfile<FunctionQuotaAllocation>
 {
     public override IReadOnlyCollection<QuotaKey> Keys { get; } =
     [
         CpuQuota.QuotaKey,
         RamQuota.QuotaKey,
         WorkloadInstancesQuota.QuotaKey,
-        FunctionAppCountQuota.QuotaKey
+        FunctionAppCountQuota.QuotaKey,
     ];
 
-    public override QuotaDelta Calculate(FunctionQuotaAllocation allocation) =>
-        QuotaDelta.Create(
-        [
-            new QuotaValue(CpuQuota.QuotaKey, allocation.TotalCpuMillis),
-            new QuotaValue(RamQuota.QuotaKey, allocation.TotalMemoryMi),
-            new QuotaValue(WorkloadInstancesQuota.QuotaKey, allocation.WorkloadInstances),
-            functionAppCountQuota.Measure(allocation)
-        ]);
+    public override QuotaDelta Calculate(FunctionQuotaAllocation allocation) => QuotaDelta.Create(
+    [
+        new QuotaValue(CpuQuota.QuotaKey, allocation.TotalCpuMillis),
+        new QuotaValue(RamQuota.QuotaKey, allocation.TotalMemoryMi),
+        new QuotaValue(WorkloadInstancesQuota.QuotaKey, allocation.WorkloadInstances),
+        functionAppCountQuota.Measure(allocation),
+    ]);
 }
 
 public static class FunctionAppQuotaResourceKey

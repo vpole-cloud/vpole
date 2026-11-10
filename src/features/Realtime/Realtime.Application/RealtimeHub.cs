@@ -21,17 +21,13 @@ public sealed class RealtimeHub(
     RealtimeAccess access,
     IEnumerable<IRealtimeTopicLifecycle> lifecycles,
     TimeProvider clock,
-    RealtimeMetrics? metrics = null) : Hub<IRealtimeClient>
+    RealtimeMetrics? metrics = null
+) : Hub<IRealtimeClient>
 {
     private const string ClientLifecycle = "pole.realtime.client-lifecycle";
     private const string AcknowledgedCoverage = "pole.realtime.coverage";
 
-    private sealed class ClientReportState
-    {
-        public SemaphoreSlim Gate { get; } = new(1);
-
-        public DateTimeOffset? LastAcceptedAtUtc { get; set; }
-    }
+    private const string OwnedSubscriptions = "pole.realtime.subscriptions";
 
     /// <summary>Optional aggregate diagnostics. False means coalesced by the ten-second limit.</summary>
     public async Task<bool> ReportClientLifecycle(RealtimeClientLifecycleReport report)
@@ -43,10 +39,12 @@ public sealed class RealtimeHub(
         lock (Context.Items)
         {
             if (Context.Items.TryGetValue(ClientLifecycle, out var value) && value is ClientReportState existing)
+            {
                 state = existing;
+            }
             else
             {
-                state = new();
+                state = new ClientReportState();
                 Context.Items[ClientLifecycle] = state;
             }
         }
@@ -85,8 +83,6 @@ public sealed class RealtimeHub(
         return base.OnConnectedAsync();
     }
 
-    private const string OwnedSubscriptions = "pole.realtime.subscriptions";
-
     public async Task<IReadOnlyList<RealtimeSubscriptionAcknowledgement>> Subscribe(
         RealtimeSubscriptionRequest[] requests)
     {
@@ -95,22 +91,23 @@ public sealed class RealtimeHub(
                 request.ResourceId is { Length: > 200 }))
             throw new HubException("Provide between one and 64 distinct subscriptions.");
         requests = requests.Select(request => ObjectId.TryParse(request.TenantId, out var tenantId)
-            ? request with
-            {
-                TenantId = tenantId.ToString()
-            }
-            : request).ToArray();
+                ? request with
+                {
+                    TenantId = tenantId.ToString(),
+                }
+                : request)
+            .ToArray();
         if (requests.Distinct().Count() != requests.Length)
             throw new HubException("Provide between one and 64 distinct subscriptions.");
         // Invalid scope shapes are request errors, not revocation of an unrelated workspace.
         foreach (var request in requests)
-            if (access.FindTopic(request.Topic) is { } topic && (topic.Scope switch
-            {
-                RealtimeScope.Tenant => !ObjectId.TryParse(request.TenantId, out _),
-                RealtimeScope.Platform => request.TenantId is not null,
-                RealtimeScope.User => request.TenantId is not null || string.IsNullOrWhiteSpace(request.ResourceId),
-                _ => true
-            }))
+            if (access.FindTopic(request.Topic) is { } topic && topic.Scope switch
+                {
+                    RealtimeScope.Tenant => !ObjectId.TryParse(request.TenantId, out _),
+                    RealtimeScope.Platform => request.TenantId is not null,
+                    RealtimeScope.User => request.TenantId is not null || string.IsNullOrWhiteSpace(request.ResourceId),
+                    _ => true,
+                })
                 throw new HubException("This realtime subscription has an invalid scope.");
         try
         {
@@ -129,11 +126,13 @@ public sealed class RealtimeHub(
             // acknowledged old coverage in the distributed registry.
             await subscriptions.RemoveAsync(Context.ConnectionId, null, Context.ConnectionAborted);
             await ReleaseInterestsAsync();
-            var owned = requests.Select(request => new RealtimeSubscription(Guid.NewGuid().ToString("N"),
-                Context.ConnectionId,
-                sessionId!,
-                request,
-                expiry)).ToArray();
+            var owned = requests.Select(request => new RealtimeSubscription(
+                    Guid.NewGuid().ToString("N"),
+                    Context.ConnectionId,
+                    sessionId!,
+                    request,
+                    expiry))
+                .ToArray();
             var acknowledgements = new List<RealtimeSubscriptionAcknowledgement>();
             Context.Items[OwnedSubscriptions] = owned;
             try
@@ -143,18 +142,21 @@ public sealed class RealtimeHub(
                     var covered = false;
                     if (access.IsAvailable(subscription.Request.Topic))
                     {
-                        var lifecycle =
-                            lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
-                        covered = lifecycle is null || await lifecycle.SubscribeAsync(subscription,
+                        var lifecycle
+                            = lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
+                        covered = lifecycle is null || await lifecycle.SubscribeAsync(
+                            subscription,
                             ticket.Principal,
                             Context.ConnectionAborted);
                     }
 
-                    acknowledgements.Add(new(subscription.Id,
-                        subscription.Request.Topic,
-                        subscription.Request.TenantId,
-                        subscription.Request.ResourceId,
-                        covered));
+                    acknowledgements.Add(
+                        new RealtimeSubscriptionAcknowledgement(
+                            subscription.Id,
+                            subscription.Request.Topic,
+                            subscription.Request.TenantId,
+                            subscription.Request.ResourceId,
+                            covered));
                 }
 
                 await ReplaceAvailableInterestsAsync(owned);
@@ -193,9 +195,10 @@ public sealed class RealtimeHub(
             var expiry = ticket.Properties.ExpiresUtc!.Value;
 
             owned = owned.Select(subscription => subscription with
-            {
-                ExpiresAtUtc = subscription.ExpiresAtUtc < expiry ? subscription.ExpiresAtUtc : expiry
-            }).ToArray();
+                {
+                    ExpiresAtUtc = subscription.ExpiresAtUtc < expiry ? subscription.ExpiresAtUtc : expiry,
+                })
+                .ToArray();
             owned = await RetainAuthorizedInterestsAsync(owned, ticket.Principal);
             var coverage = new Dictionary<string, bool>(StringComparer.Ordinal);
             foreach (var subscription in owned)
@@ -207,10 +210,10 @@ public sealed class RealtimeHub(
                 }
 
                 var lifecycle = lifecycles.SingleOrDefault(candidate => candidate.Topic == subscription.Request.Topic);
-                coverage[subscription.Id] = lifecycle is null ||
-                                            await lifecycle.RenewAsync(subscription,
-                                                ticket.Principal,
-                                                Context.ConnectionAborted);
+                coverage[subscription.Id] = lifecycle is null || await lifecycle.RenewAsync(
+                    subscription,
+                    ticket.Principal,
+                    Context.ConnectionAborted);
             }
 
             // Renewal may take time. Re-read the live session before acknowledging distributed coverage.
@@ -218,17 +221,21 @@ public sealed class RealtimeHub(
             var currentExpiry = ticket.Properties.ExpiresUtc!.Value;
             owned = await RetainAuthorizedInterestsAsync(owned, ticket.Principal);
             owned = owned.Select(subscription => subscription with
-            {
-                ExpiresAtUtc = subscription.ExpiresAtUtc < currentExpiry ? subscription.ExpiresAtUtc : currentExpiry
-            }).ToArray();
+                {
+                    ExpiresAtUtc
+                    = subscription.ExpiresAtUtc < currentExpiry ? subscription.ExpiresAtUtc : currentExpiry,
+                })
+                .ToArray();
             await ReplaceAvailableInterestsAsync(owned);
             owned = await FenceAcknowledgementsAsync(owned);
             Context.Items[OwnedSubscriptions] = owned;
-            var acknowledgements = owned.Select(subscription => new RealtimeSubscriptionAcknowledgement(subscription.Id,
-                subscription.Request.Topic,
-                subscription.Request.TenantId,
-                subscription.Request.ResourceId,
-                coverage[subscription.Id])).ToArray();
+            var acknowledgements = owned.Select(subscription => new RealtimeSubscriptionAcknowledgement(
+                    subscription.Id,
+                    subscription.Request.Topic,
+                    subscription.Request.TenantId,
+                    subscription.Request.ResourceId,
+                    coverage[subscription.Id]))
+                .ToArray();
             RecordAcknowledgements(acknowledgements);
             return acknowledgements;
         }
@@ -248,7 +255,7 @@ public sealed class RealtimeHub(
         var sessionId = Context.User?.FindFirst(RealtimeFeature.SessionClaim)?.Value;
         var ticket = sessionId is null ? null : await tickets.RetrieveAsync(sessionId);
         var revoked = sessionId is not null &&
-                      await subscriptions.IsSessionRevokedAsync(sessionId, Context.ConnectionAborted);
+            await subscriptions.IsSessionRevokedAsync(sessionId, Context.ConnectionAborted);
         Context.ConnectionAborted.ThrowIfCancellationRequested();
         if (revoked)
             throw new RealtimeSessionUnavailableException();
@@ -319,9 +326,10 @@ public sealed class RealtimeHub(
         }
     }
 
-    private static bool SameAuthority(ClaimsPrincipal left, ClaimsPrincipal right) =>
-        left.Claims.Select(value => (value.Type, value.Value)).Order()
-            .SequenceEqual(right.Claims.Select(value => (value.Type, value.Value)).Order());
+    private static bool SameAuthority(ClaimsPrincipal left, ClaimsPrincipal right) => left.Claims
+        .Select(value => (value.Type, value.Value))
+        .Order()
+        .SequenceEqual(right.Claims.Select(value => (value.Type, value.Value)).Order());
 
     private async Task<RealtimeSubscription[]> RetainAuthorizedInterestsAsync(
         RealtimeSubscription[] owned,
@@ -332,10 +340,6 @@ public sealed class RealtimeHub(
         return await RetainInterestsAsync(owned, deniedScopes);
     }
 
-    private sealed record DeniedScope(
-        RealtimeScope Scope,
-        string? TenantId);
-
     private async Task<HashSet<DeniedScope>> FindDeniedScopesAsync(
         IEnumerable<RealtimeSubscriptionRequest> requests,
         ClaimsPrincipal principal)
@@ -344,7 +348,7 @@ public sealed class RealtimeHub(
         foreach (var request in requests)
             if (access.FindTopic(request.Topic) is { } topic &&
                 !await access.AllowsAsync(principal, request, Context.ConnectionAborted))
-                deniedScopes.Add(new(topic.Scope, request.TenantId));
+                deniedScopes.Add(new DeniedScope(topic.Scope, request.TenantId));
         return deniedScopes;
     }
 
@@ -354,10 +358,10 @@ public sealed class RealtimeHub(
     {
         // A denial on one request fences every owned interest in that tenant, including earlier checks.
         var removed = owned.Where(subscription => deniedScopes.Any(scope => scope.Scope == RealtimeScope.Tenant
-                                                      ? subscription.Request.TenantId == scope.TenantId
-                                                      : access.FindTopic(subscription.Request.Topic)?.Scope ==
-                                                        scope.Scope) ||
-                                                  subscription.ExpiresAtUtc <= clock.GetUtcNow()).ToArray();
+                    ? subscription.Request.TenantId == scope.TenantId
+                    : access.FindTopic(subscription.Request.Topic)?.Scope == scope.Scope) ||
+                subscription.ExpiresAtUtc <= clock.GetUtcNow())
+            .ToArray();
         var removedIds = removed.Select(subscription => subscription.Id).ToHashSet(StringComparer.Ordinal);
         var retained = owned.Where(subscription => !removedIds.Contains(subscription.Id)).ToArray();
         Context.Items[OwnedSubscriptions] = retained;
@@ -453,7 +457,7 @@ public sealed class RealtimeHub(
         if (!Context.Items.TryGetValue(AcknowledgedCoverage, out var value) ||
             value is not Dictionary<string, bool> states)
         {
-            states = new(StringComparer.Ordinal);
+            states = new Dictionary<string, bool>(StringComparer.Ordinal);
             Context.Items[AcknowledgedCoverage] = states;
         }
 
@@ -481,4 +485,16 @@ public sealed class RealtimeHub(
             throw new RealtimeSessionUnavailableException();
         await subscriptions.ReplaceAsync(Context.ConnectionId, available, Context.ConnectionAborted);
     }
+
+    private sealed class ClientReportState
+    {
+        public SemaphoreSlim Gate { get; } = new(1);
+
+        public DateTimeOffset? LastAcceptedAtUtc { get; set; }
+    }
+
+    private sealed record DeniedScope(
+        RealtimeScope Scope,
+        string? TenantId
+    );
 }

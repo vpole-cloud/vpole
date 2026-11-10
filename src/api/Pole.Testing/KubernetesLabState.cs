@@ -7,18 +7,21 @@ namespace Pole.Testing;
 public sealed record KubernetesLabRegistry(
     string ContainerId,
     string Host,
-    string ClusterHost);
+    string ClusterHost
+);
 
 public sealed record KubernetesLabRuntime(
     string Name,
     bool Rootless,
     string? DockerHost,
     string? DockerSocketPath,
-    bool TestcontainersRyukDisabled);
+    bool TestcontainersRyukDisabled
+);
 
 public sealed record KubernetesLabIngress(
     Uri HttpBaseUri,
-    Uri HttpsBaseUri);
+    Uri HttpsBaseUri
+);
 
 public sealed record KubernetesLabHarbor(
     string TargetKey,
@@ -26,17 +29,20 @@ public sealed record KubernetesLabHarbor(
     string Service,
     int Port,
     string RegistryHost,
-    string CredentialsPath);
+    string CredentialsPath
+);
 
 public sealed record KubernetesLabBuildKit(
     string TargetKey,
     string Namespace,
     string Service,
-    int Port);
+    int Port
+);
 
 public sealed record KubernetesLabServices(
     KubernetesLabHarbor Harbor,
-    KubernetesLabBuildKit BuildKit);
+    KubernetesLabBuildKit BuildKit
+);
 
 public sealed record KubernetesLabTarget(
     string Key,
@@ -47,8 +53,11 @@ public sealed record KubernetesLabTarget(
     string StorageClassName,
     string PublicBaseDomain,
     IReadOnlySet<string> Capabilities,
-    KubernetesLabIngress Ingress)
+    KubernetesLabIngress Ingress
+)
 {
+    public IReadOnlyList<string> KubectlSelectionArguments => ["--kubeconfig", KubeconfigPath, "--context", Context];
+
     public KubernetesClientConfiguration CreateConfiguration() =>
         KubernetesClientConfiguration.BuildConfigFromConfigFile(
             new FileInfo(KubeconfigPath),
@@ -56,11 +65,7 @@ public sealed record KubernetesLabTarget(
             masterUrl: null,
             useRelativePaths: true);
 
-    public IReadOnlyList<string> KubectlSelectionArguments =>
-        ["--kubeconfig", KubeconfigPath, "--context", Context];
-
-    public bool HasCapability(string capability) =>
-        Capabilities.Contains(capability.Trim());
+    public bool HasCapability(string capability) => Capabilities.Contains(capability.Trim());
 }
 
 public sealed class KubernetesLabState
@@ -137,19 +142,18 @@ public sealed class KubernetesLabState
             throw new InvalidOperationException("The Kubernetes lab state is not ready.");
 
         var profile = RequireString(root, "profile");
-        var stateRoot = stateFile.DirectoryName
-                        ?? throw new InvalidOperationException("The Kubernetes lab state has no parent directory.");
+        var stateRoot = stateFile.DirectoryName ??
+            throw new InvalidOperationException("The Kubernetes lab state has no parent directory.");
         var expectedTargets = ValidateProfileContract(root, stateRoot, profile);
         var runtime = ParseRuntime(root);
         var tools = RequireObject(RequireProperty(root, "tools"), "tools");
-        var kubectlPath = RequireOwnedAbsoluteFile(
-            stateRoot,
-            RequireString(tools, "kubectlPath"),
-            "kubectl");
+        var kubectlPath = RequireOwnedAbsoluteFile(stateRoot, RequireString(tools, "kubectlPath"), "kubectl");
         var buildctlPath = tools.TryGetProperty("buildctlPath", out var configuredBuildctl)
-            ? RequireOwnedAbsoluteFile(stateRoot, RequireString(tools, "buildctlPath"), "buildctl")
+            ?
+            RequireOwnedAbsoluteFile(stateRoot, RequireString(tools, "buildctlPath"), "buildctl")
             : profile == "full"
-                ? throw new InvalidOperationException("The full Kubernetes lab state is missing the pinned buildctl path.")
+                ? throw new InvalidOperationException(
+                    "The full Kubernetes lab state is missing the pinned buildctl path.")
                 : null;
         var registryElement = RequireObject(RequireProperty(root, "registry"), "registry");
         var registry = new KubernetesLabRegistry(
@@ -174,7 +178,15 @@ public sealed class KubernetesLabState
         if (targets.Select(target => target.ClusterName).Distinct(StringComparer.Ordinal).Count() != targets.Length)
             throw new InvalidOperationException("The Kubernetes lab state contains duplicate cluster names.");
 
-        return new KubernetesLabState(fullStatePath, instanceId, profile, runtime, registry, services, buildctlPath, targets);
+        return new KubernetesLabState(
+            fullStatePath,
+            instanceId,
+            profile,
+            runtime,
+            registry,
+            services,
+            buildctlPath,
+            targets);
     }
 
     private static KubernetesLabRuntime ParseRuntime(JsonElement root)
@@ -192,15 +204,13 @@ public sealed class KubernetesLabState
             throw new InvalidOperationException("Kubernetes lab runtime Docker host must be an absolute URI.");
         if (dockerSocketPath is not null && !Path.IsPathFullyQualified(dockerSocketPath))
             throw new InvalidOperationException("Kubernetes lab runtime Docker socket path must be absolute.");
-        if (name == "podman" &&
-            (dockerHost is null || !dockerHost.StartsWith("unix://", StringComparison.Ordinal) ||
-             dockerSocketPath is null || dockerHost != $"unix://{dockerSocketPath}" || !ryukDisabled))
-        {
+        if (name == "podman" && (dockerHost is null || !dockerHost.StartsWith("unix://", StringComparison.Ordinal) ||
+                dockerSocketPath is null || dockerHost != $"unix://{dockerSocketPath}" || !ryukDisabled))
             throw new InvalidOperationException(
                 "Kubernetes lab Podman runtime must expose its Unix Docker API socket and disable Testcontainers Ryuk.");
-        }
         if (name == "docker" && ryukDisabled)
-            throw new InvalidOperationException("Kubernetes lab Docker runtime must retain Testcontainers Ryuk cleanup.");
+            throw new InvalidOperationException(
+                "Kubernetes lab Docker runtime must retain Testcontainers Ryuk cleanup.");
 
         return new KubernetesLabRuntime(name, rootless, dockerHost, dockerSocketPath, ryukDisabled);
     }
@@ -211,11 +221,9 @@ public sealed class KubernetesLabState
         string profile)
     {
         if (!root.TryGetProperty("services", out var servicesElement))
-        {
             return profile == "full"
                 ? throw new InvalidOperationException("The full Kubernetes lab state is missing shared services.")
                 : null;
-        }
 
         var services = RequireObject(servicesElement, "services");
         if (profile != "full" && !services.EnumerateObject().Any())
@@ -230,28 +238,19 @@ public sealed class KubernetesLabState
                 RequireString(harbor, "service"),
                 RequireInt32(harbor, "port"),
                 RequireString(harbor, "registryHost"),
-                RequireOwnedAbsoluteFile(
-                    stateRoot,
-                    RequireString(harbor, "credentialsPath"),
-                    "Harbor credentials")),
+                RequireOwnedAbsoluteFile(stateRoot, RequireString(harbor, "credentialsPath"), "Harbor credentials")),
             new KubernetesLabBuildKit(
                 RequireString(buildKit, "targetKey"),
                 RequireString(buildKit, "namespace"),
                 RequireString(buildKit, "service"),
                 RequireInt32(buildKit, "port")));
 
-        if (parsed.Harbor.TargetKey != "default" ||
-            parsed.Harbor.Namespace != "pole-lab-harbor" ||
-            parsed.Harbor.Service != "harbor" ||
-            parsed.Harbor.Port != 80 ||
-            parsed.Harbor.RegistryHost != "harbor.pole.localhost:5002" ||
-            parsed.BuildKit.TargetKey != "default" ||
-            parsed.BuildKit.Namespace != "pole-lab-build" ||
-            parsed.BuildKit.Service != "buildkit" ||
+        if (parsed.Harbor.TargetKey != "default" || parsed.Harbor.Namespace != "pole-lab-harbor" ||
+            parsed.Harbor.Service != "harbor" || parsed.Harbor.Port != 80 ||
+            parsed.Harbor.RegistryHost != "harbor.pole.localhost:5002" || parsed.BuildKit.TargetKey != "default" ||
+            parsed.BuildKit.Namespace != "pole-lab-build" || parsed.BuildKit.Service != "buildkit" ||
             parsed.BuildKit.Port != 1234)
-        {
             throw new InvalidOperationException("Kubernetes lab shared services do not match the checked-in contract.");
-        }
 
         return parsed;
     }
@@ -279,19 +278,15 @@ public sealed class KubernetesLabState
             currentContext: context,
             masterUrl: null,
             useRelativePaths: true);
-        if (!Uri.TryCreate(configuration.Host, UriKind.Absolute, out var server) ||
-            !server.IsLoopback || server.Port != expectedApiPort)
-        {
+        if (!Uri.TryCreate(configuration.Host, UriKind.Absolute, out var server) || !server.IsLoopback ||
+            server.Port != expectedApiPort)
             throw new InvalidOperationException(
                 $"Kubernetes lab target '{key}' kubeconfig server does not match its checked-in loopback API endpoint.");
-        }
         var capabilitiesElement = RequireProperty(target, "capabilities");
         if (capabilitiesElement.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException($"Kubernetes lab target '{key}' capabilities must be an array.");
         var capabilities = capabilitiesElement.EnumerateArray()
-            .Select(capability => capability.ValueKind == JsonValueKind.String
-                ? capability.GetString()
-                : null)
+            .Select(capability => capability.ValueKind == JsonValueKind.String ? capability.GetString() : null)
             .Where(capability => !string.IsNullOrWhiteSpace(capability))
             .Select(capability => capability!)
             .ToHashSet(StringComparer.Ordinal);
@@ -311,16 +306,17 @@ public sealed class KubernetesLabState
                 RequireAbsoluteUri(ingress, "httpsBaseUri")));
     }
 
-    private static void ValidateKubeconfigContext(string kubeconfigPath, string context, string key)
+    private static void ValidateKubeconfigContext(
+        string kubeconfigPath,
+        string context,
+        string key)
     {
         using var stream = File.OpenRead(kubeconfigPath);
         var kubeconfig = KubernetesClientConfiguration.LoadKubeConfig(stream);
         if (kubeconfig.Contexts is null ||
             !kubeconfig.Contexts.Any(item => string.Equals(item.Name, context, StringComparison.Ordinal)))
-        {
             throw new InvalidOperationException(
                 $"Kubernetes lab target '{key}' context does not exist in its standalone kubeconfig.");
-        }
     }
 
     private static IReadOnlyList<ExpectedTarget> ValidateProfileContract(
@@ -332,25 +328,25 @@ public sealed class KubernetesLabState
         {
             "minimal" => new[]
             {
-                new ExpectedTarget("default", "pole-lab-minimal", 6551, 8088, 8448)
+                new ExpectedTarget("default", "pole-lab-minimal", 6551, 8088, 8448),
             },
             "multi" => new[]
             {
                 new ExpectedTarget("default", "pole-lab-default", 6552, 8089, 8449),
                 new ExpectedTarget("workload-a", "pole-lab-workload-a", 6553, 8090, 8450),
-                new ExpectedTarget("workload-b", "pole-lab-workload-b", 6554, 8091, 8451)
+                new ExpectedTarget("workload-b", "pole-lab-workload-b", 6554, 8091, 8451),
             },
             "full" => new[]
             {
                 new ExpectedTarget("default", "pole-lab-default", 6552, 8089, 8449),
                 new ExpectedTarget("workload-a", "pole-lab-workload-a", 6553, 8090, 8450),
-                new ExpectedTarget("workload-b", "pole-lab-workload-b", 6554, 8091, 8451)
+                new ExpectedTarget("workload-b", "pole-lab-workload-b", 6554, 8091, 8451),
             },
             "topology" => new[]
             {
-                new ExpectedTarget("default", "pole-lab-topology", 6555, 8092, 8452)
+                new ExpectedTarget("default", "pole-lab-topology", 6555, 8092, 8452),
             },
-            _ => throw new InvalidOperationException($"Unknown Kubernetes lab profile '{profile}'.")
+            _ => throw new InvalidOperationException($"Unknown Kubernetes lab profile '{profile}'."),
         };
 
         var overlaysElement = RequireProperty(root, "overlays");
@@ -364,27 +360,20 @@ public sealed class KubernetesLabState
             StringComparer.Ordinal);
         if (overlays.Any(item => string.IsNullOrWhiteSpace(item) || !allowedOverlays.Contains(item!)) ||
             overlays.Distinct(StringComparer.Ordinal).Count() != overlays.Length)
-        {
             throw new InvalidOperationException("Kubernetes lab state contains invalid or duplicate overlays.");
-        }
         if (profile != "full" && overlays.Any(item => item is "harbor" or "buildkit"))
-        {
             throw new InvalidOperationException(
                 "Focused Kubernetes lab state cannot claim the full profile's Harbor or BuildKit overlays.");
-        }
         if (profile == "full" &&
             !overlays.Select(item => item!).ToHashSet(StringComparer.Ordinal).SetEquals(allowedOverlays))
-        {
             throw new InvalidOperationException(
                 "The full Kubernetes lab state must contain the exact checked-in overlay contract.");
-        }
 
         var registry = RequireObject(RequireProperty(root, "registry"), "registry");
         if (RequireString(registry, "host") != "127.0.0.1:5051" ||
             RequireString(registry, "clusterHost") != "k3d-pole-lab-registry:5051")
-        {
-            throw new InvalidOperationException("Kubernetes lab registry endpoints do not match the checked-in contract.");
-        }
+            throw new InvalidOperationException(
+                "Kubernetes lab registry endpoints do not match the checked-in contract.");
 
         var targets = RequireProperty(root, "targets");
         if (targets.ValueKind != JsonValueKind.Array || targets.GetArrayLength() != expected.Length)
@@ -401,17 +390,13 @@ public sealed class KubernetesLabState
                 StringComparer.Ordinal);
             if (profile is "multi" or "full")
                 expectedCapabilities.Add("multi-cluster");
-            if (profile == "topology" || profile == "full" && contract.Key == "default")
+            if (profile == "topology" || (profile == "full" && contract.Key == "default"))
                 expectedCapabilities.Add("topology");
             if (profile == "full" && contract.Key != "default")
-            {
                 expectedCapabilities.Add("monitoring");
-            }
             else
-            {
                 foreach (var overlay in overlays)
                     expectedCapabilities.Add(overlay!);
-            }
             var actualCapabilities = ReadStringSet(actual, "capabilities");
 
             if (RequireString(actual, "key") != contract.Key ||
@@ -424,10 +409,8 @@ public sealed class KubernetesLabState
                 RequireString(ingress, "httpBaseUri") != $"http://127.0.0.1:{contract.HttpPort}" ||
                 RequireString(ingress, "httpsBaseUri") != $"https://127.0.0.1:{contract.HttpsPort}" ||
                 !actualCapabilities.SetEquals(expectedCapabilities))
-            {
                 throw new InvalidOperationException(
                     $"Kubernetes lab target '{contract.Key}' does not match the checked-in profile contract.");
-            }
         }
 
         return expected;
@@ -441,34 +424,24 @@ public sealed class KubernetesLabState
         var values = element.EnumerateArray()
             .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
             .ToArray();
-        if (values.Any(string.IsNullOrWhiteSpace) ||
-            values.Distinct(StringComparer.Ordinal).Count() != values.Length)
-        {
+        if (values.Any(string.IsNullOrWhiteSpace) || values.Distinct(StringComparer.Ordinal).Count() != values.Length)
             throw new InvalidOperationException($"Kubernetes lab state '{name}' contains invalid or duplicate values.");
-        }
         return values.Select(value => value!).ToHashSet(StringComparer.Ordinal);
     }
 
-    private sealed record ExpectedTarget(
-        string Key,
-        string ClusterName,
-        int ApiPort,
-        int HttpPort,
-        int HttpsPort);
-
-    private static string RequireOwnedAbsoluteFile(string stateRoot, string path, string description)
+    private static string RequireOwnedAbsoluteFile(
+        string stateRoot,
+        string path,
+        string description)
     {
         if (!Path.IsPathFullyQualified(path))
             throw new InvalidOperationException($"The Kubernetes lab {description} path must be absolute.");
         var fullPath = Path.GetFullPath(path);
         var relative = Path.GetRelativePath(stateRoot, fullPath);
-        if (Path.IsPathFullyQualified(relative) ||
-            string.Equals(relative, "..", StringComparison.Ordinal) ||
+        if (Path.IsPathFullyQualified(relative) || string.Equals(relative, "..", StringComparison.Ordinal) ||
             relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-        {
             throw new InvalidOperationException(
                 $"The Kubernetes lab {description} path must remain beneath the state directory.");
-        }
 
         var file = new FileInfo(fullPath);
         if (!file.Exists)
@@ -505,7 +478,10 @@ public sealed class KubernetesLabState
             : throw new InvalidOperationException($"Kubernetes lab state '{name}' must be a non-empty string.");
     }
 
-    private static string RequireHexIdentifier(JsonElement parent, string name, int length)
+    private static string RequireHexIdentifier(
+        JsonElement parent,
+        string name,
+        int length)
     {
         var value = RequireString(parent, name);
         return value.Length == length && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f')
@@ -537,7 +513,14 @@ public sealed class KubernetesLabState
         var value = property.ValueKind == JsonValueKind.String ? property.GetString() : null;
         return !string.IsNullOrWhiteSpace(value)
             ? value
-            : throw new InvalidOperationException(
-                $"Kubernetes lab state '{name}' must be null or a non-empty string.");
+            : throw new InvalidOperationException($"Kubernetes lab state '{name}' must be null or a non-empty string.");
     }
+
+    private sealed record ExpectedTarget(
+        string Key,
+        string ClusterName,
+        int ApiPort,
+        int HttpPort,
+        int HttpsPort
+    );
 }

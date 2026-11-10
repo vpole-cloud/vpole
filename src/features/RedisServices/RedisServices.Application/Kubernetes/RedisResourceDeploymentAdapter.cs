@@ -1,9 +1,6 @@
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Declarations;
-using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Contracts;
 using Pole.Features.RedisServices.Domain;
@@ -13,8 +10,8 @@ namespace Pole.Features.RedisServices.Application.Kubernetes;
 
 public sealed class RedisResourceDeploymentAdapter(
     LoadRedisById loadRedisById,
-    IKubernetesClientProvider kubernetesClientProvider)
-    : IResourceDeploymentAdapter
+    IKubernetesClientProvider kubernetesClientProvider
+) : IResourceDeploymentAdapter
 {
     public async Task<ResourceDeploymentAdapterResult> ApplyAsync(
         ResourceDeploymentReconciliationContext context,
@@ -24,21 +21,18 @@ public sealed class RedisResourceDeploymentAdapter(
         if (validationFailure is not null)
             return validationFailure;
 
-        var redis = await loadRedisById(
-            context.Deployment.TenantId,
-            context.Deployment.ResourceId,
-            cancellationToken);
+        var redis = await loadRedisById(context.Deployment.TenantId, context.Deployment.ResourceId, cancellationToken);
         if (redis is null)
-        {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "RedisNotFound",
                 "The logical Redis resource no longer exists.",
                 retryable: false);
-        }
 
         if (redis.Lifecycle is not ActiveRedisLifecycle)
             return ResourceDeploymentAdapterResult.Failed.Create(
-                "RedisNotActive", "The Redis resource is not activated.", retryable: false);
+                "RedisNotActive",
+                "The Redis resource is not activated.",
+                retryable: false);
 
         var kubernetes = await kubernetesClientProvider.GetAsync(
             context.Deployment.Placement.DeploymentTargetId,
@@ -69,12 +63,10 @@ public sealed class RedisResourceDeploymentAdapter(
             metadata,
             cancellationToken);
         if (applyResult is RedisKubernetesApplyFailed)
-        {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "KubernetesApplyFailed",
                 "Kubernetes could not apply the Redis deployment.",
                 retryable: true);
-        }
 
         return ResourceDeploymentAdapterResult.Succeeded.Create(
         [
@@ -82,7 +74,7 @@ public sealed class RedisResourceDeploymentAdapter(
                 RedisConnectionEndpoints.RuntimeEndpointKind,
                 inKubernetes.ClusterLocalHost,
                 port: RedisConnectionEndpoints.Redis.TcpPort,
-                scheme: "redis")
+                scheme: "redis"),
         ]);
     }
 
@@ -98,17 +90,12 @@ public sealed class RedisResourceDeploymentAdapter(
             context.Deployment.Placement.DeploymentTargetId,
             cancellationToken);
 
-        var redis = await loadRedisById(
-            context.Deployment.TenantId,
-            context.Deployment.ResourceId,
-            cancellationToken);
+        var redis = await loadRedisById(context.Deployment.TenantId, context.Deployment.ResourceId, cancellationToken);
         if (redis is null)
-        {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "RedisNotFound",
                 "The logical Redis resource no longer exists.",
                 retryable: false);
-        }
 
         await RedisKubernetesResourceManager.DeleteAsync(
             kubernetes,
@@ -127,20 +114,16 @@ public sealed class RedisResourceDeploymentAdapter(
                 context.Deployment.ResourceType.Value,
                 RedisResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
-        {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "ResourceTypeMismatch",
                 "The resource deployment is not Redis.",
                 retryable: false);
-        }
 
         if (context.Deployment.Placement.Storage is null)
-        {
             return ResourceDeploymentAdapterResult.Failed.Create(
                 "StorageConfigurationMissing",
                 "The Redis placement does not contain resolved storage configuration.",
                 retryable: false);
-        }
 
         return null;
     }
@@ -148,8 +131,8 @@ public sealed class RedisResourceDeploymentAdapter(
 
 public static class RedisResourceDeploymentAdapterRegistration
 {
-    public static ResourceDeploymentAdapterDescriptor Descriptor { get; } =
-        ResourceDeploymentAdapterDescriptor.Create<RedisResourceDeploymentAdapter>(
+    public static ResourceDeploymentAdapterDescriptor Descriptor { get; }
+        = ResourceDeploymentAdapterDescriptor.Create<RedisResourceDeploymentAdapter>(
             RedisResourceDeployment.ResourceType,
             ResourcePlacementCapability.SingleTarget);
 }

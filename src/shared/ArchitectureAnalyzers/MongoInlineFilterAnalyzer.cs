@@ -9,6 +9,7 @@ namespace Pole.ArchitectureAnalyzers;
 public sealed class MongoInlineFilterAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "POLE008";
+
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         "Declare Mongo filters in named helpers",
@@ -35,12 +36,13 @@ public sealed class MongoInlineFilterAnalyzer : DiagnosticAnalyzer
         if (MongoApplicationPaths.Classify(argument.Syntax.SyntaxTree.FilePath) ==
             MongoApplicationPath.OutsideApplication)
             return;
-        if (context.ContainingSymbol.ContainingType?.Name.EndsWith("Filters", System.StringComparison.Ordinal) == true)
+        if (context.ContainingSymbol.ContainingType?.Name.EndsWith("Filters", StringComparison.Ordinal) == true)
             return;
         var value = argument.Value;
         while (value is IConversionOperation or IDelegateCreationOperation)
             value = value is IConversionOperation conversion
-                ? conversion.Operand : ((IDelegateCreationOperation)value).Target;
+                ? conversion.Operand
+                : ((IDelegateCreationOperation)value).Target;
         if (value is IAnonymousFunctionOperation)
             context.ReportDiagnostic(Diagnostic.Create(Rule, argument.Syntax.GetLocation()));
     }

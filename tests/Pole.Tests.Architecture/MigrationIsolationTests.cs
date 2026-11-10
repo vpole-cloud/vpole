@@ -10,27 +10,37 @@ public sealed class MigrationIsolationTests
     public void MigrationProjects_OnlyDependOnTheFrozenMigrationApi()
     {
         var root = ArchitectureSources.RepositoryRoot;
-        var projects = Directory.EnumerateFiles(Path.Combine(root, "src/features"), "*.Migrations.*proj",
-            SearchOption.AllDirectories).ToArray();
+        var projects = Directory.EnumerateFiles(
+                Path.Combine(root, "src/features"),
+                "*.Migrations.*proj",
+                SearchOption.AllDirectories)
+            .ToArray();
         Assert.NotEmpty(projects);
         foreach (var project in projects)
         {
-            var references = XDocument.Load(project).Descendants("ProjectReference")
-                .Select(reference => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(project)!,
-                    reference.Attribute("Include")!.Value.Replace('\\', '/')))).ToArray();
+            var references = XDocument.Load(project)
+                .Descendants("ProjectReference")
+                .Select(reference => Path.GetFullPath(
+                    Path.Combine(
+                        Path.GetDirectoryName(project)!,
+                        reference.Attribute("Include")!.Value.Replace('\\', '/'))))
+                .ToArray();
             Assert.Equal([Path.Combine(root, "src/shared/Migrations/Migrations.csproj")], references);
             Assert.Empty(XDocument.Load(project).Descendants("FrameworkReference"));
-            Assert.All(XDocument.Load(project).Descendants("PackageReference"), reference =>
-            {
-                Assert.EndsWith(".fsproj", project);
-                Assert.Equal("FSharp.Core", reference.Attribute("Include")!.Value);
-            });
+            Assert.All(
+                XDocument.Load(project).Descendants("PackageReference"),
+                reference =>
+                {
+                    Assert.EndsWith(".fsproj", project);
+                    Assert.Equal("FSharp.Core", reference.Attribute("Include")!.Value);
+                });
         }
 
         var shared = XDocument.Load(Path.Combine(root, "src/shared/Migrations/Migrations.csproj"));
         Assert.Empty(shared.Descendants("ProjectReference"));
-        Assert.Equal(["MongoDB.Driver"], shared.Descendants("PackageReference")
-            .Select(reference => reference.Attribute("Include")!.Value));
+        Assert.Equal(
+            ["MongoDB.Driver"],
+            shared.Descendants("PackageReference").Select(reference => reference.Attribute("Include")!.Value));
     }
 
     [Fact]
@@ -39,8 +49,11 @@ public sealed class MigrationIsolationTests
         var misplaced = ArchitectureSources.ProductionCSharp()
             .Where(source => source.RelativePath.StartsWith("src/features/", StringComparison.Ordinal))
             .Where(source => !source.RelativePath.Contains(".Migrations/", StringComparison.Ordinal))
-            .Where(source => source.Root.DescendantNodes().OfType<BaseTypeSyntax>()
-                .Any(type => type.Type.ToString() is "IMigration" or "Pole.Migrations.IMigration"))
+            .Where(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<BaseTypeSyntax>()
+                    .Any(type => type.Type.ToString() is "IMigration" or "Pole.Migrations.IMigration"))
             .Select(source => source.RelativePath);
         var fsharp = ArchitectureSources.ProductionFSharp()
             .Where(source => source.RelativePath.StartsWith("src/features/", StringComparison.Ordinal))

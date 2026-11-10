@@ -1,13 +1,4 @@
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.Secrets.Application.Projections;
@@ -15,23 +6,35 @@ namespace Pole.Features.Secrets.Application.Projections;
 public sealed class SecretKeyRetirementReconciler(
     LoadSecretById loadSecret,
     ReleaseRetainedSecretKeys release,
-    IEnumerable<ISecretConsumerRolloutObserver> observers)
+    IEnumerable<ISecretConsumerRolloutObserver> observers
+)
 {
-    public async Task ReconcileAsync(string tenantId, string secretId, CancellationToken ct = default)
+    public async Task ReconcileAsync(
+        string tenantId,
+        string secretId,
+        CancellationToken ct = default)
     {
         var secret = await loadSecret(tenantId, secretId, ct);
-        if (secret is null) return;
+        if (secret is null)
+            return;
         foreach (var binding in secret.Bindings.Where(binding => !binding.Pins.Retained.IsEmpty))
         {
             var observer = observers.SingleOrDefault(item => item.ResourceType.Value == binding.Consumer.ResourceType);
-            if (observer is null) continue;
+            if (observer is null)
+                continue;
             // Native reads deliberately occur before the Mongo transaction. Persistence fences
             // the complete placement set and Secret reference identity before releasing any pin.
-            if (await observer.ObserveAsync(tenantId, binding.Consumer.ResourceId,
-                ct) is SecretConsumerRolloutConfirmed confirmed)
+            if (await observer.ObserveAsync(tenantId, binding.Consumer.ResourceId, ct) is SecretConsumerRolloutConfirmed
+                confirmed)
             {
-                if (!await release(tenantId, secretId, secret.Revision, secret.ReferenceFence, binding.Id,
-                    confirmed.Deployments, ct))
+                if (!await release(
+                        tenantId,
+                        secretId,
+                        secret.Revision,
+                        secret.ReferenceFence,
+                        binding.Id,
+                        confirmed.Deployments,
+                        ct))
                     return; // Superseded metadata or proof: retry from a fresh snapshot next time.
                 secret = secret.ReleaseRetainedKeys(binding.Id);
             }

@@ -14,8 +14,20 @@ public sealed class TestLifecycleTests
         var original = new InvalidOperationException("body sentinel");
         var cleanup = new IOException("cleanup sentinel");
         var calls = new List<string>();
-        scope.Defer("dispose", _ => { calls.Add("disposed"); return Task.CompletedTask; });
-        scope.Defer("stop", _ => { calls.Add("stopped"); throw cleanup; });
+        scope.Defer(
+            "dispose",
+            _ =>
+            {
+                calls.Add("disposed");
+                return Task.CompletedTask;
+            });
+        scope.Defer(
+            "stop",
+            _ =>
+            {
+                calls.Add("stopped");
+                throw cleanup;
+            });
         var failure = await Assert.ThrowsAsync<AggregateException>(() => scope.RunAsync(() => throw original));
         Assert.Equal(["stopped", "disposed"], calls);
         Assert.Contains(original, failure.Flatten().InnerExceptions);
@@ -27,7 +39,13 @@ public sealed class TestLifecycleTests
     {
         var scope = new TestResourceScope("unknown mutation outcome");
         var state = true;
-        scope.Defer("restore", _ => { state = true; return Task.CompletedTask; });
+        scope.Defer(
+            "restore",
+            _ =>
+            {
+                state = true;
+                return Task.CompletedTask;
+            });
         await Assert.ThrowsAsync<IOException>(() => scope.RunAsync(() =>
         {
             state = false;
@@ -41,11 +59,15 @@ public sealed class TestLifecycleTests
     {
         var stalled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationToken observed = default;
-        await Assert.ThrowsAsync<TimeoutException>(() => TestWait.UntilAsync(token =>
-        {
-            observed = token;
-            return stalled.Task;
-        }, TimeSpan.FromMilliseconds(50), "controlled stalled probe").WaitAsync(TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAsync<TimeoutException>(() => TestWait.UntilAsync(
+                token =>
+                {
+                    observed = token;
+                    return stalled.Task;
+                },
+                TimeSpan.FromMilliseconds(50),
+                "controlled stalled probe")
+            .WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.True(observed.IsCancellationRequested);
         stalled.SetResult(true);
     }
@@ -81,11 +103,12 @@ public sealed class TestLifecycleTests
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                UseShellExecute = false
+                UseShellExecute = false,
             };
             start.ArgumentList.Add("-u");
             start.ArgumentList.Add("-c");
-            start.ArgumentList.Add("""
+            start.ArgumentList.Add(
+                """
                 import pathlib, sys, time
                 root = pathlib.Path(sys.argv[1])
                 print('Forwarding from 127.0.0.1:12345 -> 80', flush=True)
@@ -99,9 +122,11 @@ public sealed class TestLifecycleTests
             start.ArgumentList.Add(directory);
             session = await KubernetesPortForwardSession.StartProcessAsync(start, 12345, startup.Token);
             await startup.CancelAsync();
-            await File.WriteAllTextAsync(Path.Combine(directory, "write"), string.Empty);
-            await TestWait.UntilAsync(_ => Task.FromResult(File.Exists(Path.Combine(directory, "drained"))),
-                TimeSpan.FromSeconds(10), "Both pipes must keep draining after the startup budget expires.");
+            await File.WriteAllTextAsync(Path.Combine(directory, "write"), "");
+            await TestWait.UntilAsync(
+                _ => Task.FromResult(File.Exists(Path.Combine(directory, "drained"))),
+                TimeSpan.FromSeconds(10),
+                "Both pipes must keep draining after the startup budget expires.");
         }
         finally
         {

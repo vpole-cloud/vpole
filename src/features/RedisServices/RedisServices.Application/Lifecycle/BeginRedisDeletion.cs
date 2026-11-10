@@ -1,7 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Mongo;
@@ -13,17 +12,22 @@ using Pole.Features.Secrets.Contracts;
 
 namespace Pole.Features.RedisServices.Application.Lifecycle;
 
-public sealed record RedisDeletionConflict(string RedisId);
+public sealed record RedisDeletionConflict(
+    string RedisId
+);
 
 public sealed record RedisDeletionStarted;
 
-public sealed record RedisSecretBindingRemovalRequired(string RedisId);
+public sealed record RedisSecretBindingRemovalRequired(
+    string RedisId
+);
 
 public sealed record RedisDeletion(
     Redis Current,
     Redis Replacement,
     GitLifecycleAuthority? Authority = null,
-    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null);
+    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null
+);
 
 public union BeginRedisDeletionOutcome(
     RedisDeletionStarted,
@@ -41,7 +45,8 @@ internal sealed class MongoBeginRedisDeletion(
     CascadeConnectionsForResourceDeletion cascadeConnections,
     IMongoCollection<Redis> redisServices,
     IGitOpsMutations git,
-    EnsureConsumerSecretBindingRemoval ensureBindingsRemovable)
+    EnsureConsumerSecretBindingRemoval ensureBindingsRemovable
+)
 {
     public async Task<BeginRedisDeletionOutcome> InvokeAsync(
         RedisDeletion request,
@@ -50,22 +55,30 @@ internal sealed class MongoBeginRedisDeletion(
     {
         var current = request.Current;
         var replacement = request.Replacement;
-        RedisPersistenceGuards.EnsureTransaction(
-            session,
-            "Redis deletion start");
+        RedisPersistenceGuards.EnsureTransaction(session, "Redis deletion start");
         RedisPersistenceGuards.EnsureSameIdentity(current, replacement);
         if (request.Authority is not null && request.ReviewedConnections is null)
             return new RedisDeletionConflict(current.Id);
 
-        if (!await git.AuthorizeAsync(new(current.TenantId, DeclarativeRedisProvider.ResourceKind,
-                current.Id, Lifecycle: request.Authority,
-                LifecycleEffect: request.Authority is null ? null : GitLifecycleMutationEffect.Remove),
-                session, cancellationToken))
+        if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    current.TenantId,
+                    DeclarativeRedisProvider.ResourceKind,
+                    current.Id,
+                    Lifecycle: request.Authority,
+                    LifecycleEffect: request.Authority is null ? null : GitLifecycleMutationEffect.Remove),
+                session,
+                cancellationToken))
             return new RedisGitOwnedConfiguration(current.Id);
 
         RedisPersistenceGuards.EnsureDeletionTransition(current, replacement);
-        var bindings = await ensureBindingsRemovable(new(current.TenantId, RedisResourceDeployment.ResourceType,
-            current.Id), session, cancellationToken);
+        var bindings = await ensureBindingsRemovable(
+            new EnsureConsumerSecretBindingRemovalRequest(
+                current.TenantId,
+                RedisResourceDeployment.ResourceType,
+                current.Id),
+            session,
+            cancellationToken);
         if (bindings is ConsumerSecretBindingsRequireRemoval)
             return new RedisSecretBindingRemovalRequired(current.Id);
         if (bindings is ConsumerSecretBindingDeletionChanged)
@@ -88,10 +101,10 @@ internal sealed class MongoBeginRedisDeletion(
                 ReviewedConnections: request.ReviewedConnections),
             session: session,
             cancellationToken: cancellationToken);
-        RedisDeletionConflict? cascadeConflict = cascade switch
+        var cascadeConflict = cascade switch
         {
             ResourceConnectionsCascaded => null,
-            ResourceConnectionCascadeConflict => new RedisDeletionConflict(current.Id)
+            ResourceConnectionCascadeConflict => new RedisDeletionConflict(current.Id),
         };
         if (cascadeConflict is not null)
             return cascadeConflict;
@@ -101,8 +114,6 @@ internal sealed class MongoBeginRedisDeletion(
             RedisFilters.ActiveAtPlanningVersion(current),
             replacement,
             cancellationToken: cancellationToken);
-        return replace.ModifiedCount == 1
-            ? new RedisDeletionStarted()
-            : new RedisDeletionConflict(current.Id);
+        return replace.ModifiedCount == 1 ? new RedisDeletionStarted() : new RedisDeletionConflict(current.Id);
     }
 }

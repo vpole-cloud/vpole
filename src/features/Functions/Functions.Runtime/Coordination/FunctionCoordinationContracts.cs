@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Microsoft.Extensions.Options;
-using Orleans;
 
 namespace Pole.Features.Functions.Runtime.Coordination;
 
@@ -15,26 +14,19 @@ public sealed class FunctionCoordinationOptions
 {
     public const string SectionName = "Functions:Coordination";
 
-    [Range(1, 30)]
-    public int CallTimeoutSeconds { get; set; } = 5;
+    [Range(1, 30)] public int CallTimeoutSeconds { get; set; } = 5;
 
-    [Range(5, 60)]
-    public int InitialAdmissionLeaseSeconds { get; set; } = 15;
+    [Range(5, 60)] public int InitialAdmissionLeaseSeconds { get; set; } = 15;
 
-    [Range(150, 3600)]
-    public int AdmissionLeaseSeconds { get; set; } = 300;
+    [Range(150, 3600)] public int AdmissionLeaseSeconds { get; set; } = 300;
 
-    [Range(30, 3600)]
-    public int RecoveryGraceSeconds { get; set; } = 300;
+    [Range(30, 3600)] public int RecoveryGraceSeconds { get; set; } = 300;
 
-    [Range(130, 900)]
-    public int ActivationLeaseSeconds { get; set; } = 150;
+    [Range(130, 900)] public int ActivationLeaseSeconds { get; set; } = 150;
 
-    [Range(10, 3600)]
-    public int ScaleTransitionLeaseSeconds { get; set; } = 300;
+    [Range(10, 3600)] public int ScaleTransitionLeaseSeconds { get; set; } = 300;
 
-    [Range(1, 60)]
-    public int ScalerOwnershipLeaseSeconds { get; set; } = 10;
+    [Range(1, 60)] public int ScalerOwnershipLeaseSeconds { get; set; } = 10;
 }
 
 public sealed class FunctionCoordinationOptionsValidator : IValidateOptions<FunctionCoordinationOptions>
@@ -43,29 +35,21 @@ public sealed class FunctionCoordinationOptionsValidator : IValidateOptions<Func
     {
         var failures = FunctionOptionsValidation.GetDataAnnotationFailures(options);
         if (options.AdmissionLeaseSeconds <= options.ActivationLeaseSeconds)
-        {
             failures.Add(
                 $"{nameof(options.AdmissionLeaseSeconds)} must be greater than " +
                 $"{nameof(options.ActivationLeaseSeconds)}.");
-        }
         if (options.InitialAdmissionLeaseSeconds <= options.CallTimeoutSeconds + 2)
-        {
             failures.Add(
                 $"{nameof(options.InitialAdmissionLeaseSeconds)} must be more than two seconds greater than " +
                 $"{nameof(options.CallTimeoutSeconds)}.");
-        }
         if (options.InitialAdmissionLeaseSeconds >= options.AdmissionLeaseSeconds)
-        {
             failures.Add(
                 $"{nameof(options.InitialAdmissionLeaseSeconds)} must be lower than " +
                 $"{nameof(options.AdmissionLeaseSeconds)}.");
-        }
         if (options.RecoveryGraceSeconds < options.AdmissionLeaseSeconds)
-        {
             failures.Add(
                 $"{nameof(options.RecoveryGraceSeconds)} cannot be lower than " +
                 $"{nameof(options.AdmissionLeaseSeconds)}.");
-        }
 
         return FunctionOptionsValidation.ToValidateOptionsResult(failures);
     }
@@ -74,7 +58,8 @@ public sealed class FunctionCoordinationOptionsValidator : IValidateOptions<Func
 [GenerateSerializer]
 public sealed record FunctionAppCoordinationKey(
     [property: Id(0)] string TenantId,
-    [property: Id(1)] string FunctionAppId)
+    [property: Id(1)] string FunctionAppId
+)
 {
     public string ToGrainKey() => FunctionCoordinationKeyCodec.Encode("fa1", TenantId, FunctionAppId);
 
@@ -95,10 +80,10 @@ public sealed record FunctionAppCoordinationKey(
 public sealed record FunctionRevisionCoordinationKey(
     [property: Id(0)] string TenantId,
     [property: Id(1)] string FunctionAppId,
-    [property: Id(2)] string RevisionId)
+    [property: Id(2)] string RevisionId
+)
 {
-    public string ToGrainKey() =>
-        FunctionCoordinationKeyCodec.Encode("fr1", TenantId, FunctionAppId, RevisionId);
+    public string ToGrainKey() => FunctionCoordinationKeyCodec.Encode("fr1", TenantId, FunctionAppId, RevisionId);
 
     public static bool TryParse(string value, out FunctionRevisionCoordinationKey? key)
     {
@@ -117,7 +102,7 @@ public sealed record FunctionRevisionCoordinationKey(
 public enum FunctionAdmissionTriggerKind
 {
     Http,
-    Timer
+    Timer,
 }
 
 [GenerateSerializer]
@@ -126,20 +111,22 @@ public sealed record FunctionAdmissionRequest(
     [property: Id(1)] string InvocationId,
     [property: Id(2)] string HandlerName,
     [property: Id(3)] FunctionAdmissionTriggerKind TriggerKind,
-    [property: Id(4)] long ReservedBytes);
+    [property: Id(4)] long ReservedBytes
+);
 
 [GenerateSerializer]
 public sealed record FunctionAdmissionToken(
     [property: Id(0)] string AdmissionId,
     [property: Id(1)] string LeaseId,
     [property: Id(2)] string CoordinatorIncarnation,
-    [property: Id(3)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(3)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public enum FunctionAdmissionDecisionKind
 {
     Granted,
-    Rejected
+    Rejected,
 }
 
 [GenerateSerializer]
@@ -150,7 +137,7 @@ public enum FunctionAdmissionRejection
     RequestLimitExceeded,
     ByteLimitExceeded,
     IdempotencyConflict,
-    RevisionQuiescing
+    RevisionQuiescing,
 }
 
 [GenerateSerializer]
@@ -159,11 +146,13 @@ public sealed record FunctionAdmissionDecision(
     [property: Id(1)] FunctionAdmissionToken? Token,
     [property: Id(2)] FunctionAdmissionRejection Rejection,
     [property: Id(3)] int RetryAfterMilliseconds,
-    [property: Id(4)] bool RequiresActivationFence);
+    [property: Id(4)] bool RequiresActivationFence
+);
 
 [GenerateSerializer]
 public sealed record FunctionAdmissionRenewalRequest(
-    [property: Id(0)] FunctionAdmissionToken Token);
+    [property: Id(0)] FunctionAdmissionToken Token
+);
 
 [GenerateSerializer]
 public enum FunctionAdmissionRenewalDecisionKind
@@ -171,19 +160,21 @@ public enum FunctionAdmissionRenewalDecisionKind
     Renewed,
     Expired,
     Stale,
-    InvalidRequest
+    InvalidRequest,
 }
 
 [GenerateSerializer]
 public sealed record FunctionAdmissionRenewalDecision(
     [property: Id(0)] FunctionAdmissionRenewalDecisionKind Kind,
-    [property: Id(1)] FunctionAdmissionToken? Token);
+    [property: Id(1)] FunctionAdmissionToken? Token
+);
 
 [GenerateSerializer]
 public sealed record FunctionAdmissionReleaseRequest(
     [property: Id(0)] string AdmissionId,
     [property: Id(1)] string LeaseId,
-    [property: Id(2)] string CoordinatorIncarnation);
+    [property: Id(2)] string CoordinatorIncarnation
+);
 
 [GenerateSerializer]
 public enum FunctionAdmissionReleaseDecision
@@ -191,20 +182,21 @@ public enum FunctionAdmissionReleaseDecision
     Released,
     AlreadyReleasedOrExpired,
     Stale,
-    InvalidRequest
+    InvalidRequest,
 }
 
 [GenerateSerializer]
 public sealed record FunctionTrafficRequest(
     [property: Id(0)] string RequestId,
     [property: Id(1)] string HandlerName,
-    [property: Id(2)] int Cost = 1);
+    [property: Id(2)] int Cost = 1
+);
 
 [GenerateSerializer]
 public enum FunctionTrafficDecisionKind
 {
     Granted,
-    Rejected
+    Rejected,
 }
 
 [GenerateSerializer]
@@ -213,26 +205,29 @@ public enum FunctionTrafficRejection
     None,
     InvalidRequest,
     RateLimitExceeded,
-    IdempotencyConflict
+    IdempotencyConflict,
 }
 
 [GenerateSerializer]
 public sealed record FunctionTrafficDecision(
     [property: Id(0)] FunctionTrafficDecisionKind Kind,
     [property: Id(1)] FunctionTrafficRejection Rejection,
-    [property: Id(2)] int RetryAfterMilliseconds);
+    [property: Id(2)] int RetryAfterMilliseconds
+);
 
 [GenerateSerializer]
 public sealed record FunctionTrafficSnapshot(
     [property: Id(0)] FunctionAppCoordinationKey Key,
     [property: Id(1)] double AvailableTokens,
     [property: Id(2)] int RequestsPerSecond,
-    [property: Id(3)] int Burst);
+    [property: Id(3)] int Burst
+);
 
 [GenerateSerializer]
 public sealed record FunctionActivationBeginRequest(
     [property: Id(0)] string OperationId,
-    [property: Id(1)] int DesiredReplicas);
+    [property: Id(1)] int DesiredReplicas
+);
 
 [GenerateSerializer]
 public sealed record FunctionActivationLease(
@@ -240,7 +235,8 @@ public sealed record FunctionActivationLease(
     [property: Id(1)] string LeaseId,
     [property: Id(2)] long Generation,
     [property: Id(3)] int DesiredReplicas,
-    [property: Id(4)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(4)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public enum FunctionActivationBeginDecisionKind
@@ -248,7 +244,7 @@ public enum FunctionActivationBeginDecisionKind
     Granted,
     AlreadyDesired,
     Busy,
-    Rejected
+    Rejected,
 }
 
 [GenerateSerializer]
@@ -256,7 +252,7 @@ public enum FunctionActivationRejection
 {
     None,
     InvalidRequest,
-    ScaleTransitionInProgress
+    ScaleTransitionInProgress,
 }
 
 [GenerateSerializer]
@@ -264,20 +260,22 @@ public sealed record FunctionActivationBeginDecision(
     [property: Id(0)] FunctionActivationBeginDecisionKind Kind,
     [property: Id(1)] FunctionActivationLease? Lease,
     [property: Id(2)] FunctionActivationRejection Rejection,
-    [property: Id(3)] int RetryAfterMilliseconds);
+    [property: Id(3)] int RetryAfterMilliseconds
+);
 
 [GenerateSerializer]
 public enum FunctionCoordinationCompletionOutcome
 {
     Applied,
-    Failed
+    Failed,
 }
 
 [GenerateSerializer]
 public sealed record FunctionActivationCompleteRequest(
     [property: Id(0)] string LeaseId,
     [property: Id(1)] long Generation,
-    [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome);
+    [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome
+);
 
 [GenerateSerializer]
 public enum FunctionActivationCompleteDecision
@@ -285,13 +283,14 @@ public enum FunctionActivationCompleteDecision
     Completed,
     AlreadyCompleted,
     Stale,
-    InvalidRequest
+    InvalidRequest,
 }
 
 [GenerateSerializer]
 public sealed record FunctionScalerOwnershipRequest(
     [property: Id(0)] string OperationId,
-    [property: Id(1)] string OwnerId);
+    [property: Id(1)] string OwnerId
+);
 
 [GenerateSerializer]
 public sealed record FunctionScalerOwnershipToken(
@@ -299,21 +298,23 @@ public sealed record FunctionScalerOwnershipToken(
     [property: Id(1)] string OwnerId,
     [property: Id(2)] string LeaseId,
     [property: Id(3)] string CoordinatorIncarnation,
-    [property: Id(4)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(4)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public enum FunctionScalerOwnershipDecisionKind
 {
     Granted,
     Busy,
-    Rejected
+    Rejected,
 }
 
 [GenerateSerializer]
 public sealed record FunctionScalerOwnershipDecision(
     [property: Id(0)] FunctionScalerOwnershipDecisionKind Kind,
     [property: Id(1)] FunctionScalerOwnershipToken? Token,
-    [property: Id(2)] int RetryAfterMilliseconds);
+    [property: Id(2)] int RetryAfterMilliseconds
+);
 
 [GenerateSerializer]
 public enum FunctionScalerOwnershipReleaseDecision
@@ -321,20 +322,22 @@ public enum FunctionScalerOwnershipReleaseDecision
     Released,
     AlreadyReleasedOrExpired,
     Stale,
-    InvalidRequest
+    InvalidRequest,
 }
 
 [GenerateSerializer]
 public sealed record FunctionQuiescingBeginRequest(
     [property: Id(0)] string OperationId,
-    [property: Id(1)] FunctionScalerOwnershipToken ScalerToken);
+    [property: Id(1)] FunctionScalerOwnershipToken ScalerToken
+);
 
 [GenerateSerializer]
 public sealed record FunctionQuiescingLease(
     [property: Id(0)] string OperationId,
     [property: Id(1)] string LeaseId,
     [property: Id(2)] long Epoch,
-    [property: Id(3)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(3)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public enum FunctionQuiescingDecisionKind
@@ -344,20 +347,21 @@ public enum FunctionQuiescingDecisionKind
     RecoveryGrace,
     ActiveAdmissions,
     Stale,
-    Rejected
+    Rejected,
 }
 
 [GenerateSerializer]
 public sealed record FunctionQuiescingDecision(
     [property: Id(0)] FunctionQuiescingDecisionKind Kind,
     [property: Id(1)] FunctionQuiescingLease? Lease,
-    [property: Id(2)] int RetryAfterMilliseconds);
+    [property: Id(2)] int RetryAfterMilliseconds
+);
 
 [GenerateSerializer]
 public enum FunctionQuiescingCompletionOutcome
 {
     Converged,
-    Aborted
+    Aborted,
 }
 
 [GenerateSerializer]
@@ -365,7 +369,8 @@ public sealed record FunctionQuiescingCompleteRequest(
     [property: Id(0)] FunctionScalerOwnershipToken ScalerToken,
     [property: Id(1)] string LeaseId,
     [property: Id(2)] long Epoch,
-    [property: Id(3)] FunctionQuiescingCompletionOutcome Outcome);
+    [property: Id(3)] FunctionQuiescingCompletionOutcome Outcome
+);
 
 [GenerateSerializer]
 public enum FunctionQuiescingCompleteDecision
@@ -374,7 +379,7 @@ public enum FunctionQuiescingCompleteDecision
     Stale,
     Busy,
     ActiveAdmissions,
-    InvalidRequest
+    InvalidRequest,
 }
 
 [GenerateSerializer]
@@ -383,7 +388,8 @@ public sealed record FunctionScaleBeginRequest(
     [property: Id(1)] FunctionScalerOwnershipToken ScalerToken,
     [property: Id(2)] int DesiredReplicas,
     [property: Id(3)] long? QuiescingEpoch,
-    [property: Id(4)] int ObservedReplicas);
+    [property: Id(4)] int ObservedReplicas
+);
 
 [GenerateSerializer]
 public sealed record FunctionScaleLease(
@@ -391,7 +397,8 @@ public sealed record FunctionScaleLease(
     [property: Id(1)] string IntentId,
     [property: Id(2)] long Generation,
     [property: Id(3)] int DesiredReplicas,
-    [property: Id(4)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(4)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public enum FunctionScaleBeginDecisionKind
@@ -403,21 +410,23 @@ public enum FunctionScaleBeginDecisionKind
     QuiescingRequired,
     ActiveAdmissions,
     Stale,
-    Rejected
+    Rejected,
 }
 
 [GenerateSerializer]
 public sealed record FunctionScaleBeginDecision(
     [property: Id(0)] FunctionScaleBeginDecisionKind Kind,
     [property: Id(1)] FunctionScaleLease? Lease,
-    [property: Id(2)] int RetryAfterMilliseconds);
+    [property: Id(2)] int RetryAfterMilliseconds
+);
 
 [GenerateSerializer]
 public sealed record FunctionScaleCompleteRequest(
     [property: Id(0)] string IntentId,
     [property: Id(1)] long Generation,
     [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome,
-    [property: Id(3)] FunctionScalerOwnershipToken ScalerToken);
+    [property: Id(3)] FunctionScalerOwnershipToken ScalerToken
+);
 
 [GenerateSerializer]
 public enum FunctionScaleCompleteDecision
@@ -425,14 +434,15 @@ public enum FunctionScaleCompleteDecision
     Completed,
     AlreadyCompleted,
     Stale,
-    InvalidRequest
+    InvalidRequest,
 }
 
 [GenerateSerializer]
 public sealed record FunctionAdmissionSnapshot(
     [property: Id(0)] int Requests,
     [property: Id(1)] long Bytes,
-    [property: Id(2)] Dictionary<string, int> HandlerRequests);
+    [property: Id(2)] Dictionary<string, int> HandlerRequests
+);
 
 [GenerateSerializer]
 public sealed record FunctionRevisionCoordinatorSnapshot(
@@ -445,7 +455,8 @@ public sealed record FunctionRevisionCoordinatorSnapshot(
     [property: Id(6)] FunctionActivationIntent? ActivationIntent,
     [property: Id(7)] FunctionQuiescingIntent? QuiescingIntent,
     [property: Id(8)] FunctionScaleIntent? PendingScaleIntent,
-    [property: Id(9)] FunctionScalerOwnershipToken? ScalerOwnership);
+    [property: Id(9)] FunctionScalerOwnershipToken? ScalerOwnership
+);
 
 [GenerateSerializer]
 public sealed record FunctionActivationIntent(
@@ -455,13 +466,15 @@ public sealed record FunctionActivationIntent(
     [property: Id(3)] int DesiredReplicas,
     [property: Id(4)] int? PreviousDesiredReplicas,
     [property: Id(5)] DateTimeOffset StartedAtUtc,
-    [property: Id(6)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(6)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public sealed record FunctionActivationCompletion(
     [property: Id(0)] string LeaseId,
     [property: Id(1)] long Generation,
-    [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome);
+    [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome
+);
 
 [GenerateSerializer]
 public sealed record FunctionQuiescingIntent(
@@ -469,7 +482,8 @@ public sealed record FunctionQuiescingIntent(
     [property: Id(1)] string LeaseId,
     [property: Id(2)] long Epoch,
     [property: Id(3)] DateTimeOffset StartedAtUtc,
-    [property: Id(4)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(4)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public sealed record FunctionScaleIntent(
@@ -480,45 +494,38 @@ public sealed record FunctionScaleIntent(
     [property: Id(4)] int? PreviousDesiredReplicas,
     [property: Id(5)] long? QuiescingEpoch,
     [property: Id(6)] DateTimeOffset StartedAtUtc,
-    [property: Id(7)] DateTimeOffset ExpiresAtUtc);
+    [property: Id(7)] DateTimeOffset ExpiresAtUtc
+);
 
 [GenerateSerializer]
 public sealed record FunctionScaleCompletion(
     [property: Id(0)] string IntentId,
     [property: Id(1)] long Generation,
-    [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome);
+    [property: Id(2)] FunctionCoordinationCompletionOutcome Outcome
+);
 
 [GenerateSerializer]
 public sealed class FunctionRevisionCoordinatorState
 {
     public const int CurrentSchemaVersion = 2;
 
-    [Id(0)]
-    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+    [Id(0)] public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
-    [Id(1)]
-    public long Generation { get; set; }
+    [Id(1)] public long Generation { get; set; }
 
-    [Id(2)]
-    public int? DesiredReplicas { get; set; }
+    [Id(2)] public int? DesiredReplicas { get; set; }
 
-    [Id(3)]
-    public FunctionActivationIntent? ActivationIntent { get; set; }
+    [Id(3)] public FunctionActivationIntent? ActivationIntent { get; set; }
 
-    [Id(4)]
-    public FunctionActivationCompletion? LastActivationCompletion { get; set; }
+    [Id(4)] public FunctionActivationCompletion? LastActivationCompletion { get; set; }
 
-    [Id(5)]
-    public FunctionQuiescingIntent? QuiescingIntent { get; set; }
+    [Id(5)] public FunctionQuiescingIntent? QuiescingIntent { get; set; }
 
-    [Id(6)]
-    public FunctionScaleIntent? PendingScaleIntent { get; set; }
+    [Id(6)] public FunctionScaleIntent? PendingScaleIntent { get; set; }
 
-    [Id(7)]
-    public FunctionScaleCompletion? LastScaleCompletion { get; set; }
+    [Id(7)] public FunctionScaleCompletion? LastScaleCompletion { get; set; }
 
-    [Id(8)]
-    public bool AdmissionFenceRequired { get; set; }
+    [Id(8)] public bool AdmissionFenceRequired { get; set; }
 
     public FunctionRevisionCoordinatorState Copy() => new()
     {
@@ -530,7 +537,7 @@ public sealed class FunctionRevisionCoordinatorState
         QuiescingIntent = QuiescingIntent,
         PendingScaleIntent = PendingScaleIntent,
         LastScaleCompletion = LastScaleCompletion,
-        AdmissionFenceRequired = AdmissionFenceRequired
+        AdmissionFenceRequired = AdmissionFenceRequired,
     };
 }
 
@@ -578,9 +585,8 @@ internal static class FunctionCoordinationKeyCodec
         components = [];
         if (string.IsNullOrWhiteSpace(value))
             return false;
-        var parts = value.Split('.', StringSplitOptions.None);
-        if (parts.Length != componentCount + 1 ||
-            !string.Equals(parts[0], expectedPrefix, StringComparison.Ordinal))
+        var parts = value.Split('.');
+        if (parts.Length != componentCount + 1 || !string.Equals(parts[0], expectedPrefix, StringComparison.Ordinal))
             return false;
 
         try
@@ -595,11 +601,10 @@ internal static class FunctionCoordinationKeyCodec
         }
     }
 
-    private static string EncodeComponent(string value) =>
-        Convert.ToBase64String(Utf8.GetBytes(value))
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+    private static string EncodeComponent(string value) => Convert.ToBase64String(Utf8.GetBytes(value))
+        .TrimEnd('=')
+        .Replace('+', '-')
+        .Replace('/', '_');
 
     private static string DecodeComponent(string value)
     {
@@ -609,7 +614,7 @@ internal static class FunctionCoordinationKeyCodec
             0 => base64,
             2 => base64 + "==",
             3 => base64 + "=",
-            _ => throw new FormatException("Invalid Base64Url component.")
+            _ => throw new FormatException("Invalid Base64Url component."),
         };
         return Utf8.GetString(Convert.FromBase64String(base64));
     }

@@ -5,9 +5,6 @@ using Pole.Database;
 using Pole.Database.Observation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -24,56 +21,51 @@ internal sealed class MongoResourceDeploymentObservationStore(
     IMongoCollection<ResourceDeployment> deployments,
     MongoRunTransaction transactions,
     FenceDeploymentTargetObservation fenceTarget,
-    StoreOutboxWrites storeOutboxWrites) : IResourceDeploymentObservationStore
+    StoreOutboxWrites storeOutboxWrites
+) : IResourceDeploymentObservationStore
 {
     internal const string ControlsCollection = "ResourceDeploymentObservationControls";
     internal const string DemandsCollection = "ResourceDeploymentObservationDemands";
     internal const string SnapshotsCollection = "ResourceDeploymentObservationSnapshots";
 
-    private readonly MongoObservationStore<
-        ResourceDeploymentObservationContext,
-        ObservationControlDocument,
-        ObservationDemandDocument,
-        ObservationSnapshotDocument> core = new(controls,
-        demands,
-        snapshots,
-        transactions,
-        new Definition(deployments, fenceTarget, storeOutboxWrites));
+    private readonly
+        MongoObservationStore<ResourceDeploymentObservationContext, ObservationControlDocument,
+            ObservationDemandDocument, ObservationSnapshotDocument> core = new(
+            controls,
+            demands,
+            snapshots,
+            transactions,
+            new Definition(deployments, fenceTarget, storeOutboxWrites));
 
-    public Task<ObservationMutationOutcome> PutDemandAsync(ObservationDemand demand,
+    public Task<ObservationMutationOutcome> PutDemandAsync(
+        ObservationDemand demand,
         ResourceDeploymentObservationContext context,
         CancellationToken ct = default) => PutOrRenewAsync(demand, context, ct);
 
-    public Task<ObservationMutationOutcome> RenewDemandAsync(ObservationDemand demand,
+    public Task<ObservationMutationOutcome> RenewDemandAsync(
+        ObservationDemand demand,
         ResourceDeploymentObservationContext context,
         CancellationToken ct = default) => PutOrRenewAsync(demand, context, ct);
 
-    private async Task<ObservationMutationOutcome> PutOrRenewAsync(ObservationDemand demand,
-        ResourceDeploymentObservationContext context,
-        CancellationToken ct)
-    {
-        Validate(context);
-        Validate(demand.Identity);
-        if (demand.Identity.TenantId != context.Deployment.TenantId ||
-            demand.Identity.DeploymentId != context.Deployment.Id)
-            throw new ArgumentException("Observation demand must belong to its context.", nameof(demand));
-        return Mutation(await core.PutDemandAsync(Demand(demand.Identity, demand.ExpiresAtUtc), context, ct));
-    }
-
-    public async Task<ObservationMutationOutcome> RemoveDemandAsync(ObservationDemandIdentity identity,
+    public async Task<ObservationMutationOutcome> RemoveDemandAsync(
+        ObservationDemandIdentity identity,
         CancellationToken ct = default)
     {
         Validate(identity);
         return Mutation(await core.RemoveDemandAsync(DemandIdentity(identity), ct));
     }
 
-    public async Task<ObservationDemandPage> ScanDemandsAsync(string? after, int limit, CancellationToken ct = default)
+    public async Task<ObservationDemandPage> ScanDemandsAsync(
+        string? after,
+        int limit,
+        CancellationToken ct = default)
     {
         ValidateLimit(limit);
         if (after is not null)
             ValidateObjectId(after);
         var page = await core.ScanAsync(after, limit, ct);
-        return new(page.Items.Select(item => new ObservationIdentity(item.TenantId!, item.Id)).ToArray(),
+        return new ObservationDemandPage(
+            page.Items.Select(item => new ObservationIdentity(item.TenantId!, item.Id)).ToArray(),
             page.NextCursor);
     }
 
@@ -83,27 +75,29 @@ internal sealed class MongoResourceDeploymentObservationStore(
         return core.ReapAsync(limit, ct);
     }
 
-    public async Task<ObservationLeaseOutcome> ClaimLeaseAsync(ResourceDeploymentObservationContext context,
+    public async Task<ObservationLeaseOutcome> ClaimLeaseAsync(
+        ResourceDeploymentObservationContext context,
         string instanceId,
         CancellationToken ct = default)
     {
         Validate(context);
         ValidateOpaque(instanceId);
-        return (await core.ClaimAsync(context, instanceId, ct)) switch
+        return await core.ClaimAsync(context, instanceId, ct) switch
         {
-            MongoObservationSuccess<ObservationControlDocument> { Value: var control } =>
-                new ObservationOwnership(
-                new(context.Deployment.TenantId,
+            MongoObservationSuccess<ObservationControlDocument> { Value: var control } => new ObservationOwnership(
+                new ObservationLease(
+                    context.Deployment.TenantId,
                     context.Deployment.Id,
                     instanceId,
                     control.Token!,
                     control.Epoch),
                 control.SourceControlVersion),
-            MongoObservationRejected rejection => Map(rejection)
+            MongoObservationRejected rejection => Map(rejection),
         };
     }
 
-    public async Task<ObservationMutationOutcome> RenewLeaseAsync(ObservationLease lease,
+    public async Task<ObservationMutationOutcome> RenewLeaseAsync(
+        ObservationLease lease,
         ResourceDeploymentObservationContext context,
         CancellationToken ct = default)
     {
@@ -111,14 +105,16 @@ internal sealed class MongoResourceDeploymentObservationStore(
         return Mutation(await core.RenewAsync(Lease(lease), context, ct));
     }
 
-    public async Task<ObservationMutationOutcome> ReleaseLeaseAsync(ObservationLease lease,
+    public async Task<ObservationMutationOutcome> ReleaseLeaseAsync(
+        ObservationLease lease,
         CancellationToken ct = default)
     {
         Validate(lease);
         return Mutation(await core.ReleaseAsync(Lease(lease), ct));
     }
 
-    public async Task<ObservationSourceStateOutcome> SetSourceStateAsync(ObservationLease lease,
+    public async Task<ObservationSourceStateOutcome> SetSourceStateAsync(
+        ObservationLease lease,
         ResourceDeploymentObservationContext context,
         long expectedSourceControlVersion,
         bool healthy,
@@ -130,19 +126,21 @@ internal sealed class MongoResourceDeploymentObservationStore(
             throw new ArgumentException("Healthy coverage requires a source identity.");
         if (bindingId is not null)
             ValidateOpaque(bindingId);
-        return (await core.SetSourceAsync(Lease(lease),
+        return await core.SetSourceAsync(
+                Lease(lease),
                 context,
                 expectedSourceControlVersion,
                 healthy ? bindingId : null,
-                ct)) switch
-        {
-            MongoObservationSuccess<ObservationControlDocument> { Value: var control } =>
-                new ObservationSourceState(control.SourceControlVersion),
-            MongoObservationRejected rejection => Map(rejection)
-        };
+                ct) switch
+            {
+                MongoObservationSuccess<ObservationControlDocument> { Value: var control } =>
+                    new ObservationSourceState(control.SourceControlVersion),
+                MongoObservationRejected rejection => Map(rejection),
+            };
     }
 
-    public async Task<ObservationSnapshotOutcome> TryCommitSnapshotAsync(ObservationLease lease,
+    public async Task<ObservationSnapshotOutcome> TryCommitSnapshotAsync(
+        ObservationLease lease,
         ResourceDeploymentObservationContext context,
         long sourceControlVersion,
         string bindingId,
@@ -155,39 +153,44 @@ internal sealed class MongoResourceDeploymentObservationStore(
             return new ObservationStoreRejected(ObservationStoreRejection.BindingChanged);
         var stored = ObservationValueMappings.Store(observation.Observation);
         var diagnostics = ObservationValueMappings.Store(observation.Diagnostics);
-        return (await core.CommitSnapshotAsync(Lease(lease),
+        return await core.CommitSnapshotAsync(
+                Lease(lease),
                 context,
                 sourceControlVersion,
                 bindingId,
-                control =>
-                    new ObservationSnapshotDocument(lease.DeploymentId,
-                        lease.TenantId,
-                        ObservationValueMappings.Pin(context),
-                        bindingId,
-                        sourceControlVersion,
-                        control.ObservationVersion,
-                        control.UpdatedAtUtc,
-                        stored,
-                        diagnostics,
-                        ObservationValueMappings.Fingerprint(stored, diagnostics),
-                        null),
-                ct)) switch
-        {
-            MongoObservationSuccess<ObservationSnapshotDocument> { Value: var document } =>
-                ObservationValueMappings.Load(document, context),
-            MongoObservationRejected rejection => Map(rejection)
-        };
+                control => new ObservationSnapshotDocument(
+                    lease.DeploymentId,
+                    lease.TenantId,
+                    ObservationValueMappings.Pin(context),
+                    bindingId,
+                    sourceControlVersion,
+                    control.ObservationVersion,
+                    control.UpdatedAtUtc,
+                    stored,
+                    diagnostics,
+                    ObservationValueMappings.Fingerprint(stored, diagnostics),
+                    null),
+                ct) switch
+            {
+                MongoObservationSuccess<ObservationSnapshotDocument> { Value: var document } => ObservationValueMappings
+                    .Load(document, context),
+                MongoObservationRejected rejection => Map(rejection),
+            };
     }
 
-    public async Task<ObservationControlState?> LoadControlAsync(ObservationIdentity identity,
+    public async Task<ObservationControlState?> LoadControlAsync(
+        ObservationIdentity identity,
         CancellationToken ct = default)
     {
         ValidateObjectId(identity.TenantId);
         ValidateObjectId(identity.DeploymentId);
-        var control = await core.LoadControlAsync(new(identity.DeploymentId, identity.TenantId), ct);
+        var control = await core.LoadControlAsync(
+            new MongoObservationScope(identity.DeploymentId, identity.TenantId),
+            ct);
         if (control is null)
             return null;
-        return new(control.Epoch,
+        return new ObservationControlState(
+            control.Epoch,
             control.SourceControlVersion,
             control.ObservationVersion,
             control.SourceHealthy,
@@ -201,136 +204,55 @@ internal sealed class MongoResourceDeploymentObservationStore(
     {
         Validate(context);
         var document = await core.LoadFreshAsync(context, ct);
-        return document is null
-            ? null
-            : ObservationValueMappings.Load(document, context);
+        return document is null ? null : ObservationValueMappings.Load(document, context);
+    }
+
+    private async Task<ObservationMutationOutcome> PutOrRenewAsync(
+        ObservationDemand demand,
+        ResourceDeploymentObservationContext context,
+        CancellationToken ct)
+    {
+        Validate(context);
+        Validate(demand.Identity);
+        if (demand.Identity.TenantId != context.Deployment.TenantId ||
+            demand.Identity.DeploymentId != context.Deployment.Id)
+            throw new ArgumentException("Observation demand must belong to its context.", nameof(demand));
+        return Mutation(await core.PutDemandAsync(Demand(demand.Identity, demand.ExpiresAtUtc), context, ct));
     }
 
     private static MongoObservationDemand Demand(ObservationDemandIdentity identity, DateTimeOffset expires) =>
         new(DemandIdentity(identity), expires);
 
-    private static MongoObservationDemandIdentity DemandIdentity(ObservationDemandIdentity identity) =>
-        new(new(identity.DeploymentId, identity.TenantId),
-            identity.SubscriptionId,
-            identity.ConnectionId,
-            identity.SessionId);
+    private static MongoObservationDemandIdentity DemandIdentity(ObservationDemandIdentity identity) => new(
+        new MongoObservationScope(identity.DeploymentId, identity.TenantId),
+        identity.SubscriptionId,
+        identity.ConnectionId,
+        identity.SessionId);
 
     private static MongoObservationLease Lease(ObservationLease lease) => new(
-        new(lease.DeploymentId, lease.TenantId),
+        new MongoObservationScope(lease.DeploymentId, lease.TenantId),
         lease.InstanceId,
         lease.Token,
         lease.Epoch);
 
     private static ObservationMutationOutcome Mutation<T>(MongoObservationOutcome<T> outcome)
         where T : notnull => outcome switch
-        {
-            MongoObservationSuccess<T> => new ObservationMutationAccepted(),
-            MongoObservationRejected rejection => Map(rejection)
-        };
-
-    private static ObservationStoreRejected Map(MongoObservationRejected rejection) => new(rejection.Reason switch
     {
-        MongoObservationRejection.Busy => ObservationStoreRejection.Busy,
-        MongoObservationRejection.NoDemand => ObservationStoreRejection.NoDemand,
-        MongoObservationRejection.LeaseLost => ObservationStoreRejection.LeaseLost,
-        MongoObservationRejection.Superseded => ObservationStoreRejection.Superseded,
-        MongoObservationRejection.SourceChanged => ObservationStoreRejection.BindingChanged,
-        MongoObservationRejection.TargetUnavailable => ObservationStoreRejection.TargetUnavailable,
-        _ => throw new ArgumentOutOfRangeException(nameof(rejection))
-    });
+        MongoObservationSuccess<T> => new ObservationMutationAccepted(),
+        MongoObservationRejected rejection => Map(rejection),
+    };
 
-    private sealed class Definition(
-        IMongoCollection<ResourceDeployment> deployments,
-        FenceDeploymentTargetObservation fenceTarget,
-        StoreOutboxWrites storeOutboxWrites) : IMongoObservationDefinition<
-            ResourceDeploymentObservationContext,
-            ObservationControlDocument,
-            ObservationDemandDocument,
-            ObservationSnapshotDocument>
-    {
-        public MongoObservationScope Scope(ResourceDeploymentObservationContext context) =>
-            new(context.Deployment.Id, context.Deployment.TenantId);
-
-        public MongoObservationScope ScopeOf(ObservationControlDocument control) => new(control.Id, control.TenantId);
-        public Expression<Func<ObservationDemandDocument, string>> DemandSubject => item => item.DeploymentId;
-        public Expression<Func<ObservationDemandDocument, string>> DemandTenant => item => item.TenantId;
-        public Expression<Func<ObservationControlDocument, string?>> Source => item => item.BindingId;
-        public Expression<Func<ObservationSnapshotDocument, string>> SnapshotSource => item => item.BindingId;
-
-        public FilterDefinition<ObservationControlDocument> ControlScope(MongoObservationScope scope) =>
-            ObservationStoreFilters.ForControlScope(scope);
-
-        public FilterDefinition<ObservationDemandDocument> DemandScope(MongoObservationScope scope) =>
-            ObservationStoreFilters.ForDemandScope(scope);
-
-        public FilterDefinition<ObservationSnapshotDocument> SnapshotScope(MongoObservationScope scope) =>
-            ObservationStoreFilters.ForSnapshotScope(scope);
-
-        public FilterDefinition<ObservationControlDocument> ControlPin(ResourceDeploymentObservationContext context) =>
-            ObservationStoreFilters.ForControlContext(context);
-
-        public UpdateDefinition<ObservationDemandDocument> DemandIdentityUpdate(MongoObservationScope scope) =>
-            Builders<ObservationDemandDocument>.Update.Set(item => item.DeploymentId, scope.Id)
-                .Set(item => item.TenantId, scope.TenantId!);
-
-        public ObservationControlDocument CreateControl(ResourceDeploymentObservationContext context) => new(
-            context.Deployment.Id,
-            context.Deployment.TenantId,
-            ObservationValueMappings.Pin(context),
-            Epoch: 0,
-            SourceControlVersion: 0,
-            ObservationVersion: 0,
-            DemandFence: 0,
-            InstanceId: null,
-            Token: null,
-            LeaseExpiresAtUtc: DateTime.UnixEpoch,
-            SourceHealthy: false,
-            BindingId: null,
-            IdleSinceUtc: null,
-            UpdatedAtUtc: DateTime.UnixEpoch);
-
-        public bool HasPin(ObservationControlDocument control, ResourceDeploymentObservationContext context) =>
-            control.Pin == ObservationValueMappings.Pin(context);
-
-        public UpdateDefinition<ObservationControlDocument> PinUpdate(ResourceDeploymentObservationContext context) =>
-            Builders<ObservationControlDocument>.Update.Set(item => item.Pin, ObservationValueMappings.Pin(context));
-
-        public FilterDefinition<ObservationSnapshotDocument> SnapshotPin(
-            ResourceDeploymentObservationContext context) =>
-            ObservationStoreFilters.ForSnapshotContext(context);
-        public async Task<MongoObservationRejected?> FenceAsync(ResourceDeploymentObservationContext context,
-            IClientSessionHandle session,
-            CancellationToken ct)
+    private static ObservationStoreRejected Map(MongoObservationRejected rejection) => new(
+        rejection.Reason switch
         {
-            var target =
-                await fenceTarget(new(context.Deployment.Placement.DeploymentTargetId, context.TargetConnectionVersion),
-                    session,
-                    ct);
-            if (target is DeploymentTargetObservationFenceRejected)
-                return new(MongoObservationRejection.TargetUnavailable);
-            var fenced = await deployments.UpdateOneAsync(session,
-                ResourceDeploymentFilters.ForCurrentObservation(context),
-                Builders<ResourceDeployment>.Update.Inc(item => item.ReferenceFence, 1),
-                cancellationToken: ct);
-            return fenced.ModifiedCount == 1 ? null : new(MongoObservationRejection.Superseded);
-        }
-
-        public Task PublishAsync(ObservationControlDocument control,
-            IClientSessionHandle session,
-            CancellationToken ct) =>
-            storeOutboxWrites(session,
-                [
-                    OutboxWrite.Create(new ResourceDeploymentObservationChangedEvent(
-                            control.Id,
-                            control.Pin.ResourceId,
-                            control.Pin.ResourceGroupId,
-                            control.Pin.DeploymentRevision,
-                            control.Pin.DesiredGeneration,
-                            control.ObservationVersion)
-                        { EventCore = EventCore.Create(control.TenantId) })
-                ],
-                ct);
-    }
+            MongoObservationRejection.Busy => ObservationStoreRejection.Busy,
+            MongoObservationRejection.NoDemand => ObservationStoreRejection.NoDemand,
+            MongoObservationRejection.LeaseLost => ObservationStoreRejection.LeaseLost,
+            MongoObservationRejection.Superseded => ObservationStoreRejection.Superseded,
+            MongoObservationRejection.SourceChanged => ObservationStoreRejection.BindingChanged,
+            MongoObservationRejection.TargetUnavailable => ObservationStoreRejection.TargetUnavailable,
+            _ => throw new ArgumentOutOfRangeException(nameof(rejection)),
+        });
 
     private static void Validate(ResourceDeploymentObservationContext context)
     {
@@ -384,5 +306,105 @@ internal sealed class MongoResourceDeploymentObservationStore(
     {
         if (limit is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(limit));
+    }
+
+    private sealed class Definition(
+        IMongoCollection<ResourceDeployment> deployments,
+        FenceDeploymentTargetObservation fenceTarget,
+        StoreOutboxWrites storeOutboxWrites
+    ) : IMongoObservationDefinition<ResourceDeploymentObservationContext, ObservationControlDocument,
+        ObservationDemandDocument, ObservationSnapshotDocument>
+    {
+        public MongoObservationScope Scope(ResourceDeploymentObservationContext context) => new(
+            context.Deployment.Id,
+            context.Deployment.TenantId);
+
+        public MongoObservationScope ScopeOf(ObservationControlDocument control) => new(control.Id, control.TenantId);
+        public Expression<Func<ObservationDemandDocument, string>> DemandSubject => item => item.DeploymentId;
+        public Expression<Func<ObservationDemandDocument, string>> DemandTenant => item => item.TenantId;
+        public Expression<Func<ObservationControlDocument, string?>> Source => item => item.BindingId;
+        public Expression<Func<ObservationSnapshotDocument, string>> SnapshotSource => item => item.BindingId;
+
+        public FilterDefinition<ObservationControlDocument> ControlScope(MongoObservationScope scope) =>
+            ObservationStoreFilters.ForControlScope(scope);
+
+        public FilterDefinition<ObservationDemandDocument> DemandScope(MongoObservationScope scope) =>
+            ObservationStoreFilters.ForDemandScope(scope);
+
+        public FilterDefinition<ObservationSnapshotDocument> SnapshotScope(MongoObservationScope scope) =>
+            ObservationStoreFilters.ForSnapshotScope(scope);
+
+        public FilterDefinition<ObservationControlDocument> ControlPin(ResourceDeploymentObservationContext context) =>
+            ObservationStoreFilters.ForControlContext(context);
+
+        public UpdateDefinition<ObservationDemandDocument> DemandIdentityUpdate(MongoObservationScope scope) =>
+            Builders<ObservationDemandDocument>.Update
+                .Set(item => item.DeploymentId, scope.Id)
+                .Set(item => item.TenantId, scope.TenantId!);
+
+        public ObservationControlDocument CreateControl(ResourceDeploymentObservationContext context) => new(
+            context.Deployment.Id,
+            context.Deployment.TenantId,
+            ObservationValueMappings.Pin(context),
+            Epoch: 0,
+            SourceControlVersion: 0,
+            ObservationVersion: 0,
+            DemandFence: 0,
+            InstanceId: null,
+            Token: null,
+            LeaseExpiresAtUtc: DateTime.UnixEpoch,
+            SourceHealthy: false,
+            BindingId: null,
+            IdleSinceUtc: null,
+            UpdatedAtUtc: DateTime.UnixEpoch);
+
+        public bool HasPin(ObservationControlDocument control, ResourceDeploymentObservationContext context) =>
+            control.Pin == ObservationValueMappings.Pin(context);
+
+        public UpdateDefinition<ObservationControlDocument> PinUpdate(ResourceDeploymentObservationContext context) =>
+            Builders<ObservationControlDocument>.Update.Set(item => item.Pin, ObservationValueMappings.Pin(context));
+
+        public FilterDefinition<ObservationSnapshotDocument> SnapshotPin(
+            ResourceDeploymentObservationContext context) => ObservationStoreFilters.ForSnapshotContext(context);
+
+        public async Task<MongoObservationRejected?> FenceAsync(
+            ResourceDeploymentObservationContext context,
+            IClientSessionHandle session,
+            CancellationToken ct)
+        {
+            var target = await fenceTarget(
+                new DeploymentTargetObservationFenceRequest(
+                    context.Deployment.Placement.DeploymentTargetId,
+                    context.TargetConnectionVersion),
+                session,
+                ct);
+            if (target is DeploymentTargetObservationFenceRejected)
+                return new MongoObservationRejected(MongoObservationRejection.TargetUnavailable);
+            var fenced = await deployments.UpdateOneAsync(
+                session,
+                ResourceDeploymentFilters.ForCurrentObservation(context),
+                Builders<ResourceDeployment>.Update.Inc(item => item.ReferenceFence, 1),
+                cancellationToken: ct);
+            return fenced.ModifiedCount == 1
+                ? null
+                : new MongoObservationRejected(MongoObservationRejection.Superseded);
+        }
+
+        public Task PublishAsync(
+            ObservationControlDocument control,
+            IClientSessionHandle session,
+            CancellationToken ct) => storeOutboxWrites(
+            session,
+            [
+                OutboxWrite.Create(
+                    new ResourceDeploymentObservationChangedEvent(
+                        control.Id,
+                        control.Pin.ResourceId,
+                        control.Pin.ResourceGroupId,
+                        control.Pin.DeploymentRevision,
+                        control.Pin.DesiredGeneration,
+                        control.ObservationVersion) { EventCore = EventCore.Create(control.TenantId) }),
+            ],
+            ct);
     }
 }

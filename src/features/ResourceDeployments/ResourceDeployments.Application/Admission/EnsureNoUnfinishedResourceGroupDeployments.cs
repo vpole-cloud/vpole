@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -7,18 +6,16 @@ using Pole.Features.ResourceDeployments.Domain;
 namespace Pole.Features.ResourceDeployments.Application.Admission;
 
 internal sealed class MongoEnsureNoUnfinishedResourceGroupDeployments(
-    IMongoCollection<ResourceDeployment> resourceDeployments)
+    IMongoCollection<ResourceDeployment> resourceDeployments
+)
 {
     public async Task<EnsureResourceGroupDeploymentsSettledOutcome> InvokeAsync(
         EnsureNoUnfinishedResourceGroupDeploymentsRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment reference checks");
-        var hasUnfinished = await resourceDeployments
-            .Find(
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment reference checks");
+        var hasUnfinished = await resourceDeployments.Find(
                 session,
                 ResourceDeploymentFilters.UnfinishedForResourceGroup(request.TenantId, request.ResourceGroupId))
             .Limit(1)

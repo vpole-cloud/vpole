@@ -1,3 +1,4 @@
+using k8s;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
@@ -7,7 +8,8 @@ namespace Pole.Features.DeploymentTargets.Application.Validation;
 public sealed class DeploymentTargetValidationService(
     CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient,
     ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<DeploymentTargetProbeObservation> ProbeStoredConnectionAsync(
         DeploymentTarget target,
@@ -18,14 +20,12 @@ public sealed class DeploymentTargetValidationService(
             target.Connection,
             cancellationToken);
         if (clientResult is StoredDeploymentTargetConnectionUnavailable)
-        {
             return DegradedObservation(
                 target,
                 "StoredConnectionUnavailable",
                 "The stored Kubernetes connection could not be loaded.");
-        }
 
-        var client = (k8s.IKubernetes)clientResult.Value;
+        var client = (IKubernetes)clientResult.Value;
         DeploymentTargetProbeObservation observation;
         using (client)
         {
@@ -36,11 +36,10 @@ public sealed class DeploymentTargetValidationService(
                 cancellationToken);
         }
 
-        return observation.ClusterIdentity is not null &&
-               !string.Equals(
-                   target.ClusterIdentity,
-                   observation.ClusterIdentity,
-                   StringComparison.Ordinal)
+        return observation.ClusterIdentity is not null && !string.Equals(
+            target.ClusterIdentity,
+            observation.ClusterIdentity,
+            StringComparison.Ordinal)
             ? DegradedObservation(
                 target,
                 "ClusterIdentityMismatch",
@@ -52,14 +51,12 @@ public sealed class DeploymentTargetValidationService(
         DeploymentTarget target,
         string failureCode,
         string failureMessage) => new(
-            ClusterIdentity: null,
-            DeploymentTargetHealth.Degraded(
-                target.Connection.Version,
-                DeploymentTargetClock.UtcNowAfter(
-                    timeProvider,
-                    target.Health.LastHealthyAtUtc),
-                target.Health.LastHealthyAtUtc,
-                failureCode,
-                failureMessage),
-            DeploymentTargetCapabilities.Unknown(target.Connection.Version));
+        ClusterIdentity: null,
+        DeploymentTargetHealth.Degraded(
+            target.Connection.Version,
+            DeploymentTargetClock.UtcNowAfter(timeProvider, target.Health.LastHealthyAtUtc),
+            target.Health.LastHealthyAtUtc,
+            failureCode,
+            failureMessage),
+        DeploymentTargetCapabilities.Unknown(target.Connection.Version));
 }

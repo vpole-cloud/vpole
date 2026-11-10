@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
@@ -6,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using k8s;
 using k8s.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Kubernetes;
@@ -14,6 +14,7 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Functions.Protocol;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Features.Functions.Tests;
 
@@ -34,9 +35,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 {
                     Configuration = new FunctionConfiguration(
                         ImmutableDictionary<string, string>.Empty,
-                        ImmutableDictionary<string, FunctionSecretReference>.Empty.Add("TOKEN", reference))
-                }
-            }
+                        ImmutableDictionary<string, FunctionSecretReference>.Empty.Add("TOKEN", reference)),
+                },
+            },
         };
         using var handler = new DeploymentHandler(new V1Deployment());
         using var kubernetes = CreateKubernetes(handler);
@@ -47,16 +48,26 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             Assert.Equal(subject.App.Id, request.ConsumerId);
             Assert.Equal(subject.Placement.ResourceDeploymentId, request.DeploymentId);
             Assert.Equal(reference.Key, Assert.Single(request.References).Key);
-            return Task.FromResult<EnsureConsumerSecretProjectionsOutcome>(ready
-                ? new ConsumerSecretProjectionKeys(
-                    [new(reference.SecretId, reference.Key, "native-projection", "mapped-key", 1)])
-                : new ConsumerSecretProjectionPending(reference.SecretId));
+            return Task.FromResult<EnsureConsumerSecretProjectionsOutcome>(
+                ready
+                    ? new ConsumerSecretProjectionKeys(
+                    [
+                        new ConsumerSecretProjectionKey(
+                            reference.SecretId,
+                            reference.Key,
+                            "native-projection",
+                            "mapped-key",
+                            1),
+                    ])
+                    : new ConsumerSecretProjectionPending(reference.SecretId));
         });
         using var provider = services.BuildServiceProvider();
         var manager = new FunctionRevisionKubernetesManager(
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
-            ReadyBaseline, [], provider.GetRequiredService<IServiceScopeFactory>());
+            ReadyBaseline,
+            [],
+            provider.GetRequiredService<IServiceScopeFactory>());
 
         var result = await manager.ApplyAsync(subject);
         Assert.Equal(ready, result is FunctionRevisionKubernetesMutationCompleted);
@@ -109,8 +120,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         Assert.Equal(allowed, result is FunctionRevisionKubernetesMutationCompleted);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
         currentReadiness = NetworkPolicyReadiness.EnforcementRequired;
-        Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>(
-            (await manager.ApplyAsync(subject)).Value);
+        Assert.IsAssignableFrom<FunctionRevisionKubernetesOperationError>((await manager.ApplyAsync(subject)).Value);
         Assert.Equal(2, lookups);
         Assert.Equal(allowed ? 2 : 0, handler.PostRequests.Count);
     }
@@ -124,9 +134,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var manager = new FunctionRevisionKubernetesManager(
             new FixedKubernetesClientProvider(kubernetes),
             (id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested),
-(request, ct) =>
-                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-                    new RuntimeCellIngressBaselinePolicyUnavailable(request.RuntimeCellId)),
+            (request, ct) => Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                new RuntimeCellIngressBaselinePolicyUnavailable(request.RuntimeCellId)),
             [],
             new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
 
@@ -160,6 +169,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 Assert.IsType<FunctionRevisionKubernetesOperationError>(result.Value).Value);
             Assert.Contains("gateway source", unavailable.Message, StringComparison.Ordinal);
         }
+
         Assert.IsType<FunctionRevisionKubernetesMutationCompleted>(downscale.Value);
         Assert.Empty(handler.PostRequests);
         Assert.Single(handler.PutRequests);
@@ -202,8 +212,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         using var kubernetes = CreateKubernetes(handler);
         var manager = new FunctionRevisionKubernetesManager(
             new FixedKubernetesClientProvider(kubernetes),
-            (_, _) => throw new InvalidOperationException(
-                "Readiness lookup is forbidden for diagnostics/deletion."),
+            (_, _) => throw new InvalidOperationException("Readiness lookup is forbidden for diagnostics/deletion."),
             ReadyBaseline,
             [],
             new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
@@ -232,7 +241,8 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         Assert.Equal(3, body.RootElement.GetProperty("spec").GetProperty("replicas").GetInt32());
         Assert.Equal(
             "5",
-            body.RootElement.GetProperty("metadata")
+            body.RootElement
+                .GetProperty("metadata")
                 .GetProperty("annotations")
                 .GetProperty(FunctionRevisionInKubernetes.ScaleGenerationAnnotation)
                 .GetString());
@@ -251,7 +261,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var failure = result switch
         {
             FunctionRevisionKubernetesOperationError error => error,
-            FunctionRevisionKubernetesMutationCompleted => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
+            FunctionRevisionKubernetesMutationCompleted => throw new XunitException("Expected a scale rejection."),
         };
         Assert.True(failure is FunctionRevisionKubernetesOperationRejected);
         Assert.Empty(handler.PutRequests);
@@ -277,7 +287,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var provisioning = CreateSubject();
         var subject = provisioning with
         {
-            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow).Activate()
+            Revision = provisioning.Revision.MarkReady(DateTimeOffset.UtcNow).Activate(),
         };
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 1, generation: 4));
         using var kubernetes = CreateKubernetes(handler);
@@ -288,7 +298,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var failure = result switch
         {
             FunctionRevisionKubernetesOperationError error => error,
-            FunctionRevisionKubernetesMutationCompleted => throw new Xunit.Sdk.XunitException("Expected a scale rejection.")
+            FunctionRevisionKubernetesMutationCompleted => throw new XunitException("Expected a scale rejection."),
         };
         Assert.True(failure is FunctionRevisionKubernetesOperationRejected);
         Assert.Empty(handler.PutRequests);
@@ -300,15 +310,17 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
         {
-            ConflictsRemaining = 1
+            ConflictsRemaining = 1,
         };
         using var kubernetes = CreateKubernetes(handler);
         var baselineChecks = 0;
-        var manager = CreateManager(kubernetes, baseline: (request, ct) =>
-        {
-            baselineChecks++;
-            return ReadyBaseline(request, ct);
-        });
+        var manager = CreateManager(
+            kubernetes,
+            baseline: (request, ct) =>
+            {
+                baselineChecks++;
+                return ReadyBaseline(request, ct);
+            });
 
         var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
 
@@ -316,11 +328,13 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         Assert.Equal(2, handler.GetRequests);
         Assert.Equal(2, handler.PutRequests.Count);
         Assert.Equal(2, baselineChecks);
-        Assert.Equal(["17", "18"], handler.PutRequests.Select(request =>
-        {
-            using var body = JsonDocument.Parse(request.Body);
-            return body.RootElement.GetProperty("metadata").GetProperty("resourceVersion").GetString();
-        }));
+        Assert.Equal(
+            ["17", "18"],
+            handler.PutRequests.Select(request =>
+            {
+                using var body = JsonDocument.Parse(request.Body);
+                return body.RootElement.GetProperty("metadata").GetProperty("resourceVersion").GetString();
+            }));
     }
 
     [Fact]
@@ -329,8 +343,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 1, generation: 0));
         using var kubernetes = CreateKubernetes(handler);
-        var manager = CreateManager(kubernetes, (_, _) =>
-            throw new InvalidOperationException("An unchanged scale does not require increase admission."));
+        var manager = CreateManager(
+            kubernetes,
+            (_, _) => throw new InvalidOperationException("An unchanged scale does not require increase admission."));
 
         var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
 
@@ -347,7 +362,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         using var handler = new DeploymentHandler(deployment)
         {
             ConflictsRemaining = 1,
-            OnConflict = () => deployment.Spec.Replicas = 1
+            OnConflict = () => deployment.Spec.Replicas = 1,
         };
         using var kubernetes = CreateKubernetes(handler);
         var manager = CreateManager(kubernetes);
@@ -369,23 +384,30 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
         {
             ConflictsRemaining = 1,
-            OnConflict = () => revoked = true
+            OnConflict = () => revoked = true,
         };
         using var kubernetes = CreateKubernetes(handler);
         var targetChecks = 0;
         var baselineChecks = 0;
-        var manager = CreateManager(kubernetes, (id, _) =>
-        {
-            targetChecks++;
-            return LookupTarget(id, revoked && !revokeBaseline
-                ? NetworkPolicyReadiness.EnforcementRequired : NetworkPolicyReadiness.EnforcementAttested);
-        }, (_, _) =>
-        {
-            baselineChecks++;
-            return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(revoked && revokeBaseline
-                ? new RuntimeCellIngressBaselineNotReady(subject.Placement.RuntimeCellId)
-                : new RuntimeCellIngressBaselineReady());
-        });
+        var manager = CreateManager(
+            kubernetes,
+            (id, _) =>
+            {
+                targetChecks++;
+                return LookupTarget(
+                    id,
+                    revoked && !revokeBaseline
+                        ? NetworkPolicyReadiness.EnforcementRequired
+                        : NetworkPolicyReadiness.EnforcementAttested);
+            },
+            (_, _) =>
+            {
+                baselineChecks++;
+                return Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
+                    revoked && revokeBaseline
+                        ? new RuntimeCellIngressBaselineNotReady(subject.Placement.RuntimeCellId)
+                        : new RuntimeCellIngressBaselineReady());
+            });
 
         var result = await manager.ScaleProvisioningAsync(subject, replicas: 1);
 
@@ -403,7 +425,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
         {
-            ConflictsRemaining = 10
+            ConflictsRemaining = 10,
         };
         using var kubernetes = CreateKubernetes(handler);
         var manager = CreateManager(kubernetes);
@@ -425,7 +447,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         using var cancellation = new CancellationTokenSource();
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
         {
-            ConflictsRemaining = 10
+            ConflictsRemaining = 10,
         };
         handler.OnConflict = () =>
         {
@@ -450,7 +472,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var subject = CreateSubject();
         using var handler = new DeploymentHandler(Deployment(subject, replicas: 0, generation: 0))
         {
-            PutFailureStatus = status
+            PutFailureStatus = status,
         };
         using var kubernetes = CreateKubernetes(handler);
         var manager = CreateManager(kubernetes);
@@ -466,43 +488,45 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
     private static FunctionRevisionKubernetesManager CreateManager(
         IKubernetes kubernetes,
         LookupDeploymentTarget? lookup = null,
-        EnsureRuntimeCellIngressBaseline? baseline = null) =>
-        new(
-            new FixedKubernetesClientProvider(kubernetes),
-            lookup ?? ((id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested)),
-            baseline ?? ReadyBaseline,
-            Array.Empty<IFunctionAgentTrustBundleProvider>(),
-            new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
+        EnsureRuntimeCellIngressBaseline? baseline = null) => new(
+        new FixedKubernetesClientProvider(kubernetes),
+        lookup ?? ((id, ct) => LookupTarget(id, NetworkPolicyReadiness.EnforcementAttested)),
+        baseline ?? ReadyBaseline,
+        Array.Empty<IFunctionAgentTrustBundleProvider>(),
+        new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>());
 
     private static Task<EnsureRuntimeCellIngressBaselineOutcome> ReadyBaseline(
         EnsureRuntimeCellIngressBaselineRequest request,
         CancellationToken cancellationToken) =>
-        Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-            new RuntimeCellIngressBaselineReady());
+        Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(new RuntimeCellIngressBaselineReady());
 
     private static Task<LookupDeploymentTargetOutcome> LookupTarget(
         string id,
         NetworkPolicyReadiness readiness,
-        bool gatewaySource = true) =>
-        Task.FromResult<LookupDeploymentTargetOutcome>(
-            new LookupDeploymentTargetOutcome(new DeploymentTargetLookupDto(
+        bool gatewaySource = true) => Task.FromResult(
+        new LookupDeploymentTargetOutcome(
+            new DeploymentTargetLookupDto(
                 id,
                 "Target",
                 "cluster",
                 "InCluster",
                 1,
-                new(1, null, new DeploymentTargetNetworkSourcesDto(
-                    gatewaySource
-                        ? ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty.Add(
-                            "functions/gateway", new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
-                        : ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
+                new DeploymentTargetWorkloadConfigurationLookupDto(
+                    1,
+                    null,
+                    new DeploymentTargetNetworkSourcesDto(
+                        gatewaySource
+                            ? ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty.Add(
+                                "functions/gateway",
+                                new DeploymentTargetCidrNetworkSourceDto("192.0.2.9/32"))
+                            : ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
                 1,
                 true,
                 true,
                 false,
                 "Healthy",
-        TechnicalName: "test-target",
-        NetworkPolicy: new(
+                TechnicalName: "test-target",
+                NetworkPolicy: new DeploymentTargetNetworkPolicyDto(
                     NetworkPolicyEnforcementStatus.Unknown,
                     readiness,
                     NetworkPolicyReason.EnforcementNotEstablished,
@@ -510,10 +534,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                     NetworkPolicyEvidenceSource.OperatorAttestation,
                     false))));
 
-    private static Kubernetes CreateKubernetes(DelegatingHandler handler) =>
-        new(
-            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
-            handler);
+    private static Kubernetes CreateKubernetes(DelegatingHandler handler) => new(
+        new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+        handler);
 
     private static V1Deployment Deployment(
         FunctionRevisionInKubernetes subject,
@@ -523,34 +546,26 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         var deployment = subject.ToDeployment();
         deployment.Metadata.ResourceVersion = "17";
         deployment.Spec.Replicas = replicas;
-        deployment.Metadata.Annotations![FunctionRevisionInKubernetes.ScaleGenerationAnnotation] =
-            generation.ToString(CultureInfo.InvariantCulture);
+        deployment.Metadata.Annotations![FunctionRevisionInKubernetes.ScaleGenerationAnnotation]
+            = generation.ToString(CultureInfo.InvariantCulture);
         return deployment;
     }
 
     private static FunctionRevisionInKubernetes CreateSubject()
     {
         var spec = new FunctionRevisionSpecInput(
-            new FunctionImage("registry.example", "team/functions", "v1",
-                Digest: null,
-                PullSecretName: null),
+            new FunctionImage("registry.example", "team/functions", "v1", Digest: null, PullSecretName: null),
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
                 ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
+            new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
             new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
             [
                 new FunctionHandlerSpec(
                     "webhook",
                     4,
-                    new HttpFunctionTriggerSpec(
-                        string.Empty,
-                        "orders/{id}",
-                        ["POST"],
-                        FunctionExposure.Public))
+                    new HttpFunctionTriggerSpec("", "orders/{id}", ["POST"], FunctionExposure.Public)),
             ]);
         var created = FunctionAppFactory.Create(
             "tenant-1",
@@ -569,7 +584,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
         {
             Id = "507f1f77bcf86cd799439012",
             FunctionAppId = app.Id,
-            RevisionNumber = 3
+            RevisionNumber = 3,
         };
         return new FunctionRevisionInKubernetes(
             app,
@@ -584,25 +599,27 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
 
     private sealed record RecordedPut(
         string Path,
-        string Body);
+        string Body
+    );
 
-    private sealed class FixedKubernetesClientProvider(IKubernetes kubernetes) : IKubernetesClientProvider
+    private sealed class FixedKubernetesClientProvider(
+        IKubernetes kubernetes
+    ) : IKubernetesClientProvider
     {
-        public Task<IKubernetes> GetAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
+        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default) =>
             Task.FromResult(kubernetes);
 
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(kubernetes);
     }
 
-    private sealed class DeploymentHandler(V1Deployment deployment) : DelegatingHandler
+    private sealed class DeploymentHandler(
+        V1Deployment deployment
+    ) : DelegatingHandler
     {
         public List<RecordedPut> PutRequests { get; } = [];
         public List<string> PostRequests { get; } = [];
@@ -628,6 +645,7 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 PostRequests.Add(body);
                 return JsonResponse(request, body);
             }
+
             if (request.Method == HttpMethod.Delete)
             {
                 DeleteRequests++;
@@ -644,9 +662,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                 if (ConflictsRemaining > 0)
                 {
                     ConflictsRemaining--;
-                    deployment.Metadata.ResourceVersion =
-                        (int.Parse(deployment.Metadata.ResourceVersion, CultureInfo.InvariantCulture) + 1)
-                        .ToString(CultureInfo.InvariantCulture);
+                    deployment.Metadata.ResourceVersion
+                        = (int.Parse(deployment.Metadata.ResourceVersion, CultureInfo.InvariantCulture) + 1).ToString(
+                            CultureInfo.InvariantCulture);
                     OnConflict?.Invoke();
                     return new HttpResponseMessage(HttpStatusCode.Conflict) { RequestMessage = request };
                 }
@@ -661,11 +679,11 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
             new(HttpStatusCode.OK)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
-                RequestMessage = request
+                RequestMessage = request,
             };
 
-        private static string Serialize(V1Deployment value) =>
-            JsonSerializer.Serialize(new
+        private static string Serialize(V1Deployment value) => JsonSerializer.Serialize(
+            new
             {
                 apiVersion = value.ApiVersion,
                 kind = value.Kind,
@@ -674,9 +692,9 @@ public sealed class FunctionRevisionKubernetesManagerScaleFenceTests
                     name = value.Metadata.Name,
                     @namespace = value.Metadata.NamespaceProperty,
                     resourceVersion = value.Metadata.ResourceVersion,
-                    annotations = value.Metadata.Annotations
+                    annotations = value.Metadata.Annotations,
                 },
-                spec = new { replicas = value.Spec.Replicas }
+                spec = new { replicas = value.Spec.Replicas },
             });
     }
 }

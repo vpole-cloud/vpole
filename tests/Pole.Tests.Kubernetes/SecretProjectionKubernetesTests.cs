@@ -2,22 +2,13 @@ using System.Net;
 using System.Text;
 using k8s;
 using k8s.Autorest;
-using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Testing;
 using Xunit;
@@ -29,37 +20,84 @@ namespace Pole.Tests.Kubernetes;
 [Trait(TestTraits.Concern, "Secrets")]
 [Trait(TestTraits.Scope, TestTraits.Scopes.SingleCluster)]
 [Trait(TestTraits.Feature, "Secrets")]
-public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fixture)
+public sealed class SecretProjectionKubernetesTests(
+    KubernetesClusterFixture fixture
+)
 {
     [KubernetesFact("api")]
     public async Task Native_projection_rotates_repairs_drift_and_recreation_then_deletes_after_revocation()
     {
         var namespaceName = fixture.Identity.CreateNamespaceName("secret-projection");
         await using var resources = new TestResourceScope("native Secret projection");
-        await OwnedNamespaceManager.CreateTrackedAsync(resources.CreateConcurrentCleanupGroup("owned namespace"),
-            fixture.Client, namespaceName, fixture.Identity);
+        await OwnedNamespaceManager.CreateTrackedAsync(
+            resources.CreateConcurrentCleanupGroup("owned namespace"),
+            fixture.Client,
+            namespaceName,
+            fixture.Identity);
         var tenantId = ObjectId.GenerateNewId().ToString();
         var deploymentId = ObjectId.GenerateNewId().ToString();
-        var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), "pole/postgresql", ObjectId.GenerateNewId().ToString(), new AllSecretDeployments(), []);
-        var secret = SecretFactory.CreateManaged(ObjectId.GenerateNewId().ToString(), tenantId, ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString(), "credentials", "live projection", ["username", "password"], binding, KubernetesSecretType.BasicAuthentication, DateTime.UtcNow);
-        SecretProjection Projection() => SecretProjectionFactory.Create(secret, binding, deploymentId, "cell", "selected-target", namespaceName);
+        var binding = SecretBinding.Create(
+            ObjectId.GenerateNewId().ToString(),
+            "pole/postgresql",
+            ObjectId.GenerateNewId().ToString(),
+            new AllSecretDeployments(),
+            []);
+        var secret = SecretFactory.CreateManaged(
+            ObjectId.GenerateNewId().ToString(),
+            tenantId,
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "credentials",
+            "live projection",
+            ["username", "password"],
+            binding,
+            KubernetesSecretType.BasicAuthentication,
+            DateTime.UtcNow);
+
+        SecretProjection Projection() => SecretProjectionFactory.Create(
+            secret,
+            binding,
+            deploymentId,
+            "cell",
+            "selected-target",
+            namespaceName);
+
         var services = new ServiceCollection().AddSecretsFeature();
         services.AddSingleton<IKubernetesClientProvider>(new SelectedClient(fixture.Client));
-        services.AddSingleton<LoadSecretById>((_, _, _) => Task.FromResult<Secret?>(secret));
-        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request,
-            _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-            new(deploymentId, binding.Consumer.ResourceId, "cell", "selected-target", namespaceName, 1, 1, null!,
-                ResourceDeploymentStatus.Pending, ResourceDeploymentDesiredOperation.Apply, secret.IsolationScopeId)));
+        services.AddSingleton<LoadSecretById>((
+            _, _,
+            _) => Task.FromResult<Secret?>(secret));
+        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request, _) =>
+            Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+                new ResourceDeploymentRuntimePlacementDto(
+                    deploymentId,
+                    binding.Consumer.ResourceId,
+                    "cell",
+                    "selected-target",
+                    namespaceName,
+                    1,
+                    1,
+                    null!,
+                    ResourceDeploymentStatus.Pending,
+                    ResourceDeploymentDesiredOperation.Apply,
+                    secret.IsolationScopeId)));
         using var provider = services.BuildServiceProvider();
         var target = provider.GetRequiredService<ISecretProjectionTarget>();
+
         async Task Apply(string password)
         {
             var projection = Projection();
-            var applied = await target.ApplyAsync(projection, _ => Task.FromResult<SecretProjectionManifestOutcome>(SecretProjectionManifest.Create(projection, binding,
-                new Dictionary<string, string> { ["username"] = "test-user", ["password"] = password })), default);
-            Xunit.Assert.IsType<SecretProjectionTargetSucceeded>(applied.Value);
+            var applied = await target.ApplyAsync(
+                projection,
+                _ => Task.FromResult<SecretProjectionManifestOutcome>(
+                    SecretProjectionManifest.Create(
+                        projection,
+                        binding,
+                        new Dictionary<string, string> { ["username"] = "test-user", ["password"] = password })),
+                default);
+            Assert.IsType<SecretProjectionTargetSucceeded>(applied.Value);
         }
+
         await Apply("initial-password");
         var initial = await fixture.Client.CoreV1.ReadNamespacedSecretAsync(Projection().KubernetesName, namespaceName);
         Assert.Equal("kubernetes.io/basic-auth", initial.Type);
@@ -73,32 +111,38 @@ public sealed class SecretProjectionKubernetesTests(KubernetesClusterFixture fix
         rotated.Metadata.Annotations["pole.io/secret-revision"] = "999999999";
         await fixture.Client.CoreV1.ReplaceNamespacedSecretAsync(rotated, rotated.Metadata.Name, namespaceName);
         await Apply("rotated-password");
-        var repaired = await fixture.Client.CoreV1.ReadNamespacedSecretAsync(Projection().KubernetesName, namespaceName);
+        var repaired
+            = await fixture.Client.CoreV1.ReadNamespacedSecretAsync(Projection().KubernetesName, namespaceName);
         Assert.Equal("rotated-password", Encoding.UTF8.GetString(repaired.Data["password"]));
         Assert.Equal(secret.Revision.ToString(), repaired.Metadata.Annotations["pole.io/secret-revision"]);
         await fixture.Client.CoreV1.DeleteNamespacedSecretAsync(repaired.Metadata.Name, namespaceName);
         await Apply("rotated-password");
-        var recreated = await fixture.Client.CoreV1.ReadNamespacedSecretAsync(Projection().KubernetesName, namespaceName);
+        var recreated
+            = await fixture.Client.CoreV1.ReadNamespacedSecretAsync(Projection().KubernetesName, namespaceName);
         Assert.NotEqual(initial.Metadata.Uid, recreated.Metadata.Uid);
         var revoked = Projection();
         secret = secret.Detach(binding.Id, DateTime.UtcNow);
         Assert.IsType<SecretProjectionTargetSucceeded>((await target.DeleteAsync(revoked, default)).Value);
-        var missing = await Assert.ThrowsAsync<HttpOperationException>(() => fixture.Client.CoreV1.ReadNamespacedSecretAsync(revoked.KubernetesName, namespaceName));
+        var missing = await Assert.ThrowsAsync<HttpOperationException>(() =>
+            fixture.Client.CoreV1.ReadNamespacedSecretAsync(revoked.KubernetesName, namespaceName));
         Assert.Equal(HttpStatusCode.NotFound, missing.Response.StatusCode);
     }
 
-    private sealed class SelectedClient(IKubernetes client) : IKubernetesClientProvider
+    private sealed class SelectedClient(
+        IKubernetes client
+    ) : IKubernetesClientProvider
     {
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {
             Assert.Equal("selected-target", id);
             return Task.FromResult(client);
         }
+
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
-        public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) => throw new InvalidOperationException("Ambient target is forbidden.");
+        public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) =>
+            throw new InvalidOperationException("Ambient target is forbidden.");
     }
 }

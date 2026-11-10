@@ -11,23 +11,30 @@ public sealed record SourceBuildJobListQuery(
     string? ConfigurationId,
     string? WebServiceId,
     int PageNumber,
-    int PageSize);
+    int PageSize
+);
 
 public sealed record SourceBuildJobPage(
     IReadOnlyList<SourceBuildJob> Items,
     long TotalCount,
     int PageNumber,
-    int PageSize)
+    int PageSize
+)
 {
-    public PaginatedResponse<T> Map<T>(Func<SourceBuildJob, T> map) =>
-        new(Items.Select(map).ToArray(), TotalCount, PageNumber, PageSize);
+    public PaginatedResponse<T> Map<T>(Func<SourceBuildJob, T> map) => new(
+        Items.Select(map).ToArray(),
+        TotalCount,
+        PageNumber,
+        PageSize);
 }
 
 public delegate Task<SourceBuildJobPage> LoadSourceBuildJobPage(
     SourceBuildJobListQuery query,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadSourceBuildJobPage(IMongoCollection<SourceBuildJob> jobs)
+internal sealed class MongoLoadSourceBuildJobPage(
+    IMongoCollection<SourceBuildJob> jobs
+)
 {
     public async Task<SourceBuildJobPage> InvokeAsync(
         SourceBuildJobListQuery query,
@@ -35,8 +42,7 @@ internal sealed class MongoLoadSourceBuildJobPage(IMongoCollection<SourceBuildJo
     {
         var filter = SourceBuildJobFilters.ForList(query);
         var totalCount = await jobs.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-        var items = await jobs
-            .Find(filter)
+        var items = await jobs.Find(filter)
             .SortByDescending(item => item.CreatedAtUtc)
             .ApplyPagination(query.PageNumber, query.PageSize)
             .ToListAsync(cancellationToken);

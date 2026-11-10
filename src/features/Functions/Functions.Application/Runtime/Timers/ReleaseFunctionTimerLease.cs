@@ -1,22 +1,17 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Application.Runtime.Timers;
 
-public delegate Task ReleaseFunctionTimerLease(
-    FunctionTimerState timer,
-    CancellationToken cancellationToken = default);
+public delegate Task ReleaseFunctionTimerLease(FunctionTimerState timer, CancellationToken cancellationToken = default);
 
 public sealed class MongoReleaseFunctionTimerLease(
     IMongoCollection<FunctionTimerState> functionTimerStates,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
-    public Task InvokeAsync(
-        FunctionTimerState timer,
-        CancellationToken cancellationToken = default)
+    public Task InvokeAsync(FunctionTimerState timer, CancellationToken cancellationToken = default)
     {
         if (timer.Lease is null)
             return Task.CompletedTask;

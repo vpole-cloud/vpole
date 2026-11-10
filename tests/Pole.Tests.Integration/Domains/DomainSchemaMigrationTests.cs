@@ -1,17 +1,17 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Domains.Migrations;
-using Pole.Features.Domains.Domain;
 using Pole.Dns;
-using Pole.Workloads;
+using Pole.Features.Domains.Domain;
+using Pole.Features.Domains.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class DomainSchemaMigrationTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
     public override Task DisposeAsync() => base.DisposeAsync();
@@ -36,7 +36,7 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture)
             targetId,
             "company",
             DnsName.Create("example.com"),
-            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId(),
+            "zone-" + ObjectId.GenerateNewId(),
             new TenantDomainZoneFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var binding = HostnameBindingFactory.CreateCustom(
             tenantId,
@@ -47,19 +47,20 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture)
             ObjectId.GenerateNewId().ToString(),
             "api",
             DnsName.Create(zone.Domain),
-            "binding-" + MongoDB.Bson.ObjectId.GenerateNewId(),
+            "binding-" + ObjectId.GenerateNewId(),
             new HostnameBindingFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         await new MongoDocumentContractTester<TenantDomainZone>(Fixture.Database, "TenantDomainZones")
             .AssertRejectsAsync(zone, document => document["Unexpected"] = true);
-        await new MongoDocumentContractTester<HostnameBinding>(Fixture.Database, "HostnameBindings")
-            .AssertRejectsAsync(binding, document => document["Unexpected"] = true);
+        await new MongoDocumentContractTester<HostnameBinding>(Fixture.Database, "HostnameBindings").AssertRejectsAsync(
+            binding,
+            document => document["Unexpected"] = true);
 
-        var zoneIndexes = (await Fixture.Database.GetCollection<BsonDocument>("TenantDomainZones")
-                .Indexes.List().ToListAsync())
+        var zoneIndexes
+            = (await Fixture.Database.GetCollection<BsonDocument>("TenantDomainZones").Indexes.List().ToListAsync())
             .Select(index => index["name"].AsString)
             .ToHashSet(StringComparer.Ordinal);
-        var bindingIndexes = (await Fixture.Database.GetCollection<BsonDocument>("HostnameBindings")
-                .Indexes.List().ToListAsync())
+        var bindingIndexes
+            = (await Fixture.Database.GetCollection<BsonDocument>("HostnameBindings").Indexes.List().ToListAsync())
             .Select(index => index["name"].AsString)
             .ToHashSet(StringComparer.Ordinal);
 
@@ -80,15 +81,17 @@ public sealed class DomainSchemaMigrationTests(MongoReplicaSetFixture fixture)
         foreach (var (collection, generatedIndex, parentField) in new[]
                  {
                      ("TenantDomainZones", "UX_TenantDomainZones_Tenant_Target_Generated", "DeploymentTargetId"),
-                     ("HostnameBindings", "UX_HostnameBindings_Tenant_Deployment_Generated", "ResourceDeploymentId")
+                     ("HostnameBindings", "UX_HostnameBindings_Tenant_Deployment_Generated", "ResourceDeploymentId"),
                  })
         {
             var indexes = await Fixture.Database.GetCollection<BsonDocument>(collection).Indexes.List().ToListAsync();
             var generated = Assert.Single(indexes, index => index["name"] == generatedIndex);
-            Assert.Equal(new BsonDocument { ["TenantId"] = 1, [parentField] = 1, ["Identity._t"] = 1 },
+            Assert.Equal(
+                new BsonDocument { ["TenantId"] = 1, [parentField] = 1, ["Identity._t"] = 1 },
                 generated["key"]);
             Assert.True(generated["unique"].AsBoolean);
-            Assert.Equal(new BsonDocument("Identity._t", "GeneratedDomainIdentity"),
+            Assert.Equal(
+                new BsonDocument("Identity._t", "GeneratedDomainIdentity"),
                 generated["partialFilterExpression"]);
             var named = Assert.Single(indexes, index => index["name"] == $"UX_{collection}_Tenant_TechnicalName");
             Assert.Equal(new BsonDocument { ["TenantId"] = 1, ["Identity.TechnicalName"] = 1 }, named["key"]);

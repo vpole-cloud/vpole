@@ -64,7 +64,8 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
 
     public int RemoveCalls { get; private set; }
 
-    public Task ReplaceAsync(string connectionId,
+    public Task ReplaceAsync(
+        string connectionId,
         IReadOnlyList<RealtimeSubscription> subscriptions,
         CancellationToken cancellationToken)
     {
@@ -77,7 +78,8 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
         return Task.CompletedTask;
     }
 
-    public Task RemoveAsync(string connectionId,
+    public Task RemoveAsync(
+        string connectionId,
         IReadOnlyCollection<string>? subscriptionIds,
         CancellationToken cancellationToken)
     {
@@ -85,27 +87,33 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
         if (subscriptionIds is null)
             Connections.Remove(connectionId);
         else if (Connections.TryGetValue(connectionId, out var current))
-            Connections[connectionId] =
-                current.Where(subscription => !subscriptionIds.Contains(subscription.Id)).ToArray();
+            Connections[connectionId]
+                = current.Where(subscription => !subscriptionIds.Contains(subscription.Id)).ToArray();
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<RealtimeSubscription>> FindAsync(string topic,
+    public Task<IReadOnlyList<RealtimeSubscription>> FindAsync(
+        string topic,
         string? tenantId,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<RealtimeSubscription>>(Connections.Values.SelectMany(value => value)
+        CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<RealtimeSubscription>>(
+        Connections.Values
+            .SelectMany(value => value)
             .Where(subscription => subscription.Request.Topic == topic && subscription.Request.TenantId == tenantId)
             .ToArray());
 
     public Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<RealtimeSubscription>>(Connections.Values.SelectMany(value => value)
-            .Where(subscription => subscription.Request.Topic == topic).ToArray());
+        Task.FromResult<IReadOnlyList<RealtimeSubscription>>(
+            Connections.Values
+                .SelectMany(value => value)
+                .Where(subscription => subscription.Request.Topic == topic)
+                .ToArray());
 
     public Task<IReadOnlyList<string>> RevokeSessionAsync(string sessionId, CancellationToken cancellationToken)
     {
         Revoked.Add(sessionId);
         var ids = Connections.Where(pair => pair.Value.Any(subscription => subscription.SessionId == sessionId))
-            .Select(pair => pair.Key).ToArray();
+            .Select(pair => pair.Key)
+            .ToArray();
         foreach (var id in ids)
             Connections.Remove(id);
         return Task.FromResult<IReadOnlyList<string>>(ids);
@@ -123,12 +131,12 @@ internal sealed class MemorySubscriptions : IRealtimeSubscriptions
 
 internal static class IdentityFixture
 {
-    public static ClaimsPrincipal User(string id = "viewer", bool admin = false) => new(new ClaimsIdentity(
-        new[]
+    public static ClaimsPrincipal User(string id = "viewer", bool admin = false) => new(
+        new ClaimsIdentity(
+            new[]
             {
                 new Claim("sub", id), new Claim("iss", "https://issuer.test"),
-                new Claim(RealtimeFeature.SessionClaim, id)
-            }
-            .Concat(admin ? [new Claim("roles", "pole-platform-admin")] : []),
-        RealtimeFeature.CookieScheme));
+                new Claim(RealtimeFeature.SessionClaim, id),
+            }.Concat(admin ? [new Claim("roles", "pole-platform-admin")] : []),
+            RealtimeFeature.CookieScheme));
 }

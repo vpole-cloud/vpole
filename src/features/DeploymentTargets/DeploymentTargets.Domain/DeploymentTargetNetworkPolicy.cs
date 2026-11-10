@@ -6,7 +6,7 @@ public enum NetworkPolicyEnforcement
 {
     Unknown,
     Supported,
-    Unsupported
+    Unsupported,
 }
 
 [BsonDiscriminator(RootClass = true)]
@@ -15,10 +15,8 @@ public abstract record DeploymentTargetNetworkPolicy
 {
     public static DeploymentTargetNetworkPolicy Unknown { get; } = new UnattestedNetworkPolicy();
 
-    public bool Matches(DeploymentTarget target) =>
-        this is AttestedNetworkPolicy evidence &&
-        evidence.ClusterIdentity == target.ClusterIdentity &&
-        evidence.ConnectionVersion == target.Connection.Version &&
+    public bool Matches(DeploymentTarget target) => this is AttestedNetworkPolicy evidence &&
+        evidence.ClusterIdentity == target.ClusterIdentity && evidence.ConnectionVersion == target.Connection.Version &&
         target.Health.FailureCode != "ClusterIdentityMismatch";
 
     public NetworkPolicyEnforcement EffectiveEnforcement(DeploymentTarget target) =>
@@ -26,8 +24,7 @@ public abstract record DeploymentTargetNetworkPolicy
             ? evidence.Enforcement
             : NetworkPolicyEnforcement.Unknown;
 
-    public bool AllowsWorkloads(DeploymentTarget target) =>
-        this is AttestedNetworkPolicy evidence && Matches(target) &&
+    public bool AllowsWorkloads(DeploymentTarget target) => this is AttestedNetworkPolicy evidence && Matches(target) &&
         target.Capabilities.NetworkPolicyCapabilities.CanManage &&
         (evidence.Enforcement == NetworkPolicyEnforcement.Supported || evidence.AllowIsolationNotEnforced);
 }
@@ -42,4 +39,5 @@ public sealed record AttestedNetworkPolicy(
     string ClusterIdentity,
     long ConnectionVersion,
     DateTime LastCheckedAtUtc,
-    bool AllowIsolationNotEnforced) : DeploymentTargetNetworkPolicy;
+    bool AllowIsolationNotEnforced
+) : DeploymentTargetNetworkPolicy;

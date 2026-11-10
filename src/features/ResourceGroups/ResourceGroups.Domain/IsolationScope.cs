@@ -1,7 +1,7 @@
-using Pole.Multitenancy.Primitives;
-using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Multitenancy.Primitives;
+using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Domain;
 
@@ -19,7 +19,8 @@ public sealed record IsolationScope(
     IsolationScopeLifecycleState Lifecycle,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned
+    DateTime UpdatedAtUtc
+) : ITenantOwned
 {
     public IsolationScope RequestDeletion(DateTime requestedAtUtc)
     {
@@ -29,8 +30,7 @@ public sealed record IsolationScope(
         return RequestDeletionCore(requestedAtUtc);
     }
 
-    public IsolationScope RequestResourceGroupDeletion(DateTime requestedAtUtc) =>
-        RequestDeletionCore(requestedAtUtc);
+    public IsolationScope RequestResourceGroupDeletion(DateTime requestedAtUtc) => RequestDeletionCore(requestedAtUtc);
 
     private IsolationScope RequestDeletionCore(DateTime requestedAtUtc)
     {
@@ -45,48 +45,40 @@ public sealed record IsolationScope(
         {
             Lifecycle = new DeletingIsolationScopeLifecycleState(normalizedRequestedAtUtc),
             Revision = checked(Revision + 1),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 }
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(
-    typeof(ActiveIsolationScopeLifecycleState),
-    typeof(DeletingIsolationScopeLifecycleState))]
+[BsonKnownTypes(typeof(ActiveIsolationScopeLifecycleState), typeof(DeletingIsolationScopeLifecycleState))]
 public abstract record IsolationScopeLifecycleState;
 
 [BsonDiscriminator("active")]
 public sealed record ActiveIsolationScopeLifecycleState : IsolationScopeLifecycleState;
 
 [BsonDiscriminator("deleting")]
-public sealed record DeletingIsolationScopeLifecycleState(DateTime RequestedAtUtc)
-    : IsolationScopeLifecycleState;
+public sealed record DeletingIsolationScopeLifecycleState(
+    DateTime RequestedAtUtc
+) : IsolationScopeLifecycleState;
 
 public static class IsolationScopeFactory
 {
     public const string DefaultScopeName = "default";
     public const int MaximumNameLength = ResourceTechnicalName.MaximumLength;
 
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
-
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
+    public static CreateOptions DefaultOptions => new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static IsolationScope CreateDefault(
         string tenantId,
         string resourceGroupId,
-        CreateOptions options) =>
-        Create(tenantId, resourceGroupId, DefaultScopeName, isDefault: true, options);
+        CreateOptions options) => Create(tenantId, resourceGroupId, DefaultScopeName, isDefault: true, options);
 
     public static IsolationScope CreateAdditional(
         string tenantId,
         string resourceGroupId,
         string name,
-        CreateOptions options) =>
-        Create(tenantId, resourceGroupId, name, isDefault: false, options);
+        CreateOptions options) => Create(tenantId, resourceGroupId, name, isDefault: false, options);
 
     private static IsolationScope Create(
         string tenantId,
@@ -119,4 +111,9 @@ public static class IsolationScopeFactory
             createdAtUtc,
             createdAtUtc);
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }

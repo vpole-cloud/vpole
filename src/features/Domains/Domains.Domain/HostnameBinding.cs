@@ -9,7 +9,7 @@ namespace Pole.Features.Domains.Domain;
 public enum HostnameBindingKind
 {
     Generated,
-    Custom
+    Custom,
 }
 
 public sealed record HostnameBinding(
@@ -31,22 +31,20 @@ public sealed record HostnameBinding(
     string Hostname,
     DomainIdentity Identity,
     long ReferenceFence,
-    DateTime CreatedAtUtc) : ITenantOwned
+    DateTime CreatedAtUtc
+) : ITenantOwned
 {
     [BsonIgnore]
-    public HostnameBindingKind Kind => Identity switch
-    {
-        GeneratedDomainIdentity => HostnameBindingKind.Generated,
-        NamedDomainIdentity => HostnameBindingKind.Custom
-    };
+    public HostnameBindingKind Kind =>
+        Identity switch
+        {
+            GeneratedDomainIdentity => HostnameBindingKind.Generated,
+            NamedDomainIdentity => HostnameBindingKind.Custom,
+        };
 }
 
 public static class HostnameBindingFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
-
     public static HostnameBinding CreateGenerated(
         string tenantId,
         string tenantDomainZoneId,
@@ -56,18 +54,17 @@ public static class HostnameBindingFactory
         string resourceDeploymentId,
         string relativeName,
         DnsName zoneDomain,
-        CreateOptions options) =>
-        Create(
-            tenantId,
-            tenantDomainZoneId,
-            deploymentTargetId,
-            resourceType,
-            resourceId,
-            resourceDeploymentId,
-            relativeName,
-            zoneDomain,
-            DomainIdentityFactory.Generated(),
-            options);
+        CreateOptions options) => Create(
+        tenantId,
+        tenantDomainZoneId,
+        deploymentTargetId,
+        resourceType,
+        resourceId,
+        resourceDeploymentId,
+        relativeName,
+        zoneDomain,
+        DomainIdentityFactory.Generated(),
+        options);
 
     public static HostnameBinding CreateCustom(
         string tenantId,
@@ -79,18 +76,17 @@ public static class HostnameBindingFactory
         string relativeName,
         DnsName zoneDomain,
         string technicalName,
-        CreateOptions options) =>
-        Create(
-            tenantId,
-            tenantDomainZoneId,
-            deploymentTargetId,
-            resourceType,
-            resourceId,
-            resourceDeploymentId,
-            relativeName,
-            zoneDomain,
-            DomainIdentityFactory.Named(technicalName),
-            options);
+        CreateOptions options) => Create(
+        tenantId,
+        tenantDomainZoneId,
+        deploymentTargetId,
+        resourceType,
+        resourceId,
+        resourceDeploymentId,
+        relativeName,
+        zoneDomain,
+        DomainIdentityFactory.Named(technicalName),
+        options);
 
     private static HostnameBinding Create(
         string tenantId,
@@ -123,15 +119,20 @@ public static class HostnameBindingFactory
             ReferenceFence: 0,
             DomainValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc)));
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }
 
 internal static class DomainValueGuard
 {
-    public static string ObjectId(string value, string parameterName) =>
-        MongoDB.Bson.ObjectId.TryParse(value, out _) ? value :
-        throw new ArgumentException("A MongoDB ObjectId is required.", parameterName);
+    public static string ObjectId(string value, string parameterName) => MongoDB.Bson.ObjectId.TryParse(value, out _)
+        ? value
+        : throw new ArgumentException("A MongoDB ObjectId is required.", parameterName);
 
-    public static DateTime Utc(DateTime value, string parameterName) =>
-        value.Kind == DateTimeKind.Utc ? value :
-        throw new ArgumentException("A UTC timestamp is required.", parameterName);
+    public static DateTime Utc(DateTime value, string parameterName) => value.Kind == DateTimeKind.Utc
+        ? value
+        : throw new ArgumentException("A UTC timestamp is required.", parameterName);
 }

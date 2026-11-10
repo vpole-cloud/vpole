@@ -10,18 +10,24 @@ public sealed class RepositorySnapshotContractTests
     {
         var provider = new SourceProvider();
         var repository = new RepositorySourceReference("tenant", "connection", "repository");
-        var resolved = await provider.ResolveCommitAsync(new(repository, "main"), default);
+        var resolved = await provider.ResolveCommitAsync(
+            new ResolveRepositoryCommitRequest(repository, "main"),
+            default);
         var commit = Assert.IsType<RepositoryCommitResolved>(resolved.Value).Commit;
-        var result = await provider.ReadSnapshotAsync(new(repository, commit, "empty"), default);
+        var result = await provider.ReadSnapshotAsync(
+            new ReadRepositorySnapshotRequest(repository, commit, "empty"),
+            default);
         var snapshot = Assert.IsType<RepositorySnapshotRead>(result.Value);
         Assert.Equal(commit, snapshot.Commit);
         Assert.Empty(snapshot.Files);
-        Assert.IsType<RepositoryDirectoryNotFound>((await provider.ReadSnapshotAsync(
-            new(repository, commit, "missing"),
-            default)).Value);
-        Assert.IsType<RepositoryAccessDenied>((await provider.ReadSnapshotAsync(
-            new(repository with { TenantId = "other" }, commit, "empty"),
-            default)).Value);
+        Assert.IsType<RepositoryDirectoryNotFound>(
+            (await provider.ReadSnapshotAsync(
+                new ReadRepositorySnapshotRequest(repository, commit, "missing"),
+                default)).Value);
+        Assert.IsType<RepositoryAccessDenied>(
+            (await provider.ReadSnapshotAsync(
+                new ReadRepositorySnapshotRequest(repository with { TenantId = "other" }, commit, "empty"),
+                default)).Value);
     }
 
     private sealed class SourceProvider : IRepositorySnapshotProvider
@@ -48,9 +54,10 @@ public sealed class RepositorySnapshotContractTests
             if (request.Repository.TenantId != "tenant")
                 return Task.FromResult<ReadRepositorySnapshotOutcome>(new RepositoryAccessDenied());
 
-            return Task.FromResult<ReadRepositorySnapshotOutcome>(request.ManifestDirectory == "empty"
-                ? new RepositorySnapshotRead(request.Commit, [])
-                : new RepositoryDirectoryNotFound(request.ManifestDirectory));
+            return Task.FromResult<ReadRepositorySnapshotOutcome>(
+                request.ManifestDirectory == "empty"
+                    ? new RepositorySnapshotRead(request.Commit, [])
+                    : new RepositoryDirectoryNotFound(request.ManifestDirectory));
         }
     }
 }

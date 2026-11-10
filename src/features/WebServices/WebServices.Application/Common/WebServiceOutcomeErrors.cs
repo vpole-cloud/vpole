@@ -4,39 +4,45 @@ using Pole.Features.Domains.Contracts;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.SourceDelivery;
 
 namespace Pole.Features.WebServices.Application.Common;
 
-public sealed record WebServiceNotFound(string WebServiceId);
+public sealed record WebServiceNotFound(
+    string WebServiceId
+);
 
-public sealed record WebServiceUpdateUnavailable(string WebServiceId);
+public sealed record WebServiceUpdateUnavailable(
+    string WebServiceId
+);
 
-public sealed record WebServiceHasNoActiveDeployments(string WebServiceId);
+public sealed record WebServiceHasNoActiveDeployments(
+    string WebServiceId
+);
 
 public sealed record WebServiceReleaseNotFound(
     string WebServiceId,
-    long ResourceRevision);
+    long ResourceRevision
+);
 
 public sealed record WebServiceRollbackRevisionNotEligible(
     string WebServiceId,
-    long TargetRevision);
+    long TargetRevision
+);
 
 public sealed record WebServiceResourceDeploymentNotFound(
     string WebServiceId,
-    string ResourceDeploymentId);
+    string ResourceDeploymentId
+);
 
 public sealed record WebServiceDeploymentAlreadyDeleting(
     string WebServiceId,
-    string ResourceDeploymentId);
+    string ResourceDeploymentId
+);
 
-public sealed record WebServiceLastDeploymentCannotBeRemoved(string WebServiceId);
+public sealed record WebServiceLastDeploymentCannotBeRemoved(
+    string WebServiceId
+);
 
 public sealed record WebServiceImageTagUnauthorized;
 
@@ -65,13 +71,12 @@ public union DeleteWebServiceDeploymentStateError(
     WebServiceDeploymentAlreadyDeleting,
     WebServiceLastDeploymentCannotBeRemoved);
 
-public union DeleteWebServiceStateError(
-    WebServiceNotFound,
-    WebServiceHasNoActiveDeployments);
+public union DeleteWebServiceStateError(WebServiceNotFound, WebServiceHasNoActiveDeployments);
 
 public sealed record WebServiceHostnameAttachmentRemovalRequired(
     string WebServiceId,
-    string BindingId);
+    string BindingId
+);
 
 public union DeleteWebServiceError(
     DeleteWebServiceStateError,
@@ -81,9 +86,7 @@ public union DeleteWebServiceError(
     WebServiceUpdateConflict,
     QuotaExecutionError);
 
-public union WebServiceImageTagAuthorizationError(
-    WebServiceImageTagUnauthorized,
-    WebServiceImageTagForbidden);
+public union WebServiceImageTagAuthorizationError(WebServiceImageTagUnauthorized, WebServiceImageTagForbidden);
 
 public union WebServiceImageTagStateError(
     WebServiceNotFound,
@@ -163,4 +166,6 @@ public union WebServiceDeploymentHostnameError(
     WebServiceDependencyUnavailable,
     WebServiceUpdateConflict);
 
-public sealed record WebServiceHostnameAttachmentUnavailable(string WebServiceId);
+public sealed record WebServiceHostnameAttachmentUnavailable(
+    string WebServiceId
+);

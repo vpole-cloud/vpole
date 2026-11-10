@@ -4,7 +4,6 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Quotas.Contracts;
 using Xunit;
@@ -18,9 +17,16 @@ public sealed class FunctionAppDomainTests
     {
         var options = FunctionAppFactory.DefaultCreateOptions;
         var app = FunctionAppFactory.CreatePrepared(
-            "507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012",
-            new("507f1f77bcf86cd799439013", "507f1f77bcf86cd799439014", "507f1f77bcf86cd799439015"),
-            "worker", "worker", DateTimeOffset.UtcNow, options);
+            "507f1f77bcf86cd799439011",
+            "507f1f77bcf86cd799439012",
+            new FunctionPlacementIdentity(
+                "507f1f77bcf86cd799439013",
+                "507f1f77bcf86cd799439014",
+                "507f1f77bcf86cd799439015"),
+            "worker",
+            "worker",
+            DateTimeOffset.UtcNow,
+            options);
 
         Assert.Equal(FunctionAppDesiredState.Prepared, app.DesiredState);
         Assert.Equal(FunctionAppStatus.Prepared, app.Status);
@@ -46,8 +52,9 @@ public sealed class FunctionAppDomainTests
     {
         var configuration = new FunctionConfiguration(
             ImmutableDictionary<string, string>.Empty,
-            ImmutableDictionary<string, FunctionSecretReference>.Empty
-                .Add("TOKEN", new("507f1f77bcf86cd799439099", "source-token")));
+            ImmutableDictionary<string, FunctionSecretReference>.Empty.Add(
+                "TOKEN",
+                new FunctionSecretReference("507f1f77bcf86cd799439099", "source-token")));
         var bson = configuration.ToBson();
         var restored = BsonSerializer.Deserialize<FunctionConfiguration>(bson);
         Assert.Equal(configuration.SecretReferences["TOKEN"], restored.SecretReferences["TOKEN"]);
@@ -61,24 +68,29 @@ public sealed class FunctionAppDomainTests
     public void Secret_reference_validation_requires_logical_id_and_key()
     {
         var validator = new FunctionConfigurationValidator();
-        Assert.True(validator.Validate(new FunctionConfiguration(
-            ImmutableDictionary<string, string>.Empty,
-            ImmutableDictionary<string, FunctionSecretReference>.Empty
-                .Add("TOKEN", new("507f1f77bcf86cd799439099", "token")))).IsValid);
-        Assert.False(validator.Validate(new FunctionConfiguration(
-            ImmutableDictionary<string, string>.Empty,
-            ImmutableDictionary<string, FunctionSecretReference>.Empty
-                .Add("TOKEN", new("native-kubernetes-secret", "token")))).IsValid);
+        Assert.True(
+            validator.Validate(
+                    new FunctionConfiguration(
+                        ImmutableDictionary<string, string>.Empty,
+                        ImmutableDictionary<string, FunctionSecretReference>.Empty.Add(
+                            "TOKEN",
+                            new FunctionSecretReference("507f1f77bcf86cd799439099", "token"))))
+                .IsValid);
+        Assert.False(
+            validator.Validate(
+                    new FunctionConfiguration(
+                        ImmutableDictionary<string, string>.Empty,
+                        ImmutableDictionary<string, FunctionSecretReference>.Empty.Add(
+                            "TOKEN",
+                            new FunctionSecretReference("native-kubernetes-secret", "token"))))
+                .IsValid);
     }
 
     [Fact]
     public void Create_owns_runtime_identity_and_reserves_route_without_active_entries()
     {
         var request = CreateRevisionRequest(
-            new HttpFunctionTriggerRequest(
-                "orders/{id}",
-                ["post"],
-                FunctionExposure.Public),
+            new HttpFunctionTriggerRequest("orders/{id}", ["post"], FunctionExposure.Public),
             new TimerFunctionTriggerRequest(
                 "*/5 * * * *",
                 TimerConcurrencyPolicy.Forbid,
@@ -104,7 +116,9 @@ public sealed class FunctionAppDomainTests
         Assert.Equal("1.0", result.Revision.Spec.RuntimeProtocolVersion);
         Assert.Null(result.Revision.Spec.Image.Digest);
         Assert.Null(result.Revision.Spec.Image.PullSecretName);
-        Assert.All(result.Revision.Spec.Handlers, handler => Assert.False(string.IsNullOrWhiteSpace(handler.Trigger.TriggerId)));
+        Assert.All(
+            result.Revision.Spec.Handlers,
+            handler => Assert.False(string.IsNullOrWhiteSpace(handler.Trigger.TriggerId)));
         var timer = Assert.IsType<TimerFunctionTriggerSpec>(result.Revision.Spec.Handlers[1].Trigger);
         Assert.Equal(1, timer.ScheduleVersion);
         Assert.Empty(result.RouteBinding.HttpRoutes);
@@ -114,8 +128,7 @@ public sealed class FunctionAppDomainTests
     [Fact]
     public void Quota_profile_reserves_maximum_declared_capacity_even_at_scale_to_zero()
     {
-        var spec = CreateRevisionRequest(
-                new HttpFunctionTriggerRequest("hello", ["get"], FunctionExposure.Internal))
+        var spec = CreateRevisionRequest(new HttpFunctionTriggerRequest("hello", ["get"], FunctionExposure.Internal))
             .ToDomain()
             .ToRevisionSpec();
         var allocation = FunctionQuotaAllocation.FromRevision(spec);
@@ -183,13 +196,10 @@ public sealed class FunctionAppDomainTests
                 .ToDomain(),
             [],
             DateTimeOffset.Parse("2026-07-17T10:00:00Z"));
-        var active = created.Revision
-            .MarkReady(DateTimeOffset.Parse("2026-07-17T10:00:10Z"))
-            .Activate();
+        var active = created.Revision.MarkReady(DateTimeOffset.Parse("2026-07-17T10:00:10Z")).Activate();
 
-        using var json = JsonDocument.Parse(JsonSerializer.Serialize(
-            active.ToDto(),
-            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        using var json = JsonDocument.Parse(
+            JsonSerializer.Serialize(active.ToDto(), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 
         Assert.False(json.RootElement.TryGetProperty("type", out _));
         Assert.Equal("active", json.RootElement.GetProperty("status").GetProperty("type").GetString());
@@ -217,8 +227,7 @@ public sealed class FunctionAppDomainTests
                 "507f1f77bcf86cd799439093"),
             "order-functions",
             "orders",
-            CreateRevisionRequest(
-                    new HttpFunctionTriggerRequest("orders", ["POST"], FunctionExposure.Public))
+            CreateRevisionRequest(new HttpFunctionTriggerRequest("orders", ["POST"], FunctionExposure.Public))
                 .ToDomain(),
             [],
             DateTimeOffset.Parse("2026-07-17T10:00:00Z"));
@@ -233,23 +242,18 @@ public sealed class FunctionAppDomainTests
         Assert.IsType<RetiredFunctionRevisionStatus>(draining.Retire().Status);
         var failed = created.Revision.Fail(new FunctionRevisionFailure("startup", "failed"));
         Assert.IsType<FailedFunctionRevisionStatus>(failed.Status);
-        Assert.IsType<FailedFunctionRevisionStatus>(ready.Fail(new FunctionRevisionFailure("promotion", "failed")).Status);
+        Assert.IsType<FailedFunctionRevisionStatus>(
+            ready.Fail(new FunctionRevisionFailure("promotion", "failed")).Status);
         Assert.Throws<InvalidOperationException>(() => active.Activate());
     }
 
-    private static FunctionRevisionRequest CreateRevisionRequest(params FunctionTriggerRequest[] triggers) =>
-        new(
-            new FunctionImageRequest("registry.example", "team/functions", "v1"),
-            new FunctionConfiguration(
-                ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
-            new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
-            triggers.Select((trigger, index) => new FunctionHandlerRequest(
-                    $"handler-{index}",
-                    4,
-                    trigger))
-                .ToImmutableList());
+    private static FunctionRevisionRequest CreateRevisionRequest(params FunctionTriggerRequest[] triggers) => new(
+        new FunctionImageRequest("registry.example", "team/functions", "v1"),
+        new FunctionConfiguration(
+            ImmutableDictionary<string, string>.Empty,
+            ImmutableDictionary<string, FunctionSecretReference>.Empty),
+        new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
+        new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
+        triggers.Select((trigger, index) => new FunctionHandlerRequest($"handler-{index}", 4, trigger))
+            .ToImmutableList());
 }

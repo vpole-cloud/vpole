@@ -18,16 +18,22 @@ public sealed partial class GitLifecyclePreviewProjectionTests
         var id = await Own(source, widgets, "owned");
         repository.Files = [Manifest(widgets.Kind, "owned")];
         var before = await Sources.StateAsync(source.TenantId, source.Id, default);
-        var result = await Previews.CreateAsync(new(new(source.TenantId, source.Id), source.Revision,
-            new GitPreviewAdoption([new(widgets.Kind, "owned", id)])), default);
+        var result = await Previews.CreateAsync(
+            new CreateLifecyclePreview(
+                new GitSourceIdentity(source.TenantId, source.Id),
+                source.Revision,
+                new GitPreviewAdoption([new GitResourceIdentity(widgets.Kind, "owned", id)])),
+            default);
         Assert.IsType<GitDeclarationOwnershipConflict>(Assert.IsType<GitPreviewRejected>(result.Value).Failure);
-        Assert.Equal(0, await Services.GetRequiredService<IMongoCollection<GitOperationPreview>>()
-            .CountDocumentsAsync(_ => true));
+        Assert.Equal(
+            0,
+            await Services.GetRequiredService<IMongoCollection<GitOperationPreview>>().CountDocumentsAsync(_ => true));
         var after = await Sources.StateAsync(source.TenantId, source.Id, default);
         Assert.Equal(before.RequestedGeneration, after.RequestedGeneration);
         Assert.Equal(before.InventoryRevision, after.InventoryRevision);
-        Assert.Equal(GitResourceMaterialization.Created, (await Inventory.Find(_ => true).SingleAsync())
-            .Materialization);
+        Assert.Equal(
+            GitResourceMaterialization.Created,
+            (await Inventory.Find(_ => true).SingleAsync()).Materialization);
         Assert.Equal(0, widgets.ApplyCalls);
     }
 
@@ -43,14 +49,19 @@ public sealed partial class GitLifecyclePreviewProjectionTests
         if (!sameReservedId)
         {
             await widgets.Documents.DeleteOneAsync(_ => true);
-            await widgets.Documents.InsertOneAsync(Document(source.TenantId, manual, "manual", "identity", "value",
-                null, 1));
+            await widgets.Documents.InsertOneAsync(
+                Document(source.TenantId, manual, "manual", "identity", "value", null, 1));
         }
+
         var before = await widgets.Documents.Find(_ => true).SingleAsync();
         repository.Files = [Manifest(widgets.Kind, "manual")];
-        var preview = Assert.IsType<GitOperationPreview>((await Previews.CreateAsync(new(
-            new(source.TenantId, source.Id), source.Revision,
-            new GitPreviewAdoption([new(widgets.Kind, "manual", manual)])), default)).Value);
+        var preview = Assert.IsType<GitOperationPreview>(
+            (await Previews.CreateAsync(
+                new CreateLifecyclePreview(
+                    new GitSourceIdentity(source.TenantId, source.Id),
+                    source.Revision,
+                    new GitPreviewAdoption([new GitResourceIdentity(widgets.Kind, "manual", manual)])),
+                default)).Value);
         Assert.Equal(GitLifecycleAction.Adopt, Assert.Single(preview.Operations).Action);
         await ConfirmAndRun(source, preview);
         var owned = await Inventory.Find(_ => true).SingleAsync();

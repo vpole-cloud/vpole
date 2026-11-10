@@ -9,120 +9,123 @@ open Pole.Features.StorageProfiles.Contracts
 open k8s.Models
 
 type PostgresResourceDeploymentMetadata =
-    { DeploymentId : string
-      IsolationScopeId : string
-      RuntimeCellId : string
-      DeploymentTargetId : string
-      Generation : int64 }
+    { DeploymentId: string
+      IsolationScopeId: string
+      RuntimeCellId: string
+      DeploymentTargetId: string
+      Generation: int64 }
 
 [<RequireQualifiedAccess>]
 module PostgresClusterKubernetesBuilder =
-    let buildResourceName (clusterId : string) = $"pg-{clusterId}"
+    let buildResourceName (clusterId: string) = $"pg-{clusterId}"
 
-    let buildReadWriteServiceName (clusterId : string) =
+    let buildReadWriteServiceName (clusterId: string) =
         PostgresConnectionEndpoints.buildReadWriteServiceName clusterId
-    let buildDatabaseName (clusterId : string) = clusterId
 
-    let buildLabels (cluster : PostgresCluster) (metadata : PostgresResourceDeploymentMetadata) =
-        dict [
-            "app", cluster.Id
-            "component", "postgres"
-            PoleStorageLabels.TenantId, cluster.TenantId
-            PoleStorageLabels.ResourceGroupId, cluster.GroupId
-            PoleStorageLabels.ResourceType, "Postgres"
-            PoleStorageLabels.ResourceId, cluster.Id
-            PoleStorageLabels.ResourceName, cluster.Name
-            "pole.io/resource-deployment-id", metadata.DeploymentId
-            "pole.io/isolation-scope-id", metadata.IsolationScopeId
-            "pole.io/runtime-cell-id", metadata.RuntimeCellId
-            "pole.io/deployment-target-id", metadata.DeploymentTargetId
-            "pole.io/deployment-generation", string metadata.Generation
-        ]
+    let buildDatabaseName (clusterId: string) = clusterId
+
+    let buildLabels (cluster: PostgresCluster) (metadata: PostgresResourceDeploymentMetadata) =
+        dict
+            [ "app", cluster.Id
+              "component", "postgres"
+              PoleStorageLabels.TenantId, cluster.TenantId
+              PoleStorageLabels.ResourceGroupId, cluster.GroupId
+              PoleStorageLabels.ResourceType, "Postgres"
+              PoleStorageLabels.ResourceId, cluster.Id
+              PoleStorageLabels.ResourceName, cluster.Name
+              "pole.io/resource-deployment-id", metadata.DeploymentId
+              "pole.io/isolation-scope-id", metadata.IsolationScopeId
+              "pole.io/runtime-cell-id", metadata.RuntimeCellId
+              "pole.io/deployment-target-id", metadata.DeploymentTargetId
+              "pole.io/deployment-generation", string metadata.Generation ]
 
     let buildAnnotations () =
-        dict [
-            PoleStorageLabels.ResourceType,
-                PostgresResourceDeployment.ResourceType.Value
-        ]
+        dict [ PoleStorageLabels.ResourceType, PostgresResourceDeployment.ResourceType.Value ]
 
-    let private toResourceDictionary
-        (resources : IDictionary<string, ResourceQuantity>) =
+    let private toResourceDictionary (resources: IDictionary<string, ResourceQuantity>) =
         let values = Dictionary<string, string>()
+
         for KeyValue(key, value) in resources do
             values[key] <- value.ToString()
+
         values
 
-    let private buildResources (compute : KubernetesComputeConfiguration) =
+    let private buildResources (compute: KubernetesComputeConfiguration) =
         let resources = compute.ToResourceRequirements()
+
         {| requests = toResourceDictionary resources.Requests
            limits = toResourceDictionary resources.Limits |}
 
-    let private buildAffinity (compute : KubernetesComputeConfiguration) =
+    let private buildAffinity (compute: KubernetesComputeConfiguration) =
         let affinity = Dictionary<string, obj>()
         let nodeSelector = compute.ToNodeSelector()
+
         if not (isNull nodeSelector) then
             affinity["nodeSelector"] <- nodeSelector
+
         let nodeAffinity = compute.ToNodeAffinity()
+
         if not (isNull nodeAffinity) then
             affinity["nodeAffinity"] <- nodeAffinity
+
         let tolerations = compute.ToTolerations()
+
         if not (isNull tolerations) then
             affinity["tolerations"] <- tolerations
 
         if affinity.Count = 0 then None else Some affinity
 
     let buildCluster
-        (cluster : PostgresCluster)
-        (credentials : PostgresProjectedCredentials)
-        (namespaceName : string)
-        (storageClassName : string)
-        (compute : KubernetesComputeConfiguration)
-        (metadata : PostgresResourceDeploymentMetadata)
-        (settings : PostgresSettings) =
+        (cluster: PostgresCluster)
+        (credentials: PostgresProjectedCredentials)
+        (namespaceName: string)
+        (storageClassName: string)
+        (compute: KubernetesComputeConfiguration)
+        (metadata: PostgresResourceDeploymentMetadata)
+        (settings: PostgresSettings)
+        =
         cluster.EnsureConfigured()
         let clusterSecretName = credentials.Projection.KubernetesName
+
         let username =
             match credentials with
             | OperatorCredentials(username, _) -> username
             | StatefulSetCredentials _ -> invalidArg "credentials" "Operator bootstrap requires its managed username."
-        let image = PostgresSettings.buildImageReference settings.OperatorImage cluster.Spec.Version
+
+        let image =
+            PostgresSettings.buildImageReference settings.OperatorImage cluster.Spec.Version
+
         let spec = Dictionary<string, obj>()
         spec["instances"] <- cluster.Spec.Instances
+
         spec["storage"] <-
-            {|
-                size = $"{cluster.Spec.Storage}Gi"
-                storageClass = storageClassName
-            |}
+            {| size = $"{cluster.Spec.Storage}Gi"
+               storageClass = storageClassName |}
+
         spec["resources"] <- buildResources compute
+
         match buildAffinity compute with
         | Some affinity -> spec["affinity"] <- affinity
         | None -> ()
+
         spec["secret"] <- {| name = clusterSecretName |}
         spec["imageName"] <- image
-        spec["inheritedMetadata"] <-
-            {|
-                labels = buildLabels cluster metadata
-                annotations = buildAnnotations ()
-            |}
-        spec["bootstrap"] <-
-            {|
-                initdb =
-                    {|
-                        database = buildDatabaseName cluster.Id
-                        owner = username
-                        secret = {| name = clusterSecretName |}
-                    |}
-            |}
 
-        {|
-            apiVersion = "postgresql.cnpg.io/v1"
-            kind = "Cluster"
-            metadata =
-                {|
-                    name = buildResourceName cluster.Id
-                    ``namespace`` = namespaceName
-                    labels = buildLabels cluster metadata
-                    annotations = buildAnnotations ()
-                |}
-            spec = spec
-        |}
+        spec["inheritedMetadata"] <-
+            {| labels = buildLabels cluster metadata
+               annotations = buildAnnotations () |}
+
+        spec["bootstrap"] <-
+            {| initdb =
+                {| database = buildDatabaseName cluster.Id
+                   owner = username
+                   secret = {| name = clusterSecretName |} |} |}
+
+        {| apiVersion = "postgresql.cnpg.io/v1"
+           kind = "Cluster"
+           metadata =
+            {| name = buildResourceName cluster.Id
+               ``namespace`` = namespaceName
+               labels = buildLabels cluster metadata
+               annotations = buildAnnotations () |}
+           spec = spec |}

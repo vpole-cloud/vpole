@@ -9,37 +9,26 @@ public sealed class PlacementAwareAdopterArchitectureTests
     [InlineData("RedisServices")]
     [InlineData("Postgres")]
     [InlineData("Functions")]
-    public void PlacementAwareAdopter_DoesNotUseTransitionalDefaultTargetOrGroupLookup(
-        string featureName)
+    public void PlacementAwareAdopter_DoesNotUseTransitionalDefaultTargetOrGroupLookup(string featureName)
     {
-        var featurePath = Path.Combine(
-            FindRepositoryRoot(),
-            "src",
-            "features",
-            featureName);
-        var source = Directory
-            .EnumerateFiles(featurePath, "*", SearchOption.AllDirectories)
-            .Where(path =>
-                path.EndsWith(".cs", StringComparison.Ordinal) ||
+        var featurePath = Path.Combine(FindRepositoryRoot(), "src", "features", featureName);
+        var source = Directory.EnumerateFiles(featurePath, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal) ||
                 path.EndsWith(".fs", StringComparison.Ordinal))
             .Where(path => !path.Contains(".Tests", StringComparison.Ordinal))
             .Select(path => new
             {
                 Path = path,
-                Content = File.ReadAllText(path)
+                Content = File.ReadAllText(path),
             })
             .ToArray();
 
         var defaultTargetUsers = source
-            .Where(file => file.Content.Contains(
-                "GetDefaultAsync(",
-                StringComparison.Ordinal))
+            .Where(file => file.Content.Contains("GetDefaultAsync(", StringComparison.Ordinal))
             .Select(file => file.Path)
             .ToArray();
         var legacyGroupLookupUsers = source
-            .Where(file => file.Content.Contains(
-                "IResourceGroupLookup",
-                StringComparison.Ordinal))
+            .Where(file => file.Content.Contains("IResourceGroupLookup", StringComparison.Ordinal))
             .Select(file => file.Path)
             .ToArray();
 
@@ -52,24 +41,13 @@ public sealed class PlacementAwareAdopterArchitectureTests
     [InlineData("RedisServices", "RedisServices.Domain")]
     [InlineData("Postgres", "Postgres.Domain")]
     [InlineData("Functions", "Functions.Domain")]
-    public void LogicalResourceDomain_DoesNotOwnKubernetesNamespace(
-        string featureName,
-        string domainProject)
+    public void LogicalResourceDomain_DoesNotOwnKubernetesNamespace(string featureName, string domainProject)
     {
-        var domainPath = Path.Combine(
-            FindRepositoryRoot(),
-            "src",
-            "features",
-            featureName,
-            domainProject);
-        var offenders = Directory
-            .EnumerateFiles(domainPath, "*", SearchOption.AllDirectories)
-            .Where(path =>
-                path.EndsWith(".cs", StringComparison.Ordinal) ||
+        var domainPath = Path.Combine(FindRepositoryRoot(), "src", "features", featureName, domainProject);
+        var offenders = Directory.EnumerateFiles(domainPath, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal) ||
                 path.EndsWith(".fs", StringComparison.Ordinal))
-            .Where(path => File.ReadAllText(path).Contains(
-                "KubernetesNamespace",
-                StringComparison.Ordinal))
+            .Where(path => File.ReadAllText(path).Contains("KubernetesNamespace", StringComparison.Ordinal))
             .ToArray();
 
         Assert.Empty(offenders);
@@ -85,47 +63,28 @@ public sealed class PlacementAwareAdopterArchitectureTests
         string applicationProject,
         string projectFile)
     {
-        var content = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "src",
-            "features",
-            featureName,
-            applicationProject,
-            projectFile));
+        var content = File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "src", "features", featureName, applicationProject, projectFile));
 
-        Assert.Contains(
-            "ComputeProfiles.Contracts",
-            content,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "ComputeProfiles.Application",
-            content,
-            StringComparison.Ordinal);
+        Assert.Contains("ComputeProfiles.Contracts", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("ComputeProfiles.Application", content, StringComparison.Ordinal);
     }
 
     [Fact]
     public void ComputeProfilesApplication_UsesResourceDeploymentContractsOnly()
     {
-        var content = File.ReadAllText(Path.Combine(
-            FindRepositoryRoot(),
-            "src",
-            "features",
-            "ComputeProfiles",
-            "ComputeProfiles.Application",
-            "ComputeProfiles.Application.csproj"));
+        var content = File.ReadAllText(
+            Path.Combine(
+                FindRepositoryRoot(),
+                "src",
+                "features",
+                "ComputeProfiles",
+                "ComputeProfiles.Application",
+                "ComputeProfiles.Application.csproj"));
 
-        Assert.Contains(
-            "ResourceDeployments.Contracts",
-            content,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "ResourceDeployments.Application",
-            content,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "ResourceDeployments.Domain",
-            content,
-            StringComparison.Ordinal);
+        Assert.Contains("ResourceDeployments.Contracts", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResourceDeployments.Application", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResourceDeployments.Domain", content, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()
@@ -138,7 +97,6 @@ public sealed class PlacementAwareAdopterArchitectureTests
             directory = directory.Parent;
         }
 
-        throw new DirectoryNotFoundException(
-            "Could not locate the Pole repository root.");
+        throw new DirectoryNotFoundException("Could not locate the Pole repository root.");
     }
 }

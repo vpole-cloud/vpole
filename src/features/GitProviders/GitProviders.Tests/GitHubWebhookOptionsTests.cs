@@ -15,11 +15,13 @@ public sealed class GitHubWebhookOptionsTests
     [InlineData(" ")]
     public void EnabledGitHubRequiresASeparateWebhookSecret(string? secret)
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["GitHubApp:Enabled"] = "true",
-            ["GitHubWebhook:Secret"] = secret
-        }).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["GitHubApp:Enabled"] = "true",
+                    ["GitHubWebhook:Secret"] = secret,
+                })
+            .Build();
         using var provider = new ServiceCollection().AddGitProvidersFeature(configuration).BuildServiceProvider();
         var error = Assert.Throws<OptionsValidationException>(() =>
             provider.GetRequiredService<IOptions<GitHubWebhookOptions>>().Value);

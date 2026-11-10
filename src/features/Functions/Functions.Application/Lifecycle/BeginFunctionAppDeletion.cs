@@ -1,9 +1,6 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
@@ -14,7 +11,9 @@ using Pole.Features.ResourceGroups.Contracts;
 
 namespace Pole.Features.Functions.Application.Lifecycle;
 
-public sealed record FunctionAppDeletionChanged(string FunctionAppId);
+public sealed record FunctionAppDeletionChanged(
+    string FunctionAppId
+);
 
 public union BeginFunctionAppDeletionOutcome(
     FunctionApp,
@@ -25,7 +24,8 @@ public sealed record BeginFunctionAppDeletionRequest(
     FunctionApp Current,
     DateTimeOffset NowUtc,
     GitLifecycleAuthority? Lifecycle = null,
-    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null);
+    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null
+);
 
 public delegate Task<BeginFunctionAppDeletionOutcome> BeginFunctionAppDeletion(
     BeginFunctionAppDeletionRequest request,
@@ -39,7 +39,8 @@ internal sealed class MongoBeginFunctionAppDeletion(
     IMongoCollection<FunctionRouteBinding> functionRouteBindings,
     IMongoCollection<FunctionTimerState> functionTimerStates,
     StoreOutboxWrites storeOutboxWrites,
-    IGitOpsMutations git)
+    IGitOpsMutations git
+)
 {
     public async Task<BeginFunctionAppDeletionOutcome> InvokeAsync(
         BeginFunctionAppDeletionRequest request,
@@ -51,9 +52,15 @@ internal sealed class MongoBeginFunctionAppDeletion(
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Function App deletion requires an active transaction.");
 
-        if (!await git.AuthorizeAsync(new(current.TenantId, "FunctionApp", current.Id,
-                Lifecycle: request.Lifecycle, LifecycleEffect: GitLifecycleMutationEffect.Remove),
-                session, cancellationToken))
+        if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    current.TenantId,
+                    "FunctionApp",
+                    current.Id,
+                    Lifecycle: request.Lifecycle,
+                    LifecycleEffect: GitLifecycleMutationEffect.Remove),
+                session,
+                cancellationToken))
             return new FunctionAppGitOwnedConfiguration(current.Id);
 
         var registration = await fenceRegisteredResource(
@@ -73,10 +80,10 @@ internal sealed class MongoBeginFunctionAppDeletion(
                 ReviewedConnections: request.ReviewedConnections),
             session: session,
             cancellationToken: cancellationToken);
-        FunctionAppDeletionChanged? cascadeConflict = cascade switch
+        var cascadeConflict = cascade switch
         {
             ResourceConnectionsCascaded => null,
-            ResourceConnectionCascadeConflict => new FunctionAppDeletionChanged(current.Id)
+            ResourceConnectionCascadeConflict => new FunctionAppDeletionChanged(current.Id),
         };
         if (cascadeConflict is not null)
             return cascadeConflict;
@@ -90,9 +97,7 @@ internal sealed class MongoBeginFunctionAppDeletion(
                 .Set(app => app.UpdatedAtUtc, nowUtc),
             cancellationToken: cancellationToken);
         if (appResult.MatchedCount != 1)
-        {
             return new FunctionAppDeletionChanged(current.Id);
-        }
 
         await functionRouteBindings.UpdateOneAsync(
             session,
@@ -112,14 +117,16 @@ internal sealed class MongoBeginFunctionAppDeletion(
             cancellationToken: cancellationToken);
         await storeOutboxWrites(
             session,
-            [OutboxWrite.Create(
-                new FunctionAppDeleteRequestedEvent(
-                    current.Id,
-                    current.Placement.ToSnapshot(),
-                    current.ActiveRevisionId)
-                {
-                    EventCore = EventCore.Create(current.TenantId)
-                })],
+            [
+                OutboxWrite.Create(
+                    new FunctionAppDeleteRequestedEvent(
+                        current.Id,
+                        current.Placement.ToSnapshot(),
+                        current.ActiveRevisionId)
+                    {
+                        EventCore = EventCore.Create(current.TenantId),
+                    }),
+            ],
             cancellationToken);
         return current;
     }

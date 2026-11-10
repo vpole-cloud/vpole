@@ -1,18 +1,8 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
 using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application.Values;
 
@@ -37,18 +27,18 @@ internal sealed class MongoPersistRotatedSecret(
     MongoRunTransaction transactions,
     EncryptSecretVersion encrypt,
     StoreSecretChange publish,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public Task<PersistRotatedSecretResult> InvokeAsync(
         string tenantId,
         string id,
         long expectedVersion,
         Dictionary<string, string> values,
-        CancellationToken ct) =>
-        transactions.InvokeOutcomeAsync<PersistRotatedSecretResult>(async (tx, token) =>
+        CancellationToken ct) => transactions.InvokeOutcomeAsync<PersistRotatedSecretResult>(
+        async (tx, token) =>
         {
-            var current = await secrets
-                .Find(tx.Session, SecretFilters.Identity(tenantId, id))
+            var current = await secrets.Find(tx.Session, SecretFilters.Identity(tenantId, id))
                 .FirstOrDefaultAsync(token);
             if (current is null)
                 return tx.Abort(new SecretMissing());
@@ -72,11 +62,9 @@ internal sealed class MongoPersistRotatedSecret(
                 SecretFilters.Identity(tenantId, id),
                 rotated,
                 cancellationToken: token);
-            await versions.InsertOneAsync(
-                tx.Session,
-                version,
-                cancellationToken: token);
+            await versions.InsertOneAsync(tx.Session, version, cancellationToken: token);
             await publish(tx.Session, rotated, new SecretRotated(), token);
             return tx.Commit(rotated);
-        }, ct);
+        },
+        ct);
 }

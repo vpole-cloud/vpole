@@ -1,30 +1,26 @@
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
 
 namespace Pole.Features.DeploymentTargets.Application.Admission;
 
 internal sealed class MongoAdmitDeploymentTargetPublicIngressForDomainReservation(
-    AdmitDeploymentTargetForWorkload admitDeploymentTargetForWorkload)
+    AdmitDeploymentTargetForWorkload admitDeploymentTargetForWorkload
+)
 {
     public async Task<AdmitDeploymentTargetPublicIngressForDomainReservationOutcome> InvokeAsync(
         string tenantId,
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var admitted = await admitDeploymentTargetForWorkload(
-            deploymentTargetId,
-            cancellationToken);
+        var admitted = await admitDeploymentTargetForWorkload(deploymentTargetId, cancellationToken);
         if (admitted is DeploymentTargetWorkloadAdmissionError admissionError)
-        {
             return admissionError switch
             {
                 DeploymentTargetNotFound error => new DeploymentTargetDomainReservationAdmissionError(error),
                 DeploymentTargetDisabled error => new DeploymentTargetDomainReservationAdmissionError(error),
                 DeploymentTargetDeletionRequested error => new DeploymentTargetDomainReservationAdmissionError(error),
-                DeploymentTargetNewWorkloadsDisabled error => new DeploymentTargetDomainReservationAdmissionError(error)
+                DeploymentTargetNewWorkloadsDisabled error =>
+                    new DeploymentTargetDomainReservationAdmissionError(error),
             };
-        }
         var target = (DeploymentTargetLookupDto)admitted.Value;
 
         return DeploymentTargetAdmissionSupport.HasRequiredCapabilities(

@@ -21,14 +21,15 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 public sealed record CreateSourceBuildConfigurationRequest(
     [FromBody] CreateSourceBuildConfigurationBody Body,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
-    : IMediatorRequest<CreateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
+) : IMediatorRequest<CreateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record CreateSourceBuildConfigurationBody(
     string TechnicalName,
     string SourceRepositoryId,
     string WebServiceId,
-    SourceBuildRecipeDto Recipe);
+    SourceBuildRecipeDto Recipe
+);
 
 public union CreateSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDto,
@@ -41,10 +42,8 @@ public union CreateSourceBuildConfigurationOutcome(
 public sealed class CreateSourceBuildConfigurationHandler(
     FindSourceRepositoryBuild findSourceRepositoryBuild,
     CreateSourceBuildConfiguration createSourceBuildConfiguration,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<
-        CreateSourceBuildConfigurationRequest,
-        CreateSourceBuildConfigurationOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<CreateSourceBuildConfigurationRequest, CreateSourceBuildConfigurationOutcome>
 {
     public async Task<CreateSourceBuildConfigurationOutcome> HandleAsync(
         CreateSourceBuildConfigurationRequest request,
@@ -62,7 +61,7 @@ public sealed class CreateSourceBuildConfigurationHandler(
                 success,
                 createSourceBuildConfiguration,
                 timeProvider,
-                cancellationToken)
+                cancellationToken),
         };
     }
 
@@ -81,18 +80,17 @@ public sealed class CreateSourceBuildConfigurationHandler(
             request.Body.WebServiceId,
             request.Body.Recipe.ToDomain(),
             new ManualSourceBuildConfigurationOrigin(request.CurrentUserId.Value),
-            new SourceBuildConfigurationFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now));
+            new SourceBuildConfigurationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now));
         var created = await createSourceBuildConfiguration(
-            new(configuration, sourceRepository.Revision), cancellationToken);
+            new CreateSourceBuildConfigurationCommand(configuration, sourceRepository.Revision),
+            cancellationToken);
         return created switch
         {
             SourceBuildConfiguration success => success.ToDto(),
             SourceBuildConfigurationAlreadyExists existsError => existsError,
             SourceBuildConfigurationWebServiceNotFound missing => missing,
             SourceBuildConfigurationNameConflict conflict => conflict,
-            SourceBuildConfigurationRepositoryChanged conflict => conflict
+            SourceBuildConfigurationRepositoryChanged conflict => conflict,
         };
     }
 }
@@ -100,52 +98,46 @@ public sealed class CreateSourceBuildConfigurationHandler(
 public sealed class CreateSourceBuildConfigurationRequestValidator
     : AbstractValidator<CreateSourceBuildConfigurationRequest>
 {
-    public CreateSourceBuildConfigurationRequestValidator() =>
-        RuleFor(item => item.Body)
-            .NotNull()
-            .SetValidator(new CreateSourceBuildConfigurationBodyValidator());
+    public CreateSourceBuildConfigurationRequestValidator() => RuleFor(item => item.Body)
+        .NotNull()
+        .SetValidator(new CreateSourceBuildConfigurationBodyValidator());
 }
 
-public sealed class CreateSourceBuildConfigurationBodyValidator
-    : AbstractValidator<CreateSourceBuildConfigurationBody>
+public sealed class CreateSourceBuildConfigurationBodyValidator : AbstractValidator<CreateSourceBuildConfigurationBody>
 {
     public CreateSourceBuildConfigurationBodyValidator()
     {
         RuleFor(item => item.TechnicalName).Must(ResourceTechnicalName.IsValid);
         RuleFor(item => item.Recipe).NotNull().SetValidator(new SourceBuildRecipeDtoValidator());
-        RuleFor(item => item.SourceRepositoryId)
-            .NotEmpty()
-            .MongoObjectId("Source repository ID");
-        RuleFor(item => item.WebServiceId)
-            .NotEmpty()
-            .MongoObjectId("Web service ID");
+        RuleFor(item => item.SourceRepositoryId).NotEmpty().MongoObjectId("Source repository ID");
+        RuleFor(item => item.WebServiceId).NotEmpty().MongoObjectId("Web service ID");
     }
 }
 
 public static class CreateSourceBuildConfigurationEndpoint
 {
-    public static IEndpointRouteBuilder MapCreateSourceBuildConfigurationEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapCreateSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (
-                IMediator mediator,
-                [AsParameters] CreateSourceBuildConfigurationRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] CreateSourceBuildConfigurationRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    SourceBuildConfigurationDto configuration => Results.Created(
-                        $"/api/v1/source-build-configurations/{configuration.Id}",
-                        configuration),
-                    SourceRepositoryBuildNotFound error =>
-                        GitProviderContractHttpMappings.MapSourceRepositoryBuildNotFound(error),
-                    SourceBuildConfigurationNameConflict error => MapConfigurationNameConflict(error),
-                    SourceBuildConfigurationRepositoryChanged error => MapConfigurationRepositoryChanged(error),
-                    SourceBuildConfigurationAlreadyExists error => MapConfigurationAlreadyExists(error),
-                    SourceBuildConfigurationWebServiceNotFound error => MapWebServiceNotFound(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        SourceBuildConfigurationDto configuration => Results.Created(
+                            $"/api/v1/source-build-configurations/{configuration.Id}",
+                            configuration),
+                        SourceRepositoryBuildNotFound error => GitProviderContractHttpMappings
+                            .MapSourceRepositoryBuildNotFound(error),
+                        SourceBuildConfigurationNameConflict error => MapConfigurationNameConflict(error),
+                        SourceBuildConfigurationRepositoryChanged error => MapConfigurationRepositoryChanged(error),
+                        SourceBuildConfigurationAlreadyExists error => MapConfigurationAlreadyExists(error),
+                        SourceBuildConfigurationWebServiceNotFound error => MapWebServiceNotFound(error),
+                    });
+                })
             .WithName("CreateSourceBuildConfiguration")
             .Produces<SourceBuildConfigurationDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound)

@@ -1497,7 +1497,9 @@
         "displaySha256": "a1df4332ad938a06c49da990497b608a781454dd196712eb8a1937c948a73940"
       },
       "phase": "test.Oversized_native_lines_are_ignored",
-      "guarantees": ["MongoStartupTests.Oversized_native_lines_are_ignored"],
+      "guarantees": [
+        "MongoStartupTests.Oversized_native_lines_are_ignored"
+      ],
       "baselineSeconds": 0.0002865
     },
     {
@@ -2722,7 +2724,9 @@
         "displaySha256": "677f23ce4b7a614ff4b380ffc61fcdd603e39c450c0d8a3e3504a066199e9659"
       },
       "phase": "test.Only_not_found_completes_deletion",
-      "guarantees": ["TestLifecycleTests.Only_not_found_completes_deletion"],
+      "guarantees": [
+        "TestLifecycleTests.Only_not_found_completes_deletion"
+      ],
       "baselineSeconds": 0.0002058
     },
     {

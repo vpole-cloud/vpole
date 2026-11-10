@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.RedisServices.Application;
-using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Domain;
 
@@ -12,7 +10,8 @@ public delegate Task<Redis?> LoadRedisById(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadRedisById(
-    IMongoCollection<Redis> redisServices)
+    IMongoCollection<Redis> redisServices
+)
 {
     public async Task<Redis?> InvokeAsync(
         string tenantId,
@@ -20,8 +19,6 @@ internal sealed class MongoLoadRedisById(
         CancellationToken cancellationToken = default)
     {
         RedisPersistenceGuards.EnsureIdentity(tenantId, redisId);
-        return await redisServices
-            .Find(RedisFilters.ById(tenantId, redisId))
-            .FirstOrDefaultAsync(cancellationToken);
+        return await redisServices.Find(RedisFilters.ById(tenantId, redisId)).FirstOrDefaultAsync(cancellationToken);
     }
 }

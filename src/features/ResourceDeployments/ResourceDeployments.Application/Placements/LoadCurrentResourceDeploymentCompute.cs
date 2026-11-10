@@ -1,18 +1,14 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Placements;
 
 internal sealed class MongoLoadCurrentResourceDeploymentCompute(
-    IMongoCollection<ResourceDeployment> resourceDeployments)
+    IMongoCollection<ResourceDeployment> resourceDeployments
+)
 {
     public async Task<LoadCurrentResourceDeploymentComputeOutcome> InvokeAsync(
         LoadCurrentResourceDeploymentComputeRequest request,
@@ -26,12 +22,12 @@ internal sealed class MongoLoadCurrentResourceDeploymentCompute(
         return deployments.Count switch
         {
             0 => new LoadCurrentResourceDeploymentComputeError(
-                    new CurrentResourceDeploymentComputeNotFound(request.ResourceId)),
+                new CurrentResourceDeploymentComputeNotFound(request.ResourceId)),
             1 => new CurrentResourceDeploymentComputeDto(
                 deployments[0].ResolvedPlacement.DeploymentTargetId,
                 deployments[0].ResolvedPlacement.Compute.ToSummaryDto()),
             _ => new LoadCurrentResourceDeploymentComputeError(
-                    new CurrentResourceDeploymentComputeCardinalityConflict(request.ResourceId))
+                new CurrentResourceDeploymentComputeCardinalityConflict(request.ResourceId)),
         };
     }
 }

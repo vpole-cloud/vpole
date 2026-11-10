@@ -14,16 +14,15 @@ public static class RuntimeCellNamespaceLabels
 
 public static class RuntimeCellNamespaceManifestBuilder
 {
-    internal static IReadOnlySet<string> ReservedLabelKeys { get; } =
-        new HashSet<string>(
-            [
-                RuntimeCellNamespaceLabels.TenantId,
-                RuntimeCellNamespaceLabels.ResourceGroupId,
-                RuntimeCellNamespaceLabels.IsolationScopeId,
-                RuntimeCellNamespaceLabels.RuntimeCellId,
-                RuntimeCellNamespaceLabels.DeploymentTargetId
-            ],
-            StringComparer.Ordinal);
+    internal static IReadOnlySet<string> ReservedLabelKeys { get; } = new HashSet<string>(
+        [
+            RuntimeCellNamespaceLabels.TenantId,
+            RuntimeCellNamespaceLabels.ResourceGroupId,
+            RuntimeCellNamespaceLabels.IsolationScopeId,
+            RuntimeCellNamespaceLabels.RuntimeCellId,
+            RuntimeCellNamespaceLabels.DeploymentTargetId,
+        ],
+        StringComparer.Ordinal);
 
     public static V1Namespace Build(
         RuntimeCell runtimeCell,
@@ -44,8 +43,8 @@ public static class RuntimeCellNamespaceManifestBuilder
             Metadata = new V1ObjectMeta
             {
                 Name = runtimeCell.KubernetesNamespace,
-                Labels = labels
-            }
+                Labels = labels,
+            },
         };
     }
 
@@ -56,6 +55,6 @@ public static class RuntimeCellNamespaceManifestBuilder
             [RuntimeCellNamespaceLabels.ResourceGroupId] = runtimeCell.ResourceGroupId,
             [RuntimeCellNamespaceLabels.IsolationScopeId] = runtimeCell.IsolationScopeId,
             [RuntimeCellNamespaceLabels.RuntimeCellId] = runtimeCell.Id,
-            [RuntimeCellNamespaceLabels.DeploymentTargetId] = runtimeCell.DeploymentTargetId
+            [RuntimeCellNamespaceLabels.DeploymentTargetId] = runtimeCell.DeploymentTargetId,
         };
 }

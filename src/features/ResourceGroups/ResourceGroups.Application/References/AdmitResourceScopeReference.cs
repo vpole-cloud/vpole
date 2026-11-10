@@ -1,18 +1,15 @@
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.References;
 
 internal sealed class MongoAdmitResourceScopeReference(
     IMongoCollection<ResourceGroup> groups,
     IMongoCollection<IsolationScope> scopes,
-    IMongoCollection<ResourceRegistration> registrations)
+    IMongoCollection<ResourceRegistration> registrations
+)
 {
     public async Task<AdmitResourceScopeReferenceOutcome> InvokeAsync(
         AdmitResourceScopeReferenceRequest request,
@@ -30,8 +27,7 @@ internal sealed class MongoAdmitResourceScopeReference(
         if (fence.ModifiedCount != 1)
             return new ResourceScopeReferenceUnavailable();
 
-        var scope = await scopes
-            .Find(
+        var scope = await scopes.Find(
                 session,
                 IsolationScopeFilters.ByTenantResourceGroupAndId(
                     request.TenantId,
@@ -44,12 +40,13 @@ internal sealed class MongoAdmitResourceScopeReference(
             return new ResourceScopeReferenceAdmitted();
 
         var exists = await registrations.Find(
-            session,
-            ResourceRegistrationFilters.Exact(
-                request.TenantId,
-                request.ResourceGroupId,
-                request.Consumer.ResourceType,
-                request.Consumer.ResourceId)).AnyAsync(cancellationToken);
+                session,
+                ResourceRegistrationFilters.Exact(
+                    request.TenantId,
+                    request.ResourceGroupId,
+                    request.Consumer.ResourceType,
+                    request.Consumer.ResourceId))
+            .AnyAsync(cancellationToken);
         return exists ? new ResourceScopeReferenceAdmitted() : new ResourceScopeReferenceUnavailable();
     }
 }

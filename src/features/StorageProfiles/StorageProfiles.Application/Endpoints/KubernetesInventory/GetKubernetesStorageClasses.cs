@@ -13,62 +13,53 @@ using static Pole.Features.StorageProfiles.Application.Common.StorageProfileHttp
 namespace Pole.Features.StorageProfiles.Application.Endpoints.KubernetesInventory;
 
 public sealed record GetKubernetesStorageClassesRequest(
-    [FromQuery] string DeploymentTargetId)
-    : IMediatorRequest<GetKubernetesStorageClassesOutcome>;
+    [FromQuery] string DeploymentTargetId
+) : IMediatorRequest<GetKubernetesStorageClassesOutcome>;
 
 public union GetKubernetesStorageClassesOutcome(
     IReadOnlyCollection<KubernetesStorageClassDto>,
     KubernetesStorageDiscoveryUnavailable);
 
 public sealed class GetKubernetesStorageClassesHandler(
-    DiscoverKubernetesStorageClasses discoverStorageClasses)
-    : IMediatorOutcomeHandler<
-        GetKubernetesStorageClassesRequest,
-        GetKubernetesStorageClassesOutcome>
+    DiscoverKubernetesStorageClasses discoverStorageClasses
+) : IMediatorOutcomeHandler<GetKubernetesStorageClassesRequest, GetKubernetesStorageClassesOutcome>
 {
     public async Task<GetKubernetesStorageClassesOutcome> HandleAsync(
         GetKubernetesStorageClassesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var discovered = await discoverStorageClasses(
-            request.DeploymentTargetId.Trim(),
-            cancellationToken);
+        var discovered = await discoverStorageClasses(request.DeploymentTargetId.Trim(), cancellationToken);
         return discovered switch
         {
-            IReadOnlyCollection<KubernetesStorageClassDto> storageClasses =>
-                storageClasses,
-            KubernetesStorageDiscoveryUnavailable error =>
-                error
+            IReadOnlyCollection<KubernetesStorageClassDto> storageClasses => storageClasses,
+            KubernetesStorageDiscoveryUnavailable error => error,
         };
     }
 }
 
-public sealed class GetKubernetesStorageClassesRequestValidator
-    : AbstractValidator<GetKubernetesStorageClassesRequest>
+public sealed class GetKubernetesStorageClassesRequestValidator : AbstractValidator<GetKubernetesStorageClassesRequest>
 {
     public GetKubernetesStorageClassesRequestValidator() =>
-        RuleFor(request => request.DeploymentTargetId)
-            .MongoObjectId("Deployment target ID");
+        RuleFor(request => request.DeploymentTargetId).MongoObjectId("Deployment target ID");
 }
 
 public static class GetKubernetesStorageClassesEndpoint
 {
     public static IEndpointRouteBuilder MapGetKubernetesStorageClassesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/storage-classes", async (
-                IMediator mediator,
-                [AsParameters] GetKubernetesStorageClassesRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/storage-classes",
+                async (
+                    IMediator mediator, [AsParameters] GetKubernetesStorageClassesRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    IReadOnlyCollection<KubernetesStorageClassDto> storageClasses =>
-                        Results.Ok(storageClasses),
-                    KubernetesStorageDiscoveryUnavailable error =>
-                        MapDiscoveryUnavailable(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        IReadOnlyCollection<KubernetesStorageClassDto> storageClasses => Results.Ok(storageClasses),
+                        KubernetesStorageDiscoveryUnavailable error => MapDiscoveryUnavailable(error),
+                    });
+                })
             .WithName("GetKubernetesStorageClasses")
             .RequireAuthorization(Policy.Admin)
             .Produces<IReadOnlyCollection<KubernetesStorageClassDto>>()

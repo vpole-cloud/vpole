@@ -3,20 +3,20 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.Search.Application;
 using Pole.Features.Search.Application.Realtime;
 using Pole.Features.Search.Contracts;
 using Pole.Features.Search.Events;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.Search;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+public sealed class SearchProjectionOutboxTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.search/v1/search-projection-changed";
     private static readonly ResourceTypeId Type = ResourceTypeId.Create("third-party/widget");
@@ -33,21 +33,28 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
         var current = new SearchOperationalStatusSnapshot(1, 2, "Failed", "private-failure-detail", DateTime.UtcNow);
         await status(snapshot.Identity, current);
         await status(snapshot.Identity, current);
-        await status(snapshot.Identity, current with
-        {
-            ObservedGeneration = 1
-        });
+        await status(
+            snapshot.Identity,
+            current with
+            {
+                ObservedGeneration = 1,
+            });
         await delete(snapshot.Identity, 2);
         await delete(snapshot.Identity, 2);
         await create(snapshot);
         await status(snapshot.Identity, current);
         var envelopes = await DbContext.OutboxMessages
-            .Find(row => row.TenantId == snapshot.Identity.TenantId && row.EventType == EventName).ToListAsync();
+            .Find(row => row.TenantId == snapshot.Identity.TenantId && row.EventType == EventName)
+            .ToListAsync();
         Assert.Equal(3, envelopes.Count);
         var messages = envelopes.Select(row =>
-            JsonSerializer.Deserialize<SearchProjectionChangedEvent>(row.PayloadJson, EventExtensions.SerializerOptions)
-            !).ToArray();
-        Assert.All(messages,
+                JsonSerializer.Deserialize<SearchProjectionChangedEvent>(
+                    row.PayloadJson,
+                    EventExtensions.SerializerOptions)
+                !)
+            .ToArray();
+        Assert.All(
+            messages,
             message =>
             {
                 Assert.Equal(snapshot.Identity.TenantId, message.EventCore.TenantId);
@@ -55,7 +62,8 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
                 Assert.Equal(Type.Value, message.ResourceType);
             });
         Assert.Single(messages, message => message.ObservedGeneration == 2);
-        Assert.All(envelopes,
+        Assert.All(
+            envelopes,
             row =>
             {
                 Assert.DoesNotContain(snapshot.Title, row.PayloadJson);
@@ -77,7 +85,7 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
     {
         var snapshot = Snapshot();
         var status = Services.GetRequiredService<UpdateSearchOperationalStatus>();
-        await status(snapshot.Identity, new(2, 3, "Applied", null, DateTime.UtcNow));
+        await status(snapshot.Identity, new SearchOperationalStatusSnapshot(2, 3, "Applied", null, DateTime.UtcNow));
         await Services.GetRequiredService<CreateSearchProjection>()(snapshot);
         Assert.Equal(2, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
     }
@@ -95,9 +103,13 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             await Services.GetRequiredService<CreateSearchProjection>()(snapshot);
         var before = await ProjectionState();
         var count = await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName);
-        var services = new ServiceCollection().AddSingleton(Fixture.Client).AddSingleton(Fixture.Database)
-            .AddSingleton(new SearchSourceType(Type, "Widget", 3)).AddSearchFeature();
-        services.AddSingleton<StoreOutboxWrites>(async (session, writes, ct) =>
+        var services = new ServiceCollection().AddSingleton(Fixture.Client)
+            .AddSingleton(Fixture.Database)
+            .AddSingleton(new SearchSourceType(Type, "Widget", 3))
+            .AddSearchFeature();
+        services.AddSingleton<StoreOutboxWrites>(async (
+            session, writes,
+            ct) =>
         {
             Assert.True(session.IsInTransaction);
             await Fixture.StoreOutboxWrites(session, writes, ct);
@@ -111,12 +123,13 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
             "delete" => scope.ServiceProvider.GetRequiredService<DeleteSearchProjection>()(snapshot.Identity, 2),
             "status" or "pending-status" => scope.ServiceProvider.GetRequiredService<UpdateSearchOperationalStatus>()(
                 snapshot.Identity,
-                new(2, 2, "Applied", null, DateTime.UtcNow)),
-            _ => scope.ServiceProvider.GetRequiredService<CreateSearchProjection>()(snapshot with
-            {
-                ResourceRevision = 2,
-                Title = "replacement"
-            })
+                new SearchOperationalStatusSnapshot(2, 2, "Applied", null, DateTime.UtcNow)),
+            _ => scope.ServiceProvider.GetRequiredService<CreateSearchProjection>()(
+                snapshot with
+                {
+                    ResourceRevision = 2,
+                    Title = "replacement",
+                }),
         });
         Assert.Equal(before, await ProjectionState());
         Assert.Equal(count, await DbContext.CountOutboxMessagesAsync(Data.TenantId, EventName));
@@ -126,7 +139,8 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
     public void SearchRegistersOneTenantTopicWithoutConcreteProviders()
     {
         var services = new ServiceCollection().AddSearchFeature();
-        Assert.Equal(new RealtimeTopic("search", RealtimeScope.Tenant),
+        Assert.Equal(
+            new RealtimeTopic("search", RealtimeScope.Tenant),
             Assert.Single(services, descriptor => descriptor.ServiceType == typeof(RealtimeTopic))
                 .ImplementationInstance);
     }
@@ -135,17 +149,20 @@ public sealed class SearchProjectionOutboxTests(MongoReplicaSetFixture fixture) 
     {
         var rows = new List<string>();
         foreach (var collection in new[] { "SearchDocuments", "SearchSourceDocuments", "SearchProjectionVersions" })
-            rows.Add((await Fixture.Database.GetCollection<BsonDocument>(collection)
-                .Find(Builders<BsonDocument>.Filter.Eq("TenantId", Data.TenantId))
-                .Sort(Builders<BsonDocument>.Sort.Ascending("_id")).ToListAsync()).ToJson());
+            rows.Add(
+                (await Fixture.Database
+                    .GetCollection<BsonDocument>(collection)
+                    .Find(Builders<BsonDocument>.Filter.Eq("TenantId", Data.TenantId))
+                    .Sort(Builders<BsonDocument>.Sort.Ascending("_id"))
+                    .ToListAsync()).ToJson());
         return rows.ToArray();
     }
 
     private SearchProjectionSnapshot Snapshot() => new(
-        new(Data.TenantId, Type, ObjectId.GenerateNewId().ToString()),
+        new SearchProjectionIdentity(Data.TenantId, Type, ObjectId.GenerateNewId().ToString()),
         "private-search-title",
         null,
         null,
-        [new(SearchProjectionFieldType.Name, "private-search-title")],
+        [new SearchProjectionField(SearchProjectionFieldType.Name, "private-search-title")],
         1);
 }

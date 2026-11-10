@@ -8,8 +8,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Domain;
@@ -23,22 +21,23 @@ public static class UpdateResourceGroup
 {
     public static IEndpointRouteBuilder MapUpdateResourceGroupEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] UpdateResourceGroupRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPut(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateResourceGroupRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ResourceGroupDto resourceGroup => Results.Ok(resourceGroup),
-                    UpdateResourceGroupError error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ResourceGroupDto resourceGroup => Results.Ok(resourceGroup),
+                        UpdateResourceGroupError error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("UpdateResourceGroup")
             .WithSummary("Updates a resource group by its ID.")
             .WithDescription("Updates the resource group's metadata while preserving its ownership identity.")
-            .Produces<ResourceGroupDto>(StatusCodes.Status200OK)
+            .Produces<ResourceGroupDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -52,13 +51,9 @@ public sealed record UpdateResourceGroupRequest(
     [FromTenantHeader] string TenantId
 ) : IMediatorRequest<UpdateResourceGroupOutcome>, ITenantWriteOperation;
 
-public union UpdateResourceGroupError(
-    ResourceGroupNotFound,
-    ResourceGroupRevisionConflict);
+public union UpdateResourceGroupError(ResourceGroupNotFound, ResourceGroupRevisionConflict);
 
-public union UpdateResourceGroupOutcome(
-    ResourceGroupDto,
-    UpdateResourceGroupError);
+public union UpdateResourceGroupOutcome(ResourceGroupDto, UpdateResourceGroupError);
 
 public sealed record UpdateResourceGroupRequestBody(
     string Description,
@@ -69,17 +64,14 @@ public sealed class UpdateResourceGroupHandler(
     LoadResourceGroup loadResourceGroup,
     LoadResourceRegistrationCount loadResourceRegistrationCount,
     PersistUpdatedResourceGroup persistUpdatedResourceGroup,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<UpdateResourceGroupRequest, UpdateResourceGroupOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<UpdateResourceGroupRequest, UpdateResourceGroupOutcome>
 {
     public async Task<UpdateResourceGroupOutcome> HandleAsync(
         UpdateResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroup = await loadResourceGroup(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
+        var resourceGroup = await loadResourceGroup(request.TenantId, request.Id, cancellationToken);
 
         if (resourceGroup is null)
             return new UpdateResourceGroupError(new ResourceGroupNotFound(request.Id));
@@ -90,38 +82,26 @@ public sealed class UpdateResourceGroupHandler(
             timeProvider.GetUtcNow().UtcDateTime);
         var changes = GetChanges(resourceGroup, updated);
 
-        var persisted = await persistUpdatedResourceGroup(
-            resourceGroup,
-            updated,
-            changes,
-            cancellationToken);
+        var persisted = await persistUpdatedResourceGroup(resourceGroup, updated, changes, cancellationToken);
         return persisted switch
         {
-            ResourceGroup success => success.ToDto(await loadResourceRegistrationCount(
-                request.TenantId,
-                request.Id,
-                cancellationToken)),
-            ResourceGroupRevisionConflict error => new UpdateResourceGroupError(error)
+            ResourceGroup success => success.ToDto(
+                await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken)),
+            ResourceGroupRevisionConflict error => new UpdateResourceGroupError(error),
         };
     }
 
-    private static ResourceGroupUpdatedEventChanges GetChanges(ResourceGroup previous, ResourceGroup updated) =>
-        new(UpdateLog<string>.Of(previous.Description, updated.Description),
-            UpdateLog<ImmutableHashSet<string>>.Of(
-                previous.Tags,
-                updated.Tags));
+    private static ResourceGroupUpdatedEventChanges GetChanges(ResourceGroup previous, ResourceGroup updated) => new(
+        UpdateLog<string>.Of(previous.Description, updated.Description),
+        UpdateLog<ImmutableHashSet<string>>.Of(previous.Tags, updated.Tags));
 }
 
 public sealed class UpdateResourceGroupValidator : AbstractValidator<UpdateResourceGroupRequest>
 {
     public UpdateResourceGroupValidator()
     {
-        RuleFor(x => x.Id)
-            .MongoObjectId("Resource group ID");
-        RuleFor(x => x.Body.Description)
-            .MaximumLength(200);
-        RuleForEach(x => x.Body.Tags)
-            .NotEmpty()
-            .MaximumLength(30);
+        RuleFor(x => x.Id).MongoObjectId("Resource group ID");
+        RuleFor(x => x.Body.Description).MaximumLength(200);
+        RuleForEach(x => x.Body.Tags).NotEmpty().MaximumLength(30);
     }
 }

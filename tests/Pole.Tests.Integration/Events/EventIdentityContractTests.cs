@@ -1,6 +1,6 @@
+using System.Reflection;
 using System.Text.Json;
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
@@ -18,9 +18,7 @@ public sealed class EventIdentityContractTests
     {
         var catalog = new OutboxEventAssemblyCatalog(
         [
-            new SelectedTypesAssembly(
-                "event-identity-versions",
-                [typeof(VersionOneEvent), typeof(VersionTwoEvent)])
+            new SelectedTypesAssembly("event-identity-versions", [typeof(VersionOneEvent), typeof(VersionTwoEvent)]),
         ]);
 
         Assert.Same(typeof(VersionOneEvent), catalog.GetRequiredEventType("pole.test/v1/example"));
@@ -34,7 +32,7 @@ public sealed class EventIdentityContractTests
         [
             new SelectedTypesAssembly(
                 "event-identity-duplicates",
-                [typeof(DuplicateVersionOneEvent), typeof(VersionOneEvent)])
+                [typeof(DuplicateVersionOneEvent), typeof(VersionOneEvent)]),
         ]));
 
         Assert.Contains("pole.test/v1/example", exception.Message);
@@ -43,8 +41,9 @@ public sealed class EventIdentityContractTests
     [Fact]
     public void EventTypeIdentity_RequiresAPositiveVersion()
     {
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => EventTypeIdentity.GetRequiredName(typeof(ZeroVersionEvent)));
+        var exception
+            = Assert.Throws<InvalidOperationException>(() =>
+                EventTypeIdentity.GetRequiredName(typeof(ZeroVersionEvent)));
 
         Assert.Contains("namespace/vN/name", exception.Message);
     }
@@ -57,8 +56,8 @@ public sealed class EventIdentityContractTests
             EventCore = EventCore.Create("tenant") with
             {
                 TraceId = "0123456789abcdef0123456789abcdef",
-                CorrelationId = "event-identity-roundtrip"
-            }
+                CorrelationId = "event-identity-roundtrip",
+            },
         };
 
         var payload = JsonSerializer.Serialize(@event, EventJson.SerializerOptions);
@@ -88,7 +87,7 @@ public sealed class EventIdentityContractTests
             {
                 cfg.Host(
                     "127.0.0.1",
-                    checked((ushort)container.GetMappedPublicPort(5672)),
+                    checked(container.GetMappedPublicPort(5672)),
                     "/",
                     host =>
                     {
@@ -108,7 +107,7 @@ public sealed class EventIdentityContractTests
         {
             var @event = new VersionOneEvent("published")
             {
-                EventCore = EventCore.Create("tenant")
+                EventCore = EventCore.Create("tenant"),
             };
             await using var scope = provider.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<IPublishEndpoint>().Publish(@event);
@@ -123,30 +122,40 @@ public sealed class EventIdentityContractTests
     }
 
     [EntityName("pole.test/v1/example")]
-    public sealed record VersionOneEvent(string Value) : IPoleEvent
+    public sealed record VersionOneEvent(
+        string Value
+    ) : IPoleEvent
     {
         public EventCore EventCore { get; init; } = EventCore.Create();
     }
 
     [EntityName("pole.test/v2/example")]
-    private sealed record VersionTwoEvent(string Value) : IPoleEvent
+    private sealed record VersionTwoEvent(
+        string Value
+    ) : IPoleEvent
     {
-        public EventCore EventCore { get; init; } = EventCore.Create();
+        public EventCore EventCore { get; } = EventCore.Create();
     }
 
     [EntityName("pole.test/v1/example")]
-    private sealed record DuplicateVersionOneEvent(string Value) : IPoleEvent
+    private sealed record DuplicateVersionOneEvent(
+        string Value
+    ) : IPoleEvent
     {
-        public EventCore EventCore { get; init; } = EventCore.Create();
+        public EventCore EventCore { get; } = EventCore.Create();
     }
 
     [EntityName("pole.test/v0/example")]
-    private sealed record ZeroVersionEvent(string Value) : IPoleEvent
+    private sealed record ZeroVersionEvent(
+        string Value
+    ) : IPoleEvent
     {
-        public EventCore EventCore { get; init; } = EventCore.Create();
+        public EventCore EventCore { get; } = EventCore.Create();
     }
 
-    public sealed class VersionOneEventConsumer(ConsumedVersionedEvent consumed) : IConsumer<VersionOneEvent>
+    public sealed class VersionOneEventConsumer(
+        ConsumedVersionedEvent consumed
+    ) : IConsumer<VersionOneEvent>
     {
         public Task Consume(ConsumeContext<VersionOneEvent> context)
         {
@@ -157,8 +166,8 @@ public sealed class EventIdentityContractTests
 
     public sealed class ConsumedVersionedEvent
     {
-        private readonly TaskCompletionSource<VersionOneEvent> _source =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<VersionOneEvent> _source = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Set(VersionOneEvent @event) => _source.TrySetResult(@event);
 
@@ -169,7 +178,10 @@ public sealed class EventIdentityContractTests
         }
     }
 
-    private sealed class SelectedTypesAssembly(string name, Type[] types) : System.Reflection.Assembly
+    private sealed class SelectedTypesAssembly(
+        string name,
+        Type[] types
+    ) : Assembly
     {
         public override string FullName => name;
         public override bool IsDynamic => false;

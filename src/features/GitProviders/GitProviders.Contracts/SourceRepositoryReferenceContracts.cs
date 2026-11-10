@@ -4,15 +4,18 @@ namespace Pole.Features.GitProviders.Contracts;
 
 public sealed record NamedSourceRepositoryRequest(
     string TenantId,
-    string TechnicalName);
+    string TechnicalName
+);
 
-public sealed record NamedSourceRepositoryFound(SourceRepositoryBuildSnapshot Repository);
+public sealed record NamedSourceRepositoryFound(
+    SourceRepositoryBuildSnapshot Repository
+);
 
-public sealed record NamedSourceRepositoryNotFound(string TechnicalName);
+public sealed record NamedSourceRepositoryNotFound(
+    string TechnicalName
+);
 
-public union FindNamedSourceRepositoryOutcome(
-    NamedSourceRepositoryFound,
-    NamedSourceRepositoryNotFound);
+public union FindNamedSourceRepositoryOutcome(NamedSourceRepositoryFound, NamedSourceRepositoryNotFound);
 
 public delegate Task<FindNamedSourceRepositoryOutcome> FindNamedSourceRepository(
     NamedSourceRepositoryRequest request,
@@ -21,7 +24,8 @@ public delegate Task<FindNamedSourceRepositoryOutcome> FindNamedSourceRepository
 
 public sealed record SourceRepositoryReferenceRequest(
     string TenantId,
-    string SourceRepositoryId);
+    string SourceRepositoryId
+);
 
 public delegate Task<FindSourceRepositoryBuildOutcome> LoadSourceRepositoryReference(
     SourceRepositoryReferenceRequest request,
@@ -31,15 +35,16 @@ public delegate Task<FindSourceRepositoryBuildOutcome> LoadSourceRepositoryRefer
 public sealed record FenceSourceRepositoryRequest(
     string TenantId,
     string SourceRepositoryId,
-    long ExpectedRevision);
+    long ExpectedRevision
+);
 
 public sealed record SourceRepositoryFenced;
 
-public sealed record SourceRepositoryReferenceConflict(string SourceRepositoryId);
+public sealed record SourceRepositoryReferenceConflict(
+    string SourceRepositoryId
+);
 
-public union FenceSourceRepositoryOutcome(
-    SourceRepositoryFenced,
-    SourceRepositoryReferenceConflict);
+public union FenceSourceRepositoryOutcome(SourceRepositoryFenced, SourceRepositoryReferenceConflict);
 
 public delegate Task<FenceSourceRepositoryOutcome> FenceSourceRepository(
     FenceSourceRepositoryRequest request,
@@ -48,11 +53,14 @@ public delegate Task<FenceSourceRepositoryOutcome> FenceSourceRepository(
 
 public sealed record SourceRepositoryCommitResolved(
     SourceRepositoryBuildSnapshot Repository,
-    string CommitSha);
+    string CommitSha
+);
 
 public sealed record SourceRepositoryRemoteNotFound;
 
-public sealed record SourceRepositoryBranchNotFound(string Branch);
+public sealed record SourceRepositoryBranchNotFound(
+    string Branch
+);
 
 public sealed record SourceRepositoryAccessDenied;
 

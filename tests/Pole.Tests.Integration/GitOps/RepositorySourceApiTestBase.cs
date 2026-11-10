@@ -1,31 +1,11 @@
 using System.Net;
-using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Features.ComputeProfiles.Migrations;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
-using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 using Pole.Features.GitOps.Application.Jobs;
-using Pole.Features.GitOps.Application.Lifecycle;
-using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Migrations;
-using Pole.Features.Outbox.Domain;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.Secrets.Domain;
-using Pole.Features.Tenants.Domain;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Features.WebServices.Domain;
-using Pole.Features.WebServices.Migrations;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -34,7 +14,8 @@ namespace Pole.Tests.Integration.GitOps;
 
 public abstract partial class RepositorySourceApiTestBase(
     MongoReplicaSetFixture fixture,
-    bool isolatedDatabase = false) : ApiIntegrationTestBase(fixture, isolatedDatabase)
+    bool isolatedDatabase = false
+) : ApiIntegrationTestBase(fixture, isolatedDatabase)
 {
     private protected const string Root = "/api/v1/gitops/sources";
 
@@ -50,10 +31,13 @@ public abstract partial class RepositorySourceApiTestBase(
     {
         await base.InitializeAsync();
         using (Timings.Measure("gitops.seed.catalog"))
+        {
             await Fixture.PrepareNamedCatalogAsync();
+        }
     }
 
-    private protected CreateRepositorySourceBody Body(Guid? key = null) => new(key ?? Guid.NewGuid(),
+    private protected CreateRepositorySourceBody Body(Guid? key = null) => new(
+        key ?? Guid.NewGuid(),
         repository.Provider,
         TestRepositorySnapshots.ConnectionId,
         "repo",
@@ -71,16 +55,18 @@ public abstract partial class RepositorySourceApiTestBase(
     private protected async Task Run(string source)
     {
         using var scope = ApiServices.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<RepositorySourceJob>()
-            .ProcessAsync(new(Data.TenantId, source), default);
+        await scope.ServiceProvider
+            .GetRequiredService<RepositorySourceJob>()
+            .ProcessAsync(new GitSourceIdentity(Data.TenantId, source), default);
     }
 
     private protected async Task<HttpResponseMessage> Sync(string source, ManifestFile[]? files = null)
     {
         if (files is not null)
             repository.Publish("repo", files);
-        var response =
-            await Client.PostAsJsonAsync($"{Root}/{source}/sync", new SyncRepositorySourceBody(1, Guid.NewGuid()));
+        var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source}/sync",
+            new SyncRepositorySourceBody(1, Guid.NewGuid()));
         if (response.StatusCode == HttpStatusCode.Accepted)
             await Run(source);
         return response;
@@ -89,7 +75,8 @@ public abstract partial class RepositorySourceApiTestBase(
     private protected async Task<HttpResponseMessage> Retry(string source)
     {
         var current = (await Read(source))!;
-        var response = await Client.PostAsJsonAsync($"{Root}/{source}/retry",
+        var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source}/retry",
             new RetryRepositorySourceBody(current.Revision, Guid.NewGuid(), current.Synchronization.LatestRunId!));
         if (response.StatusCode == HttpStatusCode.Accepted)
             await Run(source);
@@ -99,7 +86,8 @@ public abstract partial class RepositorySourceApiTestBase(
     private protected Task<RepositorySourceView?> Read(string source) =>
         Client.GetFromJsonAsync<RepositorySourceView>($"{Root}/{source}");
 
-    private protected static async Task<JsonElement> AssertProblem(HttpResponseMessage response,
+    private protected static async Task<JsonElement> AssertProblem(
+        HttpResponseMessage response,
         HttpStatusCode status,
         string code)
     {
@@ -114,5 +102,6 @@ public abstract partial class RepositorySourceApiTestBase(
     }
 }
 
-public abstract class IsolatedRepositorySourceApiTestBase(MongoReplicaSetFixture fixture)
-    : RepositorySourceApiTestBase(fixture, true), IIsolatedIntegrationTest;
+public abstract class IsolatedRepositorySourceApiTestBase(
+    MongoReplicaSetFixture fixture
+) : RepositorySourceApiTestBase(fixture, true), IIsolatedIntegrationTest;

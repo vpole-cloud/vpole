@@ -10,26 +10,54 @@ public sealed class GitHubStubState
     private const string RepositoryName = "source-build-sample";
     private const string RepositoryFullName = "pole-e2e/source-build-sample";
     private const long RepositoryId = 9001;
+
+    private const string ProjectFile = """
+                                       <Project Sdk="Microsoft.NET.Sdk.Web">
+                                         <PropertyGroup>
+                                           <TargetFramework>net11.0</TargetFramework>
+                                           <AssemblyName>Pole.E2E.Sample</AssemblyName>
+                                         </PropertyGroup>
+                                       </Project>
+                                       """;
+
+    public const string SourceDockerfile = """
+                                           FROM scratch
+                                           COPY src/Program.cs /app/revision.txt
+                                           """;
+
     private readonly ConcurrentQueue<SanitizedRequest> _requests = new();
-    private readonly IReadOnlyDictionary<string, Revision> _revisions = new Dictionary<string, Revision>(StringComparer.Ordinal)
-    {
-        ["dependencies"] = new("dependencies", "3333333333333333333333333333333333333333", "e2e-tree-dependencies", DependencyProbeSample.Program),
-        ["v1"] = new(
-            "v1",
-            "1111111111111111111111111111111111111111",
-            "e2e-tree-v1",
-            "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.MapGet(\"/\", () => \"Pole E2E sample v1\");\napp.Run();\n"),
-        ["v2"] = new(
-            "v2",
-            "2222222222222222222222222222222222222222",
-            "e2e-tree-v2",
-            "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.MapGet(\"/\", () => \"Pole E2E sample v2\");\napp.Run();\n")
-    };
+
+    private readonly IReadOnlyDictionary<string, Revision> _revisions
+        = new Dictionary<string, Revision>(StringComparer.Ordinal)
+        {
+            ["dependencies"] = new(
+                "dependencies",
+                "3333333333333333333333333333333333333333",
+                "e2e-tree-dependencies",
+                DependencyProbeSample.Program),
+            ["v1"] = new(
+                "v1",
+                "1111111111111111111111111111111111111111",
+                "e2e-tree-v1",
+                "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.MapGet(\"/\", () => \"Pole E2E sample v1\");\napp.Run();\n"),
+            ["v2"] = new(
+                "v2",
+                "2222222222222222222222222222222222222222",
+                "e2e-tree-v2",
+                "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.MapGet(\"/\", () => \"Pole E2E sample v2\");\napp.Run();\n"),
+        };
+
     private string _currentRevision = "v1";
 
     public Revision CurrentRevision => _revisions[Volatile.Read(ref _currentRevision)];
-    public string CurrentProject => CurrentRevision.Name == "dependencies" ? DependencyProbeSample.Project : ProjectFile;
-    public string CurrentDockerfile => CurrentRevision.Name == "dependencies" ? DependencyProbeSample.Dockerfile : SourceDockerfile;
+
+    public string CurrentProject =>
+        CurrentRevision.Name == "dependencies" ? DependencyProbeSample.Project : ProjectFile;
+
+    public string CurrentDockerfile =>
+        CurrentRevision.Name == "dependencies" ? DependencyProbeSample.Dockerfile : SourceDockerfile;
+
+    public IReadOnlyList<SanitizedRequest> Requests => _requests.ToArray();
 
     public void Reset()
     {
@@ -46,21 +74,24 @@ public sealed class GitHubStubState
         return true;
     }
 
-    public bool TryGetRevisionByCommit(string commitSha, out Revision revision) =>
-        (revision = _revisions.Values.SingleOrDefault(value =>
-            string.Equals(value.CommitSha, commitSha, StringComparison.Ordinal))!) is not null;
+    public bool TryGetRevisionByCommit(string commitSha, out Revision revision) => (revision
+        = _revisions.Values.SingleOrDefault(value => string.Equals(
+            value.CommitSha,
+            commitSha,
+            StringComparison.Ordinal))!) is not null;
 
-    public bool TryGetRevisionByTree(string treeSha, out Revision revision) =>
-        (revision = _revisions.Values.SingleOrDefault(value =>
-            string.Equals(value.TreeSha, treeSha, StringComparison.Ordinal))!) is not null;
+    public bool TryGetRevisionByTree(string treeSha, out Revision revision) => (revision
+            = _revisions.Values.SingleOrDefault(value => string.Equals(
+                value.TreeSha,
+                treeSha,
+                StringComparison.Ordinal))!)
+        is not null;
 
-    public void Record(HttpRequest request) =>
-        _requests.Enqueue(new SanitizedRequest(
+    public void Record(HttpRequest request) => _requests.Enqueue(
+        new SanitizedRequest(
             request.Method,
-            request.Path.Value ?? string.Empty,
+            request.Path.Value ?? "",
             request.Query.Keys.OrderBy(key => key, StringComparer.Ordinal).ToArray()));
-
-    public IReadOnlyList<SanitizedRequest> Requests => _requests.ToArray();
 
     public byte[] CreateArchive(Revision revision)
     {
@@ -69,8 +100,14 @@ public sealed class GitHubStubState
         using (var gzip = new GZipStream(archive, CompressionLevel.SmallestSize, leaveOpen: true))
         using (var tar = new TarWriter(gzip, leaveOpen: true))
         {
-            WriteFile(tar, $"{root}/Dockerfile", revision.Name == "dependencies" ? DependencyProbeSample.Dockerfile : SourceDockerfile);
-            WriteFile(tar, $"{root}/src/Pole.E2E.Sample.csproj", revision.Name == "dependencies" ? DependencyProbeSample.Project : ProjectFile);
+            WriteFile(
+                tar,
+                $"{root}/Dockerfile",
+                revision.Name == "dependencies" ? DependencyProbeSample.Dockerfile : SourceDockerfile);
+            WriteFile(
+                tar,
+                $"{root}/src/Pole.E2E.Sample.csproj",
+                revision.Name == "dependencies" ? DependencyProbeSample.Project : ProjectFile);
             WriteFile(tar, $"{root}/src/Program.cs", revision.ProgramSource);
         }
 
@@ -85,14 +122,14 @@ public sealed class GitHubStubState
         html_url = $"{baseUrl.TrimEnd('/')}/pole-e2e/{RepositoryName}",
         @private = true,
         default_branch = "main",
-        updated_at = "2026-07-11T00:00:00Z"
+        updated_at = "2026-07-11T00:00:00Z",
     };
 
     public object Branch(Revision revision) => new
     {
         name = "main",
         commit = new { sha = revision.CommitSha },
-        @protected = true
+        @protected = true,
     };
 
     private void ClearRequests()
@@ -102,35 +139,26 @@ public sealed class GitHubStubState
         }
     }
 
-    private static void WriteFile(TarWriter writer, string path, string content)
+    private static void WriteFile(
+        TarWriter writer,
+        string path,
+        string content)
     {
         using var data = new MemoryStream(Encoding.UTF8.GetBytes(content));
         var entry = new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = data };
         writer.WriteEntry(entry);
     }
-
-    private const string ProjectFile = """
-        <Project Sdk="Microsoft.NET.Sdk.Web">
-          <PropertyGroup>
-            <TargetFramework>net11.0</TargetFramework>
-            <AssemblyName>Pole.E2E.Sample</AssemblyName>
-          </PropertyGroup>
-        </Project>
-        """;
-
-    public const string SourceDockerfile = """
-        FROM scratch
-        COPY src/Program.cs /app/revision.txt
-        """;
 }
 
 public sealed record Revision(
     string Name,
     string CommitSha,
     string TreeSha,
-    string ProgramSource);
+    string ProgramSource
+);
 
 public sealed record SanitizedRequest(
     string Method,
     string Path,
-    IReadOnlyList<string> QueryKeys);
+    IReadOnlyList<string> QueryKeys
+);

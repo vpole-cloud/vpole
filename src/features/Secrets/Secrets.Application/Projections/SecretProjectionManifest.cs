@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using k8s.Models;
 using Pole.Features.Secrets.Domain;
@@ -18,7 +19,9 @@ public static class SecretProjectionManifest
         {
             ApiVersion = "v1",
             Kind = "Secret",
-            Type = projection.KubernetesType == KubernetesSecretType.BasicAuthentication ? "kubernetes.io/basic-auth" : "Opaque",
+            Type = projection.KubernetesType == KubernetesSecretType.BasicAuthentication
+                ? "kubernetes.io/basic-auth"
+                : "Opaque",
             Metadata = new V1ObjectMeta
             {
                 Name = projection.KubernetesName,
@@ -33,16 +36,16 @@ public static class SecretProjectionManifest
                     ["pole.io/resource-id"] = projection.ConsumerId,
                     ["pole.io/resource-deployment-id"] = projection.DeploymentId,
                     ["pole.io/runtime-cell-id"] = projection.RuntimeCellId,
-                    ["pole.io/deployment-target-id"] = projection.DeploymentTargetId
+                    ["pole.io/deployment-target-id"] = projection.DeploymentTargetId,
                 },
                 Annotations = new Dictionary<string, string>
                 {
-                    ["pole.io/secret-version"] = projection.DesiredVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ["pole.io/secret-revision"] = projection.DesiredRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ["pole.io/resource-type"] = projection.ConsumerType
-                }
+                    ["pole.io/secret-version"] = projection.DesiredVersion.ToString(CultureInfo.InvariantCulture),
+                    ["pole.io/secret-revision"] = projection.DesiredRevision.ToString(CultureInfo.InvariantCulture),
+                    ["pole.io/resource-type"] = projection.ConsumerType,
+                },
             },
-            Data = data
+            Data = data,
         };
     }
 }

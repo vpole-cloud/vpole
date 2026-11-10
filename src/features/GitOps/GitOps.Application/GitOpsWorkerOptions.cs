@@ -18,11 +18,12 @@ public sealed class GitOpsWorkerOptions
 
     [Range(1, 5)] public int MaximumConsecutiveFailures { get; init; } = 5;
 
-    public TimeSpan RetryDelay(int failures) => TimeSpan.FromMinutes(failures switch
-    {
-        <= 1 => 1,
-        2 => 2,
-        3 => 4,
-        _ => 5
-    });
+    public TimeSpan RetryDelay(int failures) => TimeSpan.FromMinutes(
+        failures switch
+        {
+            <= 1 => 1,
+            2 => 2,
+            3 => 4,
+            _ => 5,
+        });
 }

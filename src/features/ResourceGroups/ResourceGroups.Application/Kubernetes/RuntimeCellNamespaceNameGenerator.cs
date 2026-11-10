@@ -1,12 +1,10 @@
-using MongoDB.Bson;
 using Microsoft.Extensions.Options;
+using MongoDB.Bson;
 using Pole.KubernetesValidation;
 
 namespace Pole.Features.ResourceGroups.Application.Kubernetes;
 
-public delegate string GenerateRuntimeCellNamespaceName(
-    string tenantId,
-    string isolationScopeId);
+public delegate string GenerateRuntimeCellNamespaceName(string tenantId, string isolationScopeId);
 
 public sealed class RuntimeCellNamespaceNameGenerator
 {
@@ -32,24 +30,18 @@ public sealed class RuntimeCellNamespaceNameGenerator
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("The Kubernetes namespace prefix is required.", nameof(value));
 
-        var normalized = new string(value
-            .Trim()
-            .ToLowerInvariant()
-            .Where(character =>
-                (character is >= 'a' and <= 'z') ||
-                char.IsAsciiDigit(character) ||
-                character == '-')
-            .ToArray())
-            .Trim('-');
+        var normalized = new string(
+            value.Trim()
+                .ToLowerInvariant()
+                .Where(character => character is >= 'a' and <= 'z' || char.IsAsciiDigit(character) || character == '-')
+                .ToArray()).Trim('-');
 
         if (normalized.Length > MaximumPrefixLength)
             normalized = normalized[..MaximumPrefixLength].TrimEnd('-');
         if (normalized.Length == 0)
-        {
             throw new ArgumentException(
                 "The Kubernetes namespace prefix must contain at least one alphanumeric character.",
                 nameof(value));
-        }
 
         return normalized;
     }
@@ -63,8 +55,7 @@ public sealed class RuntimeCellNamespaceNameGenerator
     }
 }
 
-public sealed class RuntimeCellNamespaceOptionsValidator
-    : IValidateOptions<KubernetesOptions>
+public sealed class RuntimeCellNamespaceOptionsValidator : IValidateOptions<KubernetesOptions>
 {
     public ValidateOptionsResult Validate(string? name, KubernetesOptions options)
     {
@@ -77,11 +68,10 @@ public sealed class RuntimeCellNamespaceOptionsValidator
                 KubernetesValueGuard.LabelKey(key, nameof(options.AdditionalNamespaceLabels));
                 KubernetesValueGuard.LabelValue(value, nameof(options.AdditionalNamespaceLabels));
                 if (RuntimeCellNamespaceManifestBuilder.ReservedLabelKeys.Contains(key))
-                {
                     return ValidateOptionsResult.Fail(
                         $"Additional Kubernetes namespace label '{key}' is reserved for Pole ownership.");
-                }
             }
+
             return ValidateOptionsResult.Success;
         }
         catch (ArgumentException exception)

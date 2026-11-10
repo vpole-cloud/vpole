@@ -12,29 +12,29 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <InternalsVisibleTo Include="Pole.Tests.E2E" />
-      <ProjectReference Include="..\..\examples\Blog\Blog.csproj" />
-      <ProjectReference Include="..\Pole.Server\Pole.Server.csproj" />
+        <InternalsVisibleTo Include="Pole.Tests.E2E"/>
+        <ProjectReference Include="..\..\examples\Blog\Blog.csproj"/>
+        <ProjectReference Include="..\Pole.Server\Pole.Server.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Aspire.Hosting.JavaScript" />
-      <PackageReference Include="Aspire.Hosting.Keycloak" />
-      <PackageReference Include="Aspire.Hosting.MongoDB" />
-      <PackageReference Include="Aspire.Hosting.RabbitMQ" />
-      <PackageReference Include="Aspire.Hosting.Redis" />
+        <PackageReference Include="Aspire.Hosting.JavaScript"/>
+        <PackageReference Include="Aspire.Hosting.Keycloak"/>
+        <PackageReference Include="Aspire.Hosting.MongoDB"/>
+        <PackageReference Include="Aspire.Hosting.RabbitMQ"/>
+        <PackageReference Include="Aspire.Hosting.Redis"/>
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="BuildKit\buildkitd.toml">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="MongoDb\mongo-init.sh">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="MongoDb\mongo-entrypoint.sh">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
+        <None Update="BuildKit\buildkitd.toml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="MongoDb\mongo-init.sh">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="MongoDb\mongo-entrypoint.sh">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>

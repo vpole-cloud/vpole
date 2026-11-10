@@ -1,5 +1,4 @@
 using Hangfire;
-using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Execution.Queueing;
 
 namespace Pole.Features.SourceBuilds.Application.Jobs;
@@ -7,7 +6,8 @@ namespace Pole.Features.SourceBuilds.Application.Jobs;
 public sealed class SourceBuildQueueRecoveryJob(
     LoadStaleQueuedSourceBuildJobs loadStaleQueuedSourceBuildJobs,
     DispatchSourceBuildJob dispatchSourceBuildJob,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task RecoverAsync()

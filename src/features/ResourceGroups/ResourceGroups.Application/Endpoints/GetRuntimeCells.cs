@@ -3,77 +3,64 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
 
 public sealed record GetRuntimeCellsRequest(
     [FromRoute] string ResourceGroupId,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetRuntimeCellsOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetRuntimeCellsOutcome>, ITenantReadOperation;
 
-public union GetRuntimeCellsOutcome(
-    IReadOnlyList<RuntimeCellDto>,
-    ResourceGroupNotFound);
+public union GetRuntimeCellsOutcome(IReadOnlyList<RuntimeCellDto>, ResourceGroupNotFound);
 
 public sealed class GetRuntimeCellsHandler(
     LoadResourceGroup loadResourceGroup,
-    LoadRuntimeCells loadRuntimeCells)
-    : IMediatorOutcomeHandler<GetRuntimeCellsRequest, GetRuntimeCellsOutcome>
+    LoadRuntimeCells loadRuntimeCells
+) : IMediatorOutcomeHandler<GetRuntimeCellsRequest, GetRuntimeCellsOutcome>
 {
     public async Task<GetRuntimeCellsOutcome> HandleAsync(
         GetRuntimeCellsRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroup = await loadResourceGroup(
-            request.TenantId,
-            request.ResourceGroupId,
-            cancellationToken);
+        var resourceGroup = await loadResourceGroup(request.TenantId, request.ResourceGroupId, cancellationToken);
         if (resourceGroup is null)
             return new ResourceGroupNotFound(request.ResourceGroupId);
 
-        var runtimeCells = await loadRuntimeCells(
-            resourceGroup.TenantId,
-            resourceGroup.Id,
-            cancellationToken);
+        var runtimeCells = await loadRuntimeCells(resourceGroup.TenantId, resourceGroup.Id, cancellationToken);
         return runtimeCells.Select(cell => cell.ToDto()).ToList();
     }
 }
 
-public sealed class GetRuntimeCellsRequestValidator
-    : AbstractValidator<GetRuntimeCellsRequest>
+public sealed class GetRuntimeCellsRequestValidator : AbstractValidator<GetRuntimeCellsRequest>
 {
     public GetRuntimeCellsRequestValidator() =>
-        RuleFor(request => request.ResourceGroupId)
-            .MongoObjectId("Resource group ID");
+        RuleFor(request => request.ResourceGroupId).MongoObjectId("Resource group ID");
 }
 
 public static class GetRuntimeCellsEndpoint
 {
     public static IEndpointRouteBuilder MapGetRuntimeCellsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{ResourceGroupId}/runtime-cells", async (
-                IMediator mediator,
-                [AsParameters] GetRuntimeCellsRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{ResourceGroupId}/runtime-cells",
+                async (
+                    IMediator mediator, [AsParameters] GetRuntimeCellsRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    IReadOnlyList<RuntimeCellDto> runtimeCells => Results.Ok(runtimeCells),
-                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        IReadOnlyList<RuntimeCellDto> runtimeCells => Results.Ok(runtimeCells),
+                        ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("GetRuntimeCells")
             .WithSummary("Lists the runtime cells owned by a resource group.")
             .Produces<IReadOnlyList<RuntimeCellDto>>();

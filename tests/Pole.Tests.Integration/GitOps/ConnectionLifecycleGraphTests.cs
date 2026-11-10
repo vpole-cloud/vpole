@@ -6,26 +6,20 @@ using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
-using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class ConnectionLifecycleGraphTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task Connection_environment_removal_has_a_confirmable_real_provider_cleanup_graph()
@@ -35,26 +29,44 @@ public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture
         var owner = (await Services.GetRequiredService<GitRepositorySources>()
             .LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(owner.Repository.ExternalRepositoryId, [AdoptionManifest("ResourceGroup", files)], "remove");
-        var outcome = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(
-            new(new(owner.TenantId, owner.Id), owner.Revision,
-                new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)), default);
-        Assert.True(outcome is GitOperationPreview,
+        var outcome = await Services.GetRequiredService<GitLifecyclePreviews>()
+            .CreateAsync(
+                new CreateLifecyclePreview(
+                    new GitSourceIdentity(owner.TenantId, owner.Id),
+                    owner.Revision,
+                    new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)),
+                default);
+        Assert.True(
+            outcome is GitOperationPreview,
             outcome.Value is GitPreviewRejected blocked ? blocked.Failure.GetType().Name : outcome.Value.ToString());
         var preview = Assert.IsType<GitOperationPreview>(outcome.Value);
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
-        var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
-        await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(owner.TenantId, owner.Id), default);
+        var scheduled = Assert.IsType<GitLifecycleScheduled>(
+            (await previews.ConfirmAsync(
+                new ConfirmLifecyclePreview(
+                    new GitSourceIdentity(owner.TenantId, owner.Id),
+                    preview.Id,
+                    preview.Revision,
+                    Data.UserId),
+                default)).Value);
+        await Services.GetRequiredService<RepositorySourceJob>()
+            .ProcessAsync(new GitSourceIdentity(owner.TenantId, owner.Id), default);
         var pending = (await Services.GetRequiredService<GitRepositorySources>()
             .RunAsync(owner.TenantId, owner.Id, scheduled.RunId, default))!;
-        Assert.True(pending.State is GitRunWaitingCleanup,
+        Assert.True(
+            pending.State is GitRunWaitingCleanup,
             string.Join(",", pending.Diagnostics.Select(item => item.Code)));
-        Assert.All(await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync(), item =>
-            Assert.IsType<DeletingWebServiceLifecycle>(item.Lifecycle));
+        Assert.All(
+            await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync(),
+            item => Assert.IsType<DeletingWebServiceLifecycle>(item.Lifecycle));
         var connection = await Connections.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         foreach (var target in Assert.IsType<DeletingResourceConnection>(connection.Lifecycle).Targets)
-            await Services.GetRequiredService<RecordResourceConnectionCleanup>()(connection.TenantId, connection.Id,
-                target.Snapshot.PolicyLocation, connection.Generation, null);
+            await Services.GetRequiredService<RecordResourceConnectionCleanup>()(
+                connection.TenantId,
+                connection.Id,
+                target.Snapshot.PolicyLocation,
+                connection.Generation,
+                null);
         Assert.Equal(0, await Connections.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
         foreach (var web in await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync())
         {
@@ -63,15 +75,26 @@ public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture
             {
                 var now = deployment.UpdatedAtUtc.AddSeconds(1);
                 var claim = Id();
-                var active = deployment.Start(deployment.DesiredGeneration, ResourceDeploymentOperation.Delete,
-                    claim, now, now.AddMinutes(2));
-                await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id,
-                    active.Complete(deployment.DesiredGeneration, ResourceDeploymentOperation.Delete,
-                        claim, [], now.AddSeconds(1)));
+                var active = deployment.Start(
+                    deployment.DesiredGeneration,
+                    ResourceDeploymentOperation.Delete,
+                    claim,
+                    now,
+                    now.AddMinutes(2));
+                await DbContext.ResourceDeployments.ReplaceOneAsync(
+                    item => item.Id == deployment.Id,
+                    active.Complete(
+                        deployment.DesiredGeneration,
+                        ResourceDeploymentOperation.Delete,
+                        claim,
+                        [],
+                        now.AddSeconds(1)));
             }
-            Assert.IsType<WebServiceDeletionFinalized>((await Services.GetRequiredService<FinalizeWebServiceDeletion>()(
-                web.TenantId, web.Id)).Value);
+
+            Assert.IsType<WebServiceDeletionFinalized>(
+                (await Services.GetRequiredService<FinalizeWebServiceDeletion>()(web.TenantId, web.Id)).Value);
         }
+
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var run = (await Services.GetRequiredService<GitRepositorySources>()
@@ -80,18 +103,23 @@ public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture
                 break;
             await ResumeConnectionLifecycleAsync(run);
         }
+
         var complete = (await Services.GetRequiredService<GitRepositorySources>()
             .RunAsync(owner.TenantId, owner.Id, scheduled.RunId, default))!;
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(complete.State).Completion);
         Assert.Equal(0, complete.ConsecutiveFailures);
-        Assert.Equal("ResourceGroup", (await Inventory.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Kind);
+        Assert.Equal(
+            "ResourceGroup",
+            (await Inventory.Find(item => item.TenantId == Data.TenantId).SingleAsync()).Kind);
         var receipts = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
-            .Find(item => item.RunId == complete.Id).ToListAsync();
+            .Find(item => item.RunId == complete.Id)
+            .ToListAsync();
         Assert.Equal(3, receipts.Count(item => item.Lifecycle?.Step == GitLifecycleStep.BeginRemoval));
         Assert.Equal(3, receipts.Count(item => item.Lifecycle?.Step == GitLifecycleStep.RemovalCompleted));
-        Assert.Equal(RepositoryExecutionDisposition.NoWork, (await Services.GetRequiredService<RepositorySourceJob>()
-            .ProcessAsync(new(owner.TenantId, owner.Id), default)).Disposition);
-
+        Assert.Equal(
+            RepositoryExecutionDisposition.NoWork,
+            (await Services.GetRequiredService<RepositorySourceJob>()
+                .ProcessAsync(new GitSourceIdentity(owner.TenantId, owner.Id), default)).Disposition);
     }
 
     [Theory]
@@ -100,27 +128,35 @@ public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture
     [InlineData(true, false)]
     [InlineData(true, true)]
     public async Task Manual_or_foreign_connection_blocks_parent_preview_even_when_already_deleting(
-        bool foreign, bool deleting)
+        bool foreign,
+        bool deleting)
     {
         var files = WebConnectionSnapshot();
         await Apply(files);
         var connection = await Connections.Find(item => item.TenantId == Data.TenantId).SingleAsync();
         if (foreign)
-            await Inventory.UpdateOneAsync(item => item.ResourceId == connection.Id,
+            await Inventory.UpdateOneAsync(
+                item => item.ResourceId == connection.Id,
                 Builders<ManagedDeclaration>.Update.Set(item => item.SourceId, Id()));
         else
             await Inventory.DeleteOneAsync(item => item.ResourceId == connection.Id);
         if (deleting)
-            await Connections.ReplaceOneAsync(item => item.Id == connection.Id,
+            await Connections.ReplaceOneAsync(
+                item => item.Id == connection.Id,
                 connection.BeginDeletion(DateTime.UtcNow));
         var owner = (await Services.GetRequiredService<GitRepositorySources>()
             .LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(owner.Repository.ExternalRepositoryId, [AdoptionManifest("ResourceGroup", files)], "remove");
-        var result = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(
-            new(new(owner.TenantId, owner.Id), owner.Revision,
-                new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)), default);
+        var result = await Services.GetRequiredService<GitLifecyclePreviews>()
+            .CreateAsync(
+                new CreateLifecyclePreview(
+                    new GitSourceIdentity(owner.TenantId, owner.Id),
+                    owner.Revision,
+                    new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)),
+                default);
         Assert.IsType<GitLifecycleDependencyRetained>(Assert.IsType<GitPreviewRejected>(result.Value).Failure);
-        Assert.Equal(connection.Revision + (deleting ? 1 : 0),
+        Assert.Equal(
+            connection.Revision + (deleting ? 1 : 0),
             (await Connections.Find(item => item.Id == connection.Id).SingleAsync()).Revision);
     }
 
@@ -133,24 +169,44 @@ public sealed class ConnectionLifecycleGraphTests(MongoReplicaSetFixture fixture
         var owner = (await sources.LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(owner.Repository.ExternalRepositoryId, [AdoptionManifest("ResourceGroup", files)], "remove");
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
-        var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(
-            new(new(owner.TenantId, owner.Id), owner.Revision,
-                new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)), default)).Value);
-        var scheduled = Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
-        var web = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "demo-api").SingleAsync();
-        var backend = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "backend").SingleAsync();
-        var added = Assert.IsType<ResourceConnection>((await
-            Services.GetRequiredService<PersistResourceConnectionCreation>()(
-            new(owner.TenantId, "unreviewed", ResourceTypeId.Create("pole/web-service"), web.Id,
-                ResourceTypeId.Create("pole/web-service"), backend.Id, "http"))).Value);
-        await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(owner.TenantId, owner.Id), default);
+        var preview = Assert.IsType<GitOperationPreview>(
+            (await previews.CreateAsync(
+                new CreateLifecyclePreview(
+                    new GitSourceIdentity(owner.TenantId, owner.Id),
+                    owner.Revision,
+                    new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)),
+                default)).Value);
+        var scheduled = Assert.IsType<GitLifecycleScheduled>(
+            (await previews.ConfirmAsync(
+                new ConfirmLifecyclePreview(
+                    new GitSourceIdentity(owner.TenantId, owner.Id),
+                    preview.Id,
+                    preview.Revision,
+                    Data.UserId),
+                default)).Value);
+        var web = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "demo-api")
+            .SingleAsync();
+        var backend = await WebServices.Find(item => item.TenantId == Data.TenantId && item.Name == "backend")
+            .SingleAsync();
+        var added = Assert.IsType<ResourceConnection>(
+            (await Services.GetRequiredService<PersistResourceConnectionCreation>()(
+                new CreateResourceConnectionCommand(
+                    owner.TenantId,
+                    "unreviewed",
+                    ResourceTypeId.Create("pole/web-service"),
+                    web.Id,
+                    ResourceTypeId.Create("pole/web-service"),
+                    backend.Id,
+                    "http"))).Value);
+        await Services.GetRequiredService<RepositorySourceJob>()
+            .ProcessAsync(new GitSourceIdentity(owner.TenantId, owner.Id), default);
         var run = (await sources.RunAsync(owner.TenantId, owner.Id, scheduled.RunId, default))!;
         Assert.Equal(GitRunCompletion.Blocked, Assert.IsType<GitRunFinished>(run.State).Completion);
         Assert.Contains(run.Diagnostics, item => item.Code == nameof(GitLifecycleApprovalStale));
-        Assert.IsType<ActiveResourceConnection>((await Connections.Find(item => item.Id == added.Id).SingleAsync())
-            .Lifecycle);
-        Assert.All(await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync(), item =>
-            Assert.IsNotType<DeletingWebServiceLifecycle>(item.Lifecycle));
+        Assert.IsType<ActiveResourceConnection>(
+            (await Connections.Find(item => item.Id == added.Id).SingleAsync()).Lifecycle);
+        Assert.All(
+            await WebServices.Find(item => item.TenantId == Data.TenantId).ToListAsync(),
+            item => Assert.IsNotType<DeletingWebServiceLifecycle>(item.Lifecycle));
     }
 }

@@ -1,30 +1,35 @@
 using MongoDB.Bson.Serialization.Attributes;
-using Pole.Multitenancy.Primitives;
 using Pole.Features.GitOps.Primitives;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Features.GitOps.Domain;
 
 public sealed record GitSourceIdentity(
     string TenantId,
-    string SourceId);
+    string SourceId
+);
 
 public sealed record GitRepositoryLocation(
     string Provider,
     string ConnectionId,
     string ExternalRepositoryId,
     string Branch,
-    string ManifestDirectory);
+    string ManifestDirectory
+);
 
 public enum GitSourceActivity { Active, Paused, Detaching, Detached, Deleted }
 
 public enum GitPrunePolicy { Retain, Prune }
 
-public sealed record GitSyncPolicy(TimeSpan PollInterval);
+public sealed record GitSyncPolicy(
+    TimeSpan PollInterval
+);
 
 // The creator is audit metadata, never the authority of an automatic synchronization.
 public sealed record GitSourceAudit(
     string CreatedByUserId,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc
+);
 
 public sealed record RepositorySource(
     [property: BsonId] string Id,
@@ -37,17 +42,18 @@ public sealed record RepositorySource(
     GitSourceAudit Audit,
     string CreationKey,
     string CreationHash,
-    string DisplayUrl) : ITenantOwned
+    string DisplayUrl
+) : ITenantOwned
 {
     public RepositorySource Pause() => Activity switch
     {
         GitSourceActivity.Active or GitSourceActivity.Detaching => this with
         {
             Activity = GitSourceActivity.Paused,
-            Revision = checked(Revision + 1)
+            Revision = checked(Revision + 1),
         },
         GitSourceActivity.Paused => this,
-        _ => throw new InvalidOperationException("Only active sources can be paused.")
+        _ => throw new InvalidOperationException("Only active sources can be paused."),
     };
 
     public RepositorySource Resume()
@@ -127,7 +133,8 @@ public static class RepositorySourceFactory
                 "A safe repository-relative manifest directory is required.",
                 nameof(repository));
 
-        return new(identity.SourceId,
+        return new RepositorySource(
+            identity.SourceId,
             identity.TenantId,
             repository,
             1,

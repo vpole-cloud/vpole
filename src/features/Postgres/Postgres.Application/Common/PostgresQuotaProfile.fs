@@ -5,17 +5,19 @@ open Pole.Features.Quotas.Contracts
 open Pole.Features.Quotas.Primitives
 
 type PostgresQuotaInput =
-    { RequestedCpuMillisPerInstance : int64
-      RequestedMemoryMiPerInstance : int64
-      Instances : int64 }
+    { RequestedCpuMillisPerInstance: int64
+      RequestedMemoryMiPerInstance: int64
+      Instances: int64 }
 
 [<RequireQualifiedAccess>]
 module PostgresQuotaInput =
     let create requestedCpuMillis requestedMemoryMi instances =
         if requestedCpuMillis < 1L then
             invalidArg (nameof requestedCpuMillis) "Requested CPU must be positive."
+
         if requestedMemoryMi < 1L then
             invalidArg (nameof requestedMemoryMi) "Requested memory must be positive."
+
         if instances < 1L then
             invalidArg (nameof instances) "Instances must be positive."
 
@@ -32,11 +34,13 @@ type PostgresClusterCountQuota() =
     override _.Unit = "clusters"
     override _.Calculate _ = 1L
 
-type PostgresQuotaProfile(
-    cpuQuota : CpuQuota,
-    ramQuota : RamQuota,
-    workloadInstancesQuota : WorkloadInstancesQuota,
-    clusterCountQuota : PostgresClusterCountQuota) =
+type PostgresQuotaProfile
+    (
+        cpuQuota: CpuQuota,
+        ramQuota: RamQuota,
+        workloadInstancesQuota: WorkloadInstancesQuota,
+        clusterCountQuota: PostgresClusterCountQuota
+    ) =
     inherit QuotaProfile<PostgresQuotaInput>()
 
     override _.Keys =
@@ -48,17 +52,16 @@ type PostgresQuotaProfile(
 
     override _.Calculate(input) =
         let workload =
-            WorkloadQuotaInput(
-                input.RequestedCpuMillisPerInstance,
-                input.RequestedMemoryMiPerInstance,
-                input.Instances)
+            WorkloadQuotaInput(input.RequestedCpuMillisPerInstance, input.RequestedMemoryMiPerInstance, input.Instances)
 
         QuotaDelta.Create(
             [| cpuQuota.Measure(workload)
                ramQuota.Measure(workload)
                workloadInstancesQuota.Measure(workload)
-               clusterCountQuota.Measure(input) |])
+               clusterCountQuota.Measure(input) |]
+        )
 
 [<RequireQualifiedAccess>]
 module PostgresQuotaResourceKey =
-    let create clusterId = QuotaResourceKey.Create("postgres-cluster", clusterId)
+    let create clusterId =
+        QuotaResourceKey.Create("postgres-cluster", clusterId)

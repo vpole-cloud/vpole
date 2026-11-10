@@ -2,17 +2,10 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
-using Pole.Features.Functions.Migrations;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
@@ -20,13 +13,17 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.Secrets.Contracts;
+using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class FunctionDriftTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task FunctionSameShaRepairsManagedFieldsThenNoOpsWithoutNewRevisionOrTriggerIdentity()
@@ -41,12 +38,19 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         Assert.Equal(2, original.NextRevisionNumber);
         Assert.All(first.Spec.Handlers, handler => Assert.NotEmpty(handler.Trigger.TriggerId));
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == original.Id).SingleAsync();
-        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "function-scope").SingleAsync();
+        var scope = await DbContext.IsolationScopes
+            .Find(item => item.TenantId == Data.TenantId && item.Name == "function-scope")
+            .SingleAsync();
         Assert.Equal(scope.Id, placement.IsolationScopeId);
         Assert.Equal(first.Spec.Resources.Requests.CpuMillis, placement.ResolvedPlacement.Compute.Requests.CpuMillis);
-        await FunctionRevisions.UpdateOneAsync(item => item.Id == first.Id,
-            Builders<FunctionRevision>.Update.Set(item => item.Spec.Image, first.Spec.Image with
-            { Digest = "sha256:server-owned", PullSecretName = "server-owned-credential" }));
+        await FunctionRevisions.UpdateOneAsync(
+            item => item.Id == first.Id,
+            Builders<FunctionRevision>.Update.Set(
+                item => item.Spec.Image,
+                first.Spec.Image with
+                {
+                    Digest = "sha256:server-owned", PullSecretName = "server-owned-credential",
+                }));
         await FailFunctionRuntime(original);
         var failed = await CurrentFunction();
         Assert.Null(failed.ActiveRevisionId);
@@ -56,12 +60,18 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(2, (await CurrentFunction()).NextRevisionNumber);
 
-        await FunctionApps.UpdateOneAsync(item => item.Id == original.Id,
-            Builders<FunctionApp>.Update.Set(item => item.Tags, ImmutableHashSet.Create("private-drift"))
+        await FunctionApps.UpdateOneAsync(
+            item => item.Id == original.Id,
+            Builders<FunctionApp>.Update
+                .Set(item => item.Tags, ImmutableHashSet.Create("private-drift"))
                 .Inc(item => item.PlanningFence, 1));
-        await DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == placement.Id,
-            Builders<ResourceDeployment>.Update.Set(item => item.ResolvedPlacement.Compute.Limits,
-                placement.ResolvedPlacement.Compute.Limits with { CpuMillis = 9999 }).Inc(item => item.Revision, 1));
+        await DbContext.ResourceDeployments.UpdateOneAsync(
+            item => item.Id == placement.Id,
+            Builders<ResourceDeployment>.Update
+                .Set(
+                    item => item.ResolvedPlacement.Compute.Limits,
+                    placement.ResolvedPlacement.Compute.Limits with { CpuMillis = 9999 })
+                .Inc(item => item.Revision, 1));
         var downloads = repository.ReadCommits.Count;
         var repaired = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, repaired.Status);
@@ -72,15 +82,20 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         var second = await FunctionRevisions.Find(item => item.Id == current.PendingRevisionId).SingleAsync();
         Assert.Equal("sha256:server-owned", second.Spec.Image.Digest);
         Assert.Equal("server-owned-credential", second.Spec.Image.PullSecretName);
-        Assert.Equal(first.Spec.Handlers.Select(handler => handler.Trigger.TriggerId),
+        Assert.Equal(
+            first.Spec.Handlers.Select(handler => handler.Trigger.TriggerId),
             second.Spec.Handlers.Select(handler => handler.Trigger.TriggerId));
-        Assert.Equal(1, Assert.IsType<TimerFunctionTriggerSpec>(second.Spec.Handlers
-            .Single(handler => handler.Name == "clock").Trigger).ScheduleVersion);
-        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(Data.TenantId,
-            source, repaired.Context!.RunId, 1, 20, default))!.Items;
+        Assert.Equal(
+            1,
+            Assert.IsType<TimerFunctionTriggerSpec>(
+                    second.Spec.Handlers.Single(handler => handler.Name == "clock").Trigger)
+                .ScheduleVersion);
+        var operations = (await Services.GetRequiredService<GitRepositoryQueries>()
+            .OperationsAsync(Data.TenantId, source, repaired.Context!.RunId, 1, 20, default))!.Items;
         Assert.DoesNotContain("private-drift", JsonSerializer.Serialize(operations));
-        var configure = operations.Single(item => item.Kind == "FunctionApp" &&
-            item.Phase == DeclarationPhase.Configure).Plan!;
+        var configure = operations
+            .Single(item => item.Kind == "FunctionApp" && item.Phase == DeclarationPhase.Configure)
+            .Plan!;
         Assert.Equal(GitPlannedAction.Update, configure.Action);
         Assert.Contains("configuration.tags", configure.ChangedFields);
         events = await BusinessEvents();
@@ -89,18 +104,33 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         Assert.Equal(current.NextRevisionNumber, stable.NextRevisionNumber);
         Assert.Equal(current.UpdatedAtUtc, stable.UpdatedAtUtc);
         Assert.Equal(events, await BusinessEvents());
-        Assert.Equal(2, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            2,
+            await FunctionRevisions.CountDocumentsAsync(
+                Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         var detail = await ActivatorUtilities.CreateInstance<GetFunctionAppByIdHandler>(Services)
-            .HandleAsync(new(original.Id, original.TenantId));
+            .HandleAsync(new GetFunctionAppByIdRequest(original.Id, original.TenantId));
         Assert.NotNull(Assert.IsType<FunctionAppDetailsDto>(detail.Value).FunctionApp.GitOps);
-        var manualSpec = new FunctionRevisionRequest(new("example.test", "function", "manual"),
-            second.Spec.Configuration, second.Spec.Resources, second.Spec.Scaling,
-            [new("hello", 10, new HttpFunctionTriggerRequest("hello", ["GET"], FunctionExposure.Internal))]);
+        var manualSpec = new FunctionRevisionRequest(
+            new FunctionImageRequest("example.test", "function", "manual"),
+            second.Spec.Configuration,
+            second.Spec.Resources,
+            second.Spec.Scaling,
+            [
+                new FunctionHandlerRequest(
+                    "hello",
+                    10,
+                    new HttpFunctionTriggerRequest("hello", ["GET"], FunctionExposure.Internal)),
+            ]);
         var updated = await ActivatorUtilities.CreateInstance<UpdateFunctionAppHandler>(Services)
-            .HandleAsync(new(original.Id, new(manualSpec, ["manual"]), original.TenantId));
+            .HandleAsync(
+                new UpdateFunctionAppRequest(
+                    original.Id,
+                    new UpdateFunctionAppRequestBody(manualSpec, ["manual"]),
+                    original.TenantId));
         Assert.IsType<FunctionAppGitOwnedConfiguration>(Assert.IsType<UpdateFunctionAppError>(updated.Value).Value);
         var deleted = await ActivatorUtilities.CreateInstance<DeleteFunctionAppHandler>(Services)
-            .HandleAsync(new(original.Id, original.TenantId));
+            .HandleAsync(new DeleteFunctionAppRequest(original.Id, original.TenantId));
         Assert.IsType<FunctionAppGitOwnedConfiguration>(Assert.IsType<DeleteFunctionAppError>(deleted.Value).Value);
     }
 
@@ -111,15 +141,22 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         var files = FunctionSnapshot(secrets: true);
         var blocked = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.Blocked, blocked.Status);
-        Assert.Contains(blocked.Operations, item => item.Failure is FunctionDeclarationSecretRejected
-        { Reason: Pole.Features.Secrets.Contracts.ConsumerSecretReferenceError.SecretValuesMissing });
+        Assert.Contains(
+            blocked.Operations,
+            item => item.Failure is FunctionDeclarationSecretRejected
+            {
+                Reason: ConsumerSecretReferenceError.SecretValuesMissing,
+            });
         var prepared = await CurrentFunction();
         Assert.Equal(FunctionAppDesiredState.Prepared, prepared.DesiredState);
         Assert.Equal(1, prepared.NextRevisionNumber);
-        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await FunctionRevisions.CountDocumentsAsync(
+                Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Empty((await FunctionRoutes.Find(item => item.FunctionAppId == prepared.Id).SingleAsync()).HttpRoutes);
-        Assert.IsType<PreparedResourceDeploymentState>((await DbContext.ResourceDeployments
-            .Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
+        Assert.IsType<PreparedResourceDeploymentState>(
+            (await DbContext.ResourceDeployments.Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
         await Supply("not-exposed-to-gitops");
         var resumed = await Pipeline.ResumeAsync(blocked.Context!);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, resumed.Status);
@@ -127,7 +164,7 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         Assert.Equal(prepared.Id, app.Id);
         Assert.Equal(FunctionAppDesiredState.Enabled, app.DesiredState);
         Assert.Equal(2, app.NextRevisionNumber);
-        var secret = await Secrets.Find(Builders<Pole.Features.Secrets.Domain.Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var revision = await FunctionRevisions.Find(item => item.Id == app.PendingRevisionId).SingleAsync();
         Assert.Equal(secret.Id, revision.Spec.Configuration.SecretReferences["STAGE_FIVE_SECRET"].SecretId);
         await Supply("rotated-private-value");
@@ -136,8 +173,8 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, stable.Status);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(2, (await CurrentFunction()).NextRevisionNumber);
-        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(Data.TenantId, source,
-            stable.Context!.RunId, default);
+        var view = await Services.GetRequiredService<GitRepositoryQueries>()
+            .RunAsync(Data.TenantId, source, stable.Context!.RunId, default);
         Assert.DoesNotContain("rotated-private-value", JsonSerializer.Serialize(view));
     }
 
@@ -165,10 +202,16 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         var app = await CurrentFunction();
         await FunctionRevisions.DeleteOneAsync(item => item.Id == app.PendingRevisionId);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(files)).Status);
-        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await FunctionRevisions.CountDocumentsAsync(
+                Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         await FunctionApps.DeleteOneAsync(item => item.Id == app.Id);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(files)).Status);
-        Assert.Equal(0, await FunctionApps.CountDocumentsAsync(Builders<FunctionApp>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await FunctionApps.CountDocumentsAsync(
+                Builders<FunctionApp>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -179,20 +222,23 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         await Apply(files);
         await FailFunctionRuntime(await CurrentFunction());
         var intercepted = false;
-        var mutations = new BeforeNoOp(Services.GetRequiredService<IGitOpsMutations>(), async (operation, ct) =>
-        {
-            if (intercepted || operation.Declaration.Address.Kind != "FunctionApp" ||
-                operation.Phase != DeclarationPhase.Configure)
-                return;
+        var mutations = new BeforeNoOp(
+            Services.GetRequiredService<IGitOpsMutations>(),
+            async (operation, ct) =>
+            {
+                if (intercepted || operation.Declaration.Address.Kind != "FunctionApp" ||
+                    operation.Phase != DeclarationPhase.Configure)
+                    return;
 
-            intercepted = true;
-            var app = await CurrentFunction();
-            await FunctionApps.UpdateOneAsync(item => item.Id == app.Id,
-                Builders<FunctionApp>.Update.Set(item => item.Tags, ImmutableHashSet.Create("racing-change")),
-                cancellationToken: ct);
-        });
+                intercepted = true;
+                var app = await CurrentFunction();
+                await FunctionApps.UpdateOneAsync(
+                    item => item.Id == app.Id,
+                    Builders<FunctionApp>.Update.Set(item => item.Tags, ImmutableHashSet.Create("racing-change")),
+                    cancellationToken: ct);
+            });
         var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations)
-            .SubmitAsync(new(Data.TenantId, source), files);
+            .SubmitAsync(new GitSourceIdentity(Data.TenantId, source), files);
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.True((await CurrentFunction()).Tags.SetEquals(["functions"]));
@@ -213,21 +259,31 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         var content = files[1].Content;
         content = invalid switch
         {
-            "unknown-root" => content.Replace($"functionRoute: function-worker-{Data.TenantId}",
+            "unknown-root" => content.Replace(
+                $"functionRoute: function-worker-{Data.TenantId}",
                 $"unknown: true\n  functionRoute: function-worker-{Data.TenantId}"),
-            "trigger-identity" => content.Replace("exposure: Internal, type: http",
+            "trigger-identity" => content.Replace(
+                "exposure: Internal, type: http",
                 "exposure: Internal, triggerId: client-selected, type: http"),
             "invalid-resources" => content.Replace("cpuMillis: 500", "cpuMillis: 0"),
-            "reserved-route" => content.Replace($"functionRoute: function-worker-{Data.TenantId}", "functionRoute: api"),
+            "reserved-route" => content.Replace(
+                $"functionRoute: function-worker-{Data.TenantId}",
+                "functionRoute: api"),
             "reserved-environment" => content.Replace("APP_MODE: production", "PoleFunctions__TenantId: unsafe"),
             "missing-exposure" => content.Replace("exposure: Internal, ", ""),
-            _ => throw new ArgumentOutOfRangeException(nameof(invalid))
+            _ => throw new ArgumentOutOfRangeException(nameof(invalid)),
         };
         files[1] = files[1] with { Content = content };
         var result = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
-        Assert.Equal(0, await FunctionApps.CountDocumentsAsync(Builders<FunctionApp>.Filter.Eq(item => item.TenantId, Data.TenantId)));
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await FunctionApps.CountDocumentsAsync(
+                Builders<FunctionApp>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await Inventory.CountDocumentsAsync(
+                Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -236,46 +292,66 @@ public sealed class FunctionDriftTests(MongoReplicaSetFixture fixture) : Declara
         await SeedFunctionPlanningCatalog();
         var called = false;
         var original = Services.GetRequiredService<RequestResourceDeploymentSetApply>();
-        RequestResourceDeploymentSetApply rejectAfterApply = async (request, session, ct) =>
+        RequestResourceDeploymentSetApply rejectAfterApply = async (
+            request, session,
+            ct) =>
         {
             var result = await original(request, session, ct);
             Assert.IsType<MutatedResourceDeployments>(result.Value);
             var app = await FunctionApps.Find(session, item => item.Id == request.ResourceId).SingleAsync(ct);
             Assert.NotNull(app.PendingRevisionId);
-            Assert.Equal(1, await FunctionRevisions.CountDocumentsAsync(session,
-                item => item.FunctionAppId == app.Id, cancellationToken: ct));
+            Assert.Equal(
+                1,
+                await FunctionRevisions.CountDocumentsAsync(
+                    session,
+                    item => item.FunctionAppId == app.Id,
+                    cancellationToken: ct));
             called = true;
-            return new ResourceDeploymentMutationError(new ResourceDeploymentPlacementUnavailable(
-                request.ResourceId, app.Placement.ResourceDeploymentId));
+            return new ResourceDeploymentMutationError(
+                new ResourceDeploymentPlacementUnavailable(request.ResourceId, app.Placement.ResourceDeploymentId));
         };
         var providers = Services.GetServices<IDeclarativeResourceProvider>().ToArray();
         var provider = providers.Single(item => item.Kind == "FunctionApp");
-        var executionType = provider.GetType().Assembly.GetType(
-            "Pole.Features.Functions.Application.Declarations.FunctionDeclarationExecution", throwOnError: true)!;
+        var executionType = provider.GetType()
+            .Assembly
+            .GetType(
+                "Pole.Features.Functions.Application.Declarations.FunctionDeclarationExecution",
+                throwOnError: true)!;
         var execution = ActivatorUtilities.CreateInstance(Services, executionType, rejectAfterApply);
-        var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(Services,
-            provider.GetType(), execution);
+        var failing = (IDeclarativeResourceProvider)ActivatorUtilities.CreateInstance(
+            Services,
+            provider.GetType(),
+            execution);
         var registry = new DeclarativeProviderRegistry(
             providers.Select(item => item.Kind == "FunctionApp" ? failing : item));
         var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
-            .SubmitAsync(new(Data.TenantId, source), FunctionSnapshot());
+            .SubmitAsync(new GitSourceIdentity(Data.TenantId, source), FunctionSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
         var prepared = await CurrentFunction();
         Assert.Equal(FunctionAppDesiredState.Prepared, prepared.DesiredState);
         Assert.Equal(1, prepared.NextRevisionNumber);
         Assert.Null(prepared.PendingRevisionId);
-        Assert.Equal(0, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
-        Assert.IsType<PreparedResourceDeploymentState>((await DbContext.ResourceDeployments
-            .Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
-        var inventory = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "FunctionApp").SingleAsync();
+        Assert.Equal(
+            0,
+            await FunctionRevisions.CountDocumentsAsync(
+                Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.IsType<PreparedResourceDeploymentState>(
+            (await DbContext.ResourceDeployments.Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
+        var inventory = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "FunctionApp")
+            .SingleAsync();
         Assert.Null(inventory.Projections.Applied);
-        var events = await DbContext.OutboxMessages.Find(item => item.TenantId == Data.TenantId && item.EventType.StartsWith("pole.functions/"))
+        var events = await DbContext.OutboxMessages
+            .Find(item => item.TenantId == Data.TenantId && item.EventType.StartsWith("pole.functions/"))
             .ToListAsync();
         Assert.Empty(events);
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
+        Assert.Equal(
+            RepositoryPipelineStatus.ConfigurationApplied,
             (await Pipeline.ResumeAsync(result.Context!)).Status);
         Assert.Equal(2, (await CurrentFunction()).NextRevisionNumber);
-        Assert.Equal(1, await FunctionRevisions.CountDocumentsAsync(Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            1,
+            await FunctionRevisions.CountDocumentsAsync(
+                Builders<FunctionRevision>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 }

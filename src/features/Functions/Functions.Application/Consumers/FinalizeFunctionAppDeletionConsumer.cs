@@ -1,14 +1,13 @@
 using MassTransit;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.ResourceDeployments.Events;
 
 namespace Pole.Features.Functions.Application.Consumers;
 
 public sealed class FinalizeFunctionAppDeletionConsumer(
-    FinalizeFunctionAppDeletion finalizeFunctionAppDeletion)
-    : IConsumer<ResourceDeploymentDeletedEvent>
+    FinalizeFunctionAppDeletion finalizeFunctionAppDeletion
+) : IConsumer<ResourceDeploymentDeletedEvent>
 {
     public async Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context)
     {
@@ -17,9 +16,7 @@ public sealed class FinalizeFunctionAppDeletionConsumer(
                 message.ResourceType,
                 FunctionResourceDeployment.ResourceType.Value,
                 StringComparison.Ordinal))
-        {
             return;
-        }
 
         var result = await finalizeFunctionAppDeletion(
             message.EventCore.TenantId,
@@ -27,9 +24,7 @@ public sealed class FinalizeFunctionAppDeletionConsumer(
             message.ResourceDeploymentId,
             context.CancellationToken);
         if (result is FunctionAppDeletionFinalizationConflict conflict)
-        {
             throw new InvalidOperationException(
                 $"Function App deletion finalization conflicted for '{conflict.FunctionAppId}'.");
-        }
     }
 }

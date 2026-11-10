@@ -1,6 +1,7 @@
+using Microsoft.Extensions.Configuration;
 using Pole.AppHost.MongoDb;
 using Pole.AppHost.Realtime;
-using Microsoft.Extensions.Configuration;
+using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
 var e2eEnabled = builder.Configuration.GetValue("E2E:Enabled", false);
@@ -28,9 +29,8 @@ var mongoServer = builder.AddMongoDB("pole-mongo", userName: mongoUsername, pass
     .WithReplicaSet();
 #pragma warning restore ASPIRECERTIFICATES001
 if (!e2eEnabled)
-{
-    mongoServer
-        .WithEndpoint("tcp",
+    mongoServer.WithEndpoint(
+            "tcp",
             endpoint =>
             {
                 endpoint.Port = 27017;
@@ -40,14 +40,10 @@ if (!e2eEnabled)
             createIfNotExists: true)
         .WithDataVolume("pole-mongo-data")
         .WithLifetime(ContainerLifetime.Persistent);
-}
 else
-{
     mongoServer.WithLifetime(ContainerLifetime.Session);
-}
 
-var mongoReplicaSet = builder
-    .AddMongoReplicaSet("pole-database", mongoServer.Resource);
+var mongoReplicaSet = builder.AddMongoReplicaSet("pole-database", mongoServer.Resource);
 
 var keycloakUsername = builder.AddParameter("keycloak-username");
 var keycloakPassword = builder.AddParameter("keycloak-password", secret: true);
@@ -57,15 +53,13 @@ var keycloak = builder.AddKeycloak("pole-keycloak", e2eEnabled ? null : 8080, ke
     .WithEndpoint("management", endpoint => endpoint.UriScheme = "http");
 if (!e2eEnabled)
 {
-    keycloak
-        .WithDataVolume("pole-keycloak-data")
-        .WithLifetime(ContainerLifetime.Persistent);
+    keycloak.WithDataVolume("pole-keycloak-data").WithLifetime(ContainerLifetime.Persistent);
 }
 else
 {
     if (e2eKeycloakPort is { } e2ePort)
-    {
-        keycloak.WithEndpoint("http",
+        keycloak.WithEndpoint(
+            "http",
             endpoint =>
             {
                 endpoint.Port = e2ePort;
@@ -73,7 +67,6 @@ else
                 endpoint.IsProxied = false;
             },
             createIfNotExists: true);
-    }
 
     keycloak.WithLifetime(ContainerLifetime.Session);
 }
@@ -87,30 +80,21 @@ var retainedEnvelopeKeyParameterNames = new[]
 {
     "envelope-encryption-retained-key-id",
     "envelope-encryption-retained-key-version",
-    "envelope-encryption-retained-key-path"
+    "envelope-encryption-retained-key-path",
 };
 var retainedEnvelopeKeyParametersPresent = retainedEnvelopeKeyParameterNames.Count(name =>
     !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
 if (retainedEnvelopeKeyParametersPresent is > 0 and < 3)
-{
     throw new InvalidOperationException(
         "The retained envelope-encryption key ID, version, and path parameters must be configured together.");
-}
 
-var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq", rabbitMqUsername, rabbitMqPassword)
-    .WithManagementPlugin();
+var rabbitMq = builder.AddRabbitMQ("pole-rabbitmq", rabbitMqUsername, rabbitMqPassword).WithManagementPlugin();
 if (!e2eEnabled)
-{
-    rabbitMq
-        .WithDataVolume("pole-rabbitmq-data")
-        .WithLifetime(ContainerLifetime.Persistent);
-}
+    rabbitMq.WithDataVolume("pole-rabbitmq-data").WithLifetime(ContainerLifetime.Persistent);
 else
-{
     rabbitMq.WithLifetime(ContainerLifetime.Session);
-}
 
-var api = builder.AddProject<Projects.Pole_Server>("pole-server")
+var api = builder.AddProject<Pole_Server>("pole-server")
     .WithHttpEndpoint(targetPort: 5224, name: "http")
     .WithHttpEndpoint(targetPort: 8081, name: "functions-public")
     .WithHttpEndpoint(targetPort: 8082, name: "functions-internal")
@@ -136,16 +120,12 @@ if (retainedEnvelopeKeyParametersPresent == retainedEnvelopeKeyParameterNames.Le
 }
 
 if (e2eEnabled)
-{
-    api
-        .WithEndpoint("http", endpoint => endpoint.Port = null)
+    api.WithEndpoint("http", endpoint => endpoint.Port = null)
         .WithEndpoint("functions-public", endpoint => endpoint.Port = null)
         .WithEndpoint("functions-internal", endpoint => endpoint.Port = null)
         .WaitFor(mongoReplicaSet)
         .WaitFor(rabbitMq);
-}
 else
-{
     api
         // Local launch settings bind these same host ports directly; Aspire cannot proxy them.
         .WithEndpoint("http", endpoint => endpoint.IsProxied = false)
@@ -155,7 +135,6 @@ else
         .WaitFor(mongoServer)
         .WaitFor(mongoReplicaSet)
         .WaitFor(rabbitMq);
-}
 
 api.WithHttpHealthCheck("/health", endpointName: "http");
 
@@ -165,10 +144,8 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
     var harborComposeDirectory = builder.Configuration["LocalSourceBuilds:HarborComposeDirectory"];
     if (string.IsNullOrWhiteSpace(harborComposeDirectory) ||
         !File.Exists(Path.Combine(harborComposeDirectory, "docker-compose.yml")))
-    {
         throw new InvalidOperationException(
             "LocalSourceBuilds:HarborComposeDirectory must contain Harbor's generated docker-compose.yml.");
-    }
 
     builder.AddExecutable(
             "pole-harbor",
@@ -181,13 +158,10 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
 
     var buildKit = builder.AddContainer("pole-buildkit", "moby/buildkit", "v0.31.2")
         .WithBindMount("BuildKit/buildkitd.toml", "/etc/buildkit/buildkitd.toml", isReadOnly: true)
-        .WithArgs(
-            "--addr",
-            "tcp://0.0.0.0:1234",
-            "--config",
-            "/etc/buildkit/buildkitd.toml")
+        .WithArgs("--addr", "tcp://0.0.0.0:1234", "--config", "/etc/buildkit/buildkitd.toml")
         .WithContainerRuntimeArgs("--privileged")
-        .WithEndpoint("grpc",
+        .WithEndpoint(
+            "grpc",
             endpoint =>
             {
                 if (!e2eEnabled)
@@ -201,15 +175,9 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
                 endpoint.UriScheme = "tcp";
             });
     if (!e2eEnabled)
-    {
-        buildKit
-            .WithVolume("pole-buildkit-data", "/var/lib/buildkit")
-            .WithLifetime(ContainerLifetime.Persistent);
-    }
+        buildKit.WithVolume("pole-buildkit-data", "/var/lib/buildkit").WithLifetime(ContainerLifetime.Persistent);
     else
-    {
         buildKit.WithLifetime(ContainerLifetime.Session);
-    }
 
     buildKit.WithExplicitStart();
 
@@ -225,9 +193,7 @@ if (bool.TryParse(builder.Configuration["LocalSourceBuilds:Enabled"], out var lo
         .WithEnvironment("Harbor__Password", harborAdminPassword)
         .WithEnvironment("Harbor__RobotDurationDays", "-1")
         .WithEnvironment("BuildKit__Enabled", "true")
-        .WithEnvironment(
-            "BuildKit__Address",
-            buildKit.GetEndpoint("grpc"))
+        .WithEnvironment("BuildKit__Address", buildKit.GetEndpoint("grpc"))
         .WithEnvironment(
             "BuildKit__BuildctlPath",
             builder.Configuration["LocalSourceBuilds:BuildctlPath"] ?? "buildctl")
@@ -240,10 +206,10 @@ var githubParameterNames = new[]
     "github-app-client-secret",
     "github-app-slug",
     "github-app-private-key-path",
-    "github-app-public-base-url"
+    "github-app-public-base-url",
 };
-var githubAppEnabled =
-    githubParameterNames.All(name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
+var githubAppEnabled
+    = githubParameterNames.All(name => !string.IsNullOrWhiteSpace(builder.Configuration[$"Parameters:{name}"]));
 if (githubAppEnabled)
 {
     var githubAppClientId = builder.AddParameter("github-app-client-id");
@@ -280,8 +246,8 @@ if (realtimeEnabled)
         {
             // Aspire wraps redis-server in a shell command for its publish model.
             if (context.Args.Count >= 2 && context.Args[0] is "-c")
-                context.Args[1] =
-                    $"{context.Args[1]} --appendonly yes --appendfsync everysec --maxmemory-policy noeviction";
+                context.Args[1]
+                    = $"{context.Args[1]} --appendonly yes --appendfsync everysec --maxmemory-policy noeviction";
             else
                 foreach (var argument in new[]
                              { "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction" })
@@ -300,25 +266,20 @@ if (realtimeEnabled)
         certificatePath = RealtimeDevelopmentCertificate.GetOrCreate(builder.AppHostDirectory);
     }
 
-    api.WithReference(realtime).WaitFor(realtime)
+    api.WithReference(realtime)
+        .WaitFor(realtime)
         .WithEnvironment("Realtime__Enabled", "true")
         .WithEnvironment("Realtime__KeyProtectionCertificatePath", certificatePath);
     if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:realtime-key-protection-certificate-password"]))
-        api.WithEnvironment("Realtime__KeyProtectionCertificatePassword",
+        api.WithEnvironment(
+            "Realtime__KeyProtectionCertificatePassword",
             builder.AddParameter("realtime-key-protection-certificate-password", secret: true));
 }
 
-var blog = builder.AddProject<Projects.Blog>("blog")
-    .WithReference(api)
-    .WaitFor(api)
-    .WithExplicitStart();
+var blog = builder.AddProject<Blog>("blog").WithReference(api).WaitFor(api).WithExplicitStart();
 
 var frontend = builder.AddViteApp("frontend", "../frontend")
-    .WithEndpoint("http",
-        (endpointAnnotation) =>
-        {
-            endpointAnnotation.Port = e2eEnabled ? null : 5173;
-        })
+    .WithEndpoint("http", endpointAnnotation => { endpointAnnotation.Port = e2eEnabled ? null : 5173; })
     .WithReference(api)
     .WaitFor(api)
     .WithEnvironment("VITE_API_BASE_URL", api.GetEndpoint("http"))

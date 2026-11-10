@@ -6,12 +6,13 @@ namespace Pole.Features.Secrets.Contracts;
 public enum ManagedSecretKubernetesType
 {
     Opaque,
-    BasicAuthentication
+    BasicAuthentication,
 }
 
 public sealed record ManagedSecretOwner(
     string ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record PreparedManagedSecret(
     string SecretId,
@@ -21,7 +22,8 @@ public sealed record PreparedManagedSecret(
     ManagedSecretKubernetesType KubernetesType,
     long Version,
     ImmutableArray<string> Keys,
-    ImmutableArray<byte> EncryptedValues)
+    ImmutableArray<byte> EncryptedValues
+)
 {
     public override string ToString() => $"PreparedManagedSecret({SecretId}, {Version})";
 }
@@ -31,25 +33,32 @@ public sealed record ManagedSecretValues(
     string Name,
     ManagedSecretKubernetesType KubernetesType,
     long Version,
-    ImmutableDictionary<string, string> Values)
+    ImmutableDictionary<string, string> Values
+)
 {
     public override string ToString() => "ManagedSecretValues([REDACTED])";
 }
 
 public abstract record ManagedSecretFailure;
+
 public sealed record ManagedSecretUnavailable : ManagedSecretFailure;
+
 public sealed record ManagedSecretChanged : ManagedSecretFailure;
+
 public sealed record ManagedSecretReferenceRejected : ManagedSecretFailure;
+
 public sealed record ManagedSecretEncryptionUnavailable : ManagedSecretFailure;
+
 public sealed record ManagedSecretMutationSucceeded;
-public sealed record ManagedSecretKey(string Value)
+
+public sealed record ManagedSecretKey(
+    string Value
+)
 {
     public override string ToString() => "ManagedSecretKey([REDACTED])";
 }
 
-public union PrepareManagedSecretOutcome(
-    PreparedManagedSecret,
-    ManagedSecretEncryptionUnavailable);
+public union PrepareManagedSecretOutcome(PreparedManagedSecret, ManagedSecretEncryptionUnavailable);
 
 public union ManagedSecretMutationOutcome(
     ManagedSecretMutationSucceeded,
@@ -68,9 +77,7 @@ public union ReadManagedSecretKeyOutcome(
     ManagedSecretUnavailable,
     ManagedSecretEncryptionUnavailable);
 
-public union EnsureManagedSecretProjectionOutcome(
-    SecretProjectionReference,
-    ManagedSecretUnavailable);
+public union EnsureManagedSecretProjectionOutcome(SecretProjectionReference, ManagedSecretUnavailable);
 
 /// <summary>Prepares an encrypted version, without persistence or external side effects.</summary>
 public delegate Task<PrepareManagedSecretOutcome> PrepareManagedSecret(
@@ -103,7 +110,8 @@ public delegate Task<ManagedSecretMutationOutcome> ReleaseManagedSecret(
 public sealed record SecretProjectionReference(
     string SecretId,
     string KubernetesName,
-    long AppliedVersion);
+    long AppliedVersion
+);
 
 public delegate Task<EnsureManagedSecretProjectionOutcome> EnsureManagedSecretProjection(
     EnsureManagedSecretProjectionRequest request,
@@ -121,7 +129,8 @@ public sealed record PrepareManagedSecretRequest(
     string Name,
     long Version,
     IReadOnlyDictionary<string, string> Values,
-    ManagedSecretKubernetesType KubernetesType)
+    ManagedSecretKubernetesType KubernetesType
+)
 {
     public override string ToString() => $"PrepareManagedSecretRequest({SecretId}, {Version}, [REDACTED])";
 }
@@ -130,22 +139,27 @@ public sealed record CreateBoundManagedSecretRequest(
     PreparedManagedSecret Prepared,
     string ResourceGroupId,
     string IsolationScopeId,
-    string DeploymentId);
+    string DeploymentId
+);
 
 public sealed record RotateManagedSecretRequest(
     PreparedManagedSecret Prepared,
-    long ExpectedVersion);
+    long ExpectedVersion
+);
 
 public sealed record ReleaseManagedSecretRequest(
     string TenantId,
-    ManagedSecretOwner Owner);
+    ManagedSecretOwner Owner
+);
 
 public sealed record EnsureManagedSecretProjectionRequest(
     string TenantId,
     ManagedSecretOwner Owner,
-    string DeploymentId);
+    string DeploymentId
+);
 
 public sealed record ReadManagedSecretKeyRequest(
     string TenantId,
     ManagedSecretOwner Owner,
-    string Key);
+    string Key
+);

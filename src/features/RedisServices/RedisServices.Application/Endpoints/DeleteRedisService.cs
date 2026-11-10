@@ -5,20 +5,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Lifecycle;
-using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 using static Pole.Features.Quotas.Contracts.HttpMapping.QuotaContractHttpMappings;
 using static Pole.Features.RedisServices.Application.Common.RedisHttpMappings;
@@ -30,12 +25,11 @@ public static class DeleteRedisService
 {
     public static IEndpointRouteBuilder MapDeleteRedisServiceEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] DeleteRedisServiceRequest request,
-                CancellationToken ct) =>
-                (await mediator.Send(request, ct))
-                .ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteRedisServiceRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     DeleteRedisServiceResponse response => Results.Accepted(value: response),
                     RedisServiceNotFound error => MapNotFound(error),
@@ -45,7 +39,7 @@ public static class DeleteRedisService
                     RedisGitOwnedConfiguration error => MapGitOwned(error),
                     LoadCurrentResourceDeploymentComputeError error => MapComputeError(error),
                     ResourceDeploymentMutationError error => MapMutationError(error),
-                    QuotaExecutionError error => MapExecutionError(error)
+                    QuotaExecutionError error => MapExecutionError(error),
                 }))
             .WithName("DeleteRedisService")
             .Produces(StatusCodes.Status202Accepted);
@@ -54,7 +48,9 @@ public static class DeleteRedisService
     }
 }
 
-public sealed record RedisDeletionResourceDeploymentMissing(string RedisId);
+public sealed record RedisDeletionResourceDeploymentMissing(
+    string RedisId
+);
 
 public union DeleteRedisServiceOutcome(
     DeleteRedisServiceResponse,
@@ -75,19 +71,15 @@ public sealed class DeleteRedisServiceHandler(
     LoadResourceDeployment loadDeployment,
     LoadCurrentResourceDeploymentCompute loadDeploymentCompute,
     TimeProvider timeProvider
-    ) : IMediatorOutcomeHandler<DeleteRedisServiceRequest, DeleteRedisServiceOutcome>
+) : IMediatorOutcomeHandler<DeleteRedisServiceRequest, DeleteRedisServiceOutcome>
 {
-    public async Task<DeleteRedisServiceOutcome> HandleAsync(DeleteRedisServiceRequest request,
+    public async Task<DeleteRedisServiceOutcome> HandleAsync(
+        DeleteRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var redis = await loadRedisById(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
+        var redis = await loadRedisById(request.TenantId, request.Id, cancellationToken);
         if (redis is null)
-        {
             return new RedisServiceNotFound(request.Id);
-        }
         if (redis.Lifecycle is DeletingRedisLifecycle)
         {
             var deletingPlacement = await loadDeployment(
@@ -98,8 +90,7 @@ public sealed class DeleteRedisServiceHandler(
                 cancellationToken: cancellationToken);
             return deletingPlacement is null
                 ? new RedisDeletionResourceDeploymentMissing(redis.Id)
-                : new DeleteRedisServiceOutcome(
-                    new DeleteRedisServiceResponse(request.Id, deletingPlacement));
+                : new DeleteRedisServiceOutcome(new DeleteRedisServiceResponse(request.Id, deletingPlacement));
         }
 
         var currentComputeResult = await loadDeploymentCompute(
@@ -109,29 +100,23 @@ public sealed class DeleteRedisServiceHandler(
                 ResourceId: redis.Id),
             cancellationToken: cancellationToken);
         if (currentComputeResult is LoadCurrentResourceDeploymentComputeError currentComputeError)
-        {
             return currentComputeError;
-        }
         var currentCompute = (CurrentResourceDeploymentComputeDto)currentComputeResult.Value;
 
         var quotaInput = RedisQuotaInput.Create(
             currentCompute.Compute.Requests.CpuMillis,
             currentCompute.Compute.Requests.MemoryMi);
-        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
-            RedisQuotaInput,
-            DeleteRedisServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput,
-                global::Pole.Features.RedisServices.Application.Endpoints.DeleteRedisServiceOutcome>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<RedisQuotaInput, DeleteRedisServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<RedisQuotaInput, DeleteRedisServiceOutcome>(
                 TenantId: redis.TenantId,
                 ResourceKey: RedisQuotaResourceKey.Create(redis.Id),
                 Mutation: new DeleteQuotaMutation<RedisQuotaInput>(quotaInput),
                 QuotaError: quotaError => quotaError,
                 MutationCallback: async (transaction, transactionCancellationToken) =>
                 {
-                    var deleting = redis.BeginDeletion(
-                        timeProvider.GetUtcNow().UtcDateTime);
+                    var deleting = redis.BeginDeletion(timeProvider.GetUtcNow().UtcDateTime);
                     var persistenceResult = await beginRedisDeletion(
-                        new(redis, deleting),
+                        new RedisDeletion(redis, deleting),
                         transaction.Session,
                         transactionCancellationToken);
                     if (persistenceResult is RedisSecretBindingRemovalRequired bindingError)
@@ -140,9 +125,7 @@ public sealed class DeleteRedisServiceHandler(
                         return transaction.Abort(ownershipError);
 
                     if (persistenceResult is RedisDeletionConflict persistenceError)
-                    {
                         return transaction.Abort(persistenceError);
-                    }
 
                     var deploymentResult = await requestDeploymentDeletion(
                         new ResourceDeploymentMutationRequest(
@@ -153,42 +136,32 @@ public sealed class DeleteRedisServiceHandler(
                         transaction.Session,
                         transactionCancellationToken);
                     if (deploymentResult is ResourceDeploymentMutationError deploymentError)
-                    {
                         return transaction.Abort(deploymentError);
-                    }
                     var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
-                    return transaction.Commit(new DeleteRedisServiceOutcome(
-                        new DeleteRedisServiceResponse(request.Id, deployment)));
+                    return transaction.Commit(
+                        new DeleteRedisServiceOutcome(new DeleteRedisServiceResponse(request.Id, deployment)));
                 }),
             cancellationToken: cancellationToken);
     }
 }
 
 public sealed class FinalizeRedisServiceDeletionConsumer(
-    FinalizeRedisDeletion finalizeRedisDeletion)
-    : IConsumer<ResourceDeploymentDeletedEvent>
+    FinalizeRedisDeletion finalizeRedisDeletion
+) : IConsumer<ResourceDeploymentDeletedEvent>
 {
     public async Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context)
     {
         var message = context.Message;
-        if (!string.Equals(
-                message.ResourceType,
-                RedisResourceDeployment.ResourceType.Value,
-                StringComparison.Ordinal))
-        {
+        if (!string.Equals(message.ResourceType, RedisResourceDeployment.ResourceType.Value, StringComparison.Ordinal))
             return;
-        }
 
         var result = await finalizeRedisDeletion(
             message.EventCore.TenantId,
             message.ResourceId,
             context.CancellationToken);
         if (result is RedisDeletionFinalizationConflict conflict)
-        {
-            throw new InvalidOperationException(
-                $"Redis deletion finalization conflicted for '{conflict.RedisId}'.");
-        }
+            throw new InvalidOperationException($"Redis deletion finalization conflicted for '{conflict.RedisId}'.");
     }
 }
 
@@ -202,9 +175,7 @@ public sealed record DeleteRedisServiceResponse(
     PlacementSummaryDto Placement
 );
 
-public sealed class DeleteRedisServiceRequestValidator
-    : AbstractValidator<DeleteRedisServiceRequest>
+public sealed class DeleteRedisServiceRequestValidator : AbstractValidator<DeleteRedisServiceRequest>
 {
-    public DeleteRedisServiceRequestValidator() =>
-        RuleFor(request => request.Id).MongoObjectId("Redis service ID");
+    public DeleteRedisServiceRequestValidator() => RuleFor(request => request.Id).MongoObjectId("Redis service ID");
 }

@@ -1,6 +1,6 @@
 using System.Text.Json;
-using Pole.Features.GitOps.Primitives;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Contracts;
 
@@ -9,13 +9,17 @@ namespace Pole.Features.GitOps.Contracts;
 public sealed record DeclarationProjection(
     JsonElement Identity,
     JsonElement Configuration,
-    DeclarationVersionToken? Dependencies = null);
+    DeclarationVersionToken? Dependencies = null
+);
 
 public sealed record DeclarationDocumentVersion(
     string DocumentId,
-    long Revision);
+    long Revision
+);
 
-public sealed record DeclarationVersionToken(IReadOnlyList<DeclarationDocumentVersion> Documents);
+public sealed record DeclarationVersionToken(
+    IReadOnlyList<DeclarationDocumentVersion> Documents
+);
 
 public enum DeclarationConfigurationState { Prepared, Configured }
 
@@ -23,30 +27,33 @@ public sealed record CurrentDeclaration(
     string ResourceId,
     DeclarationVersionToken Version,
     DeclarationProjection Projection,
-    DeclarationConfigurationState State);
+    DeclarationConfigurationState State
+);
 
 public sealed record CurrentDeclarationMissing;
 
-public sealed record DeclarationReadBlocked(IDeclarationFailure Failure);
+public sealed record DeclarationReadBlocked(
+    IDeclarationFailure Failure
+);
 
 public union ReadCurrentDeclarationOutcome(
     CurrentDeclaration,
     CurrentDeclarationMissing,
     DeclarationReadBlocked);
 
-public union ProjectDesiredDeclarationOutcome(
-    DeclarationProjection,
-    DeclarationReadBlocked);
+public union ProjectDesiredDeclarationOutcome(DeclarationProjection, DeclarationReadBlocked);
 
 public sealed record ReadCurrentDeclarationRequest(
     string TenantId,
     ResourceAddress Address,
-    GitOperationInput? Operation = null);
+    GitOperationInput? Operation = null
+);
 
 public sealed record ProjectDesiredDeclarationRequest(
     string TenantId,
     CompiledDeclaration Declaration,
-    GitOperationInput? Operation = null);
+    GitOperationInput? Operation = null
+);
 
 public interface IDeclarativeResourcePlanningProvider : IDeclarativeResourceProvider
 {
@@ -65,56 +72,75 @@ public sealed record DeclarationPlanningScope(
     string TenantId,
     string SourceId,
     string? AcceptedResourceId,
-    DeclarationPlanningAuthority? Authority = null);
+    DeclarationPlanningAuthority? Authority = null
+);
 
 public sealed record PlanDeclarationRequest(
     DeclarationPlanningScope Scope,
-    CompiledDeclaration Declaration);
+    CompiledDeclaration Declaration
+);
 
 public closed record ResourceDeclarationPlan;
 
-public sealed record CreateDeclarationPlan(DeclarationProjection Desired) : ResourceDeclarationPlan;
+public sealed record CreateDeclarationPlan(
+    DeclarationProjection Desired
+) : ResourceDeclarationPlan;
 
 public sealed record UpdateDeclarationPlan(
     CurrentDeclaration Current,
-    DeclarationProjection Desired) : ResourceDeclarationPlan;
+    DeclarationProjection Desired
+) : ResourceDeclarationPlan;
 
 public sealed record NoOpDeclarationPlan(
     CurrentDeclaration Current,
-    DeclarationProjection Desired) : ResourceDeclarationPlan;
+    DeclarationProjection Desired
+) : ResourceDeclarationPlan;
 
-public sealed record BlockedDeclarationPlan(IDeclarationFailure Failure) : ResourceDeclarationPlan;
+public sealed record BlockedDeclarationPlan(
+    IDeclarationFailure Failure
+) : ResourceDeclarationPlan;
 
 public sealed record AdoptionDeclarationPlan(
     CurrentDeclaration Current,
-    DeclarationProjection Desired) : ResourceDeclarationPlan;
+    DeclarationProjection Desired
+) : ResourceDeclarationPlan;
 
 public sealed record ReplacementDeclarationPlan(
     CurrentDeclaration Current,
-    DeclarationProjection Desired) : ResourceDeclarationPlan;
+    DeclarationProjection Desired
+) : ResourceDeclarationPlan;
 
 // Only the later lifecycle planner may emit removal, after complete snapshot and prune checks.
-public sealed record RemovalDeclarationPlan(CurrentDeclaration Current) : ResourceDeclarationPlan;
+public sealed record RemovalDeclarationPlan(
+    CurrentDeclaration Current
+) : ResourceDeclarationPlan;
 
-public sealed record DeclarationPlanningUnsupported(string Kind) : IDeclarationFailure;
+public sealed record DeclarationPlanningUnsupported(
+    string Kind
+) : IDeclarationFailure;
 
 public sealed record DeclarationIdentityChanged : IDeclarationFailure;
 
-public sealed record DeclarationReferenceUnavailable(ResourceAddress Address) : IDeclarationFailure;
+public sealed record DeclarationReferenceUnavailable(
+    ResourceAddress Address
+) : IDeclarationFailure;
 
 // An advisory name lookup has no execution authority. Accepted execution always supplies this context.
 public sealed record DeclarationPlanningAuthority(
     GitOperationInput Operation,
     string? OwnerSourceId,
-    GitResourceMaterialization Materialization);
+    GitResourceMaterialization Materialization
+);
 
 public sealed record DeclarationExecutionPlan(
     long Revision,
-    ResourceDeclarationPlan Decision);
+    ResourceDeclarationPlan Decision
+);
 
 public sealed record FenceDeclarationRequest(
     GitOperationInput Operation,
-    DeclarationVersionToken Expected);
+    DeclarationVersionToken Expected
+);
 
 public sealed record DeclarationFenced;
 
@@ -135,7 +161,8 @@ public interface ITransactionalDeclarativeResourceProvider : IDeclarativeResourc
 
 public sealed record DeclarationDependencyBlocked(
     ResourceAddress Address,
-    DeclarationPhase Phase) : IDeclarationFailure;
+    DeclarationPhase Phase
+) : IDeclarationFailure;
 
 public sealed record DeclarationManagedResourceMissing : IDeclarationFailure;
 

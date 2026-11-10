@@ -1,3 +1,4 @@
+using System.Reflection;
 using Pole.Architecture.FSharp;
 using Xunit;
 
@@ -9,13 +10,13 @@ public sealed class RawBsonFSharpTests
     public void SemanticCheck_DetectsAliasesAndInferredInvocationAndPropertyReturns()
     {
         const string source = """
-            namespace Fixture
-            open MongoDB.Bson
-            module Cases =
-                type Alias = BsonDocument
-                let inferred () = Alias.Create()
-                let property () = (inferred ()).Value
-            """;
+                              namespace Fixture
+                              open MongoDB.Bson
+                              module Cases =
+                                  type Alias = BsonDocument
+                                  let inferred () = Alias.Create()
+                                  let property () = (inferred ()).Value
+                              """;
 
         var violations = Check(source);
 
@@ -28,14 +29,14 @@ public sealed class RawBsonFSharpTests
     public void SemanticCheck_IgnoresUnrelatedNamesCommentsAndTripleQuotedStrings()
     {
         const string source = """"
-            namespace Fixture
-            module Cases =
-                // MongoDB.Bson.BsonDocument()
-                (* MongoDB.Bson.BsonArray() *)
-                let text = """MongoDB.Bson.BsonValue
-            let fake = MongoDB.Bson.BsonDocument()"""
-                let unrelated () = Unrelated.BsonDocument()
-            """";
+                              namespace Fixture
+                              module Cases =
+                                  // MongoDB.Bson.BsonDocument()
+                                  (* MongoDB.Bson.BsonArray() *)
+                                  let text = """MongoDB.Bson.BsonValue
+                              let fake = MongoDB.Bson.BsonDocument()"""
+                                  let unrelated () = Unrelated.BsonDocument()
+                              """";
 
         Assert.Empty(Check(source));
     }
@@ -44,15 +45,15 @@ public sealed class RawBsonFSharpTests
     public void MethodAllowance_CoversItsSignatureAndBodyWithoutCoveringCallersOrSiblings()
     {
         const string source = """
-            namespace Fixture
-            open MongoDB.Bson
-            open Pole.Architecture
-            module Cases =
-                [<ViolateArchitecture("POLE014", "Server expression")>]
-                let allowed () = BsonDocument.Create()
-                let caller () = allowed ()
-                let sibling () = BsonArray()
-            """;
+                              namespace Fixture
+                              open MongoDB.Bson
+                              open Pole.Architecture
+                              module Cases =
+                                  [<ViolateArchitecture("POLE014", "Server expression")>]
+                                  let allowed () = BsonDocument.Create()
+                                  let caller () = allowed ()
+                                  let sibling () = BsonArray()
+                              """;
 
         var violations = Check(source);
 
@@ -64,7 +65,8 @@ public sealed class RawBsonFSharpTests
     [Fact]
     public void Task_member_exception_uses_the_source_binding_and_does_not_cover_siblings()
     {
-        var violations = Check("""
+        var violations = Check(
+            """
             namespace Fixture
             open Pole.Architecture
             type Cases() =
@@ -85,16 +87,16 @@ public sealed class RawBsonFSharpTests
     public void TypeAllowance_CoversOwnedMembersWithoutCoveringAnotherType()
     {
         const string source = """
-            namespace Fixture
-            open MongoDB.Bson
-            open Pole.Architecture
-            [<ViolateArchitecture("POLE014", "Server expressions")>]
-            type Allowed() =
-                member _.Document = BsonDocument.Create()
-                member _.Array() = BsonArray()
-            type Sibling() =
-                member _.Document = BsonDocument.Create()
-            """;
+                              namespace Fixture
+                              open MongoDB.Bson
+                              open Pole.Architecture
+                              [<ViolateArchitecture("POLE014", "Server expressions")>]
+                              type Allowed() =
+                                  member _.Document = BsonDocument.Create()
+                                  member _.Array() = BsonArray()
+                              type Sibling() =
+                                  member _.Document = BsonDocument.Create()
+                              """;
 
         var violations = Check(source);
 
@@ -106,13 +108,13 @@ public sealed class RawBsonFSharpTests
     public void TypeAllowance_CoversRecordFieldSignatures()
     {
         const string source = """
-            namespace Fixture
-            open MongoDB.Bson
-            open Pole.Architecture
-            [<ViolateArchitecture("POLE014", "Driver data shape")>]
-            type Allowed = { Value: BsonDocument; Values: BsonValue array }
-            type Sibling = { Value: BsonDocument }
-            """;
+                              namespace Fixture
+                              open MongoDB.Bson
+                              open Pole.Architecture
+                              [<ViolateArchitecture("POLE014", "Driver data shape")>]
+                              type Allowed = { Value: BsonDocument; Values: BsonValue array }
+                              type Sibling = { Value: BsonDocument }
+                              """;
 
         var violations = Check(source);
 
@@ -127,13 +129,13 @@ public sealed class RawBsonFSharpTests
     public void InvalidAllowance_IsReportedAndDoesNotSuppressRawTypes(string rule, string reason)
     {
         var source = $$"""
-            namespace Fixture
-            open MongoDB.Bson
-            open Pole.Architecture
-            module Cases =
-                [<ViolateArchitecture("{{rule}}", "{{reason}}")>]
-                let invalid () = BsonDocument.Create()
-            """;
+                       namespace Fixture
+                       open MongoDB.Bson
+                       open Pole.Architecture
+                       module Cases =
+                           [<ViolateArchitecture("{{rule}}", "{{reason}}")>]
+                           let invalid () = BsonDocument.Create()
+                       """;
 
         var violations = Check(source);
 
@@ -144,7 +146,8 @@ public sealed class RawBsonFSharpTests
     [Fact]
     public void A_different_rule_does_not_suppress_BSON_and_is_not_invalid_metadata()
     {
-        var violations = Check("""
+        var violations = Check(
+            """
             namespace Fixture
             open Pole.Architecture
             module Cases =
@@ -160,13 +163,13 @@ public sealed class RawBsonFSharpTests
     public void AssemblyAllowance_DoesNotSuppressDeclarations()
     {
         const string source = """
-            namespace Fixture
-            open Pole.Architecture
-            [<assembly: ViolateArchitecture("POLE014", "Too broad")>]
-            do ()
-            module Cases =
-                let document () = MongoDB.Bson.BsonDocument.Create()
-            """;
+                              namespace Fixture
+                              open Pole.Architecture
+                              [<assembly: ViolateArchitecture("POLE014", "Too broad")>]
+                              do ()
+                              module Cases =
+                                  let document () = MongoDB.Bson.BsonDocument.Create()
+                              """;
 
         Assert.Contains(Check(source), item => item.Line == 6);
     }
@@ -188,7 +191,9 @@ public sealed class RawBsonFSharpTests
         {
             var support = Path.Combine(directory, "Support.fs");
             var fixture = Path.Combine(directory, "Fixture.fs");
-            File.WriteAllText(support, """
+            File.WriteAllText(
+                support,
+                """
                 namespace MongoDB.Bson
                 type BsonValue() = class end
                 type BsonDocument() =
@@ -207,14 +212,15 @@ public sealed class RawBsonFSharpTests
                 """);
             File.WriteAllText(fixture, source);
 
-            var references = ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")
-                    ?? throw new InvalidOperationException("Runtime reference assemblies are unavailable."))
+            var references
+                = ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ??
+                    throw new InvalidOperationException("Runtime reference assemblies are unavailable."))
                 .Split(Path.PathSeparator)
-                .Append(System.Reflection.Assembly.Load("FSharp.Core").Location)
+                .Append(Assembly.Load("FSharp.Core").Location)
                 .Distinct(StringComparer.Ordinal)
                 .Select(path => "-r:" + path);
             var arguments = new[]
-                { "--target:library", "--targetprofile:netcore", "--noframework", "--simpleresolution" }
+                    { "--target:library", "--targetprofile:netcore", "--noframework", "--simpleresolution" }
                 .Concat(references)
                 .Concat([support, fixture])
                 .ToArray();

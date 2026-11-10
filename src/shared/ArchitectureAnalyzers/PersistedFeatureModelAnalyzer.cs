@@ -36,13 +36,14 @@ public sealed class PersistedFeatureModelAnalyzer : DiagnosticAnalyzer
         {
             INamedTypeSymbol named => named,
             IMethodSymbol method => method.ReturnType as INamedTypeSymbol,
-            _ => null
+            _ => null,
         };
         if (type is null)
             return;
 
         foreach (var model in CollectionModels(type)
-                     .Distinct(SymbolEqualityComparer.Default).OfType<INamedTypeSymbol>())
+                     .Distinct(SymbolEqualityComparer.Default)
+                     .OfType<INamedTypeSymbol>())
             CheckModel(context, syntax, model);
     }
 
@@ -55,25 +56,26 @@ public sealed class PersistedFeatureModelAnalyzer : DiagnosticAnalyzer
         }
 
         // Closed generic persistence wrappers can hide their typed collections behind private fields.
-        if (!type.TypeArguments.OfType<INamedTypeSymbol>().Any(argument =>
-                argument.ContainingNamespace?.ToDisplayString()
-                    .StartsWith("Pole.Features.", StringComparison.Ordinal) == true))
+        if (!type.TypeArguments
+                .OfType<INamedTypeSymbol>()
+                .Any(argument =>
+                    argument.ContainingNamespace
+                        ?.ToDisplayString()
+                        .StartsWith("Pole.Features.", StringComparison.Ordinal) == true))
             yield break;
 
         for (var current = type; current is not null; current = current.BaseType)
-        {
             foreach (var member in current.GetMembers())
             {
                 var memberType = member switch
                 {
                     IFieldSymbol field => field.Type,
                     IPropertySymbol property => property.Type,
-                    _ => null
+                    _ => null,
                 };
                 if (memberType is INamedTypeSymbol named && CollectionModel(named) is { } model)
                     yield return model;
             }
-        }
     }
 
     private static INamedTypeSymbol? CollectionModel(INamedTypeSymbol type) =>
@@ -87,7 +89,7 @@ public sealed class PersistedFeatureModelAnalyzer : DiagnosticAnalyzer
         GenericNameSyntax syntax,
         INamedTypeSymbol model)
     {
-        var ns = model.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+        var ns = model.ContainingNamespace?.ToDisplayString() ?? "";
         if (!ns.StartsWith("Pole.Features.", StringComparison.Ordinal))
             return;
 
@@ -100,9 +102,6 @@ public sealed class PersistedFeatureModelAnalyzer : DiagnosticAnalyzer
             model.ContainingAssembly?.Name == expected)
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(
-            Rule,
-            syntax.GetLocation(),
-            model.ToDisplayString()));
+        context.ReportDiagnostic(Diagnostic.Create(Rule, syntax.GetLocation(), model.ToDisplayString()));
     }
 }

@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Domain;
@@ -18,7 +16,8 @@ public delegate Task<long> WakeResourceDeploymentsForRuntimeCell(
 internal sealed class ResourceDeploymentWakePersistence(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     RunMongoOutcomeTransaction<long> runMongoTransaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<long> WakeAsync(
         string tenantId,
@@ -35,23 +34,25 @@ internal sealed class ResourceDeploymentWakePersistence(
         if (waiting.Count == 0)
             return 0L;
 
-        return await runMongoTransaction(async (transaction, ct) =>
-        {
-            var writes = new List<OutboxWrite>(waiting.Count);
-            foreach (var deployment in waiting)
+        return await runMongoTransaction(
+            async (transaction, ct) =>
             {
-                var current = deployment.MarkRuntimeCellReady(readyAtUtc);
-                var replacement = await resourceDeployments.ReplaceOneAsync(
-                    transaction.Session,
-                    ResourceDeploymentFilters.WaitingForRuntimeCellAtRevision(deployment),
-                    current,
-                    cancellationToken: ct);
-                if (replacement.ModifiedCount == 1)
-                    writes.Add(current.ToCurrentRequestWrite());
-            }
+                var writes = new List<OutboxWrite>(waiting.Count);
+                foreach (var deployment in waiting)
+                {
+                    var current = deployment.MarkRuntimeCellReady(readyAtUtc);
+                    var replacement = await resourceDeployments.ReplaceOneAsync(
+                        transaction.Session,
+                        ResourceDeploymentFilters.WaitingForRuntimeCellAtRevision(deployment),
+                        current,
+                        cancellationToken: ct);
+                    if (replacement.ModifiedCount == 1)
+                        writes.Add(current.ToCurrentRequestWrite());
+                }
 
-            await storeOutboxWrites(transaction.Session, writes, ct);
-            return transaction.Commit((long)writes.Count);
-        }, cancellationToken);
+                await storeOutboxWrites(transaction.Session, writes, ct);
+                return transaction.Commit(writes.Count);
+            },
+            cancellationToken);
     }
 }

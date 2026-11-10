@@ -1,32 +1,28 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Events;
+using Pole.Features.Postgres.Migrations;
 using Pole.Features.ResourceConnections.Application;
-using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Testing;
 using Pole.Mediator;
 using Pole.Platform.Hosting;
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Features.Postgres.Tests.Integration.Infrastructure;
 
 [Collection(IntegrationTestCollection.Name)]
-public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture) : IAsyncLifetime
+public abstract class MediatorIntegrationTestBase(
+    MongoReplicaSetFixture fixture
+) : IAsyncLifetime
 {
     private readonly TestEncryptionSettings _encryption = new();
-    private ServiceProvider? _serviceProvider;
     private IServiceScope? _scope;
+    private ServiceProvider? _serviceProvider;
 
     protected MongoReplicaSetFixture Fixture { get; } = fixture;
     protected PostgresTestStore DbContext { get; private set; } = null!;
@@ -38,12 +34,12 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         await Fixture.ResetDatabaseAsync();
         DbContext = new PostgresTestStore(Fixture.Client, Fixture.Database);
 
-        var configuration = new ConfigurationBuilder()
-            .AddConfiguration(_encryption.Configuration)
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["kubernetes:NamespaceNamePrefix"] = "test"
-            })
+        var configuration = new ConfigurationBuilder().AddConfiguration(_encryption.Configuration)
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["kubernetes:NamespaceNamePrefix"] = "test",
+                })
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
@@ -56,15 +52,15 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         services.AddSingleton<DiscoverKubernetesStorageClasses>(storageDiscovery.GetStorageClassesAsync);
         services.AddSingleton<DiscoverKubernetesStorageClassNames>(storageDiscovery.GetStorageClassNamesAsync);
         services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storageDiscovery.GetPersistentVolumesAsync);
-        services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storageDiscovery.GetPersistentVolumeClaimsAsync);
+        services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
+            storageDiscovery.GetPersistentVolumeClaimsAsync);
         services.AddPolePlatform(
             configuration,
             [typeof(PostgresClusterEndpoints).Assembly],
             [typeof(PostgresClusterCreatedEvent).Assembly],
             []);
         services.AddPostgresFeature(configuration);
-        services.AddFeatureMigrations("pole.postgres", typeof(
-            Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
+        services.AddFeatureMigrations("pole.postgres", typeof(PostgresNameIndexesMigration).Assembly);
         services.AddResourceConnectionsFeature();
         services.AddTestDeploymentTargets();
         services.AddUnavailableSourceBuildTargets();
@@ -74,13 +70,12 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         await _serviceProvider.InitializePolePlatformAsync();
 
         await DbContext.StorageProfiles.InsertOneAsync(PostgresTestData.SeedStorageProfile());
-        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+        await Fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(PostgresTestData.SeedComputeProfile());
         await new TenantTestData(Fixture.Database).CreateAsync("Test tenant", PostgresTestData.TenantId);
         _scope = _serviceProvider.CreateScope();
     }
-
-    protected virtual void ConfigureServices(IServiceCollection services) { }
 
     public virtual Task DisposeAsync()
     {
@@ -88,6 +83,10 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         _serviceProvider?.Dispose();
         _encryption.Dispose();
         return Task.CompletedTask;
+    }
+
+    protected virtual void ConfigureServices(IServiceCollection services)
+    {
     }
 
     private static void ReplaceTenantAuthorizationWithFake(IServiceCollection services)
@@ -99,5 +98,4 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             services.Remove(descriptor);
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(FakeAuthBehaviour<,>));
     }
-
 }

@@ -8,15 +8,16 @@ using Pole.Features.GitOps.Domain;
 
 namespace Pole.Features.GitOps.Application.Runs;
 
-internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt> receipts, IServiceProvider services)
+internal sealed class GitOperationReceipts(
+    IMongoCollection<GitOperationReceipt> receipts,
+    IServiceProvider services
+)
 {
-    public string? DiagnosticCode(
-        GitOperation operation,
-        GitOperationResult result) => DeclarationFailureDiagnostics.Code(
-        result.Failure,
-        services.GetRequiredService<DeclarativeProviderRegistry>()
-            .Find(operation.Declaration.Address.Kind)
-        ?? throw new InvalidOperationException("The declaration provider is no longer registered."));
+    public string? DiagnosticCode(GitOperation operation, GitOperationResult result) =>
+        DeclarationFailureDiagnostics.Code(
+            result.Failure,
+            services.GetRequiredService<DeclarativeProviderRegistry>().Find(operation.Declaration.Address.Kind) ??
+            throw new InvalidOperationException("The declaration provider is no longer registered."));
 
     public async Task StoreAsync(
         GitOperation operation,
@@ -37,13 +38,12 @@ internal sealed class GitOperationReceipts(IMongoCollection<GitOperationReceipt>
             operation.Phase.ToString(),
             result.ResourceId,
             operation.Declaration.Hash,
-            DiagnosticCode(
-                operation,
-                result),
+            DiagnosticCode(operation, result),
             result.Changed,
             operation.Plan.Revision,
-            result.Applied ? await services.GetRequiredService<MongoGitLifecycleGuard>()
-                .CaptureApplyAsync(operation, session, ct) : null);
+            result.Applied
+                ? await services.GetRequiredService<MongoGitLifecycleGuard>().CaptureApplyAsync(operation, session, ct)
+                : null);
 
         await receipts.ReplaceOneAsync(
             session,

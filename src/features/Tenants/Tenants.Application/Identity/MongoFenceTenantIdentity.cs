@@ -1,12 +1,13 @@
 using MongoDB.Driver;
 using Pole.Features.Tenants.Application.Mongo;
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Identity;
 
-internal sealed class MongoFenceTenantIdentity(IMongoCollection<Tenant> tenants)
+internal sealed class MongoFenceTenantIdentity(
+    IMongoCollection<Tenant> tenants
+)
 {
     public async Task<LoadTenantIdentityOutcome> InvokeAsync(
         FenceTenantIdentityRequest request,
@@ -16,9 +17,12 @@ internal sealed class MongoFenceTenantIdentity(IMongoCollection<Tenant> tenants)
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Tenant availability fencing requires a Mongo transaction.");
 
-        var tenant = await tenants.FindOneAndUpdateAsync(session, TenantFilters.ById(request.TenantId),
+        var tenant = await tenants.FindOneAndUpdateAsync(
+            session,
+            TenantFilters.ById(request.TenantId),
             Builders<Tenant>.Update.Inc(item => item.ReferenceFence, 1),
-            new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After }, cancellationToken);
+            new FindOneAndUpdateOptions<Tenant> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
         return tenant is null
             ? new TenantIdentityNotFound(request.TenantId)
             : new TenantIdentitySnapshot(tenant.Id, tenant.Name);

@@ -5,17 +5,20 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Workloads
 
 type PostgresPreparedPlacement =
-    { DeploymentId : string
-      IsolationScopeId : string
-      Target : ResolvedResourceDeploymentTarget
-      Compute : ResourceDeploymentComputeConfiguration
-      Storage : ResourceDeploymentStorageConfiguration
-      StoragePolicyRevision : int64 }
+    { DeploymentId: string
+      IsolationScopeId: string
+      Target: ResolvedResourceDeploymentTarget
+      Compute: ResourceDeploymentComputeConfiguration
+      Storage: ResourceDeploymentStorageConfiguration
+      StoragePolicyRevision: int64 }
 
 [<RequireQualifiedAccess>]
 module PostgresPreparedPlacements =
-    let createRequest (cluster : PostgresCluster) (placement : PostgresPreparedPlacement) =
-        if not cluster.IsPrepared || not (cluster.Lifecycle :? ActivePostgresClusterLifecycle) then
+    let createRequest (cluster: PostgresCluster) (placement: PostgresPreparedPlacement) =
+        if
+            not cluster.IsPrepared
+            || not (cluster.Lifecycle :? ActivePostgresClusterLifecycle)
+        then
             invalidArg "cluster" "Deferred placement requires an active prepared PostgreSQL identity."
 
         if placement.Storage.StorageProfileId <> cluster.Spec.StorageProfileId then
@@ -39,4 +42,5 @@ module PostgresPreparedPlacements =
             ResourceRevision = cluster.Revision,
             DeferredActivation = true,
             PinnedCompute = true,
-            StoragePolicyRevision = System.Nullable placement.StoragePolicyRevision)
+            StoragePolicyRevision = System.Nullable placement.StoragePolicyRevision
+        )

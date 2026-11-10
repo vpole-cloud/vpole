@@ -1,17 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -19,28 +8,42 @@ using Xunit;
 namespace Pole.Tests.Integration.Secrets;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class SecretProjectionPersistenceTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class SecretProjectionPersistenceTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Recovery_enumeration_is_bounded_and_retains_due_deleted_tombstones()
     {
         // Candidate recovery scans every tenant; its page boundary needs a private database.
-        await using var database = new TestDatabaseScope(Fixture.Client.GetDatabase(
-            "pole-secret-projection-recovery-" + ObjectId.GenerateNewId()));
+        await using var database = new TestDatabaseScope(
+            Fixture.Client.GetDatabase("pole-secret-projection-recovery-" + ObjectId.GenerateNewId()));
         await database.PrepareAsync();
         await using var provider = TestServiceProviderFactory.Create(database);
         await using var scope = provider.CreateAsyncScope();
         var tenant = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
+
         SecretProjection Projection(string secretId, string deploymentId) => SecretProjectionFactory.Create(
             SecretFactory.Create(secretId, tenant, "group", "scope", "name", "purpose", ["password"], now),
             SecretBinding.Create("binding", "pole/postgresql", "resource", new AllSecretDeployments(), []),
-            deploymentId, "cell", "target", "namespace");
-        var rows = Enumerable.Range(0, 130).Select(_ => Projection(ObjectId.GenerateNewId().ToString(), "deployment")).ToList();
+            deploymentId,
+            "cell",
+            "target",
+            "namespace");
+
+        var rows = Enumerable.Range(0, 130)
+            .Select(_ => Projection(ObjectId.GenerateNewId().ToString(), "deployment"))
+            .ToList();
         rows.Add(Projection(rows[0].SecretId, "second-deployment"));
-        var recent = Projection(ObjectId.GenerateNewId().ToString(), "recent").Deleted() with { LastAttemptAtUtc = now };
-        var due = Projection(ObjectId.GenerateNewId().ToString(), "due").Deleted() with { LastAttemptAtUtc = now.AddHours(-1) };
+        var recent = Projection(ObjectId.GenerateNewId().ToString(), "recent").Deleted() with
+        {
+            LastAttemptAtUtc = now,
+        };
+        var due = Projection(ObjectId.GenerateNewId().ToString(), "due").Deleted() with
+        {
+            LastAttemptAtUtc = now.AddHours(-1),
+        };
         rows.Add(recent);
         rows.Add(due);
         await database.Database.GetCollection<SecretProjection>("SecretProjections").InsertManyAsync(rows);
@@ -60,7 +63,15 @@ public sealed class SecretProjectionPersistenceTests(MongoReplicaSetFixture fixt
     public async Task Expired_owner_cannot_overwrite_new_owner_and_old_desired_version_cannot_regress()
     {
         var tenant = ObjectId.GenerateNewId().ToString();
-        var secret = SecretFactory.Create(ObjectId.GenerateNewId().ToString(), tenant, "group", "scope", "name", "purpose", ["password"], DateTime.UtcNow);
+        var secret = SecretFactory.Create(
+            ObjectId.GenerateNewId().ToString(),
+            tenant,
+            "group",
+            "scope",
+            "name",
+            "purpose",
+            ["password"],
+            DateTime.UtcNow);
         var binding = SecretBinding.Create("binding", "pole/postgresql", "resource", new AllSecretDeployments(), []);
         var desired = SecretProjectionFactory.Create(secret, binding, "deployment", "cell", "target", "namespace");
         var claim = Services.GetRequiredService<ClaimSecretProjection>();
@@ -84,15 +95,30 @@ public sealed class SecretProjectionPersistenceTests(MongoReplicaSetFixture fixt
     [Fact]
     public async Task Concurrent_claims_have_only_one_owner_and_preserve_last_applied_version()
     {
-        var secret = SecretFactory.Create(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "group", "scope", "name", "purpose", ["password"], DateTime.UtcNow);
-        var desired = SecretProjectionFactory.Create(secret, SecretBinding.Create("binding", "pole/postgresql", "resource", new AllSecretDeployments(), []), "deployment", "cell", "target", "namespace");
+        var secret = SecretFactory.Create(
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "group",
+            "scope",
+            "name",
+            "purpose",
+            ["password"],
+            DateTime.UtcNow);
+        var desired = SecretProjectionFactory.Create(
+            secret,
+            SecretBinding.Create("binding", "pole/postgresql", "resource", new AllSecretDeployments(), []),
+            "deployment",
+            "cell",
+            "target",
+            "namespace");
         var claim = Services.GetRequiredService<ClaimSecretProjection>();
         var complete = Services.GetRequiredService<CompleteSecretProjection>();
         var now = DateTime.UtcNow;
         var initial = Assert.IsType<SecretProjection>(await claim(desired, "initial", now, default));
         await complete(initial.Applied(), default);
         var rotated = desired with { DesiredVersion = 2, DesiredRevision = 2 };
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => claim(rotated, $"worker-{i}", now, default)));
+        var attempts = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(i => claim(rotated, $"worker-{i}", now, default)));
         var winner = Assert.Single(attempts, x => x is not null);
         Assert.Equal(1, winner!.AppliedVersion);
         Assert.Equal(2, winner.DesiredVersion);

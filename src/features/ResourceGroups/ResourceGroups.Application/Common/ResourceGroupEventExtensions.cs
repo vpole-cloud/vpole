@@ -8,26 +8,24 @@ internal static class ResourceGroupEventExtensions
 {
     extension(ResourceGroup resourceGroup)
     {
-        internal ResourceGroupCreatedEvent ToCreateEvent()
-            => new(
-                resourceGroup.Id,
-                resourceGroup.Name,
-                resourceGroup.Description,
-                resourceGroup.Tags,
-                resourceGroup.Revision)
-            {
-                EventCore = EventCore.Create(resourceGroup.TenantId)
-            };
+        internal ResourceGroupCreatedEvent ToCreateEvent() => new(
+            resourceGroup.Id,
+            resourceGroup.Name,
+            resourceGroup.Description,
+            resourceGroup.Tags,
+            resourceGroup.Revision)
+        {
+            EventCore = EventCore.Create(resourceGroup.TenantId),
+        };
 
-        internal ResourceGroupDeletedEvent ToDeleteEvent()
-            => new(
-                resourceGroup.Id,
-                resourceGroup.Name,
-                resourceGroup.Description,
-                resourceGroup.Tags,
-                resourceGroup.Revision)
-            {
-                EventCore = EventCore.Create(resourceGroup.TenantId)
-            };
+        internal ResourceGroupDeletedEvent ToDeleteEvent() => new(
+            resourceGroup.Id,
+            resourceGroup.Name,
+            resourceGroup.Description,
+            resourceGroup.Tags,
+            resourceGroup.Revision)
+        {
+            EventCore = EventCore.Create(resourceGroup.TenantId),
+        };
     }
 }

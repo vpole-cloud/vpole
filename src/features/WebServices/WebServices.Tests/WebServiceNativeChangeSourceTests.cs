@@ -1,4 +1,3 @@
-using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Net;
@@ -10,6 +9,7 @@ using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
+using Pole.Observation;
 using Pole.Testing.Kubernetes;
 using Xunit;
 
@@ -25,7 +25,8 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi { ControllerPresent = false };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Single(api.Requests, NativeWatchTestClient.IsWatch);
@@ -35,7 +36,8 @@ public sealed class WebServiceNativeChangeSourceTests
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.BindingChanged);
         Assert.Equal("controller", changes.Current.BindingId);
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
-        Assert.Equal(8,
+        Assert.Equal(
+            8,
             api.Requests.Count(NativeWatchTestClient.IsWatch)); // Five native kinds + three UID Warning interests.
         Assert.Equal(1, api.Streams.Sum(stream => stream.FramesWritten));
         cancellation.Cancel();
@@ -49,7 +51,8 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi { DelayServiceHeaders = true };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         var ready = NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         await api.ServiceHeadersEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -57,12 +60,14 @@ public sealed class WebServiceNativeChangeSourceTests
         api.ReleaseServiceHeaders.TrySetResult();
         await ready.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal("controller", changes.Current.BindingId);
-        Assert.Contains(api.Requests,
-            uri =>
-                Uri.UnescapeDataString(uri.Query).Contains("metadata.name=application-svc", StringComparison.Ordinal));
-        Assert.Contains(api.Requests,
-            uri =>
-                Uri.UnescapeDataString(uri.Query).Contains("metadata.name=application-ing", StringComparison.Ordinal));
+        Assert.Contains(
+            api.Requests,
+            uri => Uri.UnescapeDataString(uri.Query)
+                .Contains("metadata.name=application-svc", StringComparison.Ordinal));
+        Assert.Contains(
+            api.Requests,
+            uri => Uri.UnescapeDataString(uri.Query)
+                .Contains("metadata.name=application-ing", StringComparison.Ordinal));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -73,10 +78,12 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi { PodCount = 12, IncludeForeignOwner = true };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
-        var eventRequests = api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal))
+        var eventRequests = api.Requests
+            .Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(8, eventRequests.Count(NativeWatchTestClient.IsWatch));
         foreach (var uri in eventRequests)
@@ -98,9 +105,8 @@ public sealed class WebServiceNativeChangeSourceTests
                 "services" => "service-list",
                 "ingresses" => "ingress-list",
                 "events" => "event-list-" +
-                            Uri.UnescapeDataString(uri.Query).Split("involvedObject.uid=", StringSplitOptions.None)[1]
-                                .Split(',', '&')[0],
-                _ => throw new InvalidOperationException()
+                    Uri.UnescapeDataString(uri.Query).Split("involvedObject.uid=")[1].Split(',', '&')[0],
+                _ => throw new InvalidOperationException(),
             };
             Assert.Contains("resourceVersion=" + version, Uri.UnescapeDataString(uri.Query));
         }
@@ -115,7 +121,8 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var oldWarning = api.Stream("events", "pod-00");
@@ -141,7 +148,8 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi { IncludeForeignOwner = true };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var podWarning = api.Stream("events", "pod-00");
@@ -153,9 +161,10 @@ public sealed class WebServiceNativeChangeSourceTests
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Invalidated);
         Assert.True(podWarning.Disposed);
         Assert.True(replicaWarning.Disposed);
-        Assert.DoesNotContain(api.Requests,
+        Assert.DoesNotContain(
+            api.Requests,
             uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) &&
-                   uri.Query.Contains("foreign", StringComparison.Ordinal));
+                uri.Query.Contains("foreign", StringComparison.Ordinal));
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
@@ -170,7 +179,7 @@ public sealed class WebServiceNativeChangeSourceTests
         {
             PodCount = kind == "pods" ? 100 : 1,
             ReplicaCount = kind == "replicasets" ? 100 : 1,
-            EventCount = kind == "events" ? 100 : 0
+            EventCount = kind == "events" ? 100 : 0,
         };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -183,7 +192,7 @@ public sealed class WebServiceNativeChangeSourceTests
             "pods" => NativeObservationTestApi.Frame("ADDED", api.Pod("overflow-pod")),
             "replicasets" => NativeObservationTestApi.Frame("ADDED", api.Replica("overflow-replica", "controller")),
             "events" => NativeObservationTestApi.Frame("ADDED", api.Warning("overflow-event", "controller")),
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(),
         };
         stream.Write(frame);
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
@@ -229,7 +238,8 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var item = api.Pod("large-pod");
@@ -256,7 +266,8 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), _ => Target(1)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), _ => Target(1))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var stream = api.Stream("events", "pod-00");
@@ -268,7 +279,7 @@ public sealed class WebServiceNativeChangeSourceTests
             InvolvedObject = new V1ObjectReference { Uid = mismatch == "wrong-object" ? "foreign" : "pod-00" },
             Type = mismatch == "Normal" ? "Normal" : "Warning",
             Reason = "native-canary-reason",
-            Message = "native-canary-message"
+            Message = "native-canary-message",
         };
         stream.Write(NativeObservationTestApi.Frame("ADDED", item));
         var next = changes.MoveNextAsync().AsTask();
@@ -298,7 +309,8 @@ public sealed class WebServiceNativeChangeSourceTests
         version = 2;
         firstApi.Stream("deployments").Complete();
         await NextAsync(first, ResourceDeploymentObservationChangeKind.Unavailable);
-        await NextAsync(first,
+        await NextAsync(
+            first,
             ResourceDeploymentObservationChangeKind
                 .Unavailable); // Reopen rechecks durable target before asking for a client.
         Assert.Equal(beforeRotation, provider.Reads);
@@ -306,10 +318,12 @@ public sealed class WebServiceNativeChangeSourceTests
         await first.DisposeAsync();
         await firstClient.AppsV1.ListNamespacedDeploymentAsync("owned");
         using var secondCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var second = source.WatchAsync(Context with
-        {
-            TargetConnectionVersion = 2
-        }, secondCancellation.Token)
+        var second = source.WatchAsync(
+                Context with
+                {
+                    TargetConnectionVersion = 2,
+                },
+                secondCancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(second, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("new-controller", second.Current.BindingId);
@@ -324,10 +338,9 @@ public sealed class WebServiceNativeChangeSourceTests
         using var api = new NativeObservationTestApi();
         using var client = NativeWatchTestClient.Create(api);
         var calls = 0;
-        var source = Source(new ClientProvider(() => client),
-            _ => ++calls == 1
-                ? throw new InvalidOperationException("lookup-native-canary")
-                : Target(1));
+        var source = Source(
+            new ClientProvider(() => client),
+            _ => ++calls == 1 ? throw new InvalidOperationException("lookup-native-canary") : Target(1));
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = source.WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
@@ -350,7 +363,8 @@ public sealed class WebServiceNativeChangeSourceTests
         var provider = new ClientProvider(() => client);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(provider, _ => Target(1) with { Enabled = enabled, DeletionRequested = deleting })
-            .WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
+            .WatchAsync(Context, cancellation.Token)
+            .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Equal(0, provider.Reads);
         Assert.Empty(api.Requests);
@@ -358,7 +372,8 @@ public sealed class WebServiceNativeChangeSourceTests
         await changes.DisposeAsync();
     }
 
-    internal static async Task NextAsync(IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
+    internal static async Task NextAsync(
+        IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
         ResourceDeploymentObservationChangeKind kind)
     {
         for (var count = 0; count < 100; count++)
@@ -371,12 +386,14 @@ public sealed class WebServiceNativeChangeSourceTests
         Assert.Fail($"No {kind} transition in bounded source output.");
     }
 
-    private static DeploymentTargetLookupDto Target(long version) => new("target",
+    private static DeploymentTargetLookupDto Target(long version) => new(
+        "target",
         "Target",
         "cluster",
         "kubeconfig",
         version,
-        new DeploymentTargetWorkloadConfigurationLookupDto(1,
+        new DeploymentTargetWorkloadConfigurationLookupDto(
+            1,
             null,
             new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
         1,
@@ -387,15 +404,20 @@ public sealed class WebServiceNativeChangeSourceTests
         TechnicalName: "test-target",
         NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
-    private static WebServiceResourceDeploymentChangeSource Source(ClientProvider provider,
+    private static WebServiceResourceDeploymentChangeSource Source(
+        ClientProvider provider,
         Func<string, DeploymentTargetLookupDto> target) => new(
-        (_, _, _) => Task.FromResult<WebService?>(WebServiceNativeObservationTests.Resource),
+        (
+            _, _,
+            _) => Task.FromResult<WebService?>(WebServiceNativeObservationTests.Resource),
         provider,
         (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(target(id)),
         new ReadBudget(),
         TimeProvider.System);
 
-    private sealed class ClientProvider(Func<IKubernetes> client) : IKubernetesClientProvider
+    private sealed class ClientProvider(
+        Func<IKubernetes> client
+    ) : IKubernetesClientProvider
     {
         public int Reads { get; private set; }
 
@@ -441,9 +463,11 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
 
     public bool DelayServiceHeaders { get; set; }
 
-    public TaskCompletionSource ServiceHeadersEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ServiceHeadersEntered { get; }
+        = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public TaskCompletionSource ReleaseServiceHeaders { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseServiceHeaders { get; }
+        = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public NativeWatchTestStream Stream(string kind, string? uid = null) => _streams[Key(kind, uid)];
     private static string Key(string kind, string? uid) => kind + ":" + uid;
@@ -456,7 +480,8 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
         return offset < 0 ? null : query[(offset + marker.Length)..].Split(',', '&')[0];
     }
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
         Requests.Enqueue(request.RequestUri!);
@@ -471,62 +496,75 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
 
             var stream = new NativeWatchTestStream();
             _streams[Key(kind, kind == "events" ? EventUid(request.RequestUri) : null)] = stream;
-            return new(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 RequestMessage = request,
-                Content = new StreamContent(stream)
+                Content = new StreamContent(stream),
             };
         }
 
-        return new(HttpStatusCode.OK)
+        return new HttpResponseMessage(HttpStatusCode.OK)
         {
             RequestMessage = request,
-            Content = new StringContent(List(kind, request.RequestUri), Encoding.UTF8, "application/json")
+            Content = new StringContent(List(kind, request.RequestUri), Encoding.UTF8, "application/json"),
         };
     }
 
     private string List(string kind, Uri uri) => kind switch
     {
-        "deployments" => KubernetesJson.Serialize(new V1DeploymentList
-        {
-            Metadata = ListMetadata("deployment-list"),
-            Items = ControllerPresent ? [Controller()] : []
-        }),
-        "replicasets" => KubernetesJson.Serialize(new V1ReplicaSetList
-        {
-            Metadata = ListMetadata("replica-list"),
-            Items = Enumerable.Range(0, ReplicaCount)
-                .Select(index => Replica(ReplicaCount == 1 ? "replica" : $"replica-{index:00}", ControllerUid))
-                .Concat(IncludeForeignOwner ? [Replica("foreign-replica", "foreign-controller")] : []).ToArray()
-        }),
-        "pods" => KubernetesJson.Serialize(new V1PodList
-        {
-            Metadata = ListMetadata("pod-list"),
-            Items = Enumerable.Range(0, PodCount).Select(index => Pod($"pod-{index:00}"))
-                .Concat(IncludeForeignOwner ? [Pod("foreign-pod", "foreign-replica")] : []).ToArray()
-        }),
-        "services" => KubernetesJson.Serialize(new V1ServiceList
-        {
-            Metadata = ListMetadata("service-list"),
-            Items = [new V1Service { Metadata = Metadata("application-svc", "service") }]
-        }),
-        "ingresses" => KubernetesJson.Serialize(new V1IngressList
-        {
-            Metadata = ListMetadata("ingress-list"),
-            Items = []
-        }),
-        "events" => KubernetesJson.Serialize(new Corev1EventList
-        {
-            Metadata = ListMetadata("event-list-" + EventUid(uri)),
-            Items = Enumerable.Range(0, EventCount).Select(index => Warning($"warning-{index:00}", EventUid(uri)!))
-                .ToArray()
-        }),
-        _ => throw new InvalidOperationException($"Unexpected native request {kind}.")
+        "deployments" => KubernetesJson.Serialize(
+            new V1DeploymentList
+            {
+                Metadata = ListMetadata("deployment-list"),
+                Items = ControllerPresent ? [Controller()] : [],
+            }),
+        "replicasets" => KubernetesJson.Serialize(
+            new V1ReplicaSetList
+            {
+                Metadata = ListMetadata("replica-list"),
+                Items = Enumerable.Range(0, ReplicaCount)
+                    .Select(index => Replica(ReplicaCount == 1 ? "replica" : $"replica-{index:00}", ControllerUid))
+                    .Concat(IncludeForeignOwner ? [Replica("foreign-replica", "foreign-controller")] : [])
+                    .ToArray(),
+            }),
+        "pods" => KubernetesJson.Serialize(
+            new V1PodList
+            {
+                Metadata = ListMetadata("pod-list"),
+                Items = Enumerable.Range(0, PodCount)
+                    .Select(index => Pod($"pod-{index:00}"))
+                    .Concat(IncludeForeignOwner ? [Pod("foreign-pod", "foreign-replica")] : [])
+                    .ToArray(),
+            }),
+        "services" => KubernetesJson.Serialize(
+            new V1ServiceList
+            {
+                Metadata = ListMetadata("service-list"),
+                Items = [new V1Service { Metadata = Metadata("application-svc", "service") }],
+            }),
+        "ingresses" => KubernetesJson.Serialize(
+            new V1IngressList
+            {
+                Metadata = ListMetadata("ingress-list"),
+                Items = [],
+            }),
+        "events" => KubernetesJson.Serialize(
+            new Corev1EventList
+            {
+                Metadata = ListMetadata("event-list-" + EventUid(uri)),
+                Items = Enumerable.Range(0, EventCount)
+                    .Select(index => Warning($"warning-{index:00}", EventUid(uri)!))
+                    .ToArray(),
+            }),
+        _ => throw new InvalidOperationException($"Unexpected native request {kind}."),
     };
 
     private static V1ListMeta ListMetadata(string version) => new() { ResourceVersion = version };
 
-    public V1ObjectMeta Metadata(string name, string uid, string? parent = null) => new()
+    public V1ObjectMeta Metadata(
+        string name,
+        string uid,
+        string? parent = null) => new()
     {
         Name = name,
         Uid = uid,
@@ -538,29 +576,29 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
             :
             [
                 new V1OwnerReference
-                    { Uid = parent, Name = "parent", ApiVersion = "apps/v1", Kind = "ReplicaSet", Controller = true }
-            ]
+                    { Uid = parent, Name = "parent", ApiVersion = "apps/v1", Kind = "ReplicaSet", Controller = true },
+            ],
     };
 
     public V1Deployment Controller() => new()
     {
         ApiVersion = "apps/v1",
         Kind = "Deployment",
-        Metadata = Metadata("application", ControllerUid)
+        Metadata = Metadata("application", ControllerUid),
     };
 
     public V1ReplicaSet Replica(string uid, string parent) => new()
     {
         ApiVersion = "apps/v1",
         Kind = "ReplicaSet",
-        Metadata = Metadata(uid, uid, parent)
+        Metadata = Metadata(uid, uid, parent),
     };
 
     public V1Pod Pod(string uid, string parent = "replica") => new()
     {
         ApiVersion = "v1",
         Kind = "Pod",
-        Metadata = Metadata(uid, uid, parent)
+        Metadata = Metadata(uid, uid, parent),
     };
 
     public Corev1Event Warning(string uid, string involvedUid) => new()
@@ -570,7 +608,7 @@ internal sealed class NativeObservationTestApi : DelegatingHandler
         Metadata = Metadata(uid, uid),
         Type = "Warning",
         InvolvedObject = new V1ObjectReference { Uid = involvedUid },
-        Reason = "Other"
+        Reason = "Other",
     };
 
     public static string Frame<T>(string type, T item) =>

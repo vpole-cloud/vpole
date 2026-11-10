@@ -9,7 +9,8 @@ public sealed record ResourceDeploymentResolvedPlacementSnapshot(
     string KubernetesNamespace,
     ResourceDeploymentIngressConfiguration? Ingress,
     ResourceDeploymentStorageConfiguration? Storage,
-    ResourceDeploymentComputeConfiguration Compute);
+    ResourceDeploymentComputeConfiguration Compute
+);
 
 public sealed record ResourceDeploymentReconciliationSnapshot(
     string Id,
@@ -23,10 +24,12 @@ public sealed record ResourceDeploymentReconciliationSnapshot(
     int FixedReplicas,
     long DesiredGeneration,
     DateTime UpdatedAtUtc,
-    ResourceDeploymentResolvedPlacementSnapshot Placement);
+    ResourceDeploymentResolvedPlacementSnapshot Placement
+);
 
 public sealed record ResourceDeploymentReconciliationContext(
-    ResourceDeploymentReconciliationSnapshot Deployment);
+    ResourceDeploymentReconciliationSnapshot Deployment
+);
 
 public interface IResourceDeploymentAdapter
 {
@@ -46,19 +49,18 @@ public abstract record ResourceDeploymentAdapterResult
     }
 
     public sealed record Succeeded(
-        ImmutableList<ResourceDeploymentEndpointDto> Endpoints)
-        : ResourceDeploymentAdapterResult
+        ImmutableList<ResourceDeploymentEndpointDto> Endpoints
+    ) : ResourceDeploymentAdapterResult
     {
-        public static Succeeded Create(
-            IEnumerable<ResourceDeploymentEndpointDto>? endpoints = null) =>
+        public static Succeeded Create(IEnumerable<ResourceDeploymentEndpointDto>? endpoints = null) =>
             new((endpoints ?? []).ToImmutableList());
     }
 
     public sealed record Failed(
         string FailureCode,
         string FailureMessage,
-        bool Retryable)
-        : ResourceDeploymentAdapterResult
+        bool Retryable
+    ) : ResourceDeploymentAdapterResult
     {
         public static Failed Create(
             string failureCode,
@@ -70,10 +72,7 @@ public abstract record ResourceDeploymentAdapterResult
             if (string.IsNullOrWhiteSpace(failureMessage))
                 throw new ArgumentException("Failure message is required.", nameof(failureMessage));
 
-            return new Failed(
-                failureCode.Trim(),
-                failureMessage.Trim(),
-                retryable);
+            return new Failed(failureCode.Trim(), failureMessage.Trim(), retryable);
         }
     }
 }
@@ -81,11 +80,11 @@ public abstract record ResourceDeploymentAdapterResult
 public sealed record ResourceDeploymentAdapterDescriptor(
     ResourceTypeId ResourceType,
     ResourcePlacementCapability PlacementCapability,
-    Type AdapterType)
+    Type AdapterType
+)
 {
     public static ResourceDeploymentAdapterDescriptor Create<TAdapter>(
         ResourceTypeId resourceType,
         ResourcePlacementCapability placementCapability)
-        where TAdapter : class, IResourceDeploymentAdapter =>
-        new(resourceType, placementCapability, typeof(TAdapter));
+        where TAdapter : class, IResourceDeploymentAdapter => new(resourceType, placementCapability, typeof(TAdapter));
 }

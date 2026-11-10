@@ -1,13 +1,15 @@
-using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace Pole.Cli.Authentication;
 
 public sealed record PoleServerIdentity(
     Uri Issuer,
-    string ClientId);
+    string ClientId
+);
 
-public sealed class PoleServerDiscovery(HttpClient httpClient)
+public sealed class PoleServerDiscovery(
+    HttpClient httpClient
+)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -19,8 +21,8 @@ public sealed class PoleServerDiscovery(HttpClient httpClient)
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException("Pole did not provide its public CLI authentication settings.");
 
-        var settings = await response.Content.ReadFromJsonAsync<DiscoveryDocument>(JsonOptions, cancellationToken)
-            ?? throw new InvalidOperationException("Pole returned an empty CLI authentication document.");
+        var settings = await response.Content.ReadFromJsonAsync<DiscoveryDocument>(JsonOptions, cancellationToken) ??
+            throw new InvalidOperationException("Pole returned an empty CLI authentication document.");
         if (!Uri.TryCreate(settings.Issuer, UriKind.Absolute, out var issuer) ||
             string.IsNullOrWhiteSpace(settings.ClientId) || settings.ClientId.Length > 256 ||
             settings.ClientId.Any(char.IsControl))
@@ -32,5 +34,6 @@ public sealed class PoleServerDiscovery(HttpClient httpClient)
 
     private sealed record DiscoveryDocument(
         string Issuer,
-        string ClientId);
+        string ClientId
+    );
 }

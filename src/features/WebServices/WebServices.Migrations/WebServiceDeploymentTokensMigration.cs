@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.WebServices.Migrations;
 
@@ -15,23 +15,24 @@ public sealed class WebServiceDeploymentTokensMigration : IMigration
         var tokens = context.GetCollection<BsonDocument>("WebServiceDeploymentTokens");
 
         await tokens.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("TokenHash"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "IX_WebServiceDeploymentTokens_TokenHash"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("WebServiceId")
-                    .Descending("CreatedAtUtc"),
-                new CreateIndexOptions
-                {
-                    Name = "IX_WebServiceDeploymentTokens_Tenant_Service_CreatedAt"
-                })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("TokenHash"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Name = "IX_WebServiceDeploymentTokens_TokenHash",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TenantId")
+                        .Ascending("WebServiceId")
+                        .Descending("CreatedAtUtc"),
+                    new CreateIndexOptions
+                    {
+                        Name = "IX_WebServiceDeploymentTokens_Tenant_Service_CreatedAt",
+                    }),
+            ],
+            cancellationToken);
     }
 }

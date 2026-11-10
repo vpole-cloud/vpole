@@ -5,7 +5,8 @@ namespace Pole.Features.RedisServices.Application.Common;
 public sealed record RedisQuotaInput(
     long RequestedCpuMillisPerInstance,
     long RequestedMemoryMiPerInstance,
-    long Instances)
+    long Instances
+)
 {
     public static RedisQuotaInput Create(
         long requestedCpuMillis,
@@ -15,10 +16,7 @@ public sealed record RedisQuotaInput(
         ArgumentOutOfRangeException.ThrowIfLessThan(requestedCpuMillis, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(requestedMemoryMi, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(instances, 1);
-        return new RedisQuotaInput(
-            requestedCpuMillis,
-            requestedMemoryMi,
-            instances);
+        return new RedisQuotaInput(requestedCpuMillis, requestedMemoryMi, instances);
     }
 }
 
@@ -35,14 +33,15 @@ public sealed class RedisQuotaProfile(
     CpuQuota cpuQuota,
     RamQuota ramQuota,
     WorkloadInstancesQuota workloadInstancesQuota,
-    RedisServiceCountQuota serviceCountQuota) : QuotaProfile<RedisQuotaInput>
+    RedisServiceCountQuota serviceCountQuota
+) : QuotaProfile<RedisQuotaInput>
 {
     public override IReadOnlyCollection<QuotaKey> Keys { get; } =
     [
         CpuQuota.QuotaKey,
         RamQuota.QuotaKey,
         WorkloadInstancesQuota.QuotaKey,
-        RedisServiceCountQuota.QuotaKey
+        RedisServiceCountQuota.QuotaKey,
     ];
 
     public override QuotaDelta Calculate(RedisQuotaInput input)
@@ -57,13 +56,12 @@ public sealed class RedisQuotaProfile(
             cpuQuota.Measure(workload),
             ramQuota.Measure(workload),
             workloadInstancesQuota.Measure(workload),
-            serviceCountQuota.Measure(input)
+            serviceCountQuota.Measure(input),
         ]);
     }
 }
 
 public static class RedisQuotaResourceKey
 {
-    public static QuotaResourceKey Create(string redisId) =>
-        QuotaResourceKey.Create("redis-service", redisId);
+    public static QuotaResourceKey Create(string redisId) => QuotaResourceKey.Create("redis-service", redisId);
 }

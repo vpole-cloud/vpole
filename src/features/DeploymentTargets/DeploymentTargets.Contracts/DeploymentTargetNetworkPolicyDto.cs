@@ -7,7 +7,7 @@ public enum NetworkPolicyEnforcementStatus
 {
     Unknown,
     Supported,
-    Unsupported
+    Unsupported,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<NetworkPolicyReadiness>))]
@@ -15,7 +15,7 @@ public enum NetworkPolicyReadiness
 {
     EnforcementRequired,
     EnforcementAttested,
-    IsolationNotEnforced
+    IsolationNotEnforced,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<NetworkPolicyReason>))]
@@ -24,14 +24,14 @@ public enum NetworkPolicyReason
     EnforcementNotEstablished,
     WriterPermissionsMissing,
     OperatorAttestedSupported,
-    OperatorAttestedUnsupported
+    OperatorAttestedUnsupported,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<NetworkPolicyEvidenceSource>))]
 public enum NetworkPolicyEvidenceSource
 {
     None,
-    OperatorAttestation
+    OperatorAttestation,
 }
 
 public sealed record DeploymentTargetNetworkPolicyDto(
@@ -40,7 +40,8 @@ public sealed record DeploymentTargetNetworkPolicyDto(
     NetworkPolicyReason Reason,
     DateTime? LastCheckedAtUtc,
     NetworkPolicyEvidenceSource EvidenceSource,
-    bool OverrideEnabled)
+    bool OverrideEnabled
+)
 {
     public static DeploymentTargetNetworkPolicyDto Unknown { get; } = new(
         NetworkPolicyEnforcementStatus.Unknown,

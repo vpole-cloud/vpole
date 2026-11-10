@@ -2,6 +2,7 @@ using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Domains.Application.HostnameBindings;
 using Pole.Features.Domains.Contracts;
+using Pole.Features.Domains.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Workloads;
@@ -11,13 +12,22 @@ namespace Pole.Features.Domains.Tests;
 
 public sealed class HostnameBindingDeclarationTests
 {
-    private static readonly IMongoDatabase Database =
-        new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests");
+    private static readonly IMongoDatabase Database
+        = new MongoClient("mongodb://localhost:27017").GetDatabase("domain-schema-tests");
 
     private static DeclarativeHostnameBindingProvider Provider() => new(
-        Database.GetCollection<Pole.Features.Domains.Domain.TenantDomainZone>("TenantDomainZones"),
-        Database.GetCollection<Pole.Features.Domains.Domain.HostnameBinding>("HostnameBindings"),
-        null!, null!, null!, null!, null!, null!, null!, null!, [new WorkloadCapability()], null!);
+        Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
+        Database.GetCollection<HostnameBinding>("HostnameBindings"),
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        [new WorkloadCapability()],
+        null!);
 
     [Theory]
     [InlineData("@", "@")]
@@ -31,10 +41,14 @@ public sealed class HostnameBindingDeclarationTests
         Assert.False(facts.ReferencesShareScope);
         Assert.Equal(new ResourceAddress("DomainZone", "company"), facts.References[0].Target);
         Assert.Equal(new ResourceAddress("WebService", "api"), facts.References[1].Target);
-        var step = Assert.Single(provider.Steps(new("HostnameBinding", "api-hostname"), normalized));
+        var step = Assert.Single(provider.Steps(new ResourceAddress("HostnameBinding", "api-hostname"), normalized));
         Assert.Equal(DeclarationPhase.Bind, step.Phase);
-        Assert.Contains(new(new("DomainZone", "company"), DeclarationPhase.Prepare), step.Dependencies);
-        Assert.Contains(new(new("WebService", "api"), DeclarationPhase.Configure), step.Dependencies);
+        Assert.Contains(
+            new DeclarationDependency(new ResourceAddress("DomainZone", "company"), DeclarationPhase.Prepare),
+            step.Dependencies);
+        Assert.Contains(
+            new DeclarationDependency(new ResourceAddress("WebService", "api"), DeclarationPhase.Configure),
+            step.Dependencies);
     }
 
     [Theory]
@@ -60,36 +74,45 @@ public sealed class HostnameBindingDeclarationTests
     }
 
     [Fact]
-    public void Hostname_rejects_unknown_fields() =>
-        Assert.Throws<JsonException>(() => Provider().NormalizeAndValidate(DeclarationJson.Write(new
+    public void Hostname_rejects_unknown_fields() => Assert.Throws<JsonException>(() => Provider()
+        .NormalizeAndValidate(
+            DeclarationJson.Write(
+                new
+                {
+                    zone = "company",
+                    resource = new { kind = "WebService", name = "api" },
+                    deploymentTarget = "public-target",
+                    relativeName = "api",
+                    hostname = "cannot-override.example",
+                })));
+
+    private static JsonElement Spec(string relative, string kind = "WebService") => DeclarationJson.Write(
+        new
         {
             zone = "company",
-            resource = new { kind = "WebService", name = "api" },
+            resource = new { kind, name = "api" },
             deploymentTarget = "public-target",
-            relativeName = "api",
-            hostname = "cannot-override.example"
-        })));
-
-    private static JsonElement Spec(string relative, string kind = "WebService") => DeclarationJson.Write(new
-    {
-        zone = "company",
-        resource = new { kind, name = "api" },
-        deploymentTarget = "public-target",
-        relativeName = relative
-    });
+            relativeName = relative,
+        });
 
     private sealed class WorkloadCapability : IHostnameBindingWorkloadCapability
     {
         public string Kind => "WebService";
         public ResourceTypeId ResourceType => ResourceTypeId.Create("pole/web-service");
 
-        public Task<ReadHostnameAttachmentOutcome> ReadAsync(ReadHostnameAttachmentRequest request,
-            IClientSessionHandle session, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ReadHostnameAttachmentOutcome> ReadAsync(
+            ReadHostnameAttachmentRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<FenceHostnameAttachmentOutcome> FenceAsync(HostnameAttachmentSnapshot snapshot,
-            IClientSessionHandle session, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<FenceHostnameAttachmentOutcome> FenceAsync(
+            HostnameAttachmentSnapshot snapshot,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<ApplyHostnameAttachmentOutcome> ApplyAsync(ApplyHostnameAttachmentRequest request,
-            IClientSessionHandle session, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ApplyHostnameAttachmentOutcome> ApplyAsync(
+            ApplyHostnameAttachmentRequest request,
+            IClientSessionHandle session,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

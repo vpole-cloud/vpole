@@ -9,7 +9,6 @@ using Pole.Features.Request;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Releases;
 using Pole.Mediator;
-
 using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
 
 namespace Pole.Features.WebServices.Application.Endpoints.Releases;
@@ -18,18 +17,19 @@ public static class GetWebServiceReleases
 {
     public static IEndpointRouteBuilder MapGetWebServiceReleasesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/releases", async (
-                IMediator mediator,
-                [AsParameters] GetWebServiceReleasesRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}/releases",
+                async (
+                    IMediator mediator, [AsParameters] GetWebServiceReleasesRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    WebServiceReleaseHistoryDto value => Results.Ok(value),
-                    WebServiceNotFound error => MapError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        WebServiceReleaseHistoryDto value => Results.Ok(value),
+                        WebServiceNotFound error => MapError(error),
+                    });
+                })
             .WithName("GetWebServiceReleases")
             .Produces<WebServiceReleaseHistoryDto>();
 
@@ -37,24 +37,22 @@ public static class GetWebServiceReleases
     }
 }
 
-public union GetWebServiceReleasesOutcome(
-    WebServiceReleaseHistoryDto,
-    WebServiceNotFound);
+public union GetWebServiceReleasesOutcome(WebServiceReleaseHistoryDto, WebServiceNotFound);
 
 public sealed record GetWebServiceReleasesRequest : IMediatorRequest<GetWebServiceReleasesOutcome>, ITenantReadOperation
 {
-    [FromRoute] public string Id { get; init; } = string.Empty;
-    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
+    [FromRoute] public string Id { get; init; } = "";
     [FromQuery] public int? PageNumber { get; init; }
     [FromQuery] public int? PageSize { get; init; }
     public int EffectivePageNumber => PageNumber.GetValueOrDefault(1);
     public int EffectivePageSize => PageSize.GetValueOrDefault(10);
     public int Skip => (EffectivePageNumber - 1) * EffectivePageSize;
+    [FromTenantHeader] public string TenantId { get; init; } = "";
 }
 
 public sealed class GetWebServiceReleasesHandler(
-    LoadWebServiceReleaseHistory loadWebServiceReleaseHistory)
-    : IMediatorOutcomeHandler<GetWebServiceReleasesRequest, GetWebServiceReleasesOutcome>
+    LoadWebServiceReleaseHistory loadWebServiceReleaseHistory
+) : IMediatorOutcomeHandler<GetWebServiceReleasesRequest, GetWebServiceReleasesOutcome>
 {
     public async Task<GetWebServiceReleasesOutcome> HandleAsync(
         GetWebServiceReleasesRequest request,
@@ -70,13 +68,14 @@ public sealed class GetWebServiceReleasesHandler(
         if (history is null)
             return new WebServiceNotFound(request.Id);
 
-        return new GetWebServiceReleasesOutcome(new WebServiceReleaseHistoryDto(
-            history.WebService.ActiveRevision,
-            new PaginatedResponse<WebServiceReleaseDto>(
-                history.Releases.Select(release => release.ToDto()),
-                history.TotalCount,
-                request.EffectivePageNumber,
-                request.EffectivePageSize)));
+        return new GetWebServiceReleasesOutcome(
+            new WebServiceReleaseHistoryDto(
+                history.WebService.ActiveRevision,
+                new PaginatedResponse<WebServiceReleaseDto>(
+                    history.Releases.Select(release => release.ToDto()),
+                    history.TotalCount,
+                    request.EffectivePageNumber,
+                    request.EffectivePageSize)));
     }
 }
 

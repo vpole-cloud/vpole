@@ -10,30 +10,34 @@ namespace Pole.Features.WebServices.Events;
 public closed record WebServiceImageSnapshot
 {
     [JsonIgnore]
-    public string? ResolvedImageReference => this switch
-    {
-        WebServiceImageInfoSnapshot direct => direct.FullImageName,
-        DeliveredSourceBuildImageSnapshot delivered =>
-            $"{delivered.Image.Server}/{delivered.Image.Name}@{delivered.Digest}",
-        UnboundSourceBuildImageSnapshot or PendingSourceBuildImageSnapshot => null
-    };
+    public string? ResolvedImageReference =>
+        this switch
+        {
+            WebServiceImageInfoSnapshot direct => direct.FullImageName,
+            DeliveredSourceBuildImageSnapshot delivered =>
+                $"{delivered.Image.Server}/{delivered.Image.Name}@{delivered.Digest}",
+            UnboundSourceBuildImageSnapshot or PendingSourceBuildImageSnapshot => null,
+        };
 }
 
 public sealed record UnboundSourceBuildImageSnapshot : WebServiceImageSnapshot;
 
-public sealed record PendingSourceBuildImageSnapshot(string ConfigurationId) : WebServiceImageSnapshot;
+public sealed record PendingSourceBuildImageSnapshot(
+    string ConfigurationId
+) : WebServiceImageSnapshot;
 
 public sealed record DeliveredSourceBuildImageSnapshot(
     string ConfigurationId,
     WebServiceImageInfoSnapshot Image,
     string Digest,
     string JobId,
-    long Generation) : WebServiceImageSnapshot;
+    long Generation
+) : WebServiceImageSnapshot;
 
 public enum WebServiceLifecycleState
 {
     Prepared,
     AwaitingFirstArtifact,
     Active,
-    Deleting
+    Deleting,
 }

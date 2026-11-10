@@ -9,7 +9,8 @@ namespace Pole.Features.StorageProfiles.Application.Resolution;
 
 internal sealed class MongoResolveNamedStorageProfile(
     IMongoCollection<StorageProfile> profiles,
-    ResolveStorageProfile resolve)
+    ResolveStorageProfile resolve
+)
 {
     public async Task<ResolveNamedStorageProfileOutcome> InvokeAsync(
         NamedStorageProfileRequest request,
@@ -23,12 +24,19 @@ internal sealed class MongoResolveNamedStorageProfile(
         if (profile is null || !MongoLoadAvailableStorageProfiles.AllowsTenant(profile, request.TenantId))
             return new NamedStorageProfileUnavailable(request.Name);
 
-        var result = await resolve(new(profile.Id, request.DeploymentTargetId, request.TenantId,
-            request.ResourceType, request.SizeGb, request.Revision), ct);
+        var result = await resolve(
+            new StorageProfileResolutionRequest(
+                profile.Id,
+                request.DeploymentTargetId,
+                request.TenantId,
+                request.ResourceType,
+                request.SizeGb,
+                request.Revision),
+            ct);
         return result switch
         {
             ResolvedStorageProfile storage => storage,
-            StorageProfileResolutionError error => error
+            StorageProfileResolutionError error => error,
         };
     }
 }

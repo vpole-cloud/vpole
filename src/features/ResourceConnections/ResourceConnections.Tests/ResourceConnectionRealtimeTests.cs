@@ -19,30 +19,36 @@ public sealed class ResourceConnectionRealtimeTests
             notices.Add(change);
             return Task.CompletedTask;
         });
-        await consumer.HandleAsync(new ResourceConnectionCreatedEvent("connection", 1)
-        {
-            EventCore = EventCore.Create("tenant")
-        });
-        await consumer.HandleAsync(new ResourceConnectionReconciliationRequestedEvent("connection", 2)
-        {
-            EventCore = EventCore.Create("tenant")
-        });
-        await consumer.HandleAsync(new ResourceConnectionDeletionRequestedEvent("connection", 3)
-        {
-            EventCore = EventCore.Create("tenant")
-        });
-        await consumer.HandleAsync(new ResourceConnectionChangedEvent("connection", 8, 3)
-        {
-            EventCore = EventCore.Create("tenant")
-        });
+        await consumer.HandleAsync(
+            new ResourceConnectionCreatedEvent("connection", 1)
+            {
+                EventCore = EventCore.Create("tenant"),
+            });
+        await consumer.HandleAsync(
+            new ResourceConnectionReconciliationRequestedEvent("connection", 2)
+            {
+                EventCore = EventCore.Create("tenant"),
+            });
+        await consumer.HandleAsync(
+            new ResourceConnectionDeletionRequestedEvent("connection", 3)
+            {
+                EventCore = EventCore.Create("tenant"),
+            });
+        await consumer.HandleAsync(
+            new ResourceConnectionChangedEvent("connection", 8, 3)
+            {
+                EventCore = EventCore.Create("tenant"),
+            });
         Assert.Equal(4, notices.Count);
-        Assert.All(notices,
+        Assert.All(
+            notices,
             notice =>
             {
                 Assert.Equal("tenant", notice.TenantId);
                 Assert.Equal("connection", notice.ResourceId);
             });
-        Assert.Equal(new RealtimeChange("resource-connections", "tenant", "connection", Revision: 8, Generation: 3),
+        Assert.Equal(
+            new RealtimeChange("resource-connections", "tenant", "connection", Revision: 8, Generation: 3),
             notices[^1]);
     }
 
@@ -50,7 +56,8 @@ public sealed class ResourceConnectionRealtimeTests
     public void ConnectionsRegistersOneTenantTopicWithoutRuntimeResolution()
     {
         var services = new ServiceCollection().AddResourceConnectionsFeature();
-        Assert.Equal(new RealtimeTopic("resource-connections", RealtimeScope.Tenant),
+        Assert.Equal(
+            new RealtimeTopic("resource-connections", RealtimeScope.Tenant),
             Assert.Single(services, item => item.ServiceType == typeof(RealtimeTopic)).ImplementationInstance);
     }
 }

@@ -10,7 +10,9 @@ using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Middleware;
 
-public sealed class TenantContextMiddleware(RequestDelegate next)
+public sealed class TenantContextMiddleware(
+    RequestDelegate next
+)
 {
     public async Task InvokeAsync(
         HttpContext httpContext,
@@ -20,8 +22,8 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
         var tenantContextAccessor = httpContext.RequestServices.GetRequiredService<ITenantContextAccessor>();
         tenantContextAccessor.Current = null;
         var endpoint = httpContext.GetEndpoint();
-        var requirement = endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant
-            ?? ActiveTenantRequirement.None;
+        var requirement = endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant ??
+            ActiveTenantRequirement.None;
 
         if (requirement == ActiveTenantRequirement.None || UsesEndpointCredential(httpContext))
         {
@@ -44,11 +46,12 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
 
         if (values.Count != 1 || !ObjectId.TryParse(values[0], out var parsedTenantId))
         {
-            await Reject(new RequestValidationRejected(new Dictionary<string, string[]>
-            {
-                [TenantHeaders.TenantId] =
-                ["Exactly one valid tenant ObjectId is required."]
-            }));
+            await Reject(
+                new RequestValidationRejected(
+                    new Dictionary<string, string[]>
+                    {
+                        [TenantHeaders.TenantId] = ["Exactly one valid tenant ObjectId is required."],
+                    }));
             return;
         }
 
@@ -68,8 +71,8 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
         }
 
         var member = tenant.Members.FirstOrDefault(m => m.UserId == userId);
-        var isPlatformAdmin = httpContext.User.Claims.Any(
-            claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin);
+        var isPlatformAdmin
+            = httpContext.User.Claims.Any(claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin);
         if (member is null && !isPlatformAdmin)
         {
             await Reject(new TenantMembershipRequired(tenantId));
@@ -98,8 +101,7 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
 
         var authorization = httpContext.Request.Headers.Authorization;
         return authorization.Count == 1 &&
-               authorization[0]?.StartsWith(
-                   $"Bearer {credential.BearerTokenPrefix}",
-                   StringComparison.OrdinalIgnoreCase) == true;
+            authorization[0]
+                ?.StartsWith($"Bearer {credential.BearerTokenPrefix}", StringComparison.OrdinalIgnoreCase) == true;
     }
 }

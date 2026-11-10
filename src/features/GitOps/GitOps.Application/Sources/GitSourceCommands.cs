@@ -9,31 +9,37 @@ public sealed record CreateGitRepositorySource(
     GitSyncPolicy Sync,
     GitSourceAudit Audit,
     string DisplayUrl,
-    GitPrunePolicy Prune = GitPrunePolicy.Retain);
+    GitPrunePolicy Prune = GitPrunePolicy.Retain
+);
 
 public sealed record GitSourceCommand(
     string TenantId,
     string SourceId,
     long ExpectedRevision,
     string RequestKey,
-    GitRunInitiator Initiator);
+    GitRunInitiator Initiator
+);
 
 public sealed record RetryGitSourceCommand(
     GitSourceCommand Source,
-    string RunId);
+    string RunId
+);
 
 public sealed record ChangeGitSourcePolicy(
     string TenantId,
     string SourceId,
     long ExpectedRevision,
     GitSyncPolicy Sync,
-    GitPrunePolicy Prune = GitPrunePolicy.Retain);
+    GitPrunePolicy Prune = GitPrunePolicy.Retain
+);
 
 public sealed record GitSourceNotFound;
 
 public sealed record GitSourceCreationDeleted;
 
-public sealed record GitSourceInactive(GitSourceActivity Activity);
+public sealed record GitSourceInactive(
+    GitSourceActivity Activity
+);
 
 public sealed record GitSourceRevisionConflict;
 
@@ -45,7 +51,8 @@ public sealed record GitRetryNotAvailable;
 
 public sealed record GitSourceScheduled(
     string SourceId,
-    long Generation);
+    long Generation
+);
 
 public union CreateGitRepositorySourceOutcome(
     RepositorySource,

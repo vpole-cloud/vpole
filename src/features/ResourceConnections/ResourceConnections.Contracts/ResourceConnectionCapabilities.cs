@@ -5,13 +5,16 @@ using Pole.Workloads;
 namespace Pole.Features.ResourceConnections.Contracts;
 
 /// <summary>A provider opts its workload pods into connection source selection.</summary>
-public sealed record ResourceConnectionSourceCapability(ResourceTypeId ResourceType);
+public sealed record ResourceConnectionSourceCapability(
+    ResourceTypeId ResourceType
+);
 
 public sealed record ResourceConnectionEndpoint(
     string Id,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort)
+    NetworkPort TargetPort
+)
 {
     public string DisplayName { get; init; } = Id;
     public string Protocol { get; init; } = "tcp";
@@ -23,10 +26,12 @@ public sealed record ResourceConnectionEndpoint(
 public sealed record ResourceConnectionConfigurationField(
     string Key,
     string DisplayName,
-    string Value);
+    string Value
+);
 
 public sealed record ResourceConnectionEndpointsFound(
-    ImmutableList<ResourceConnectionEndpoint> Endpoints);
+    ImmutableList<ResourceConnectionEndpoint> Endpoints
+);
 
 public sealed record ResourceConnectionDestinationMissing;
 
@@ -38,8 +43,8 @@ public union LoadResourceConnectionEndpointsOutcome(
     ResourceConnectionDestinationDeleting);
 
 /// <summary>
-/// A destination provider reads its desired endpoints inside the caller's Mongo transaction.
-/// The caller owns the resource registration write fence.
+///     A destination provider reads its desired endpoints inside the caller's Mongo transaction.
+///     The caller owns the resource registration write fence.
 /// </summary>
 public interface IResourceConnectionDestinationCapability
 {
@@ -51,8 +56,8 @@ public interface IResourceConnectionDestinationCapability
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Advisory, tenant-scoped endpoint snapshots for listings and reconciliation.
-    /// Missing or deleting resources are omitted. Admission must use LoadAsync.
+    ///     Advisory, tenant-scoped endpoint snapshots for listings and reconciliation.
+    ///     Missing or deleting resources are omitted. Admission must use LoadAsync.
     /// </summary>
     Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
         string tenantId,
@@ -91,9 +96,11 @@ public static class ResourceConnectionNameResolution
 
 public sealed record LoadResourceConnectionDestinationRequest(
     string TenantId,
-    string ResourceId);
+    string ResourceId
+);
 
 /// <summary>Owner-registered declarative kind identity; support still comes from connection capabilities.</summary>
 public sealed record ResourceConnectionDeclarationKind(
     string Kind,
-    ResourceTypeId ResourceType);
+    ResourceTypeId ResourceType
+);

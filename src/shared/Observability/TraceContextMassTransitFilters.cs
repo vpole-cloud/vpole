@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Pole.Observability;
 
 /// <summary>
-/// Copies the current trace context to MassTransit publish headers.
+///     Copies the current trace context to MassTransit publish headers.
 /// </summary>
 public sealed class TraceContextPublishFilter<T> : IFilter<PublishContext<T>>
     where T : class
@@ -34,11 +34,11 @@ public sealed class TraceContextPublishFilter<T> : IFilter<PublishContext<T>>
 }
 
 /// <summary>
-/// Restores trace context from MassTransit consume headers or message payload fields.
+///     Restores trace context from MassTransit consume headers or message payload fields.
 /// </summary>
 public sealed class TraceContextConsumeFilter<T>(
-    ILogger<TraceContextConsumeFilter<T>> logger)
-    : IFilter<ConsumeContext<T>>
+    ILogger<TraceContextConsumeFilter<T>> logger
+) : IFilter<ConsumeContext<T>>
     where T : class
 {
     public async Task Send(ConsumeContext<T> context, IPipe<ConsumeContext<T>> next)
@@ -46,15 +46,18 @@ public sealed class TraceContextConsumeFilter<T>(
         var eventCoreCarrier = EventCoreCarrier.From(context.Message);
         var carrier = context.Message as ITraceContextCarrier;
         var traceContext = TraceContext.Create(
-            GetHeaderValue(context.Headers, TraceHeaders.TraceId) ?? eventCoreCarrier?.TraceId ?? carrier?.TraceId ?? TraceContext.Current?.TraceId,
-            GetHeaderValue(context.Headers, TraceHeaders.CorrelationId) ?? eventCoreCarrier?.CorrelationId ?? carrier?.CorrelationId ?? TraceContext.Current?.CorrelationId);
+            GetHeaderValue(context.Headers, TraceHeaders.TraceId) ??
+            eventCoreCarrier?.TraceId ?? carrier?.TraceId ?? TraceContext.Current?.TraceId,
+            GetHeaderValue(context.Headers, TraceHeaders.CorrelationId) ?? eventCoreCarrier?.CorrelationId ??
+            carrier?.CorrelationId ?? TraceContext.Current?.CorrelationId);
 
         using var contextScope = TraceContext.Push(traceContext);
-        using var loggerScope = logger.BeginScope(new Dictionary<string, object>
-        {
-            ["TraceId"] = traceContext.TraceId,
-            ["CorrelationId"] = traceContext.CorrelationId
-        });
+        using var loggerScope = logger.BeginScope(
+            new Dictionary<string, object>
+            {
+                ["TraceId"] = traceContext.TraceId,
+                ["CorrelationId"] = traceContext.CorrelationId,
+            });
 
         Activity.Current?.SetTag("correlation.id", traceContext.CorrelationId);
 
@@ -66,17 +69,20 @@ public sealed class TraceContextConsumeFilter<T>(
         context.CreateFilterScope("trace-context-consume");
     }
 
-    private static string? GetHeaderValue(Headers headers, string headerName)
-        => headers.TryGetHeader(headerName, out var value) ? value?.ToString() : null;
+    private static string? GetHeaderValue(Headers headers, string headerName) =>
+        headers.TryGetHeader(headerName, out var value) ? value?.ToString() : null;
 }
 
 internal sealed record EventCoreCarrier(
     string? TraceId,
-    string? CorrelationId)
+    string? CorrelationId
+)
 {
     public static EventCoreCarrier? From(object? message)
     {
-        var eventCore = message?.GetType().GetProperty("EventCore", BindingFlags.Public | BindingFlags.Instance)?.GetValue(message);
+        var eventCore = message?.GetType()
+            .GetProperty("EventCore", BindingFlags.Public | BindingFlags.Instance)
+            ?.GetValue(message);
         if (eventCore is null)
             return null;
 

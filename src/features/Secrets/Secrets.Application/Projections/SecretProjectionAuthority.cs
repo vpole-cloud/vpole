@@ -6,8 +6,7 @@ namespace Pole.Features.Secrets.Application.Projections;
 internal static class SecretProjectionAuthority
 {
     public static bool MatchesScope(Secret secret, SecretProjection projection) =>
-        secret.ResourceGroupId == projection.ResourceGroupId &&
-        secret.IsolationScopeId == projection.IsolationScopeId;
+        secret.ResourceGroupId == projection.ResourceGroupId && secret.IsolationScopeId == projection.IsolationScopeId;
 
     public static bool MatchesConsumer(SecretBinding binding, SecretProjection projection) =>
         binding.Consumer.ResourceType == projection.ConsumerType &&
@@ -17,7 +16,7 @@ internal static class SecretProjectionAuthority
     {
         AllSecretDeployments => true,
         SelectedSecretDeployments selected => selected.DeploymentIds.Contains(deploymentId),
-        _ => throw new InvalidOperationException("Unknown Secret deployment selection.")
+        _ => throw new InvalidOperationException("Unknown Secret deployment selection."),
     };
 
     public static bool MatchesPlacement(ResourceDeploymentRuntimePlacementDto placement, SecretProjection projection) =>

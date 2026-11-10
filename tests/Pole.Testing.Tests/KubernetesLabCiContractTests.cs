@@ -1,4 +1,3 @@
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Testing.Tests;
@@ -13,9 +12,13 @@ public sealed class KubernetesLabCiContractTests
     {
         var workflow = ReadRepositoryFile(".github", "workflows", "kubernetes-lab.yml");
 
-        Assert.Contains("--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"", workflow,
+        Assert.Contains(
+            "--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"",
+            workflow,
             StringComparison.Ordinal);
-        Assert.Contains("timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 240 || 120 }}", workflow,
+        Assert.Contains(
+            "timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 240 || 120 }}",
+            workflow,
             StringComparison.Ordinal);
         Assert.Contains("Reclaim runner disk space", workflow, StringComparison.Ordinal);
         Assert.Contains("/usr/local/lib/android", workflow, StringComparison.Ordinal);
@@ -36,26 +39,11 @@ public sealed class KubernetesLabCiContractTests
     {
         var script = ReadRepositoryFile("infrastructure", "kubernetes-lab", "lab.sh");
 
-        Assert.Contains(
-            "awk '/k3d version/ { version = $3 } END { print version }'",
-            script,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "awk '/k3d version/ { print $3; exit }'",
-            script,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "buildctl_version=\"$(\"${BUILDCTL_BIN}\" --version)\"",
-            script,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "[[ \"${buildctl_version}\" == *\"${BUILDCTL_VERSION}\"* ]]",
-            script,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "grep --fixed-strings --quiet \"${BUILDCTL_VERSION}\"",
-            script,
-            StringComparison.Ordinal);
+        Assert.Contains("awk '/k3d version/ { version = $3 } END { print version }'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("awk '/k3d version/ { print $3; exit }'", script, StringComparison.Ordinal);
+        Assert.Contains("buildctl_version=\"$(\"${BUILDCTL_BIN}\" --version)\"", script, StringComparison.Ordinal);
+        Assert.Contains("[[ \"${buildctl_version}\" == *\"${BUILDCTL_VERSION}\"* ]]", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("grep --fixed-strings --quiet \"${BUILDCTL_VERSION}\"", script, StringComparison.Ordinal);
     }
 
     private static string ReadRepositoryFile(params string[] segments) =>

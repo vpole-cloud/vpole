@@ -12,11 +12,13 @@ public sealed class RedisInfrastructureRegistrationTests
     [Fact]
     public async Task DisabledFeatureResolvesItsRegistryWithoutRemovedProvidersOrDistributedStores()
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Realtime:Enabled"] = "false",
-            ["Realtime:EnabledTopics:0"] = "removed-provider"
-        }).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Realtime:Enabled"] = "false",
+                    ["Realtime:EnabledTopics:0"] = "removed-provider",
+                })
+            .Build();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddRealtimeFeature(configuration, development: false);
@@ -39,10 +41,12 @@ public sealed class RedisInfrastructureRegistrationTests
     [Fact]
     public void EnabledFeatureRequiresDedicatedRedisConnection()
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Realtime:Enabled"] = "true"
-        }).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Realtime:Enabled"] = "true",
+                })
+            .Build();
         var error = Assert.Throws<InvalidOperationException>(() =>
             new ServiceCollection().AddRealtimeRedis(configuration, development: false));
         Assert.Contains("ConnectionStrings:realtime", error.Message);
@@ -53,11 +57,13 @@ public sealed class RedisInfrastructureRegistrationTests
     [InlineData(false)]
     public void PersistentKeyringAlwaysRequiresEncryptionCertificate(bool development)
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Realtime:Enabled"] = "true",
-            ["ConnectionStrings:realtime"] = "localhost:6379"
-        }).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Realtime:Enabled"] = "true",
+                    ["ConnectionStrings:realtime"] = "localhost:6379",
+                })
+            .Build();
         var error = Assert.Throws<InvalidOperationException>(() =>
             new ServiceCollection().AddRealtimeRedis(configuration, development));
         Assert.Contains("certificate", error.Message, StringComparison.OrdinalIgnoreCase);

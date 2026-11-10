@@ -8,17 +8,17 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FSharp.Core" />
+        <PackageReference Include="FSharp.Core"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="PostgresClusterCreatedEvent.fs" />
-        <Compile Include="PostgresClusterUpdatedEvent.fs" />
-        <Compile Include="PostgresClusterDeletedEvent.fs" />
+        <Compile Include="PostgresClusterCreatedEvent.fs"/>
+        <Compile Include="PostgresClusterUpdatedEvent.fs"/>
+        <Compile Include="PostgresClusterDeletedEvent.fs"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
     </ItemGroup>
 
 </Project>

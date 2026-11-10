@@ -4,15 +4,14 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application.Delivery;
-using Pole.Features.Outbox.Application.Mongo;
 using Pole.Observability;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Outbox.Application;
 
 /// <summary>
-/// Delivers durable messages with at-least-once semantics. A publish can be
-/// repeated when the process stops before the pending-to-published transition.
+///     Delivers durable messages with at-least-once semantics. A publish can be
+///     repeated when the process stops before the pending-to-published transition.
 /// </summary>
 public sealed class OutboxProcessorJob(
     LoadDueOutboxMessages loadDueOutboxMessages,
@@ -25,21 +24,18 @@ public sealed class OutboxProcessorJob(
     TimeProvider timeProvider,
     OutboxRetryDelayPolicy retryDelayPolicy,
     OutboxMetrics metrics,
-    ILogger<OutboxProcessorJob> logger)
+    ILogger<OutboxProcessorJob> logger
+)
 {
     private const string UnknownEventTypeFailure = "UnknownEventType";
     private const string InvalidPayloadFailure = "InvalidPayload";
     private readonly OutboxSettings _settings = outboxSettings.Value;
 
     [DisableConcurrentExecution(OutboxProcessingLock.Resource, timeoutSec: 300)]
-    public async Task ProcessOutboxMessagesAsync(
-        CancellationToken cancellationToken = default)
+    public async Task ProcessOutboxMessagesAsync(CancellationToken cancellationToken = default)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var messages = await loadDueOutboxMessages(
-            nowUtc,
-            _settings.BatchSize,
-            cancellationToken);
+        var messages = await loadDueOutboxMessages(nowUtc, _settings.BatchSize, cancellationToken);
 
         foreach (var message in messages)
         {
@@ -50,42 +46,30 @@ public sealed class OutboxProcessorJob(
         await UpdateQueueMetricsAsync(cancellationToken);
     }
 
-    public async Task CleanupMessagesAsync(
-        CancellationToken cancellationToken = default)
+    public async Task CleanupMessagesAsync(CancellationToken cancellationToken = default)
     {
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-        var publishedCutoffUtc =
-            nowUtc.AddDays(-_settings.PublishedRetentionDays);
-        var abandonedCutoffUtc =
-            nowUtc.AddDays(-_settings.AbandonedRetentionDays);
+        var publishedCutoffUtc = nowUtc.AddDays(-_settings.PublishedRetentionDays);
+        var abandonedCutoffUtc = nowUtc.AddDays(-_settings.AbandonedRetentionDays);
 
         var cleanup = await cleanupTerminalMessages(
-            new OutboxCleanupRequest(
-                publishedCutoffUtc,
-                abandonedCutoffUtc,
-                _settings.CleanupBatchSize),
+            new OutboxCleanupRequest(publishedCutoffUtc, abandonedCutoffUtc, _settings.CleanupBatchSize),
             cancellationToken);
 
         metrics.RecordCleaned("published", cleanup.PublishedCount);
         metrics.RecordCleaned("abandoned", cleanup.AbandonedCount);
         if (cleanup.PublishedCount + cleanup.AbandonedCount > 0)
-        {
             logger.LogInformation(
                 "Cleaned {PublishedCount} published and {AbandonedCount} abandoned outbox messages",
                 cleanup.PublishedCount,
                 cleanup.AbandonedCount);
-        }
 
         await UpdateQueueMetricsAsync(cancellationToken);
     }
 
-    private async Task ProcessMessageAsync(
-        OutboxMessage message,
-        CancellationToken cancellationToken)
+    private async Task ProcessMessageAsync(OutboxMessage message, CancellationToken cancellationToken)
     {
-        if (!eventCatalog.EventTypes.TryGetValue(
-                message.EventType,
-                out var eventType))
+        if (!eventCatalog.EventTypes.TryGetValue(message.EventType, out var eventType))
         {
             await AbandonAsync(
                 message,
@@ -99,27 +83,19 @@ public sealed class OutboxProcessorJob(
         try
         {
             deserializedEvent = JsonSerializer.Deserialize(
-                                    message.PayloadJson,
-                                    eventType,
-                                    EventExtensions.SerializerOptions)
-                                ?? throw new JsonException("The event payload produced a null value.");
+                    message.PayloadJson,
+                    eventType,
+                    EventExtensions.SerializerOptions) ??
+                throw new JsonException("The event payload produced a null value.");
         }
         catch (JsonException exception)
         {
-            await AbandonAsync(
-                message,
-                InvalidPayloadFailure,
-                exception.Message,
-                cancellationToken);
+            await AbandonAsync(message, InvalidPayloadFailure, exception.Message, cancellationToken);
             return;
         }
         catch (NotSupportedException exception)
         {
-            await AbandonAsync(
-                message,
-                InvalidPayloadFailure,
-                exception.Message,
-                cancellationToken);
+            await AbandonAsync(message, InvalidPayloadFailure, exception.Message, cancellationToken);
             return;
         }
 
@@ -138,19 +114,17 @@ public sealed class OutboxProcessorJob(
             message.TraceId ?? poleEvent.EventCore.TraceId,
             message.CorrelationId ?? poleEvent.EventCore.CorrelationId);
         using var contextScope = TraceContext.Push(traceContext);
-        using var loggerScope = logger.BeginScope(new Dictionary<string, object>
-        {
-            ["TraceId"] = traceContext.TraceId,
-            ["CorrelationId"] = traceContext.CorrelationId
-        });
+        using var loggerScope = logger.BeginScope(
+            new Dictionary<string, object>
+            {
+                ["TraceId"] = traceContext.TraceId,
+                ["CorrelationId"] = traceContext.CorrelationId,
+            });
 
         var startedAt = timeProvider.GetTimestamp();
         try
         {
-            await publisher.PublishAsync(
-                deserializedEvent,
-                eventType,
-                cancellationToken);
+            await publisher.PublishAsync(deserializedEvent, eventType, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -158,10 +132,7 @@ public sealed class OutboxProcessorJob(
         }
         catch (Exception exception)
         {
-            await ScheduleRetryAsync(
-                message,
-                exception,
-                cancellationToken);
+            await ScheduleRetryAsync(message, exception, cancellationToken);
             return;
         }
 
@@ -193,11 +164,8 @@ public sealed class OutboxProcessorJob(
         var pending = PendingState(message);
         var nextAttemptCount = checked(pending.AttemptCount + 1);
         var delay = retryDelayPolicy.Calculate(message.Id, nextAttemptCount);
-        var nextAttemptAtUtc =
-            timeProvider.GetUtcNow().UtcDateTime.Add(delay);
-        var error = string.IsNullOrWhiteSpace(exception.Message)
-            ? exception.GetType().Name
-            : exception.Message;
+        var nextAttemptAtUtc = timeProvider.GetUtcNow().UtcDateTime.Add(delay);
+        var error = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
         var retried = message.ScheduleRetry(nextAttemptAtUtc, error);
 
         if (!await tryPersistTransition(message, retried, cancellationToken))
@@ -227,11 +195,7 @@ public sealed class OutboxProcessorJob(
         if (!await tryPersistTransition(message, abandoned, cancellationToken))
             return;
 
-        metrics.RecordAbandoned(
-            failureCode == UnknownEventTypeFailure
-                ? "unknown"
-                : message.EventType,
-            failureCode);
+        metrics.RecordAbandoned(failureCode == UnknownEventTypeFailure ? "unknown" : message.EventType, failureCode);
         logger.LogError(
             "Abandoned outbox message {MessageId} of type {EventType} with failure code {FailureCode}: {Failure}",
             message.Id,
@@ -240,21 +204,16 @@ public sealed class OutboxProcessorJob(
             ((AbandonedOutboxMessageState)abandoned.State).LastError);
     }
 
-    private async Task UpdateQueueMetricsAsync(
-        CancellationToken cancellationToken)
+    private async Task UpdateQueueMetricsAsync(CancellationToken cancellationToken)
     {
         var snapshot = await loadQueueSnapshot(cancellationToken);
         var oldestPendingAge = snapshot.OldestPendingAtUtc is null
             ? TimeSpan.Zero
             : timeProvider.GetUtcNow().UtcDateTime - snapshot.OldestPendingAtUtc.Value;
 
-        metrics.UpdateQueueSnapshot(
-            snapshot.PendingCount,
-            snapshot.AbandonedCount,
-            oldestPendingAge);
+        metrics.UpdateQueueSnapshot(snapshot.PendingCount, snapshot.AbandonedCount, oldestPendingAge);
     }
 
-    private static PendingOutboxMessageState PendingState(
-        OutboxMessage message) =>
+    private static PendingOutboxMessageState PendingState(OutboxMessage message) =>
         (PendingOutboxMessageState)message.State;
 }

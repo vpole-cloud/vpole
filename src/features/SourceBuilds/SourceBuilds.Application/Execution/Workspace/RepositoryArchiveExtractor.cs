@@ -3,7 +3,9 @@ using System.IO.Compression;
 
 namespace Pole.Features.SourceBuilds.Application.Execution.Workspace;
 
-public sealed record SourceBuildRepositoryArchiveInvalid(string Message);
+public sealed record SourceBuildRepositoryArchiveInvalid(
+    string Message
+);
 
 public sealed record SourceBuildRepositoryArchiveExtracted;
 
@@ -11,16 +13,18 @@ public union ExtractRepositoryArchiveOutcome(
     SourceBuildRepositoryArchiveExtracted,
     SourceBuildRepositoryArchiveInvalid);
 
-public delegate Task<ExtractRepositoryArchiveOutcome>
-    ExtractRepositoryArchive(
-        Stream archive,
-        string destinationPath,
-        long maxExtractedBytes,
-        int maxExtractedFiles,
-        CancellationToken cancellationToken = default);
+public delegate Task<ExtractRepositoryArchiveOutcome> ExtractRepositoryArchive(
+    Stream archive,
+    string destinationPath,
+    long maxExtractedBytes,
+    int maxExtractedFiles,
+    CancellationToken cancellationToken = default);
 
 public sealed class RepositoryArchiveExtractor
 {
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     public async Task<ExtractRepositoryArchiveOutcome> InvokeAsync(
         Stream archive,
         string destinationPath,
@@ -32,9 +36,9 @@ public sealed class RepositoryArchiveExtractor
         {
             Directory.CreateDirectory(destinationPath);
             var destinationRoot = Path.GetFullPath(destinationPath);
-            var destinationPrefix = destinationRoot.TrimEnd(
-                Path.DirectorySeparatorChar,
-                Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var destinationPrefix
+                = destinationRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                Path.DirectorySeparatorChar;
             using var gzip = new GZipStream(archive, CompressionMode.Decompress, leaveOpen: true);
             using var reader = new TarReader(gzip, leaveOpen: true);
             string? archiveRoot = null;
@@ -45,7 +49,8 @@ public sealed class RepositoryArchiveExtractor
             {
                 if (entry.EntryType is TarEntryType.GlobalExtendedAttributes or TarEntryType.ExtendedAttributes)
                     continue;
-                if (entry.EntryType is not (TarEntryType.Directory or TarEntryType.RegularFile or TarEntryType.V7RegularFile))
+                if (entry.EntryType is not (TarEntryType.Directory or TarEntryType.RegularFile
+                    or TarEntryType.V7RegularFile))
                     return InvalidArchive($"Archive entry type '{entry.EntryType}' is not allowed.");
 
                 var relativePath = StripArchiveRoot(entry.Name, ref archiveRoot);
@@ -108,9 +113,6 @@ public sealed class RepositoryArchiveExtractor
             return null;
         return string.Join('/', segments.Skip(1));
     }
-
-    private static StringComparison PathComparison =>
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private static ExtractRepositoryArchiveOutcome InvalidArchive(string message) =>
         new SourceBuildRepositoryArchiveInvalid(message);

@@ -14,9 +14,24 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
     private const int TagSizeBytes = 16;
     private const int MaximumMetadataLength = 128;
     private const int MaximumWrappedKeyComponentSizeBytes = 64 * 1024;
+    private readonly IKeyEncryptionProvider _activeProvider;
 
     private readonly IReadOnlyDictionary<string, IKeyEncryptionProvider> _providers;
-    private readonly IKeyEncryptionProvider _activeProvider;
+
+    public EnvelopeEncryptionService(
+        IEnumerable<IKeyEncryptionProvider> providers,
+        IOptions<EnvelopeEncryptionOptions> options)
+    {
+        var providerDictionary = new Dictionary<string, IKeyEncryptionProvider>(StringComparer.Ordinal);
+        foreach (var provider in providers)
+            if (!HasValidProviderMetadata(provider) || !providerDictionary.TryAdd(provider.ProviderId, provider))
+                throw new InvalidOperationException(
+                    "Key-encryption provider metadata must be valid and provider IDs must be unique.");
+
+        _providers = providerDictionary;
+        if (!_providers.TryGetValue(options.Value.ActiveProviderId, out _activeProvider!))
+            throw new InvalidOperationException("The active key-encryption provider is not registered.");
+    }
 
     public EnvelopeEncryptionKeyReference ActiveKey
     {
@@ -30,22 +45,6 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 activeKey.Algorithm,
                 activeKey.AlgorithmVersion);
         }
-    }
-
-    public EnvelopeEncryptionService(
-        IEnumerable<IKeyEncryptionProvider> providers,
-        IOptions<EnvelopeEncryptionOptions> options)
-    {
-        var providerDictionary = new Dictionary<string, IKeyEncryptionProvider>(StringComparer.Ordinal);
-        foreach (var provider in providers)
-        {
-            if (!HasValidProviderMetadata(provider) || !providerDictionary.TryAdd(provider.ProviderId, provider))
-                throw new InvalidOperationException("Key-encryption provider metadata must be valid and provider IDs must be unique.");
-        }
-
-        _providers = providerDictionary;
-        if (!_providers.TryGetValue(options.Value.ActiveProviderId, out _activeProvider!))
-            throw new InvalidOperationException("The active key-encryption provider is not registered.");
     }
 
     public async ValueTask<EnvelopeEncryptionOutcome> EncryptAsync(
@@ -201,9 +200,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 encryptedValue.KeyEncryptionKeyVersion == activeKey.Identity.Version &&
                 string.Equals(encryptedValue.KeyWrapAlgorithm, activeKey.Algorithm, StringComparison.Ordinal) &&
                 encryptedValue.KeyWrapAlgorithmVersion == activeKey.AlgorithmVersion)
-            {
                 return encryptedValue;
-            }
 
             var wrappedKeyAssociatedData = AssociatedDataEncoder.ForWrappedKey(
                 encryptedValue.FormatVersion,
@@ -234,7 +231,7 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
                 WrappedDataEncryptionKeyTag = wrappedKey.AuthenticationTag,
                 Ciphertext = encryptedValue.Ciphertext.ToArray(),
                 Nonce = encryptedValue.Nonce.ToArray(),
-                AuthenticationTag = encryptedValue.AuthenticationTag.ToArray()
+                AuthenticationTag = encryptedValue.AuthenticationTag.ToArray(),
             };
         }
         finally
@@ -312,59 +309,43 @@ public sealed class EnvelopeEncryptionService : IEnvelopeEncryptionService
         }
     }
 
-    private static bool HasValidMetadata(EncryptedValue value) =>
-        value.FormatVersion == CurrentFormatVersion &&
-        !string.IsNullOrWhiteSpace(value.KeyProviderId) &&
-        value.KeyProviderId.Length <= MaximumMetadataLength &&
+    private static bool HasValidMetadata(EncryptedValue value) => value.FormatVersion == CurrentFormatVersion &&
+        !string.IsNullOrWhiteSpace(value.KeyProviderId) && value.KeyProviderId.Length <= MaximumMetadataLength &&
         !string.IsNullOrWhiteSpace(value.KeyEncryptionKeyId) &&
-        value.KeyEncryptionKeyId.Length <= MaximumMetadataLength &&
-        value.KeyEncryptionKeyVersion > 0 &&
-        !string.IsNullOrWhiteSpace(value.KeyWrapAlgorithm) &&
-        value.KeyWrapAlgorithm.Length <= MaximumMetadataLength &&
+        value.KeyEncryptionKeyId.Length <= MaximumMetadataLength && value.KeyEncryptionKeyVersion > 0 &&
+        !string.IsNullOrWhiteSpace(value.KeyWrapAlgorithm) && value.KeyWrapAlgorithm.Length <= MaximumMetadataLength &&
         value.KeyWrapAlgorithmVersion > 0 &&
         string.Equals(value.ContentEncryptionAlgorithm, ContentAlgorithm, StringComparison.Ordinal) &&
         value.ContentEncryptionAlgorithmVersion == ContentAlgorithmVersion &&
         HasValidWrappedKeyComponent(value.WrappedDataEncryptionKey) &&
         HasValidWrappedKeyComponent(value.WrappedDataEncryptionKeyNonce) &&
-        HasValidWrappedKeyComponent(value.WrappedDataEncryptionKeyTag) &&
-        value.Ciphertext is not null &&
-        value.Nonce is { Length: NonceSizeBytes } &&
-        value.AuthenticationTag is { Length: TagSizeBytes };
+        HasValidWrappedKeyComponent(value.WrappedDataEncryptionKeyTag) && value.Ciphertext is not null &&
+        value.Nonce is { Length: NonceSizeBytes } && value.AuthenticationTag is { Length: TagSizeBytes };
 
     private static bool HasValidProviderMetadata(IKeyEncryptionProvider? provider)
     {
-        if (provider is null ||
-            string.IsNullOrWhiteSpace(provider.ProviderId) ||
+        if (provider is null || string.IsNullOrWhiteSpace(provider.ProviderId) ||
             provider.ProviderId.Length > MaximumMetadataLength)
-        {
             return false;
-        }
 
         var activeKey = provider.ActiveKey;
-        return activeKey is not null &&
-               activeKey.Identity is not null &&
-               !string.IsNullOrWhiteSpace(activeKey.Identity.Id) &&
-               activeKey.Identity.Id.Length <= MaximumMetadataLength &&
-               activeKey.Identity.Version > 0 &&
-               !string.IsNullOrWhiteSpace(activeKey.Algorithm) &&
-               activeKey.Algorithm.Length <= MaximumMetadataLength &&
-               activeKey.AlgorithmVersion > 0;
+        return activeKey is not null && activeKey.Identity is not null &&
+            !string.IsNullOrWhiteSpace(activeKey.Identity.Id) &&
+            activeKey.Identity.Id.Length <= MaximumMetadataLength && activeKey.Identity.Version > 0 &&
+            !string.IsNullOrWhiteSpace(activeKey.Algorithm) && activeKey.Algorithm.Length <= MaximumMetadataLength &&
+            activeKey.AlgorithmVersion > 0;
     }
 
-    private static bool HasValidWrappedKey(WrappedDataEncryptionKey? wrappedKey) =>
-        wrappedKey is not null &&
-        HasValidWrappedKeyComponent(wrappedKey.Ciphertext) &&
-        HasValidWrappedKeyComponent(wrappedKey.Nonce) &&
+    private static bool HasValidWrappedKey(WrappedDataEncryptionKey? wrappedKey) => wrappedKey is not null &&
+        HasValidWrappedKeyComponent(wrappedKey.Ciphertext) && HasValidWrappedKeyComponent(wrappedKey.Nonce) &&
         HasValidWrappedKeyComponent(wrappedKey.AuthenticationTag);
 
     private static bool HasValidWrappedKeyComponent(byte[]? value) =>
         value is { Length: > 0 and <= MaximumWrappedKeyComponentSizeBytes };
 
-    private static EnvelopeEncryptionFailed EncryptFailure() => new(
-        "The protected value could not be encrypted.");
+    private static EnvelopeEncryptionFailed EncryptFailure() => new("The protected value could not be encrypted.");
 
-    private static EnvelopeDecryptionFailed DecryptFailure() => new(
-        "The protected value could not be decrypted.");
+    private static EnvelopeDecryptionFailed DecryptFailure() => new("The protected value could not be decrypted.");
 
     private static EnvelopeRewrapFailed RewrapFailure() => new(
         "The protected value data-encryption key could not be rewrapped.");

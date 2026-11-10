@@ -1,13 +1,13 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.ResourceDeployments.Migrations;
 
 /// <summary>
-/// Historical schema for the multi-target resource-deployment snapshot.
-/// Keep this BSON schema self-contained; it deliberately does not derive from
-/// the current domain records at migration time.
+///     Historical schema for the multi-target resource-deployment snapshot.
+///     Keep this BSON schema self-contained; it deliberately does not derive from
+///     the current domain records at migration time.
 /// </summary>
 public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
 {
@@ -20,15 +20,13 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
     public string Description =>
         "Applies strict validation for logical resource revisions, fixed replicas, and resolved ingress hostname snapshots.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var validator = CreateValidator();
         using var names = await context.ListCollectionNamesAsync(
             new ListCollectionNamesOptions
             {
-                Filter = new BsonDocument("name", CollectionName)
+                Filter = new BsonDocument("name", CollectionName),
             },
             cancellationToken);
         if (!await names.AnyAsync(cancellationToken))
@@ -39,7 +37,7 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
                 {
                     Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator),
                     ValidationLevel = DocumentValidationLevel.Strict,
-                    ValidationAction = DocumentValidationAction.Error
+                    ValidationAction = DocumentValidationAction.Error,
                 },
                 cancellationToken);
             return;
@@ -51,7 +49,7 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
                 ["collMod"] = CollectionName,
                 ["validator"] = validator,
                 ["validationLevel"] = "strict",
-                ["validationAction"] = "error"
+                ["validationAction"] = "error",
             },
             cancellationToken: cancellationToken);
     }
@@ -68,7 +66,7 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
                 "IsolationScopeId", "RuntimeCellId", "PlacementKey", "PlacementCapability",
                 "ResolvedPlacement", "ResourceRevision", "FixedReplicas", "Revision",
                 "DesiredGeneration", "DesiredOperation", "ObservedGeneration", "State",
-                "Endpoints", "CreatedAtUtc", "UpdatedAtUtc"
+                "Endpoints", "CreatedAtUtc", "UpdatedAtUtc",
             },
             ["properties"] = new BsonDocument
             {
@@ -78,7 +76,7 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
                 ["ReferenceFence"] = new BsonDocument
                 {
                     ["bsonType"] = "long",
-                    ["minimum"] = 0
+                    ["minimum"] = 0,
                 },
                 ["ResourceId"] = Type("objectId"),
                 ["ResourceGroupId"] = Type("objectId"),
@@ -96,8 +94,8 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
                 ["State"] = Type("object"),
                 ["Endpoints"] = Type("array"),
                 ["CreatedAtUtc"] = Type("date"),
-                ["UpdatedAtUtc"] = Type("date")
-            }
+                ["UpdatedAtUtc"] = Type("date"),
+            },
         });
 
     private static BsonDocument Type(string type) => new("bsonType", type);
@@ -106,7 +104,7 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
     {
         ["bsonType"] = "string",
         ["minLength"] = minimumLength,
-        ["maxLength"] = maximumLength
+        ["maxLength"] = maximumLength,
     };
 
     private static BsonDocument Integer(
@@ -117,7 +115,7 @@ public sealed class ResourceDeploymentSchemaValidationMigration : IMigration
         var schema = new BsonDocument
         {
             ["bsonType"] = type,
-            ["minimum"] = minimum
+            ["minimum"] = minimum,
         };
         if (maximum is not null)
             schema["maximum"] = maximum.Value;

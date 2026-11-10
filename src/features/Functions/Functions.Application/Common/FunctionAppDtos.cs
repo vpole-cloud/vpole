@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 
@@ -21,12 +20,14 @@ public sealed record FunctionAppDto(
     ImmutableHashSet<string> Tags,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc,
-    GitResourceStatus? GitOps);
+    GitResourceStatus? GitOps
+);
 
 public sealed record FunctionPlacementDto(
     string ResourceDeploymentId,
     string RuntimeCellId,
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);
 
 public sealed record FunctionRevisionDto(
     string Id,
@@ -34,43 +35,43 @@ public sealed record FunctionRevisionDto(
     int RevisionNumber,
     FunctionRevisionSpec Spec,
     FunctionRevisionStatus Status,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc
+);
 
 public sealed record FunctionAppDetailsDto(
     FunctionAppDto FunctionApp,
     FunctionRevisionDto? ActiveRevision,
-    FunctionRevisionDto? PendingRevision);
+    FunctionRevisionDto? PendingRevision
+);
 
 public static class FunctionAppDtoExtensions
 {
-    public static FunctionAppDto ToDto(this FunctionApp app) =>
-        new(
-            app.Id,
-            app.TenantId,
-            app.ResourceGroupId,
-            new FunctionPlacementDto(
-                app.Placement.ResourceDeploymentId,
-                app.Placement.RuntimeCellId,
-                app.Placement.DeploymentTargetId),
-            app.Name,
-            app.FunctionRoute,
-            app.ActiveRevisionId,
-            app.PendingRevisionId,
-            app.NextRevisionNumber,
-            app.DesiredState,
-            app.Status,
-            app.AdmittedQuota,
-            app.Tags,
-            app.CreatedAtUtc,
-            app.UpdatedAtUtc,
-            GitOps: null);
+    public static FunctionAppDto ToDto(this FunctionApp app) => new(
+        app.Id,
+        app.TenantId,
+        app.ResourceGroupId,
+        new FunctionPlacementDto(
+            app.Placement.ResourceDeploymentId,
+            app.Placement.RuntimeCellId,
+            app.Placement.DeploymentTargetId),
+        app.Name,
+        app.FunctionRoute,
+        app.ActiveRevisionId,
+        app.PendingRevisionId,
+        app.NextRevisionNumber,
+        app.DesiredState,
+        app.Status,
+        app.AdmittedQuota,
+        app.Tags,
+        app.CreatedAtUtc,
+        app.UpdatedAtUtc,
+        GitOps: null);
 
-    public static FunctionRevisionDto ToDto(this FunctionRevision revision) =>
-        new(
-            revision.Id,
-            revision.FunctionAppId,
-            revision.RevisionNumber,
-            revision.Spec,
-            revision.Status,
-            revision.CreatedAtUtc);
+    public static FunctionRevisionDto ToDto(this FunctionRevision revision) => new(
+        revision.Id,
+        revision.FunctionAppId,
+        revision.RevisionNumber,
+        revision.Spec,
+        revision.Status,
+        revision.CreatedAtUtc);
 }

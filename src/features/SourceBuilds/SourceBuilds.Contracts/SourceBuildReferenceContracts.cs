@@ -5,9 +5,7 @@ namespace Pole.Features.SourceBuilds.Contracts;
 /// <summary>Writes the active target in the caller transaction to fence admission against deletion.</summary>
 public sealed record SourceBuildWebServiceAdmitted;
 
-public union AdmitSourceBuildWebServiceOutcome(
-    SourceBuildWebServiceAdmitted,
-    SourceBuildWebServiceNotFound);
+public union AdmitSourceBuildWebServiceOutcome(SourceBuildWebServiceAdmitted, SourceBuildWebServiceNotFound);
 
 public delegate Task<AdmitSourceBuildWebServiceOutcome> AdmitSourceBuildWebService(
     AdmitSourceBuildWebServiceRequest request,
@@ -20,15 +18,17 @@ public delegate Task CleanupSourceBuildConfigurations(
     string webServiceId,
     CancellationToken cancellationToken = default);
 
-public sealed record SourceBuildWebServiceHasActiveJobs(string WebServiceId);
+public sealed record SourceBuildWebServiceHasActiveJobs(
+    string WebServiceId
+);
 
 public sealed record NoActiveSourceBuilds;
 
-public union EnsureNoWebServiceActiveSourceBuildsOutcome(
-    NoActiveSourceBuilds,
-    SourceBuildWebServiceHasActiveJobs);
+public union EnsureNoWebServiceActiveSourceBuildsOutcome(NoActiveSourceBuilds, SourceBuildWebServiceHasActiveJobs);
 
-public sealed record SourceBuildSourceRepositoryConfigurationExists(string SourceRepositoryId);
+public sealed record SourceBuildSourceRepositoryConfigurationExists(
+    string SourceRepositoryId
+);
 
 public sealed record NoSourceRepositoryBuildConfiguration;
 
@@ -37,9 +37,9 @@ public union EnsureNoSourceRepositoryBuildConfigurationOutcome(
     SourceBuildSourceRepositoryConfigurationExists);
 
 /// <summary>
-/// Resolves whether the WebServices target named by a source-build
-/// configuration exists for its tenant. WebServices supplies this narrow
-/// contribution without making SourceBuilds depend on WebServices.Contracts.
+///     Resolves whether the WebServices target named by a source-build
+///     configuration exists for its tenant. WebServices supplies this narrow
+///     contribution without making SourceBuilds depend on WebServices.Contracts.
 /// </summary>
 public delegate Task<bool> SourceBuildWebServiceExists(
     string tenantId,
@@ -47,37 +47,36 @@ public delegate Task<bool> SourceBuildWebServiceExists(
     CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Rejects deletion while nonterminal jobs exist, inside the transaction
-/// which has already fenced new admissions by writing the WebService.
+///     Rejects deletion while nonterminal jobs exist, inside the transaction
+///     which has already fenced new admissions by writing the WebService.
 /// </summary>
-public delegate Task<EnsureNoWebServiceActiveSourceBuildsOutcome>
-    EnsureNoWebServiceActiveSourceBuilds(
+public delegate Task<EnsureNoWebServiceActiveSourceBuildsOutcome> EnsureNoWebServiceActiveSourceBuilds(
     EnsureNoWebServiceActiveSourceBuildsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Guards a source-repository deletion against source-build configuration that
-/// still references it. The source-build feature owns this invariant.
+///     Guards a source-repository deletion against source-build configuration that
+///     still references it. The source-build feature owns this invariant.
 /// </summary>
-public delegate Task<EnsureNoSourceRepositoryBuildConfigurationOutcome>
-    EnsureNoSourceRepositoryBuildConfiguration(
-        SourceRepositoryConfigurationRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<EnsureNoSourceRepositoryBuildConfigurationOutcome> EnsureNoSourceRepositoryBuildConfiguration(
+    SourceRepositoryConfigurationRequest request,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Requests that the workload which owns a source-build target deploy the
-/// produced image. The source-build feature owns this contribution boundary:
-/// it records the job and needs the resulting release identifier to await
-/// completion.
+///     Requests that the workload which owns a source-build target deploy the
+///     produced image. The source-build feature owns this contribution boundary:
+///     it records the job and needs the resulting release identifier to await
+///     completion.
 /// </summary>
 public sealed record SourceBuildDeploymentImage(
     string RegistryHost,
     string ImageName,
     string Tag,
     string Digest,
-    string PullSecretName);
+    string PullSecretName
+);
 
 public sealed record SourceBuildDeploymentRequest(
     string TenantId,
@@ -88,33 +87,55 @@ public sealed record SourceBuildDeploymentRequest(
     SourceBuildDeploymentAuthority Authority,
     string? ActorUserId,
     string? ActorEmail,
-    SourceBuildDeploymentImage Image);
+    SourceBuildDeploymentImage Image
+);
 
 public sealed record SourceBuildDeploymentResult(
     string ReleaseId,
-    long Revision);
+    long Revision
+);
 
-public sealed record SourceBuildWebServiceNotFound(string WebServiceId);
+public sealed record SourceBuildWebServiceNotFound(
+    string WebServiceId
+);
 
-public sealed record SourceBuildWebServiceDeleting(string WebServiceId);
+public sealed record SourceBuildWebServiceDeleting(
+    string WebServiceId
+);
 
-public sealed record SourceBuildWebServiceHasNoActiveDeployments(string WebServiceId);
+public sealed record SourceBuildWebServiceHasNoActiveDeployments(
+    string WebServiceId
+);
 
-public sealed record SourceBuildResourceDeploymentNotFound(string? ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentNotFound(
+    string? ResourceDeploymentId
+);
 
-public sealed record SourceBuildResourceDeploymentChanged(string? ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentChanged(
+    string? ResourceDeploymentId
+);
 
 public sealed record SourceBuildResourceDeploymentCardinalityConflict;
 
-public sealed record SourceBuildResourceDeploymentPendingDeletion(string? ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentPendingDeletion(
+    string? ResourceDeploymentId
+);
 
-public sealed record SourceBuildResourceDeploymentPlacementUnavailable(string? ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentPlacementUnavailable(
+    string? ResourceDeploymentId
+);
 
-public sealed record SourceBuildResourceDeploymentReplacementTargetMismatch(string? ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentReplacementTargetMismatch(
+    string? ResourceDeploymentId
+);
 
-public sealed record SourceBuildResourceDeploymentIngressConfigurationChanged(string ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentIngressConfigurationChanged(
+    string ResourceDeploymentId
+);
 
-public sealed record SourceBuildResourceDeploymentRetryUnavailable(string ResourceDeploymentId);
+public sealed record SourceBuildResourceDeploymentRetryUnavailable(
+    string ResourceDeploymentId
+);
 
 public sealed record SourceBuildResourceDeploymentComputeConfigurationChanged;
 
@@ -131,19 +152,21 @@ public union SourceBuildResourceDeploymentRejection(
 
 public sealed record SourceBuildWebServiceDeploymentRejected(
     string WebServiceId,
-    SourceBuildResourceDeploymentRejection Reason);
+    SourceBuildResourceDeploymentRejection Reason
+);
 
 public enum SourceBuildWebServiceUpdateConflictReason
 {
     ExpectedRevisionConflict,
     GitOwnedConfiguration,
-    SupersededBuild
+    SupersededBuild,
 }
 
 public sealed record SourceBuildWebServiceUpdateConflict(
     string WebServiceId,
-    SourceBuildWebServiceUpdateConflictReason Reason =
-        SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict);
+    SourceBuildWebServiceUpdateConflictReason Reason
+        = SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict
+);
 
 public union SourceBuildWebServiceDeploymentError(
     SourceBuildWebServiceNotFound,
@@ -152,27 +175,25 @@ public union SourceBuildWebServiceDeploymentError(
     SourceBuildWebServiceDeploymentRejected,
     SourceBuildWebServiceUpdateConflict);
 
-public union DeploySourceBuildWebServiceOutcome(
-    SourceBuildDeploymentResult,
-    SourceBuildWebServiceDeploymentError);
+public union DeploySourceBuildWebServiceOutcome(SourceBuildDeploymentResult, SourceBuildWebServiceDeploymentError);
 
-public delegate Task<DeploySourceBuildWebServiceOutcome>
-    DeploySourceBuildWebService(
-        SourceBuildDeploymentRequest request,
-        CancellationToken cancellationToken = default);
+public delegate Task<DeploySourceBuildWebServiceOutcome> DeploySourceBuildWebService(
+    SourceBuildDeploymentRequest request,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
-/// Reports the terminal state of a release created for a source build. The
-/// adapter which owns the deployment-completed event maps that event into this
-/// source-build contribution instead of making SourceBuilds consume a foreign
-/// event contract.
+///     Reports the terminal state of a release created for a source build. The
+///     adapter which owns the deployment-completed event maps that event into this
+///     source-build contribution instead of making SourceBuilds consume a foreign
+///     event contract.
 /// </summary>
 public sealed record SourceBuildDeploymentCompletion(
     string TenantId,
     string ReleaseId,
     string ReleaseOutcome,
     string? FailureMessage,
-    DateTime CompletedAtUtc);
+    DateTime CompletedAtUtc
+);
 
 public delegate Task CompleteSourceBuildJobOnDeployment(
     SourceBuildDeploymentCompletion completion,
@@ -184,29 +205,32 @@ public sealed record AdmitSourceBuildWebServiceRequest(
     string TenantId,
     string WebServiceId,
     string ConfigurationId,
-    SourceBuildAdmissionPurpose Purpose);
+    SourceBuildAdmissionPurpose Purpose
+);
 
 public sealed record EnsureNoWebServiceActiveSourceBuildsRequest(
     string TenantId,
-    string WebServiceId);
+    string WebServiceId
+);
 
 public sealed record SourceRepositoryConfigurationRequest(
     string TenantId,
-    string SourceRepositoryId);
+    string SourceRepositoryId
+);
 
 public sealed record SourceBuildTargetRequest(
     string TenantId,
-    string WebServiceId);
+    string WebServiceId
+);
 
 public sealed record SourceBuildTargetSnapshot(
     string TenantId,
     string WebServiceId,
     long Revision,
-    string? ConfigurationId);
+    string? ConfigurationId
+);
 
-public union LoadSourceBuildTargetOutcome(
-    SourceBuildTargetSnapshot,
-    SourceBuildWebServiceNotFound);
+public union LoadSourceBuildTargetOutcome(SourceBuildTargetSnapshot, SourceBuildWebServiceNotFound);
 
 public delegate Task<LoadSourceBuildTargetOutcome> LoadSourceBuildTarget(
     SourceBuildTargetRequest request,

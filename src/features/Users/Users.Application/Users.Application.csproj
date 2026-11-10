@@ -9,20 +9,20 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="FluentValidation" />
+        <PackageReference Include="FluentValidation"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Users.Domain\Users.Domain.csproj" />
-      <ProjectReference Include="..\Users.Events\Users.Events.csproj" />
-      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
+        <ProjectReference Include="..\Users.Domain\Users.Domain.csproj"/>
+        <ProjectReference Include="..\Users.Events\Users.Events.csproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj"/>
+        <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
     </ItemGroup>
 
 </Project>

@@ -4,13 +4,12 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Migrations;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Domain;
@@ -21,8 +20,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class ResourceGroupAdoptionConcurrencyTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     private readonly TestRepositorySnapshots repository = new();
 
@@ -59,19 +59,21 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
         var snapshots = ActivatorUtilities.CreateInstance<GitAcceptedSnapshotExecutor>(Services, mutations);
         var lifecycle = ActivatorUtilities.CreateInstance<GitLifecycleExecutor>(Services, snapshots);
         var worker = ActivatorUtilities.CreateInstance<RepositorySourceJob>(Services, lifecycle);
-        var execution = worker.ProcessAsync(new(source.TenantId, source.Id), ct);
+        var execution = worker.ProcessAsync(new GitSourceIdentity(source.TenantId, source.Id), ct);
         try
         {
             // Pause before the regular Apply/no-op fence: adoption itself must serialize manual writers.
             await mutations.ApplyReached.Task.WaitAsync(ct);
             var inventory = Services.GetRequiredService<IMongoCollection<ManagedDeclaration>>();
-            Assert.True(await inventory.Find(item => item.SourceId == source.Id && item.ResourceId == group.Id)
-                .AnyAsync(ct));
+            Assert.True(
+                await inventory.Find(item => item.SourceId == source.Id && item.ResourceId == group.Id).AnyAsync(ct));
             mutations.ContinueManual.TrySetResult();
             var result = await manual.WaitAsync(ct);
-            Assert.Equal(ResourceGroupRevisionConflictReason.GitOwnedConfiguration,
+            Assert.Equal(
+                ResourceGroupRevisionConflictReason.GitOwnedConfiguration,
                 Assert.IsType<ResourceGroupRevisionConflict>(result.Value).Reason);
-            Assert.True(mutations.ManualAuthorizationAttempts >= 2,
+            Assert.True(
+                mutations.ManualAuthorizationAttempts >= 2,
                 "Mongo must retry the conflicted manual transaction and recheck current ownership.");
         }
         finally
@@ -85,15 +87,15 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
         Assert.Equal(group.Description, current.Description);
         Assert.Equal(group.Revision, current.Revision);
         Assert.Equal(group.UpdatedAtUtc, current.UpdatedAtUtc);
-        Assert.Equal(eventCount,
-            await DbContext.CountOutboxMessagesAsync(Data.TenantId, eventType));
+        Assert.Equal(eventCount, await DbContext.CountOutboxMessagesAsync(Data.TenantId, eventType));
         var state = await Services.GetRequiredService<GitRepositorySources>()
             .StateAsync(source.TenantId, source.Id, ct);
         var run = (await Services.GetRequiredService<GitRepositorySources>()
             .RunAsync(source.TenantId, source.Id, state.LatestRunId!, ct))!;
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(run.State).Completion);
         var receipts = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
-            .Find(item => item.RunId == run.Id).ToListAsync(ct);
+            .Find(item => item.RunId == run.Id)
+            .ToListAsync(ct);
         Assert.Single(receipts, item => item.Lifecycle?.Step == GitLifecycleStep.Adopt);
         Assert.Contains(receipts, item => item.Lifecycle?.Step == GitLifecycleStep.Apply);
     }
@@ -101,31 +103,59 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
     private async Task<RepositorySource> ConfirmAdoptionAsync(ResourceGroup group, CancellationToken ct)
     {
         var repositoryId = ObjectId.GenerateNewId().ToString();
-        repository.Publish(repositoryId,
-        [
-            new("group.yaml", JsonSerializer.Serialize(new
-            {
-                apiVersion = "pole.io/v1alpha1",
-                kind = "ResourceGroup",
-                metadata = new { name = group.Name },
-                spec = new { description = group.Description, tags = group.Tags }
-            }, DeclarationJson.Options))
-        ]);
-        var source = Assert.IsType<RepositorySource>((await Services.GetRequiredService<GitRepositorySources>()
-            .CreateAsync(new(Data.TenantId, Guid.NewGuid().ToString("D"),
-                new(repository.Provider, TestRepositorySnapshots.ConnectionId, repositoryId, "main", ""),
-                new(TimeSpan.FromMinutes(5)), new(Data.UserId, DateTime.UtcNow),
-                TestRepositorySnapshots.DisplayUrl), ct)).Value);
+        repository.Publish(
+            repositoryId,
+            [
+                new ManifestFile(
+                    "group.yaml",
+                    JsonSerializer.Serialize(
+                        new
+                        {
+                            apiVersion = "pole.io/v1alpha1",
+                            kind = "ResourceGroup",
+                            metadata = new { name = group.Name },
+                            spec = new { description = group.Description, tags = group.Tags },
+                        },
+                        DeclarationJson.Options)),
+            ]);
+        var source = Assert.IsType<RepositorySource>(
+            (await Services.GetRequiredService<GitRepositorySources>()
+                .CreateAsync(
+                    new CreateGitRepositorySource(
+                        Data.TenantId,
+                        Guid.NewGuid().ToString("D"),
+                        new GitRepositoryLocation(
+                            repository.Provider,
+                            TestRepositorySnapshots.ConnectionId,
+                            repositoryId,
+                            "main",
+                            ""),
+                        new GitSyncPolicy(TimeSpan.FromMinutes(5)),
+                        new GitSourceAudit(Data.UserId, DateTime.UtcNow),
+                        TestRepositorySnapshots.DisplayUrl),
+                    ct)).Value);
         var previews = Services.GetRequiredService<GitLifecyclePreviews>();
-        var preview = Assert.IsType<GitOperationPreview>((await previews.CreateAsync(new(
-            new(source.TenantId, source.Id), source.Revision,
-            new GitPreviewAdoption([new("ResourceGroup", group.Name, group.Id)])), ct)).Value);
-        Assert.IsType<GitLifecycleScheduled>((await previews.ConfirmAsync(new(new(source.TenantId, source.Id),
-            preview.Id, preview.Revision, Data.UserId), ct)).Value);
+        var preview = Assert.IsType<GitOperationPreview>(
+            (await previews.CreateAsync(
+                new CreateLifecyclePreview(
+                    new GitSourceIdentity(source.TenantId, source.Id),
+                    source.Revision,
+                    new GitPreviewAdoption([new GitResourceIdentity("ResourceGroup", group.Name, group.Id)])),
+                ct)).Value);
+        Assert.IsType<GitLifecycleScheduled>(
+            (await previews.ConfirmAsync(
+                new ConfirmLifecyclePreview(
+                    new GitSourceIdentity(source.TenantId, source.Id),
+                    preview.Id,
+                    preview.Revision,
+                    Data.UserId),
+                ct)).Value);
         return source;
     }
 
-    private sealed class PausingMutations(IGitOpsMutations inner) : DelegatingGitOpsMutations(inner)
+    private sealed class PausingMutations(
+        IGitOpsMutations inner
+    ) : DelegatingGitOpsMutations(inner)
     {
         private int manualAuthorizationAttempts;
         public int ManualAuthorizationAttempts => manualAuthorizationAttempts;
@@ -134,8 +164,10 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
         public TaskCompletionSource ApplyReached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ContinueApply { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public override async Task<bool> AuthorizeAsync(AuthorizeGitResourceMutationRequest request,
-            IClientSessionHandle session, CancellationToken ct)
+        public override async Task<bool> AuthorizeAsync(
+            AuthorizeGitResourceMutationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
         {
             var allowed = await base.AuthorizeAsync(request, session, ct);
             if (request.Context is null && request.Lifecycle is null &&
@@ -145,11 +177,14 @@ public sealed class ResourceGroupAdoptionConcurrencyTests(MongoReplicaSetFixture
                 ManualAuthorized.TrySetResult();
                 await ContinueManual.Task.WaitAsync(ct);
             }
+
             return allowed;
         }
 
-        public override async Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct)
+        public override async Task<GitOperationResult> ExecuteAsync(
+            GitOperation operation,
+            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation,
+            CancellationToken ct)
         {
             ApplyReached.TrySetResult();
             await ContinueApply.Task.WaitAsync(ct);

@@ -8,11 +8,15 @@ namespace Pole.Cli.Forwarding;
 public sealed class LocalForwarder(
     string tenantId,
     string grantId,
-    IPrivateAccessConnectionFactory connectionFactory)
+    IPrivateAccessConnectionFactory connectionFactory
+)
 {
     private const int MaximumConnections = 128;
 
-    public async Task RunAsync(int localPort, CancellationToken cancellationToken, Action<IPEndPoint>? onListening = null)
+    public async Task RunAsync(
+        int localPort,
+        CancellationToken cancellationToken,
+        Action<IPEndPoint>? onListening = null)
     {
         if (localPort is < 0 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(localPort), "Port must be between 0 and 65535.");
@@ -61,8 +65,7 @@ public sealed class LocalForwarder(
         }
     }
 
-    private static async Task ReapCompletedConnectionsAsync(
-        Dictionary<long, (TcpClient Client, Task Task)> active)
+    private static async Task ReapCompletedConnectionsAsync(Dictionary<long, (TcpClient Client, Task Task)> active)
     {
         foreach (var (id, connection) in active.Where(pair => pair.Value.Task.IsCompleted).ToArray())
         {
@@ -72,7 +75,10 @@ public sealed class LocalForwarder(
         }
     }
 
-    private async Task ServeAsync(TcpClient localClient, SemaphoreSlim slots, CancellationToken cancellationToken)
+    private async Task ServeAsync(
+        TcpClient localClient,
+        SemaphoreSlim slots,
+        CancellationToken cancellationToken)
     {
         using var clientLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         IPrivateAccessConnection? connection = null;
@@ -94,7 +100,8 @@ public sealed class LocalForwarder(
         catch (OperationCanceledException)
         {
         }
-        catch (Exception error) when (error is HttpRequestException or IOException or SocketException or WebSocketException or InvalidOperationException)
+        catch (Exception error) when (error is HttpRequestException or IOException or SocketException
+                                          or WebSocketException or InvalidOperationException)
         {
             // A failed session closes only this local connection. Never log tickets or payloads.
         }
@@ -159,7 +166,6 @@ public sealed class LocalForwarder(
         }
 
         if (localToRemote is not null && remoteToLocal is not null)
-        {
             try
             {
                 await Task.WhenAll(localToRemote, remoteToLocal);
@@ -168,14 +174,11 @@ public sealed class LocalForwarder(
             {
                 // The terminal pump failure was handled by ServeAsync. Drain both tasks before disposal.
             }
-        }
 
         try
         {
             if (connection is not null)
-            {
                 await connection.DisposeAsync();
-            }
         }
         finally
         {
@@ -198,6 +201,7 @@ public sealed class LocalForwarder(
                 await connection.CompleteWritesAsync(cancellationToken);
                 return;
             }
+
             await connection.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
         }
     }
@@ -217,6 +221,7 @@ public sealed class LocalForwarder(
                 localClient.Client.Shutdown(SocketShutdown.Send);
                 return result.RemoteClosed;
             }
+
             await stream.WriteAsync(buffer.AsMemory(0, result.BytesRead), cancellationToken);
         }
     }

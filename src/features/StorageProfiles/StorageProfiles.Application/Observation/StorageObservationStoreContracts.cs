@@ -6,23 +6,29 @@ public sealed record StorageObservationDemandIdentity(
     string DeploymentTargetId,
     string SubscriptionId,
     string ConnectionId,
-    string SessionId);
+    string SessionId
+);
 
 public sealed record StorageObservationDemand(
     StorageObservationDemandIdentity Identity,
-    DateTimeOffset ExpiresAtUtc);
+    DateTimeOffset ExpiresAtUtc
+);
 
 public sealed record StorageObservationLease(
     string DeploymentTargetId,
     string InstanceId,
     string Token,
-    long Epoch);
+    long Epoch
+);
 
 public sealed record StorageObservationOwnership(
     StorageObservationLease Lease,
-    long SourceControlVersion);
+    long SourceControlVersion
+);
 
-public sealed record StorageObservationSourceState(long SourceControlVersion);
+public sealed record StorageObservationSourceState(
+    long SourceControlVersion
+);
 
 public sealed record StorageObservationMutationAccepted;
 
@@ -34,26 +40,20 @@ public enum StorageObservationRejection
     Superseded,
     SourceChanged,
     TargetUnavailable,
-    InventoryIncomplete
+    InventoryIncomplete,
 }
 
-public sealed record StorageObservationRejected(StorageObservationRejection Reason);
+public sealed record StorageObservationRejected(
+    StorageObservationRejection Reason
+);
 
-public union StorageObservationMutationOutcome(
-    StorageObservationMutationAccepted,
-    StorageObservationRejected);
+public union StorageObservationMutationOutcome(StorageObservationMutationAccepted, StorageObservationRejected);
 
-public union StorageObservationLeaseOutcome(
-    StorageObservationOwnership,
-    StorageObservationRejected);
+public union StorageObservationLeaseOutcome(StorageObservationOwnership, StorageObservationRejected);
 
-public union StorageObservationSourceOutcome(
-    StorageObservationSourceState,
-    StorageObservationRejected);
+public union StorageObservationSourceOutcome(StorageObservationSourceState, StorageObservationRejected);
 
-public union StorageObservationSnapshotOutcome(
-    StorageObservationSnapshot,
-    StorageObservationRejected);
+public union StorageObservationSnapshotOutcome(StorageObservationSnapshot, StorageObservationRejected);
 
 public sealed record StorageObservationControlState(
     long ConnectionVersion,
@@ -62,47 +62,61 @@ public sealed record StorageObservationControlState(
     long ObservationVersion,
     bool SourceHealthy,
     string? SourceId,
-    DateTime? LeaseExpiresAtUtc);
+    DateTime? LeaseExpiresAtUtc
+);
 
 public sealed record StorageObservationDemandPage(
     IReadOnlyList<string> DeploymentTargetIds,
-    string? NextCursor);
+    string? NextCursor
+);
 
 public interface IStorageObservationStore
 {
-    Task<StorageObservationMutationOutcome> PutDemandAsync(StorageObservationDemand demand,
+    Task<StorageObservationMutationOutcome> PutDemandAsync(
+        StorageObservationDemand demand,
         StorageObservationContext context,
         CancellationToken ct = default);
 
-    Task<StorageObservationMutationOutcome> RenewDemandAsync(StorageObservationDemand demand,
+    Task<StorageObservationMutationOutcome> RenewDemandAsync(
+        StorageObservationDemand demand,
         StorageObservationContext context,
         CancellationToken ct = default);
 
-    Task<StorageObservationMutationOutcome> RemoveDemandAsync(StorageObservationDemandIdentity identity,
+    Task<StorageObservationMutationOutcome> RemoveDemandAsync(
+        StorageObservationDemandIdentity identity,
         CancellationToken ct = default);
 
-    Task<StorageObservationDemandPage> ScanDemandsAsync(string? after, int limit, CancellationToken ct = default);
+    Task<StorageObservationDemandPage> ScanDemandsAsync(
+        string? after,
+        int limit,
+        CancellationToken ct = default);
+
     Task ReapExpiredDemandsAsync(int limit, CancellationToken ct = default);
 
-    Task<StorageObservationLeaseOutcome> ClaimLeaseAsync(StorageObservationContext context,
+    Task<StorageObservationLeaseOutcome> ClaimLeaseAsync(
+        StorageObservationContext context,
         string instanceId,
         CancellationToken ct = default);
 
-    Task<StorageObservationMutationOutcome> RenewLeaseAsync(StorageObservationLease lease,
+    Task<StorageObservationMutationOutcome> RenewLeaseAsync(
+        StorageObservationLease lease,
         StorageObservationContext context,
         CancellationToken ct = default);
 
-    Task<StorageObservationMutationOutcome> ReleaseLeaseAsync(StorageObservationLease lease,
+    Task<StorageObservationMutationOutcome> ReleaseLeaseAsync(
+        StorageObservationLease lease,
         CancellationToken ct = default);
 
-    Task<StorageObservationSourceOutcome> SetSourceStateAsync(StorageObservationLease lease,
+    Task<StorageObservationSourceOutcome> SetSourceStateAsync(
+        StorageObservationLease lease,
         StorageObservationContext context,
         long expectedSourceVersion,
         bool healthy,
         string? sourceId,
         CancellationToken ct = default);
 
-    Task<StorageObservationSnapshotOutcome> TryCommitSnapshotAsync(StorageObservationLease lease,
+    Task<StorageObservationSnapshotOutcome> TryCommitSnapshotAsync(
+        StorageObservationLease lease,
         StorageObservationContext context,
         long sourceVersion,
         string sourceId,
@@ -111,6 +125,7 @@ public interface IStorageObservationStore
 
     Task<StorageObservationControlState?> LoadControlAsync(string targetId, CancellationToken ct = default);
 
-    Task<StorageObservationSnapshot?> LoadFreshSnapshotAsync(StorageObservationContext context,
+    Task<StorageObservationSnapshot?> LoadFreshSnapshotAsync(
+        StorageObservationContext context,
         CancellationToken ct = default);
 }

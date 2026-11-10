@@ -4,18 +4,15 @@ using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Features.WebServices.Application.Lifecycle;
 
-public sealed record WebServiceDeletionApplied(IReadOnlyList<PlacementSummaryDto> Deployments);
+public sealed record WebServiceDeletionApplied(
+    IReadOnlyList<PlacementSummaryDto> Deployments
+);
 
 public union ApplyWebServiceDeletionOutcome(
     WebServiceDeletionApplied,
@@ -28,7 +25,8 @@ public sealed record ApplyWebServiceDeletionRequest(
     WebService Current,
     ResourceDeploymentSetDeletionRequest Deployments,
     GitLifecycleAuthority? Lifecycle = null,
-    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null);
+    IReadOnlyList<ResourceConnectionPlanningVersion>? ReviewedConnections = null
+);
 
 public delegate Task<ApplyWebServiceDeletionOutcome> ApplyWebServiceDeletion(
     ApplyWebServiceDeletionRequest request,
@@ -41,7 +39,8 @@ internal sealed class WebServiceDeletionWorkflow(
     EnsureNoWebServiceActiveSourceBuilds ensureNoActiveBuilds,
     RequestResourceDeploymentSetDeletion deleteDeployments,
     TimeProvider clock,
-    EnsureConsumerSecretBindingRemoval ensureBindingsRemovable)
+    EnsureConsumerSecretBindingRemoval ensureBindingsRemovable
+)
 {
     public async Task<ApplyWebServiceDeletionOutcome> ExecuteAsync(
         ApplyWebServiceDeletionRequest request,
@@ -49,23 +48,37 @@ internal sealed class WebServiceDeletionWorkflow(
         CancellationToken cancellationToken)
     {
         var current = request.Current;
-        var bindings = await ensureBindingsRemovable(new(current.TenantId, WebServiceResourceDeployment.ResourceType,
-            current.Id), session, cancellationToken);
+        var bindings = await ensureBindingsRemovable(
+            new EnsureConsumerSecretBindingRemovalRequest(
+                current.TenantId,
+                WebServiceResourceDeployment.ResourceType,
+                current.Id),
+            session,
+            cancellationToken);
         if (bindings is ConsumerSecretBindingsRequireRemoval)
-            return new WebServiceUpdateConflict(current.Id,
+            return new WebServiceUpdateConflict(
+                current.Id,
                 WebServiceUpdateConflictReason.SecretBindingsRequireRemoval);
         if (bindings is ConsumerSecretBindingDeletionChanged)
-            return new WebServiceUpdateConflict(current.Id, WebServiceUpdateConflictReason.ExpectedRevisionConflict);
+            return new WebServiceUpdateConflict(current.Id);
 
-        var started = await deletion.ExecuteAsync(new(current,
-            current.BeginDeletion(clock.GetUtcNow().UtcDateTime), request.Lifecycle, request.ReviewedConnections),
-            session, cancellationToken);
+        var started = await deletion.ExecuteAsync(
+            new BeginWebServiceDeletionRequest(
+                current,
+                current.BeginDeletion(clock.GetUtcNow().UtcDateTime),
+                request.Lifecycle,
+                request.ReviewedConnections),
+            session,
+            cancellationToken);
         if (started is WebServiceUpdateConflict conflict)
             return conflict;
         if (started is WebServiceHostnameAttachmentRemovalRequired attachment)
             return attachment;
 
-        var builds = await ensureNoActiveBuilds(new(current.TenantId, current.Id), session, cancellationToken);
+        var builds = await ensureNoActiveBuilds(
+            new EnsureNoWebServiceActiveSourceBuildsRequest(current.TenantId, current.Id),
+            session,
+            cancellationToken);
         if (builds is SourceBuildWebServiceHasActiveJobs active)
             return active;
 
@@ -73,7 +86,7 @@ internal sealed class WebServiceDeletionWorkflow(
         return deployments switch
         {
             MutatedResourceDeployments applied => new WebServiceDeletionApplied(applied.Placements),
-            ResourceDeploymentMutationError rejected => rejected
+            ResourceDeploymentMutationError rejected => rejected,
         };
     }
 }

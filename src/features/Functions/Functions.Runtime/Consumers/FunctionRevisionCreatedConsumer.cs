@@ -2,12 +2,8 @@ using MassTransit;
 using Microsoft.Extensions.Logging;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Application.Runtime.Provisioning;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Events;
 using Pole.Features.Functions.Runtime.Kubernetes;
@@ -25,9 +21,8 @@ public sealed class FunctionRevisionCreatedConsumer(
     IFunctionRevisionKubernetesManager kubernetesManager,
     FailFunctionRevision failFunctionRevision,
     IEnumerable<IFunctionRevisionProvisioner> provisioners,
-    ILogger<FunctionRevisionCreatedConsumer> logger)
-    : IConsumer<FunctionRevisionCreatedEvent>,
-      IConsumer<ResourceDeploymentAppliedEvent>
+    ILogger<FunctionRevisionCreatedConsumer> logger
+) : IConsumer<FunctionRevisionCreatedEvent>, IConsumer<ResourceDeploymentAppliedEvent>
 {
     public Task Consume(ConsumeContext<FunctionRevisionCreatedEvent> context) =>
         HandleAsync(context.Message, context.CancellationToken);
@@ -35,10 +30,9 @@ public sealed class FunctionRevisionCreatedConsumer(
     public Task Consume(ConsumeContext<ResourceDeploymentAppliedEvent> context) =>
         HandleAppliedAsync(context.Message, context.CancellationToken);
 
-    public async Task HandleAsync(
-        FunctionRevisionCreatedEvent message,
-        CancellationToken cancellationToken = default)
-        => await HandleRevisionAsync(
+    public async Task
+        HandleAsync(FunctionRevisionCreatedEvent message, CancellationToken cancellationToken = default) =>
+        await HandleRevisionAsync(
             message.EventCore.TenantId,
             message.FunctionAppId,
             message.RevisionId,
@@ -59,8 +53,13 @@ public sealed class FunctionRevisionCreatedConsumer(
         var app = await loadFunctionAppById(tenantId, message.ResourceId, cancellationToken);
         if (app is null || app.DesiredState != FunctionAppDesiredState.Enabled ||
             app.PendingRevisionId is not { } pendingRevisionId ||
-            !string.Equals(app.Placement.ResourceDeploymentId, message.ResourceDeploymentId, StringComparison.Ordinal) ||
-            !string.Equals(app.Placement.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal))
+            !string.Equals(
+                app.Placement.ResourceDeploymentId,
+                message.ResourceDeploymentId,
+                StringComparison.Ordinal) || !string.Equals(
+                app.Placement.RuntimeCellId,
+                message.RuntimeCellId,
+                StringComparison.Ordinal))
             return;
 
         var deployment = await loadDeploymentPlacement(
@@ -70,12 +69,13 @@ public sealed class FunctionRevisionCreatedConsumer(
                 ResourceId: app.Id,
                 DeploymentId: message.ResourceDeploymentId),
             cancellationToken: cancellationToken);
-        if (deployment is null ||
-            deployment.Status != ResourceDeploymentStatus.Applied ||
+        if (deployment is null || deployment.Status != ResourceDeploymentStatus.Applied ||
             deployment.DesiredOperation != ResourceDeploymentDesiredOperation.Apply ||
             deployment.DesiredGeneration != message.Generation ||
-            !string.Equals(deployment.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal) ||
-            !string.Equals(deployment.DeploymentTargetId, app.Placement.DeploymentTargetId, StringComparison.Ordinal))
+            !string.Equals(deployment.RuntimeCellId, message.RuntimeCellId, StringComparison.Ordinal) || !string.Equals(
+                deployment.DeploymentTargetId,
+                app.Placement.DeploymentTargetId,
+                StringComparison.Ordinal))
             return;
 
         await HandleRevisionAsync(tenantId, app.Id, pendingRevisionId, null, cancellationToken);
@@ -88,18 +88,16 @@ public sealed class FunctionRevisionCreatedConsumer(
         FunctionPlacementSnapshot? expectedPlacement,
         CancellationToken cancellationToken)
     {
-        var subject = await loadProvisioningSubject(
-            tenantId,
-            functionAppId,
-            revisionId,
-            cancellationToken);
+        var subject = await loadProvisioningSubject(tenantId, functionAppId, revisionId, cancellationToken);
         if (subject is null)
             throw new InvalidOperationException("Function App or revision no longer exists.");
         var app = subject.App;
         var revision = subject.Revision;
         if (revision.Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus) ||
-            app.DesiredState != FunctionAppDesiredState.Enabled ||
-            !string.Equals(app.PendingRevisionId, revision.Id, StringComparison.Ordinal))
+            app.DesiredState != FunctionAppDesiredState.Enabled || !string.Equals(
+                app.PendingRevisionId,
+                revision.Id,
+                StringComparison.Ordinal))
             return;
 
         if (expectedPlacement is not null && !Matches(expectedPlacement, app.Placement))
@@ -112,13 +110,11 @@ public sealed class FunctionRevisionCreatedConsumer(
 
         if (revision.Status is ProvisioningFunctionRevisionStatus)
         {
-            var applied = await kubernetesManager.ApplyAsync(
-                kubernetesRevision,
-                cancellationToken);
+            var applied = await kubernetesManager.ApplyAsync(kubernetesRevision, cancellationToken);
             if (applied is FunctionRevisionKubernetesOperationError applyFailure)
             {
-                if (applyFailure.Value is
-                    FunctionRevisionGatewaySourceUnavailable or FunctionRevisionSecretsUnavailable)
+                if (applyFailure.Value is FunctionRevisionGatewaySourceUnavailable
+                    or FunctionRevisionSecretsUnavailable)
                 {
                     logger.LogWarning(
                         "[function-revision-deferred] Revision {RevisionId}, app {FunctionAppId}: {Reason}",
@@ -127,18 +123,13 @@ public sealed class FunctionRevisionCreatedConsumer(
                         applyFailure.Message());
                     return;
                 }
+
                 logger.LogError(
                     "[function-revision-provisioning-failed] Kubernetes could not apply revision {RevisionId} for Function App {FunctionAppId}: {Reason}",
                     revision.Id,
                     app.Id,
                     applyFailure.Message());
-                await FailAsync(
-                    tenantId,
-                    app,
-                    revision,
-                    "kubernetes-apply",
-                    applyFailure.Message(),
-                    cancellationToken);
+                await FailAsync(tenantId, app, revision, "kubernetes-apply", applyFailure.Message(), cancellationToken);
                 return;
             }
         }
@@ -148,17 +139,12 @@ public sealed class FunctionRevisionCreatedConsumer(
         {
             if (revision.Status is ReadyFunctionRevisionStatus)
             {
-                var stopped = await kubernetesManager.ScaleProvisioningAsync(
-                    kubernetesRevision,
-                    0,
-                    cancellationToken);
+                var stopped = await kubernetesManager.ScaleProvisioningAsync(kubernetesRevision, 0, cancellationToken);
                 if (stopped is FunctionRevisionKubernetesOperationError stopFailure)
-                {
                     logger.LogWarning(
                         "[function-revision-stop-failed] Could not return unconfigured ready revision {RevisionId} to zero replicas: {Reason}",
                         revision.Id,
                         stopFailure.Message());
-                }
             }
 
             await FailAsync(
@@ -182,7 +168,7 @@ public sealed class FunctionRevisionCreatedConsumer(
                 revision,
                 failed.Code,
                 failed.Message,
-                cancellationToken)
+                cancellationToken),
         });
     }
 
@@ -199,18 +185,9 @@ public sealed class FunctionRevisionCreatedConsumer(
         return Task.CompletedTask;
     }
 
-    private static bool Matches(
-        FunctionPlacementSnapshot snapshot,
-        FunctionPlacementIdentity placement) =>
-        string.Equals(
-            snapshot.ResourceDeploymentId,
-            placement.ResourceDeploymentId,
-            StringComparison.Ordinal) &&
-        string.Equals(
-            snapshot.RuntimeCellId,
-            placement.RuntimeCellId,
-            StringComparison.Ordinal) &&
-        string.Equals(
+    private static bool Matches(FunctionPlacementSnapshot snapshot, FunctionPlacementIdentity placement) =>
+        string.Equals(snapshot.ResourceDeploymentId, placement.ResourceDeploymentId, StringComparison.Ordinal) &&
+        string.Equals(snapshot.RuntimeCellId, placement.RuntimeCellId, StringComparison.Ordinal) && string.Equals(
             snapshot.DeploymentTargetId,
             placement.DeploymentTargetId,
             StringComparison.Ordinal);

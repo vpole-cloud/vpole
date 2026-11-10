@@ -6,7 +6,8 @@ namespace Pole.Features.ComputeProfiles.Events;
 [EntityName("pole.compute-profiles/v1/compute-profile-catalog-changed")]
 public sealed record ComputeProfileCatalogChangedEvent(
     string ComputeProfileId,
-    long Revision) : IPoleEvent
+    long Revision
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -15,7 +13,8 @@ public delegate Task<bool> PersistFunctionInvocationTransition(
 public sealed class MongoPersistFunctionInvocationTransition(
     IMongoClient mongoClient,
     IMongoCollection<FunctionInvocation> functionInvocations,
-    IMongoCollection<FunctionMeterEvent> functionMeterEvents)
+    IMongoCollection<FunctionMeterEvent> functionMeterEvents
+)
 {
     public async Task<bool> InvokeAsync(
         FunctionInvocation current,
@@ -24,23 +23,23 @@ public sealed class MongoPersistFunctionInvocationTransition(
         CancellationToken cancellationToken = default)
     {
         using var session = await mongoClient.StartSessionAsync(cancellationToken: cancellationToken);
-        return await session.WithTransactionAsync(async (transaction, transactionCancellationToken) =>
-        {
-            var replaced = await functionInvocations.ReplaceOneAsync(
-                transaction,
-                FunctionInvocationTransitionFilters.CurrentLeasedAttempt(current),
-                next,
-                cancellationToken: transactionCancellationToken);
-            if (replaced.ModifiedCount != 1)
-                return false;
-            if (meter is not null)
+        return await session.WithTransactionAsync(
+            async (transaction, transactionCancellationToken) =>
             {
-                await functionMeterEvents.InsertOneAsync(
+                var replaced = await functionInvocations.ReplaceOneAsync(
                     transaction,
-                    meter,
+                    FunctionInvocationTransitionFilters.CurrentLeasedAttempt(current),
+                    next,
                     cancellationToken: transactionCancellationToken);
-            }
-            return true;
-        }, cancellationToken: cancellationToken);
+                if (replaced.ModifiedCount != 1)
+                    return false;
+                if (meter is not null)
+                    await functionMeterEvents.InsertOneAsync(
+                        transaction,
+                        meter,
+                        cancellationToken: transactionCancellationToken);
+                return true;
+            },
+            cancellationToken: cancellationToken);
     }
 }

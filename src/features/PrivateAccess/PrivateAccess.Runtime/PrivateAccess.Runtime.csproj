@@ -1,19 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.PrivateAccess.Runtime</AssemblyName>
-    <RootNamespace>Pole.Features.PrivateAccess.Runtime</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="KubernetesClient" />
-    <ProjectReference Include="../PrivateAccess.Primitives/PrivateAccess.Primitives.csproj" />
-    <ProjectReference Include="../PrivateAccess.Contracts/PrivateAccess.Contracts.csproj" />
-    <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj" />
-    <ProjectReference Include="../../DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
-    <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
-    <ProjectReference Include="../../../shared/Workloads/Workloads.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.PrivateAccess.Runtime</AssemblyName>
+        <RootNamespace>Pole.Features.PrivateAccess.Runtime</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <PackageReference Include="KubernetesClient"/>
+        <ProjectReference Include="../PrivateAccess.Primitives/PrivateAccess.Primitives.csproj"/>
+        <ProjectReference Include="../PrivateAccess.Contracts/PrivateAccess.Contracts.csproj"/>
+        <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj"/>
+        <ProjectReference Include="../../DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj"/>
+        <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="../../../shared/Workloads/Workloads.csproj"/>
+    </ItemGroup>
 </Project>

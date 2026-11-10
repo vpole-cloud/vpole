@@ -37,26 +37,36 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
             if (ArchitectureProjectRoles.ExemptsMongoRules(role, bool.TryParse(test, out var value) && value))
                 return;
 
-            var aliases = start.Compilation.SyntaxTrees
-                .SelectMany(tree => tree.GetRoot(start.CancellationToken).DescendantNodes()
-                    .OfType<UsingDirectiveSyntax>())
+            var aliases = start.Compilation
+                .SyntaxTrees
+                .SelectMany(tree =>
+                    tree.GetRoot(start.CancellationToken).DescendantNodes().OfType<UsingDirectiveSyntax>())
                 .Where(directive => directive.Alias is not null)
                 .Select(directive => directive.Alias!.Name.Identifier.ValueText)
                 .ToImmutableHashSet(StringComparer.Ordinal);
-            start.RegisterSyntaxNodeAction(node => AnalyzeName(node, aliases),
-                SyntaxKind.IdentifierName, SyntaxKind.GenericName);
+            start.RegisterSyntaxNodeAction(
+                node => AnalyzeName(node, aliases),
+                SyntaxKind.IdentifierName,
+                SyntaxKind.GenericName);
             start.RegisterSyntaxNodeAction(AnalyzeAttribute, SyntaxKind.Attribute);
-            start.RegisterOperationAction(AnalyzeOperation,
-                OperationKind.Invocation, OperationKind.ObjectCreation, OperationKind.PropertyReference,
-                OperationKind.FieldReference, OperationKind.LocalReference, OperationKind.ParameterReference,
-                OperationKind.Conversion, OperationKind.ArrayCreation, OperationKind.DelegateCreation,
+            start.RegisterOperationAction(
+                AnalyzeOperation,
+                OperationKind.Invocation,
+                OperationKind.ObjectCreation,
+                OperationKind.PropertyReference,
+                OperationKind.FieldReference,
+                OperationKind.LocalReference,
+                OperationKind.ParameterReference,
+                OperationKind.Conversion,
+                OperationKind.ArrayCreation,
+                OperationKind.DelegateCreation,
                 OperationKind.AnonymousFunction);
         });
     }
 
-    public static bool IsValidException(string? rule, string? reason) =>
-        rule is { Length: 7 } && rule.StartsWith("POLE", StringComparison.Ordinal) &&
-        rule.Skip(4).All(char.IsDigit) && !string.IsNullOrWhiteSpace(reason);
+    public static bool IsValidException(string? rule, string? reason) => rule is { Length: 7 } &&
+        rule.StartsWith("POLE", StringComparison.Ordinal) && rule.Skip(4).All(char.IsDigit) &&
+        !string.IsNullOrWhiteSpace(reason);
 
     private static void AnalyzeName(SyntaxNodeAnalysisContext context, ImmutableHashSet<string> aliases)
     {
@@ -69,16 +79,14 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
 
         var symbol = context.SemanticModel.GetSymbolInfo(name, context.CancellationToken).Symbol;
         var type = symbol is IAliasSymbol alias ? alias.Target as ITypeSymbol : symbol as ITypeSymbol;
-        if (ForbiddenType(type) is { } forbidden &&
-            !Allowed(context.SemanticModel, name, context.CancellationToken))
+        if (ForbiddenType(type) is { } forbidden && !Allowed(context.SemanticModel, name, context.CancellationToken))
             context.ReportDiagnostic(Diagnostic.Create(Rule, name.GetLocation(), Message(forbidden)));
     }
 
     private static void AnalyzeOperation(OperationAnalysisContext context)
     {
         var operation = context.Operation;
-        if (operation.SemanticModel is not { } model ||
-            ForbiddenOperation(operation) is not { } forbidden ||
+        if (operation.SemanticModel is not { } model || ForbiddenOperation(operation) is not { } forbidden ||
             Allowed(model, operation.Syntax, context.CancellationToken))
             return;
 
@@ -89,11 +97,12 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
             ObjectCreationExpressionSyntax creation => creation.Type,
             ArrayCreationExpressionSyntax creation => creation.Type.ElementType,
             CastExpressionSyntax conversion => conversion.Type,
-            _ => null
+            _ => null,
         };
-        if (explicitType is not null && explicitType.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().Any(name =>
-                model.GetSymbolInfo(name, context.CancellationToken).Symbol is ITypeSymbol type &&
-                ForbiddenType(type) is not null))
+        if (explicitType is not null && explicitType.DescendantNodesAndSelf()
+                .OfType<SimpleNameSyntax>()
+                .Any(name => model.GetSymbolInfo(name, context.CancellationToken).Symbol is ITypeSymbol type &&
+                    ForbiddenType(type) is not null))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, operation.Syntax.GetLocation(), Message(forbidden)));
@@ -108,7 +117,6 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
 
         var values = new string?[2];
         if (syntax.ArgumentList is { } arguments)
-        {
             for (var index = 0; index < arguments.Arguments.Count; index++)
             {
                 var argument = arguments.Arguments[index];
@@ -117,13 +125,17 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
                     : index;
                 if (parameter is 0 or 1)
                     values[parameter.Value] = context.SemanticModel.GetConstantValue(
-                        argument.Expression, context.CancellationToken).Value as string;
+                            argument.Expression,
+                            context.CancellationToken)
+                        .Value as string;
             }
-        }
 
         if (!IsValidException(values[0], values[1]))
-            context.ReportDiagnostic(Diagnostic.Create(Rule, syntax.GetLocation(),
-                "ViolateArchitecture requires a specific POLE rule ID and a nonblank justification."));
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Rule,
+                    syntax.GetLocation(),
+                    "ViolateArchitecture requires a specific POLE rule ID and a nonblank justification."));
     }
 
     private static string Message(string type) =>
@@ -137,8 +149,10 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
         if (operation is not IAnonymousFunctionOperation function)
             return null;
 
-        return ForbiddenType(function.Symbol.ReturnType) ?? function.Symbol.Parameters
-            .Select(parameter => ForbiddenType(parameter.Type)).FirstOrDefault(type => type is not null);
+        return ForbiddenType(function.Symbol.ReturnType) ?? function.Symbol
+            .Parameters
+            .Select(parameter => ForbiddenType(parameter.Type))
+            .FirstOrDefault(type => type is not null);
     }
 
     private static string? ForbiddenType(ITypeSymbol? type)
@@ -160,31 +174,29 @@ public sealed class RawBsonAnalyzer : DiagnosticAnalyzer
 
     private static bool IsBsonName(string name) => name is "BsonDocument" or "BsonArray" or "BsonValue";
 
-    private static bool Allowed(SemanticModel model, SyntaxNode node, CancellationToken ct)
+    private static bool Allowed(
+        SemanticModel model,
+        SyntaxNode node,
+        CancellationToken ct)
     {
         var symbols = node.AncestorsAndSelf()
-            .Where(ancestor => ancestor is MemberDeclarationSyntax or AccessorDeclarationSyntax or
-                LocalFunctionStatementSyntax or VariableDeclaratorSyntax or AnonymousFunctionExpressionSyntax)
+            .Where(ancestor => ancestor is MemberDeclarationSyntax or AccessorDeclarationSyntax
+                or LocalFunctionStatementSyntax or VariableDeclaratorSyntax or AnonymousFunctionExpressionSyntax)
             .Select(ancestor => ancestor is AnonymousFunctionExpressionSyntax function
                 ? model.GetSymbolInfo(function, ct).Symbol
                 : model.GetDeclaredSymbol(ancestor, ct))
             .Prepend(model.GetEnclosingSymbol(node.SpanStart, ct));
         foreach (var declaration in symbols)
-        {
             for (var symbol = declaration; symbol is not null; symbol = symbol.ContainingSymbol)
-            {
                 if (symbol.GetAttributes().Any(IsRawBsonException))
                     return true;
-            }
-        }
 
         return false;
     }
 
     private static bool IsRawBsonException(AttributeData attribute) =>
         attribute.AttributeClass?.ToDisplayString() == ExceptionAttribute &&
-        attribute.ConstructorArguments.Length == 2 &&
-        attribute.ConstructorArguments[0].Value is string rule &&
-        attribute.ConstructorArguments[1].Value is string reason &&
-        rule == DiagnosticId && IsValidException(rule, reason);
+        attribute.ConstructorArguments.Length == 2 && attribute.ConstructorArguments[0].Value is string rule &&
+        attribute.ConstructorArguments[1].Value is string reason && rule == DiagnosticId &&
+        IsValidException(rule, reason);
 }

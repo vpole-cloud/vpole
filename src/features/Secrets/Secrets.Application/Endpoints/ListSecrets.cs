@@ -7,34 +7,23 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Mediator;
-using Pole.Validation;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
 
-public union ListSecretsOutcome(
-    SecretPage);
+public union ListSecretsOutcome(SecretPage);
 
 public sealed record SecretPage(
     SecretMetadata[] Items,
-    string? NextCursor);
+    string? NextCursor
+);
 
 public sealed record ListSecretsRequest(
     [FromQuery] string? After,
     [FromQuery] int? PageSize,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<ListSecretsOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<ListSecretsOutcome>, ITenantReadOperation;
 
 public sealed class ListSecretsValidator : AbstractValidator<ListSecretsRequest>
 {
@@ -45,8 +34,10 @@ public sealed class ListSecretsValidator : AbstractValidator<ListSecretsRequest>
     }
 }
 
-public sealed class ListSecretsHandler(LoadSecretPage load, IGitOpsMutations git)
-    : IMediatorOutcomeHandler<ListSecretsRequest, ListSecretsOutcome>
+public sealed class ListSecretsHandler(
+    LoadSecretPage load,
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<ListSecretsRequest, ListSecretsOutcome>
 {
     public async Task<ListSecretsOutcome> HandleAsync(
         ListSecretsRequest request,
@@ -59,11 +50,14 @@ public sealed class ListSecretsHandler(LoadSecretPage load, IGitOpsMutations git
                 Kind: "Secret",
                 ResourceIds: page.Items.Select(item => item.Id).ToArray()),
             ct: cancellationToken);
-        return new SecretPage(page.Items.Select(item => SecretMetadata.From(item) with
-        {
-            GitOps =
-            statuses.GetValueOrDefault(item.Id)
-        }).ToArray(), page.NextCursor);
+        return new SecretPage(
+            page.Items
+                .Select(item => SecretMetadata.From(item) with
+                {
+                    GitOps = statuses.GetValueOrDefault(item.Id),
+                })
+                .ToArray(),
+            page.NextCursor);
     }
 }
 
@@ -71,14 +65,13 @@ public static class ListSecretsEndpoint
 {
     public static IEndpointRouteBuilder MapListSecretsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (
-                IMediator mediator,
-                [AsParameters] ListSecretsRequest request,
-                CancellationToken ct) =>
-                (await mediator.Send(request, ct))
-                .ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] ListSecretsRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
-                    SecretPage page => Results.Ok(page)
+                    SecretPage page => Results.Ok(page),
                 }))
             .WithName("ListSecrets");
 

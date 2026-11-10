@@ -4,12 +4,14 @@ namespace Pole.Features.Secrets.Contracts;
 
 public sealed record BootstrapSecretSource(
     string SecretId,
-    string Key);
+    string Key
+);
 
 public sealed record BootstrapSecretPlacement(
     string ResourceGroupId,
     string IsolationScopeId,
-    string DeploymentId);
+    string DeploymentId
+);
 
 public sealed record BootstrapSecretRequest(
     string TenantId,
@@ -18,16 +20,22 @@ public sealed record BootstrapSecretRequest(
     BootstrapSecretPlacement Placement,
     string CredentialId,
     string CredentialName,
-    string Username);
+    string Username
+);
 
-public sealed record BootstrapSecretInitialized(string CredentialId);
+public sealed record BootstrapSecretInitialized(
+    string CredentialId
+);
 
 public sealed record BootstrapSecretReady(
     BootstrapSecretRequest Request,
     SecretPlanningVersion Source,
-    long ValueVersion);
+    long ValueVersion
+);
 
-public sealed record BootstrapSecretUnavailable(ConsumerSecretReferenceError Reason);
+public sealed record BootstrapSecretUnavailable(
+    ConsumerSecretReferenceError Reason
+);
 
 public sealed record BootstrapSecretChanged;
 

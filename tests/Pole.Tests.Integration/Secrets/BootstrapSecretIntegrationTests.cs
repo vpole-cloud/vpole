@@ -1,14 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
 using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
@@ -28,17 +21,21 @@ public sealed partial class ManagedSecretIntegrationTests
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            var plan = Assert.IsType<BootstrapSecretReady>((await Services.GetRequiredService<ReadBootstrapSecret>()(
-                request, session, default)).Value);
+            var plan = Assert.IsType<BootstrapSecretReady>(
+                (await Services.GetRequiredService<ReadBootstrapSecret>()(request, session, default)).Value);
             Assert.DoesNotContain("initial-private-value", plan.ToString());
-            Assert.IsType<BootstrapSecretInitialized>((await Services.GetRequiredService<CreateBootstrapSecret>()(
-                plan, session, default)).Value);
+            Assert.IsType<BootstrapSecretInitialized>(
+                (await Services.GetRequiredService<CreateBootstrapSecret>()(plan, session, default)).Value);
             await session.CommitTransactionAsync();
         }
 
-        Assert.IsType<Secret>((await Services.GetRequiredService<PersistRotatedSecret>()(
-            request.TenantId, request.Source.SecretId, 1,
-            new Dictionary<string, string> { ["password"] = "later-private-value" }, default)).Value);
+        Assert.IsType<Secret>(
+            (await Services.GetRequiredService<PersistRotatedSecret>()(
+                request.TenantId,
+                request.Source.SecretId,
+                1,
+                new Dictionary<string, string> { ["password"] = "later-private-value" },
+                default)).Value);
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
@@ -48,13 +45,16 @@ public sealed partial class ManagedSecretIntegrationTests
             await session.CommitTransactionAsync();
         }
 
-        var owned = Assert.IsType<ManagedSecretValues>((await Services.GetRequiredService<ReadManagedSecret>()(
-            request.TenantId, request.Owner, default)).Value);
+        var owned = Assert.IsType<ManagedSecretValues>(
+            (await Services.GetRequiredService<ReadManagedSecret>()(request.TenantId, request.Owner, default)).Value);
         Assert.Equal("initial-private-value", owned.Values["password"]);
         Assert.Equal("database-user", owned.Values["username"]);
         Assert.Equal(1, owned.Version);
-        Assert.Equal(1, await Fixture.Database.GetCollection<SecretVersion>("SecretVersions")
-            .CountDocumentsAsync(item => item.SecretId == request.CredentialId));
+        Assert.Equal(
+            1,
+            await Fixture.Database
+                .GetCollection<SecretVersion>("SecretVersions")
+                .CountDocumentsAsync(item => item.SecretId == request.CredentialId));
     }
 
     [Theory]
@@ -81,29 +81,36 @@ public sealed partial class ManagedSecretIntegrationTests
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            plan = Assert.IsType<BootstrapSecretReady>((await Services.GetRequiredService<ReadBootstrapSecret>()(
-                request, session, default)).Value);
+            plan = Assert.IsType<BootstrapSecretReady>(
+                (await Services.GetRequiredService<ReadBootstrapSecret>()(request, session, default)).Value);
             await session.AbortTransactionAsync();
         }
 
-        Assert.IsType<Secret>((await Services.GetRequiredService<PersistRotatedSecret>()(
-            request.TenantId, request.Source.SecretId, 1,
-            new Dictionary<string, string> { ["password"] = "concurrent-value" }, default)).Value);
+        Assert.IsType<Secret>(
+            (await Services.GetRequiredService<PersistRotatedSecret>()(
+                request.TenantId,
+                request.Source.SecretId,
+                1,
+                new Dictionary<string, string> { ["password"] = "concurrent-value" },
+                default)).Value);
         using (var session = await Fixture.Client.StartSessionAsync())
         {
             session.StartTransaction();
-            Assert.IsType<BootstrapSecretChanged>((await Services.GetRequiredService<CreateBootstrapSecret>()(
-                plan, session, default)).Value);
+            Assert.IsType<BootstrapSecretChanged>(
+                (await Services.GetRequiredService<CreateBootstrapSecret>()(plan, session, default)).Value);
             var refreshed = Assert.IsType<BootstrapSecretReady>(
                 (await Services.GetRequiredService<ReadBootstrapSecret>()(request, session, default)).Value);
-            Assert.IsType<BootstrapSecretInitialized>((await Services.GetRequiredService<CreateBootstrapSecret>()(
-                refreshed, session, default)).Value);
+            Assert.IsType<BootstrapSecretInitialized>(
+                (await Services.GetRequiredService<CreateBootstrapSecret>()(refreshed, session, default)).Value);
             await session.AbortTransactionAsync();
         }
 
         Assert.Null(await Services.GetRequiredService<LoadManagedSecret>()(request.TenantId, request.Owner, default));
-        Assert.Equal(0, await Fixture.Database.GetCollection<SecretVersion>("SecretVersions")
-            .CountDocumentsAsync(item => item.SecretId == request.CredentialId));
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<SecretVersion>("SecretVersions")
+                .CountDocumentsAsync(item => item.SecretId == request.CredentialId));
     }
 
     private async Task<BootstrapSecretRequest> PrepareBootstrapAsync(SecretBindingUsage usage)
@@ -118,14 +125,32 @@ public sealed partial class ManagedSecretIntegrationTests
             await session.CommitTransactionAsync();
         }
 
-        var source = Assert.IsType<Secret>((await Services.GetRequiredService<PersistCreatedSecret>()(
-            group.TenantId, group.Id, group.DefaultIsolationScopeId, "bootstrap-input", "test",
-            new Dictionary<string, string> { ["password"] = "initial-private-value" }, default)).Value);
-        var binding = SecretBinding.Create(Id(), owner.ResourceType, owner.ResourceId,
-            new AllSecretDeployments(), new Dictionary<string, string> { ["password"] = "password" }, usage);
-        Assert.IsType<Secret>((await Services.GetRequiredService<PersistSecretBinding>()(
-            group.TenantId, source.Id, binding, default)).Value);
-        return new(group.TenantId, owner, new(source.Id, "password"),
-            new(group.Id, group.DefaultIsolationScopeId, deploymentId), Id(), "owned-credentials", "database-user");
+        var source = Assert.IsType<Secret>(
+            (await Services.GetRequiredService<PersistCreatedSecret>()(
+                group.TenantId,
+                group.Id,
+                group.DefaultIsolationScopeId,
+                "bootstrap-input",
+                "test",
+                new Dictionary<string, string> { ["password"] = "initial-private-value" },
+                default)).Value);
+        var binding = SecretBinding.Create(
+            Id(),
+            owner.ResourceType,
+            owner.ResourceId,
+            new AllSecretDeployments(),
+            new Dictionary<string, string> { ["password"] = "password" },
+            usage);
+        Assert.IsType<Secret>(
+            (await Services.GetRequiredService<PersistSecretBinding>()(group.TenantId, source.Id, binding, default))
+            .Value);
+        return new BootstrapSecretRequest(
+            group.TenantId,
+            owner,
+            new BootstrapSecretSource(source.Id, "password"),
+            new BootstrapSecretPlacement(group.Id, group.DefaultIsolationScopeId, deploymentId),
+            Id(),
+            "owned-credentials",
+            "database-user");
     }
 }

@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Contracts;
@@ -19,10 +18,9 @@ public sealed class QuotaCatalogTests
     {
         var key = new QuotaKey("duplicate");
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            new QuotaCatalog(
-                [new TestQuota(key), new TestQuota(key)],
-                []));
+        var exception = Assert.Throws<InvalidOperationException>(() => new QuotaCatalog(
+            [new TestQuota(key), new TestQuota(key)],
+            []));
 
         Assert.Contains("registered more than once", exception.Message);
     }
@@ -32,10 +30,9 @@ public sealed class QuotaCatalogTests
     {
         var key = new QuotaKey("test");
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            new QuotaCatalog(
-                [new TestQuota(key)],
-                [new TestProfile(key), new TestProfile(key)]));
+        var exception = Assert.Throws<InvalidOperationException>(() => new QuotaCatalog(
+            [new TestQuota(key)],
+            [new TestProfile(key), new TestProfile(key)]));
 
         Assert.Contains("More than one quota profile", exception.Message);
     }
@@ -43,10 +40,9 @@ public sealed class QuotaCatalogTests
     [Fact]
     public void CatalogRejectsProfileKeysWithoutDefinitions()
     {
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            new QuotaCatalog(
-                [],
-                [new TestProfile(new QuotaKey("missing"))]));
+        var exception = Assert.Throws<InvalidOperationException>(() => new QuotaCatalog(
+            [],
+            [new TestProfile(new QuotaKey("missing"))]));
 
         Assert.Contains("unregistered quotas", exception.Message);
     }
@@ -60,8 +56,7 @@ public sealed class QuotaCatalogTests
             [new TestQuota(declared), new TestQuota(returned)],
             [new TestProfile(declared, returned)]);
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            catalog.Calculate(new TestSpec()));
+        var exception = Assert.Throws<InvalidOperationException>(() => catalog.Calculate(new TestSpec()));
 
         Assert.Contains("returned undeclared quotas", exception.Message);
     }
@@ -86,14 +81,19 @@ public sealed class QuotaCatalogTests
 
     private sealed record TestSpec;
 
-    private sealed class TestQuota(QuotaKey key) : Quota<TestSpec>
+    private sealed class TestQuota(
+        QuotaKey key
+    ) : Quota<TestSpec>
     {
         public override QuotaKey Key => key;
         public override string Unit => "tests";
         public override long Calculate(TestSpec input) => 1;
     }
 
-    private sealed class TestProfile(QuotaKey key, QuotaKey? returnedKey = null) : QuotaProfile<TestSpec>
+    private sealed class TestProfile(
+        QuotaKey key,
+        QuotaKey? returnedKey = null
+    ) : QuotaProfile<TestSpec>
     {
         public override IReadOnlyCollection<QuotaKey> Keys { get; } = [key];
         public override QuotaDelta Calculate(TestSpec spec) => QuotaDelta.From(returnedKey ?? key, 1);

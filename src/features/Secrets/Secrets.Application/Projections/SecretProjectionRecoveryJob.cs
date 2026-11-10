@@ -1,14 +1,4 @@
 using Hangfire;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 
 namespace Pole.Features.Secrets.Application.Projections;
 
@@ -16,7 +6,8 @@ public sealed class SecretProjectionRecoveryJob(
     LoadSecretProjectionCandidates loadCandidates,
     SecretProjectionReconciler reconciler,
     TimeProvider clock,
-    SecretKeyRetirementReconciler retirement)
+    SecretKeyRetirementReconciler retirement
+)
 {
     [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task RecoverAsync(CancellationToken ct = default)
@@ -34,6 +25,7 @@ public sealed class SecretProjectionRecoveryJob(
                 await retirement.ReconcileAsync(candidate.TenantId, candidate.SecretId, ct);
                 await reconciler.ReconcileAsync(candidate.TenantId, candidate.SecretId, ct);
             }
+
             cursor = candidates[^1].SecretId;
         }
     }

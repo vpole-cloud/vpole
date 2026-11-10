@@ -1,6 +1,5 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
-using Pole.Features.Shared.Models;
 using Xunit;
 
 namespace Pole.Tests.Integration.Database;
@@ -9,8 +8,9 @@ public sealed class OutboxMessageDomainTests
 {
     private const string MessageId = "507f1f77bcf86cd799439011";
     private const string PendingKey = "runtime-cell:507f1f77bcf86cd799439012:1:reconciliation";
-    private static readonly DateTime OccurredAtUtc =
-        new(2026, 7, 28, 10, 0, 0, DateTimeKind.Utc);
+
+    private static readonly DateTime OccurredAtUtc = new(2026, 7, 28, 10, 0, 0, DateTimeKind.Utc);
+
     private static readonly DateTime EnqueuedAtUtc = OccurredAtUtc.AddSeconds(1);
 
     [Fact]
@@ -60,21 +60,16 @@ public sealed class OutboxMessageDomainTests
         Assert.Null(published.PendingKey);
         var state = Assert.IsType<PublishedOutboxMessageState>(published.State);
         Assert.Equal(publishedAtUtc, state.PublishedAtUtc);
-        Assert.Throws<InvalidOperationException>(() =>
-            published.ScheduleRetry(publishedAtUtc.AddMinutes(1), "retry"));
+        Assert.Throws<InvalidOperationException>(() => published.ScheduleRetry(publishedAtUtc.AddMinutes(1), "retry"));
     }
 
     [Fact]
     public void Abandon_ClearsPendingKey_AndPreservesAttemptCount()
     {
-        var message = CreateMessage(PendingKey)
-            .ScheduleRetry(EnqueuedAtUtc.AddMinutes(1), "temporary failure");
+        var message = CreateMessage(PendingKey).ScheduleRetry(EnqueuedAtUtc.AddMinutes(1), "temporary failure");
         var abandonedAtUtc = EnqueuedAtUtc.AddMinutes(2);
 
-        var abandoned = message.Abandon(
-            abandonedAtUtc,
-            " InvalidPayload ",
-            " malformed\u0000payload ");
+        var abandoned = message.Abandon(abandonedAtUtc, " InvalidPayload ", " malformed\u0000payload ");
 
         Assert.Null(abandoned.PendingKey);
         var state = Assert.IsType<AbandonedOutboxMessageState>(abandoned.State);
@@ -82,15 +77,13 @@ public sealed class OutboxMessageDomainTests
         Assert.Equal(abandonedAtUtc, state.AbandonedAtUtc);
         Assert.Equal("InvalidPayload", state.FailureCode);
         Assert.Equal("malformed payload", state.LastError);
-        Assert.Throws<InvalidOperationException>(() =>
-            abandoned.MarkPublished(abandonedAtUtc.AddMinutes(1)));
+        Assert.Throws<InvalidOperationException>(() => abandoned.MarkPublished(abandonedAtUtc.AddMinutes(1)));
     }
 
     [Fact]
     public void PolymorphicState_RoundTripsThroughBson()
     {
-        var message = CreateMessage(PendingKey)
-            .ScheduleRetry(EnqueuedAtUtc.AddMinutes(1), "broker unavailable");
+        var message = CreateMessage(PendingKey).ScheduleRetry(EnqueuedAtUtc.AddMinutes(1), "broker unavailable");
 
         var roundTripped = BsonSerializer.Deserialize<OutboxMessage>(message.ToBson());
 
@@ -101,9 +94,7 @@ public sealed class OutboxMessageDomainTests
     [Fact]
     public void Factory_RejectsInvalidTimeline()
     {
-        var options = new OutboxMessageFactory.CreateOptions(
-            MessageId,
-            OccurredAtUtc.AddSeconds(-1));
+        var options = new OutboxMessageFactory.CreateOptions(MessageId, OccurredAtUtc.AddSeconds(-1));
 
         Assert.Throws<ArgumentException>(() => OutboxMessageFactory.Create(
             "pole.resource-groups/v1/runtime-cell-ready",
@@ -119,21 +110,20 @@ public sealed class OutboxMessageDomainTests
     [Fact]
     public void Retry_RejectsTimeMovingBackwards()
     {
-        var message = CreateMessage(PendingKey)
-            .ScheduleRetry(EnqueuedAtUtc.AddMinutes(1), "broker unavailable");
+        var message = CreateMessage(PendingKey).ScheduleRetry(EnqueuedAtUtc.AddMinutes(1), "broker unavailable");
 
-        Assert.Throws<ArgumentException>(() =>
-            message.ScheduleRetry(EnqueuedAtUtc.AddSeconds(30), "broker unavailable"));
+        Assert.Throws<ArgumentException>(() => message.ScheduleRetry(
+            EnqueuedAtUtc.AddSeconds(30),
+            "broker unavailable"));
     }
 
-    private static OutboxMessage CreateMessage(string? pendingKey) =>
-        OutboxMessageFactory.Create(
-            " pole.resource-groups/v1/runtime-cell-ready ",
-            " tenant-id ",
-            "{}",
-            " trace-id ",
-            " correlation-id ",
-            OccurredAtUtc,
-            pendingKey,
-            new OutboxMessageFactory.CreateOptions(MessageId, EnqueuedAtUtc));
+    private static OutboxMessage CreateMessage(string? pendingKey) => OutboxMessageFactory.Create(
+        " pole.resource-groups/v1/runtime-cell-ready ",
+        " tenant-id ",
+        "{}",
+        " trace-id ",
+        " correlation-id ",
+        OccurredAtUtc,
+        pendingKey,
+        new OutboxMessageFactory.CreateOptions(MessageId, EnqueuedAtUtc));
 }

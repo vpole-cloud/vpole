@@ -14,18 +14,11 @@ public sealed class MongoValidationExtensionsTests
 
         var missing = validator.Validate(new TestRequest(null, null));
         var malformed = validator.Validate(new TestRequest("not-an-id", null));
-        var valid = validator.Validate(
-            new TestRequest(ObjectId.GenerateNewId().ToString(), null));
+        var valid = validator.Validate(new TestRequest(ObjectId.GenerateNewId().ToString(), null));
 
-        Assert.Contains(
-            missing.Errors,
-            error => error.PropertyName == nameof(TestRequest.RequiredId));
-        Assert.Contains(
-            malformed.Errors,
-            error => error.PropertyName == nameof(TestRequest.RequiredId));
-        Assert.DoesNotContain(
-            valid.Errors,
-            error => error.PropertyName == nameof(TestRequest.RequiredId));
+        Assert.Contains(missing.Errors, error => error.PropertyName == nameof(TestRequest.RequiredId));
+        Assert.Contains(malformed.Errors, error => error.PropertyName == nameof(TestRequest.RequiredId));
+        Assert.DoesNotContain(valid.Errors, error => error.PropertyName == nameof(TestRequest.RequiredId));
     }
 
     [Fact]
@@ -33,33 +26,27 @@ public sealed class MongoValidationExtensionsTests
     {
         var validator = new TestRequestValidator();
 
-        var missing = validator.Validate(
-            new TestRequest(ObjectId.GenerateNewId().ToString(), null));
-        var malformed = validator.Validate(
-            new TestRequest(ObjectId.GenerateNewId().ToString(), "not-an-id"));
+        var missing = validator.Validate(new TestRequest(ObjectId.GenerateNewId().ToString(), null));
+        var malformed = validator.Validate(new TestRequest(ObjectId.GenerateNewId().ToString(), "not-an-id"));
 
-        Assert.DoesNotContain(
-            missing.Errors,
-            error => error.PropertyName == nameof(TestRequest.OptionalId));
+        Assert.DoesNotContain(missing.Errors, error => error.PropertyName == nameof(TestRequest.OptionalId));
         Assert.Contains(
             malformed.Errors,
-            error =>
-                error.PropertyName == nameof(TestRequest.OptionalId) &&
+            error => error.PropertyName == nameof(TestRequest.OptionalId) &&
                 error.ErrorMessage == "Optional ID must be a MongoDB ObjectId.");
     }
 
     private sealed record TestRequest(
         string? RequiredId,
-        string? OptionalId);
+        string? OptionalId
+    );
 
     private sealed class TestRequestValidator : AbstractValidator<TestRequest>
     {
         public TestRequestValidator()
         {
-            RuleFor(request => request.RequiredId)
-                .MongoObjectId("Required ID");
-            RuleFor(request => request.OptionalId)
-                .OptionalMongoObjectId("Optional ID");
+            RuleFor(request => request.RequiredId).MongoObjectId("Required ID");
+            RuleFor(request => request.OptionalId).OptionalMongoObjectId("Optional ID");
         }
     }
 }

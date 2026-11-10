@@ -5,16 +5,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Revisions;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Quotas.Contracts;
@@ -23,7 +18,6 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Features.Secrets.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
@@ -33,55 +27,57 @@ public static class UpdateFunctionApp
 {
     public static IEndpointRouteBuilder MapUpdateFunctionAppEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] UpdateFunctionAppRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPut(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateFunctionAppRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    UpdateFunctionAppResponse response => Results.Accepted(value: response),
-                    UpdateFunctionAppError error => MapUpdateError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        UpdateFunctionAppResponse response => Results.Accepted(value: response),
+                        UpdateFunctionAppError error => MapUpdateError(error),
+                    });
+                })
             .WithName("UpdateFunctionApp")
             .Produces<UpdateFunctionAppResponse>(StatusCodes.Status202Accepted);
         return app;
     }
 
-    private static HttpProblem MapUpdateError(UpdateFunctionAppError error) =>
-        error switch
-        {
-            FunctionAppConfigurationUnavailable unavailable => MapConfigurationUnavailable(unavailable),
-            FunctionSecretReferenceRejected rejected => MapSecretReferenceRejected(rejected),
-            FunctionAppNotFound notFound => MapNotFound(notFound),
-            FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
-            FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
-            FunctionAppHasPendingRevision pending => MapPendingRevision(pending),
-            FunctionAppIsNotEnabled disabled => MapNotEnabled(disabled),
-            FunctionAppRevisionChanged changed => MapRevisionChanged(changed),
-            ResourceDeploymentMutationError deployment =>
-                ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
-            QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
-        };
+    private static HttpProblem MapUpdateError(UpdateFunctionAppError error) => error switch
+    {
+        FunctionAppConfigurationUnavailable unavailable => MapConfigurationUnavailable(unavailable),
+        FunctionSecretReferenceRejected rejected => MapSecretReferenceRejected(rejected),
+        FunctionAppNotFound notFound => MapNotFound(notFound),
+        FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
+        FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
+        FunctionAppHasPendingRevision pending => MapPendingRevision(pending),
+        FunctionAppIsNotEnabled disabled => MapNotEnabled(disabled),
+        FunctionAppRevisionChanged changed => MapRevisionChanged(changed),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(
+            deployment),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota),
+    };
 }
 
 public sealed record UpdateFunctionAppRequest(
     [FromRoute] string Id,
     [FromBody] UpdateFunctionAppRequestBody Body,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<UpdateFunctionAppOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<UpdateFunctionAppOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateFunctionAppRequestBody(
     FunctionRevisionRequest Spec,
-    ImmutableHashSet<string> Tags);
+    ImmutableHashSet<string> Tags
+);
 
 public sealed record UpdateFunctionAppResponse(
     string FunctionAppId,
     string RevisionId,
     int RevisionNumber,
-    PlacementSummaryDto Placement);
+    PlacementSummaryDto Placement
+);
 
 public union UpdateFunctionAppError(
     FunctionAppConfigurationUnavailable,
@@ -95,9 +91,7 @@ public union UpdateFunctionAppError(
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
-public union UpdateFunctionAppOutcome(
-    UpdateFunctionAppResponse,
-    UpdateFunctionAppError);
+public union UpdateFunctionAppOutcome(UpdateFunctionAppResponse, UpdateFunctionAppError);
 
 public sealed class UpdateFunctionAppHandler(
     LoadFunctionAppById loadFunctionAppById,
@@ -108,21 +102,20 @@ public sealed class UpdateFunctionAppHandler(
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
     TimeProvider timeProvider,
     AdmitConsumerSecretReferences admitSecrets,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<UpdateFunctionAppRequest, UpdateFunctionAppOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<UpdateFunctionAppRequest, UpdateFunctionAppOutcome>
 {
     public async Task<UpdateFunctionAppOutcome> HandleAsync(
         UpdateFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
-        var app = await loadFunctionAppById(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
+        var app = await loadFunctionAppById(request.TenantId, request.Id, cancellationToken);
         if (app is null)
             return new UpdateFunctionAppError(new FunctionAppNotFound(request.Id));
 
-        if (await git.StatusAsync(new(app.TenantId, "FunctionApp", app.Id), cancellationToken) is not null)
+        if (await git.StatusAsync(
+                new LoadGitResourceStatusRequest(app.TenantId, "FunctionApp", app.Id),
+                cancellationToken) is not null)
             return new UpdateFunctionAppError(new FunctionAppGitOwnedConfiguration(app.Id));
 
         if (app.PendingRevisionId is not null)
@@ -139,33 +132,22 @@ public sealed class UpdateFunctionAppHandler(
                 DeploymentId: app.Placement.ResourceDeploymentId),
             cancellationToken: cancellationToken);
         if (deployment is null ||
-            !string.Equals(
-                deployment.RuntimeCellId,
-                app.Placement.RuntimeCellId,
-                StringComparison.Ordinal) ||
-            !string.Equals(
-                deployment.DeploymentTargetId,
-                app.Placement.DeploymentTargetId,
-                StringComparison.Ordinal))
-        {
-            return new UpdateFunctionAppError(
-                new FunctionAppResourceDeploymentMissing(app.Id));
-        }
+            !string.Equals(deployment.RuntimeCellId, app.Placement.RuntimeCellId, StringComparison.Ordinal) ||
+            !string.Equals(deployment.DeploymentTargetId, app.Placement.DeploymentTargetId, StringComparison.Ordinal))
+            return new UpdateFunctionAppError(new FunctionAppResourceDeploymentMissing(app.Id));
 
         var references = await loadFunctionAppRevisionReferences(app, cancellationToken);
         if (app.ActiveRevisionId is not null && references.ActiveRevision is null)
-        {
-            throw new InvalidOperationException(
-                "Function App references an active revision that does not exist.");
-        }
+            throw new InvalidOperationException("Function App references an active revision that does not exist.");
 
         if (references.LatestConfiguration is not { } latestConfiguration)
             return new UpdateFunctionAppError(new FunctionAppConfigurationUnavailable(app.Id));
 
         var previousSecrets = FunctionSecretReferences.From(latestConfiguration.Spec.Configuration)
-            .Concat(references.ActiveRevision is { } active
-                ? FunctionSecretReferences.From(active.Spec.Configuration) : [])
-            .Distinct().ToArray();
+            .Concat(
+                references.ActiveRevision is { } active ? FunctionSecretReferences.From(active.Spec.Configuration) : [])
+            .Distinct()
+            .ToArray();
 
         var requestedSpec = request.Body.Spec.ToDomain().ToRevisionSpec();
         var handlers = FunctionTriggerReconciler.Reconcile(
@@ -183,32 +165,42 @@ public sealed class UpdateFunctionAppHandler(
             app.AdmittedQuota,
             FunctionQuotaAllocation.FromRevision(candidateSpec));
 
-        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
-            FunctionQuotaAllocation,
-            UpdateFunctionAppOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.Functions.Domain.FunctionQuotaAllocation,
-                global::Pole.Features.Functions.Application.Endpoints.UpdateFunctionAppOutcome>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync(
+            new ExecuteQuotaAdmissionRequest<FunctionQuotaAllocation, UpdateFunctionAppOutcome>(
                 TenantId: app.TenantId,
                 ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
                 Mutation: new UpdateQuotaMutation<FunctionQuotaAllocation>(app.AdmittedQuota, admittedQuota),
                 QuotaError: quotaError => new UpdateFunctionAppError(quotaError),
                 MutationCallback: async (transaction, ct) =>
                 {
-                    var admitted = await admitSecrets(new AdmitConsumerSecretReferencesRequest(
-                        app.TenantId, app.ResourceGroupId, deployment.IsolationScopeId,
-                        FunctionResourceDeployment.ResourceType, app.Id,
-                        previousSecrets,
-                        FunctionSecretReferences.From(candidateSpec.Configuration),
-                        ConsumerSecretAvailabilityPolicy.RequireAvailable,
-                        PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed), transaction.Session, ct);
+                    var admitted = await admitSecrets(
+                        new AdmitConsumerSecretReferencesRequest(
+                            app.TenantId,
+                            app.ResourceGroupId,
+                            deployment.IsolationScopeId,
+                            FunctionResourceDeployment.ResourceType,
+                            app.Id,
+                            previousSecrets,
+                            FunctionSecretReferences.From(candidateSpec.Configuration),
+                            ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                            PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed),
+                        transaction.Session,
+                        ct);
                     if (admitted is ConsumerSecretReferenceUnavailable unavailable)
-                        return transaction.Abort(new UpdateFunctionAppError(
-                            new FunctionSecretReferenceRejected(unavailable.Reason)));
+                        return transaction.Abort(
+                            new UpdateFunctionAppError(new FunctionSecretReferenceRejected(unavailable.Reason)));
 
                     return await PersistAsync(
-                        transaction, app, candidate, admittedQuota, request.Body.Tags,
-                        persistFunctionAppRevision, requestDeploymentApply, deployment,
-                        timeProvider.GetUtcNow(), ct);
+                        transaction,
+                        app,
+                        candidate,
+                        admittedQuota,
+                        request.Body.Tags,
+                        persistFunctionAppRevision,
+                        requestDeploymentApply,
+                        deployment,
+                        timeProvider.GetUtcNow(),
+                        ct);
                 }),
             cancellationToken: cancellationToken);
     }
@@ -226,8 +218,9 @@ public sealed class UpdateFunctionAppHandler(
         CancellationToken cancellationToken)
     {
         var persisted = await persistFunctionAppRevision(
-            new(current, candidate, admittedQuota, tags, updatedAtUtc, Context: null),
-            transaction.Session, cancellationToken);
+            new PersistFunctionAppRevisionRequest(current, candidate, admittedQuota, tags, updatedAtUtc, Context: null),
+            transaction.Session,
+            cancellationToken);
         if (persisted is FunctionAppRevisionChanged persistenceError)
             return transaction.Abort(new UpdateFunctionAppError(persistenceError));
 
@@ -253,7 +246,7 @@ public sealed class UpdateFunctionAppHandler(
                         candidate.Spec.Resources.Requests.MemoryMi),
                     Limits = new ResourceDeploymentComputeResourceValues(
                         candidate.Spec.Resources.Limits.CpuMillis,
-                        candidate.Spec.Resources.Limits.MemoryMi)
+                        candidate.Spec.Resources.Limits.MemoryMi),
                 },
                 ResourceRevision: candidate.RevisionNumber),
             transaction.Session,
@@ -262,11 +255,8 @@ public sealed class UpdateFunctionAppHandler(
             return transaction.Abort(new UpdateFunctionAppError(deploymentError));
         var placement = (PlacementSummaryDto)deploymentResult.Value;
 
-        return transaction.Commit(new UpdateFunctionAppResponse(
-            current.Id,
-            revision.Id,
-            revision.RevisionNumber,
-            placement));
+        return transaction.Commit(
+            new UpdateFunctionAppResponse(current.Id, revision.Id, revision.RevisionNumber, placement));
     }
 }
 

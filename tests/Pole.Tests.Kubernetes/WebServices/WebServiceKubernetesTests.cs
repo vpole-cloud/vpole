@@ -1,19 +1,20 @@
-using Pole.Features.Core.Kubernetes;
-using System.Net;
-using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Headers;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.Tests.Kubernetes.Infrastructure;
+using Pole.Features.WebServices.Domain;
 using Pole.Testing;
+using Pole.Tests.Kubernetes.Infrastructure;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Kubernetes.WebServices;
 
@@ -21,9 +22,15 @@ namespace Pole.Tests.Kubernetes.WebServices;
 [Trait("Concern", "Feature")]
 [Trait("Scope", "SingleCluster")]
 [Trait("Feature", "WebServices")]
-public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
-    : KubernetesIntegrationTestBase(fixture)
+public sealed class WebServiceKubernetesTests(
+    KubernetesClusterFixture fixture
+) : KubernetesIntegrationTestBase(fixture)
 {
+    private const string SourceBuildWebServiceId = "507f1f77bcf86cd799439021";
+    private const string WebServiceId = "507f1f77bcf86cd799439022";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439023";
+    private const string IsolationScopeId = "507f1f77bcf86cd799439024";
+
     [KubernetesFact("monitoring")]
     public async Task ApplyAsync_CreatesWebServiceResourcesWithReleaseMetadata()
     {
@@ -49,14 +56,13 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     private WebService BuildSourceBuildE2eWebService()
     {
         var spec = new WebServiceSpec(
-            new ImageInfo("docker.io", "library/nginx", "1.27",
-                SecretName: null),
-            Config: new WebServiceConfig()
+            new ImageInfo("docker.io", "library/nginx", "1.27", SecretName: null),
+            Config: new WebServiceConfig
             {
                 EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
                 PortMappings = [new PortMapping(80, "8080", "TCP", "http")],
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
-                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty,
             },
             Autoscaling: null,
             Probes: new ProbeSpec(
@@ -77,8 +83,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     private static void AssertResultSucceeded(WebServiceKubernetesApplyOutcome result)
     {
         if (result is WebServiceKubernetesApplyFailed failure)
-            throw new Xunit.Sdk.XunitException(
-                $"Kubernetes deployment apply failed: {failure.Message}");
+            throw new XunitException($"Kubernetes deployment apply failed: {failure.Message}");
     }
 
     [KubernetesFact("monitoring")]
@@ -86,9 +91,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var webService = BuildTestWebService();
 
-        await WebServiceKubernetesResourceManager.CreateAsync(
-            Kubernetes,
-            ToKubernetes(webService));
+        await WebServiceKubernetesResourceManager.CreateAsync(Kubernetes, ToKubernetes(webService));
 
         var configMap = await Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
             WebServiceInKubernetes.BuildConfigMapName(webService.Name),
@@ -119,15 +122,19 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         Assert.Equal(HttpStatusCode.OK, httpResponse.StatusCode);
         Assert.Contains("nginx", await httpResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
 
-        await WebServiceKubernetesResourceManager.DeleteAsync(Kubernetes,
-            new WebServiceKubernetesCleanup(webService.Name, NamespaceName,
+        await WebServiceKubernetesResourceManager.DeleteAsync(
+            Kubernetes,
+            new WebServiceKubernetesCleanup(
+                webService.Name,
+                NamespaceName,
                 ToKubernetes(webService).PlacementIdentity));
 
         await Task.WhenAll(
             AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedConfigMapAsync(
                 WebServiceInKubernetes.BuildConfigMapName(webService.Name),
                 NamespaceName)),
-            AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName)),
+            AssertResourceDeletedAsync(() =>
+                Kubernetes.AppsV1.ReadNamespacedDeploymentAsync(webService.Name, NamespaceName)),
             AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
                 WebServiceInKubernetes.BuildServiceName(webService.Name),
                 NamespaceName)),
@@ -146,27 +153,26 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
     {
         var spec = WebServiceKubernetesTestData.Spec().ToDomain() with
         {
-            Image = new ImageInfo("docker.io", "nginx", "1.27",
-                SecretName: null),
-            Config = new WebServiceConfig()
+            Image = new ImageInfo("docker.io", "nginx", "1.27", SecretName: null),
+            Config = new WebServiceConfig
             {
                 EnvironmentVariables = new Dictionary<string, string>
                 {
-                    ["ASPNETCORE_ENVIRONMENT"] = "Development"
+                    ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 }.ToImmutableDictionary(),
                 PortMappings = [new PortMapping(80, "80", "TCP", "http")],
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
-                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty,
             },
             Probes = new ProbeSpec(
                 Startup: new ProbeConfig("/", "80"),
                 Liveness: new ProbeConfig("/", "80"),
-                Readiness: new ProbeConfig("/", "80"))
+                Readiness: new ProbeConfig("/", "80")),
         };
 
         var options = WebServiceFactory.DefaultOptions with
         {
-            Id = WebServiceId
+            Id = WebServiceId,
         };
 
         return WebServiceFactory.Create(
@@ -181,31 +187,24 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
 
     private string BuildIngressHost() => $"web-{NamespaceName}.{Target.PublicBaseDomain}";
 
-    private WebServiceInKubernetes ToKubernetes(WebService webService) =>
-        webService.ToKubernetes(
-            NamespaceName,
-            ResourceDeploymentIngressConfiguration.Create(
-                "traefik",
-                "pole-lab",
-                Target.PublicBaseDomain,
-                [BuildIngressHost()]),
-            KubernetesComputeTestData.ContractCompute(
-                "507f1f77bcf86cd799439020"),
-            fixedReplicas: 1,
-            new WorkloadIdentityLabels(
-                webService.TenantId,
-                webService.ResourceGroupId,
-                IsolationScopeId,
-                "cell-44",
-                "target-44",
-                "WebService",
-                webService.Id,
-                "deployment-44"));
-
-    private const string SourceBuildWebServiceId = "507f1f77bcf86cd799439021";
-    private const string WebServiceId = "507f1f77bcf86cd799439022";
-    private const string ResourceGroupId = "507f1f77bcf86cd799439023";
-    private const string IsolationScopeId = "507f1f77bcf86cd799439024";
+    private WebServiceInKubernetes ToKubernetes(WebService webService) => webService.ToKubernetes(
+        NamespaceName,
+        ResourceDeploymentIngressConfiguration.Create(
+            "traefik",
+            "pole-lab",
+            Target.PublicBaseDomain,
+            [BuildIngressHost()]),
+        KubernetesComputeTestData.ContractCompute("507f1f77bcf86cd799439020"),
+        fixedReplicas: 1,
+        new WorkloadIdentityLabels(
+            webService.TenantId,
+            webService.ResourceGroupId,
+            IsolationScopeId,
+            "cell-44",
+            "target-44",
+            "WebService",
+            webService.Id,
+            "deployment-44"));
 
     private async Task WaitForDeploymentAvailableAsync(string deploymentName, int timeoutSeconds = 60)
     {
@@ -216,9 +215,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         {
             var deployment = await Kubernetes.AppsV1.ReadNamespacedDeploymentStatusAsync(deploymentName, NamespaceName);
             if (deployment.Status.AvailableReplicas >= 1)
-            {
                 return;
-            }
 
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
@@ -238,7 +235,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
         using var httpClient = new HttpClient(CreateIngressHttpHandler())
         {
             BaseAddress = baseUri,
-            Timeout = TimeSpan.FromSeconds(10)
+            Timeout = TimeSpan.FromSeconds(10),
         };
 
         while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
@@ -251,9 +248,7 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             {
                 var response = await httpClient.SendAsync(request);
                 if (response.IsSuccessStatusCode)
-                {
                     return response;
-                }
 
                 lastError = new HttpRequestException($"Ingress returned status code {(int)response.StatusCode}.");
                 response.Dispose();
@@ -271,11 +266,10 @@ public sealed class WebServiceKubernetesTests(KubernetesClusterFixture fixture)
             lastError);
     }
 
-    private static HttpMessageHandler CreateIngressHttpHandler() =>
-        new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-        };
+    private static HttpMessageHandler CreateIngressHttpHandler() => new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+    };
 
     private static async Task AssertResourceDeletedAsync<T>(Func<Task<T>> readCall, int timeoutSeconds = 30)
     {

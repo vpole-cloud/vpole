@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Mongo;
@@ -8,16 +7,21 @@ using Pole.Features.RedisServices.Domain;
 
 namespace Pole.Features.RedisServices.Application.Services;
 
-public sealed record RedisUpdateConflict(string RedisId);
+public sealed record RedisUpdateConflict(
+    string RedisId
+);
 
 public sealed record RedisUpdated;
 
-public sealed record RedisGitOwnedConfiguration(string RedisId);
+public sealed record RedisGitOwnedConfiguration(
+    string RedisId
+);
 
 public sealed record RedisUpdate(
     Redis Current,
     Redis Replacement,
-    GitMutationContext? Context);
+    GitMutationContext? Context
+);
 
 public union PersistUpdatedRedisOutcome(
     RedisUpdated,
@@ -32,7 +36,8 @@ public delegate Task<PersistUpdatedRedisOutcome> PersistUpdatedRedis(
 internal sealed class MongoPersistUpdatedRedis(
     IMongoCollection<Redis> redisServices,
     StoreOutboxWrites storeOutboxWrites,
-    IGitOpsMutations git)
+    IGitOpsMutations git
+)
 {
     public async Task<PersistUpdatedRedisOutcome> InvokeAsync(
         RedisUpdate request,
@@ -43,8 +48,14 @@ internal sealed class MongoPersistUpdatedRedis(
         var (current, replacement, context) = request;
         RedisPersistenceGuards.EnsureActiveUpdate(current, replacement);
 
-        if (!await git.AuthorizeAsync(new(current.TenantId, DeclarativeRedisProvider.ResourceKind,
-                current.Id, context), session, cancellationToken))
+        if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    current.TenantId,
+                    DeclarativeRedisProvider.ResourceKind,
+                    current.Id,
+                    context),
+                session,
+                cancellationToken))
             return new RedisGitOwnedConfiguration(current.Id);
 
         var replace = await redisServices.ReplaceOneAsync(
@@ -53,14 +64,9 @@ internal sealed class MongoPersistUpdatedRedis(
             replacement,
             cancellationToken: cancellationToken);
         if (replace.ModifiedCount != 1)
-        {
             return new RedisUpdateConflict(current.Id);
-        }
 
-        await storeOutboxWrites(
-            session,
-            [OutboxWrite.Create(current.ToUpdateEvent(replacement))],
-            cancellationToken);
+        await storeOutboxWrites(session, [OutboxWrite.Create(current.ToUpdateEvent(replacement))], cancellationToken);
         return new RedisUpdated();
     }
 }

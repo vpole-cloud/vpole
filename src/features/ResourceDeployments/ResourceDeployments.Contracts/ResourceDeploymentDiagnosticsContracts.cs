@@ -4,10 +4,12 @@ namespace Pole.Features.ResourceDeployments.Contracts;
 
 public interface IResourceDeploymentDiagnosticsProvider
 {
-    Task<WorkloadDiagnostics> DiscoverAsync(ResourceDeploymentReconciliationSnapshot deployment,
+    Task<WorkloadDiagnostics> DiscoverAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
         CancellationToken cancellationToken = default);
 
-    Task<RuntimeLogOpenResult> OpenLogsAsync(ResourceDeploymentReconciliationSnapshot deployment,
+    Task<RuntimeLogOpenResult> OpenLogsAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
         RuntimeLogSelection selection,
         CancellationToken cancellationToken = default);
 }
@@ -20,7 +22,8 @@ public sealed record ResourceDeploymentDiagnosticsDto(
     long DeploymentRevision,
     long DesiredGeneration,
     DateTime CheckedAtUtc,
-    WorkloadDiagnostics Diagnostics)
+    WorkloadDiagnostics Diagnostics
+)
 {
     public long? ObservationVersion { get; init; }
 }

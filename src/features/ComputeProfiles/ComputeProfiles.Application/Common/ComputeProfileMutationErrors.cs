@@ -1,13 +1,17 @@
 namespace Pole.Features.ComputeProfiles.Application.Common;
 
 public sealed record SelectedComputeProfileTenantsNotFound(
-    IReadOnlyList<string> TenantIds);
+    IReadOnlyList<string> TenantIds
+);
 
 public sealed record ComputeProfileTargetMappingsInvalid(
-    IReadOnlyDictionary<string, string[]> Errors);
+    IReadOnlyDictionary<string, string[]> Errors
+);
 
 public sealed record DefaultComputeProfileCannotBeDemoted(
-    string ComputeProfileId);
+    string ComputeProfileId
+);
 
 public sealed record ComputeProfileRevisionConflict(
-    string ComputeProfileId);
+    string ComputeProfileId
+);

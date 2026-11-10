@@ -6,7 +6,8 @@ namespace Pole.Features.GitOps.Contracts;
 public sealed record ReadLifecycleWarningsRequest(
     string TenantId,
     string ResourceId,
-    GitLifecycleAction Action);
+    GitLifecycleAction Action
+);
 
 // Optional owner extension. Return stable policy codes only, never configuration or credential values.
 public interface IDeclarativeLifecycleWarningProvider

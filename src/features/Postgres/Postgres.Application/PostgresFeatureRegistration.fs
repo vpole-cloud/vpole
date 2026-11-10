@@ -5,12 +5,10 @@ open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.DependencyInjection.Extensions
 open Microsoft.Extensions.Options
-open Pole.ASP.Helpers
 open Pole.Database
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Endpoints
 open Pole.Features.Postgres.Application.Kubernetes
-open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Application.Search
 open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
@@ -63,15 +61,17 @@ type PostgresFeatureRegistration =
 
         services.AddSingleton<ResourceConnectionDeclarationKind>(
             ResourceConnectionDeclarationKind("PostgresCluster", PostgresResourceDeployment.ResourceType)
-        ) |> ignore
+        )
+        |> ignore
+
         services.AddSingleton<ResourceConnectionSourceCapability>(
             ResourceConnectionSourceCapability(PostgresResourceDeployment.ResourceType)
         )
         |> ignore
 
         services.TryAddScoped<RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
-            Func<IServiceProvider, RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>(
-                fun serviceProvider ->
+            Func<IServiceProvider, RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>>
+                (fun serviceProvider ->
                     RunMongoOutcomeTransaction<UpdatePostgresClusterPasswordOutcome>(fun operation cancellationToken ->
                         serviceProvider
                             .GetRequiredService<MongoRunTransaction>()

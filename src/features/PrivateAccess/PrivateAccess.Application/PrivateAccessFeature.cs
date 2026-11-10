@@ -11,8 +11,8 @@ using Pole.Features.PrivateAccess.Application.Catalog;
 using Pole.Features.PrivateAccess.Application.Endpoints;
 using Pole.Features.PrivateAccess.Application.Gateway;
 using Pole.Features.PrivateAccess.Application.Grants;
-using Pole.Features.PrivateAccess.Application.Mongo;
 using Pole.Features.PrivateAccess.Application.Sessions;
+using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 
 namespace Pole.Features.PrivateAccess.Application;
@@ -32,90 +32,89 @@ public static class PrivateAccessFeature
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<PrivateAccessBrokerOwner>("PrivateAccessBrokerOwners"));
         services.TryAddScoped<MongoPrivateAccessBrokerOwnership>();
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ClaimPrivateAccessBrokerOwner>(
-            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().ClaimAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RenewPrivateAccessBrokerOwner>(
-            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().RenewAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ReleasePrivateAccessBrokerOwner>(
-            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().ReleaseAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessBrokerOwner>(
-            provider => provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().LoadAsync);
+        services.TryAddScoped<ClaimPrivateAccessBrokerOwner>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().ClaimAsync);
+        services.TryAddScoped<RenewPrivateAccessBrokerOwner>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().RenewAsync);
+        services.TryAddScoped<ReleasePrivateAccessBrokerOwner>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().ReleaseAsync);
+        services.TryAddScoped<LoadPrivateAccessBrokerOwner>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessBrokerOwnership>().LoadAsync);
         services.TryAddScoped<PrivateAccessGatewayIdentityReads>();
         services.TryAddScoped<MongoLoadPrivateAccessGatewayObservation>();
         services.TryAddScoped<LoadPrivateAccessGatewayObservation>(provider => provider
-            .GetRequiredService<MongoLoadPrivateAccessGatewayObservation>().InvokeAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ResolvePrivateAccessGatewayIdentity>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().ResolveAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RecordPrivateAccessGatewayContact>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().RecordContactAsync);
+            .GetRequiredService<MongoLoadPrivateAccessGatewayObservation>()
+            .InvokeAsync);
+        services.TryAddScoped<ResolvePrivateAccessGatewayIdentity>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().ResolveAsync);
+        services.TryAddScoped<RecordPrivateAccessGatewayContact>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayIdentityReads>().RecordContactAsync);
         services.TryAddScoped<PrivateAccessGatewayDesiredStates>();
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayDesiredStates>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayDesiredStatesForTenant>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadForTenantAsync);
+        services.TryAddScoped<LoadPrivateAccessGatewayDesiredStates>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadAsync);
+        services.TryAddScoped<LoadPrivateAccessGatewayDesiredStatesForTenant>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayDesiredStates>().LoadForTenantAsync);
         services.TryAddScoped<PrivateAccessGatewayRegistrations>();
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LoadPrivateAccessGatewayRegistrations>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().LoadAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.SavePrivateAccessGatewayRegistration>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().SaveAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RemovePrivateAccessGatewayRegistration>(
-            provider => provider.GetRequiredService<PrivateAccessGatewayRegistrations>().RemoveAsync);
+        services.TryAddScoped<LoadPrivateAccessGatewayRegistrations>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayRegistrations>().LoadAsync);
+        services.TryAddScoped<SavePrivateAccessGatewayRegistration>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayRegistrations>().SaveAsync);
+        services.TryAddScoped<RemovePrivateAccessGatewayRegistration>(provider =>
+            provider.GetRequiredService<PrivateAccessGatewayRegistrations>().RemoveAsync);
         services.TryAddScoped<PrivateAccessEndpointCatalog>();
         services.TryAddScoped<PrivateAccessGrantRoutes>();
         services.TryAddScoped<LoadPrivateAccessGrantRoutes>(provider => provider
-            .GetRequiredService<PrivateAccessGrantRoutes>().LoadAsync);
+            .GetRequiredService<PrivateAccessGrantRoutes>()
+            .LoadAsync);
         services.TryAddScoped<PrivateAccessResourceNameCatalog>();
         services.TryAddScoped<MongoLoadOwnPrivateAccessGrants>();
         services.TryAddScoped<LoadOwnPrivateAccessGrants>(provider => provider
-            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>().InvokeAsync);
+            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>()
+            .InvokeAsync);
         services.TryAddScoped<LoadOwnPrivateAccessResourceGrants>(provider => provider
-            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>().LoadResourceAsync);
+            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>()
+            .LoadResourceAsync);
         services.TryAddScoped<LoadTenantPrivateAccessGrants>(provider => provider
-            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>().LoadTenantAsync);
+            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>()
+            .LoadTenantAsync);
         services.TryAddScoped<LoadPrivateAccessGrant>(provider => provider
-            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>().LoadOneAsync);
+            .GetRequiredService<MongoLoadOwnPrivateAccessGrants>()
+            .LoadOneAsync);
         services.TryAddScoped<PrivateAccessAdmission>();
         services.TryAddScoped<MongoCreatePrivateAccessGrant>();
-        services.TryAddScoped<RunMongoOutcomeTransaction<CreatePrivateAccessGrantPersistenceOutcome>>(
-            provider => provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<CreatePrivateAccessGrantPersistenceOutcome>);
+        services.TryAddScoped<RunMongoOutcomeTransaction<CreatePrivateAccessGrantPersistenceOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddScoped<PersistPrivateAccessGrant>(provider => provider
-            .GetRequiredService<MongoCreatePrivateAccessGrant>().InvokeAsync);
+            .GetRequiredService<MongoCreatePrivateAccessGrant>()
+            .InvokeAsync);
         services.TryAddScoped<MongoRevokePrivateAccessGrant>();
-        services.TryAddScoped<RunMongoOutcomeTransaction<PersistRevokePrivateAccessGrantOutcome>>(
-            provider => provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistRevokePrivateAccessGrantOutcome>);
+        services.TryAddScoped<RunMongoOutcomeTransaction<PersistRevokePrivateAccessGrantOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddScoped<RevokePrivateAccessGrant>(provider => provider
-            .GetRequiredService<MongoRevokePrivateAccessGrant>().InvokeAsync);
+            .GetRequiredService<MongoRevokePrivateAccessGrant>()
+            .InvokeAsync);
         services.TryAddScoped<MongoIssuePrivateAccessSession>();
-        services.TryAddScoped<RunMongoOutcomeTransaction<IssuePrivateAccessSessionOutcome>>(
-            provider => provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<IssuePrivateAccessSessionOutcome>);
+        services.TryAddScoped<RunMongoOutcomeTransaction<IssuePrivateAccessSessionOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddScoped<IssuePrivateAccessSession>(provider => provider
-            .GetRequiredService<MongoIssuePrivateAccessSession>().InvokeAsync);
+            .GetRequiredService<MongoIssuePrivateAccessSession>()
+            .InvokeAsync);
         services.TryAddScoped<MongoPrivateAccessSessionAdmission>();
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.LocatePrivateAccessTicket>(provider =>
+        services.TryAddScoped<LocatePrivateAccessTicket>(provider =>
             provider.GetRequiredService<MongoPrivateAccessSessionAdmission>().LocateAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RedeemPrivateAccessSession>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
-                .RedeemAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.RenewPrivateAccessSession>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
-                .RenewAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.MarkPrivateAccessSessionStarted>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
-                .MarkStartedAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.ClosePrivateAccessSession>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionAdmission>()
-                .CloseAsync);
+        services.TryAddScoped<RedeemPrivateAccessSession>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionAdmission>().RedeemAsync);
+        services.TryAddScoped<RenewPrivateAccessSession>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionAdmission>().RenewAsync);
+        services.TryAddScoped<MarkPrivateAccessSessionStarted>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionAdmission>().MarkStartedAsync);
+        services.TryAddScoped<ClosePrivateAccessSession>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionAdmission>().CloseAsync);
         services.TryAddScoped<MongoPrivateAccessSessionCleanup>();
-        services.TryAddScoped<
-            Pole.Features.PrivateAccess.Contracts.LoadExpiredPrivateAccessSessionCleanupPage>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionCleanup>()
-                .LoadPageAsync);
-        services.TryAddScoped<Pole.Features.PrivateAccess.Contracts.MarkPrivateAccessSessionCleaned>(
-            provider => provider.GetRequiredService<MongoPrivateAccessSessionCleanup>()
-                .MarkCleanedAsync);
+        services.TryAddScoped<LoadExpiredPrivateAccessSessionCleanupPage>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionCleanup>().LoadPageAsync);
+        services.TryAddScoped<MarkPrivateAccessSessionCleaned>(provider =>
+            provider.GetRequiredService<MongoPrivateAccessSessionCleanup>().MarkCleanedAsync);
         return services;
     }
 

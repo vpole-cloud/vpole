@@ -4,13 +4,13 @@ open System.Runtime.CompilerServices
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Routing
-open Pole.Features.Core.Multitenancy
 
 [<AbstractClass; Sealed>]
 type PostgresClusterEndpoints =
     [<Extension>]
     static member MapPostgresClusterEndpoints(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapGroup("/postgres")
+        endpoints
+            .MapGroup("/postgres")
             .WithDisplayName("Postgres Cluster Endpoints")
             .WithTags("postgres")
             .MapCreatePostgresClusterEndpoint()
@@ -21,5 +21,6 @@ type PostgresClusterEndpoints =
             .MapUpdatePostgresClusterPasswordEndpoint()
             .MapGetPostgresClusterConnectionStringEndpoint()
             .MapDeletePostgresClusterEndpoint()
-            |> ignore
+        |> ignore
+
         endpoints

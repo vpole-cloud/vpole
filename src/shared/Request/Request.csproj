@@ -9,11 +9,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Mediator\Mediator.csproj" />
+        <ProjectReference Include="..\Mediator\Mediator.csproj"/>
     </ItemGroup>
 
 </Project>

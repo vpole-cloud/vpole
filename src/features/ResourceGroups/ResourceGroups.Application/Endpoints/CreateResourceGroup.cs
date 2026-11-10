@@ -7,8 +7,6 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
@@ -19,19 +17,21 @@ public static class CreateResourceGroup
 {
     public static IEndpointRouteBuilder MapCreateResourceGroupEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (
-                [AsParameters] CreateResourceGroupRequest request,
-                [FromServices] IMediator mediator,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/",
+                async (
+                    [AsParameters] CreateResourceGroupRequest request, [FromServices] IMediator mediator,
+                    CancellationToken cancellationToken) =>
                 {
-                    ResourceGroupDto resourceGroup =>
-                        Results.Created($"/resource-groups/{resourceGroup.Id}", resourceGroup),
-                    ResourceGroupNameAlreadyExists error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ResourceGroupDto resourceGroup => Results.Created(
+                            $"/resource-groups/{resourceGroup.Id}",
+                            resourceGroup),
+                        ResourceGroupNameAlreadyExists error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("CreateResourceGroup")
             .WithSummary("Creates a new resource group.")
             .WithDescription("Creates a new resource group with the specified details.")
@@ -39,25 +39,24 @@ public static class CreateResourceGroup
 
         return app;
     }
-
 }
 
 public sealed record CreateResourceGroupRequest(
     [FromBody] CreateResourceGroupRequestBody Body,
-    [FromTenantHeader] string TenantId) : IMediatorRequest<CreateResourceGroupOutcome>, ITenantCreateOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<CreateResourceGroupOutcome>, ITenantCreateOperation;
 
-public union CreateResourceGroupOutcome(
-    ResourceGroupDto,
-    ResourceGroupNameAlreadyExists);
+public union CreateResourceGroupOutcome(ResourceGroupDto, ResourceGroupNameAlreadyExists);
 
 public sealed record CreateResourceGroupRequestBody(
     string Name,
     string Description,
-    ImmutableHashSet<string> Tags);
+    ImmutableHashSet<string> Tags
+);
 
 public sealed class CreateResourceGroupHandler(
-    PersistCreatedResourceGroup persistCreatedResourceGroup)
-    : IMediatorOutcomeHandler<CreateResourceGroupRequest, CreateResourceGroupOutcome>
+    PersistCreatedResourceGroup persistCreatedResourceGroup
+) : IMediatorOutcomeHandler<CreateResourceGroupRequest, CreateResourceGroupOutcome>
 {
     public async Task<CreateResourceGroupOutcome> HandleAsync(
         CreateResourceGroupRequest request,
@@ -65,28 +64,22 @@ public sealed class CreateResourceGroupHandler(
     {
         var createOptions = ResourceGroupFactory.DefaultCreateOptions with
         {
-            Tags = request.Body.Tags
+            Tags = request.Body.Tags,
         };
         var resourceGroup = ResourceGroupFactory.Create(
             tenantId: request.TenantId,
             name: request.Body.Name,
             description: request.Body.Description,
-            options: createOptions
-        );
+            options: createOptions);
         var defaultScope = IsolationScopeFactory.CreateDefault(
             request.TenantId,
             resourceGroup.Id,
-            new IsolationScopeFactory.CreateOptions(
-                resourceGroup.DefaultIsolationScopeId,
-                resourceGroup.CreatedAtUtc));
-        var persisted = await persistCreatedResourceGroup(
-            resourceGroup,
-            defaultScope,
-            cancellationToken);
+            new IsolationScopeFactory.CreateOptions(resourceGroup.DefaultIsolationScopeId, resourceGroup.CreatedAtUtc));
+        var persisted = await persistCreatedResourceGroup(resourceGroup, defaultScope, cancellationToken);
         return persisted switch
         {
             ResourceGroup value => value.ToDto(resourceCount: 0),
-            ResourceGroupNameAlreadyExists error => new CreateResourceGroupOutcome(error)
+            ResourceGroupNameAlreadyExists error => new CreateResourceGroupOutcome(error),
         };
     }
 }
@@ -95,13 +88,8 @@ public sealed class CreateResourceGroupValidator : AbstractValidator<CreateResou
 {
     public CreateResourceGroupValidator()
     {
-        RuleFor(x => x.Body.Name)
-            .NotEmpty()
-            .MaximumLength(20);
-        RuleFor(x => x.Body.Description)
-            .MaximumLength(200);
-        RuleForEach(x => x.Body.Tags)
-            .NotEmpty()
-            .MaximumLength(30);
+        RuleFor(x => x.Body.Name).NotEmpty().MaximumLength(20);
+        RuleFor(x => x.Body.Description).MaximumLength(200);
+        RuleForEach(x => x.Body.Tags).NotEmpty().MaximumLength(30);
     }
 }

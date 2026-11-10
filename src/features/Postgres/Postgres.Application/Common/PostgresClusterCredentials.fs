@@ -4,16 +4,15 @@ open System.Text
 open Pole.Features.Secrets.Contracts
 
 type PostgresClusterCredentials =
-    { Username : string
-      Password : string }
+    { Username: string
+      Password: string }
 
-    override _.ToString() = "PostgresClusterCredentials([REDACTED])"
+    override _.ToString() =
+        "PostgresClusterCredentials([REDACTED])"
 
 type PostgresProjectedCredentials =
-    | OperatorCredentials of
-        username : string *
-        projection : SecretProjectionReference
-    | StatefulSetCredentials of projection : SecretProjectionReference
+    | OperatorCredentials of username: string * projection: SecretProjectionReference
+    | StatefulSetCredentials of projection: SecretProjectionReference
 
     member this.Projection =
         match this with
@@ -22,11 +21,19 @@ type PostgresProjectedCredentials =
 
 [<RequireQualifiedAccess>]
 module PostgresManagedSecret =
-    let owner clusterId = ManagedSecretOwner(PostgresResourceDeployment.ResourceType.Value, clusterId)
+    let owner clusterId =
+        ManagedSecretOwner(PostgresResourceDeployment.ResourceType.Value, clusterId)
+
     let name clusterId = $"postgres-{clusterId}-credentials"
     let usernameKey = "username"
     let passwordKey = "password"
 
     let maximumValueBytes = 65536L
-    let valueBytes value = if isNull value then 0L else int64 (Encoding.UTF8.GetByteCount(value : string))
+
+    let valueBytes value =
+        if isNull value then
+            0L
+        else
+            int64 (Encoding.UTF8.GetByteCount(value: string))
+
     let totalValueBytes values = values |> Seq.sumBy valueBytes

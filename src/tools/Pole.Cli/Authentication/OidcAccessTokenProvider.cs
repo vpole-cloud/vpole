@@ -1,18 +1,20 @@
 namespace Pole.Cli.Authentication;
 
-public sealed class CliLoginRequiredException() : InvalidOperationException("Run 'pole login' to authenticate with the saved Pole server.");
+public sealed class CliLoginRequiredException()
+    : InvalidOperationException("Run 'pole login' to authenticate with the saved Pole server.");
 
 public sealed class OidcAccessTokenProvider(
     Uri issuer,
     string clientId,
     Uri server,
     OidcAuthenticator authenticator,
-    CliTokenStore tokenStore)
+    CliTokenStore tokenStore
+)
 {
     private static readonly TimeSpan RefreshSkew = TimeSpan.FromSeconds(45);
     private readonly SemaphoreSlim gate = new(1, 1);
-    private OidcTokens? tokens;
     private bool loaded;
+    private OidcTokens? tokens;
 
     public async Task<string> GetAccessTokenAsync(
         CancellationToken cancellationToken,
@@ -39,6 +41,7 @@ public sealed class OidcAccessTokenProvider(
                     throw new CliLoginRequiredException();
                 tokens = await authenticator.LoginAsync(issuer, clientId, cancellationToken);
             }
+
             await tokenStore.SaveAsync(issuer, clientId, server, tokens, cancellationToken);
             return tokens.AccessToken;
         }

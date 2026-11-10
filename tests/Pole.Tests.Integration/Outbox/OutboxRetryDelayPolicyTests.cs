@@ -5,11 +5,12 @@ namespace Pole.Tests.Integration.Outbox;
 
 public sealed class OutboxRetryDelayPolicyTests
 {
-    private readonly OutboxRetryDelayPolicy _policy = new(new OutboxSettings
-    {
-        InitialRetryDelay = TimeSpan.FromSeconds(15),
-        MaximumRetryDelay = TimeSpan.FromMinutes(5)
-    });
+    private readonly OutboxRetryDelayPolicy _policy = new(
+        new OutboxSettings
+        {
+            InitialRetryDelay = TimeSpan.FromSeconds(15),
+            MaximumRetryDelay = TimeSpan.FromMinutes(5),
+        });
 
     [Fact]
     public void Calculate_IsDeterministicAndGrowsExponentially()
@@ -19,10 +20,7 @@ public sealed class OutboxRetryDelayPolicyTests
         var second = _policy.Calculate("507f1f77bcf86cd799439011", 2);
 
         Assert.Equal(first, repeated);
-        Assert.InRange(
-            first,
-            TimeSpan.FromSeconds(13.5),
-            TimeSpan.FromSeconds(16.5));
+        Assert.InRange(first, TimeSpan.FromSeconds(13.5), TimeSpan.FromSeconds(16.5));
         Assert.True(second > first);
     }
 
@@ -31,16 +29,12 @@ public sealed class OutboxRetryDelayPolicyTests
     {
         var delay = _policy.Calculate("507f1f77bcf86cd799439011", 100);
 
-        Assert.InRange(
-            delay,
-            TimeSpan.FromMinutes(4.5),
-            TimeSpan.FromMinutes(5));
+        Assert.InRange(delay, TimeSpan.FromMinutes(4.5), TimeSpan.FromMinutes(5));
     }
 
     [Fact]
     public void Calculate_RequiresAFirstOrLaterAttempt()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            _policy.Calculate("507f1f77bcf86cd799439011", 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _policy.Calculate("507f1f77bcf86cd799439011", 0));
     }
 }

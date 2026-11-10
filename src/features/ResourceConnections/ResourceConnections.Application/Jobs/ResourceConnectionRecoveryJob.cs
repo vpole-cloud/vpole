@@ -1,15 +1,8 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
-using Pole.Features.ResourceConnections.Application.Common;
-using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
-using Pole.Features.ResourceConnections.Application.Mongo;
 using Pole.Features.ResourceConnections.Application.Reconciliation;
 using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
-using Pole.Features.ResourceConnections.Domain;
 
 namespace Pole.Features.ResourceConnections.Application.Jobs;
 
@@ -18,7 +11,8 @@ public sealed class ResourceConnectionRecoveryJob(
     LoadResourceConnectionTombstoneRecoveryPage loadTombstones,
     ResourceConnectionReconciler reconciler,
     IResourceConnectionPolicyTarget policyTarget,
-    ILogger<ResourceConnectionRecoveryJob> logger)
+    ILogger<ResourceConnectionRecoveryJob> logger
+)
 {
     private const int PageSize = 100;
 
@@ -40,8 +34,10 @@ public sealed class ResourceConnectionRecoveryJob(
                     connection.Generation,
                     cancellationToken);
             }
+
             afterId = page[^1].Id;
         }
+
         afterId = null;
         while (true)
         {
@@ -49,25 +45,18 @@ public sealed class ResourceConnectionRecoveryJob(
             if (page.Count == 0)
                 return;
             foreach (var tombstone in page)
+            foreach (var snapshot in tombstone.Targets)
             {
-                foreach (var snapshot in tombstone.Targets)
-                {
-                    var outcome = await policyTarget.DeleteTombstoneAsync(
-                        tombstone,
-                        snapshot,
-                        cancellationToken);
-                    if (outcome.FailureCode() is { } failureCode)
-                    {
-                        logger.LogWarning(
-                            "Connection tombstone {ConnectionId} cleanup retry failed for target {TargetId}: {Reason}",
-                            tombstone.Id,
-                            snapshot.TargetId,
-                            failureCode);
-                    }
-                }
+                var outcome = await policyTarget.DeleteTombstoneAsync(tombstone, snapshot, cancellationToken);
+                if (outcome.FailureCode() is { } failureCode)
+                    logger.LogWarning(
+                        "Connection tombstone {ConnectionId} cleanup retry failed for target {TargetId}: {Reason}",
+                        tombstone.Id,
+                        snapshot.TargetId,
+                        failureCode);
             }
+
             afterId = page[^1].Id;
         }
     }
-
 }

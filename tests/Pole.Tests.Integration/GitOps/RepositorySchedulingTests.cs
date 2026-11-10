@@ -5,20 +5,24 @@ using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+public sealed class RepositorySchedulingGlobalTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task SchedulingLookupRejectsSourceIdentityFromAnotherTenant()
     {
         await Apply();
         var state = await State();
-        await Synchronization.UpdateOneAsync(item => item.Source.SourceId == source,
+        await Synchronization.UpdateOneAsync(
+            item => item.Source.SourceId == source,
             Builders<GitSynchronizationState>.Update
                 .Set(item => item.Source, new GitSourceIdentity(Id(), source))
                 .Set(item => item.RequestedGeneration, state.CompletedGeneration + 1)
@@ -41,10 +45,11 @@ public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixtu
         await Scheduler.RequestRepositorySyncAsync(Push("delivery-3"), default);
         Assert.Equal(4, (await State()).RequestedGeneration);
 
-        await Pipeline.RecoverAsync(new(Data.TenantId, source));
+        await Pipeline.RecoverAsync(new GitSourceIdentity(Data.TenantId, source));
         state = await State();
         Assert.Equal(4, state.CompletedGeneration);
-        Assert.Equal(2,
+        Assert.Equal(
+            2,
             await Services.GetRequiredService<IMongoCollection<GitReconciliationRun>>()
                 .CountDocumentsAsync(item => item.Stamp.Source.SourceId == source));
     }
@@ -58,7 +63,7 @@ public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixtu
         {
             signal with { TenantId = Id() }, signal with { ConnectionId = Id() },
             signal with { ExternalRepositoryId = "other" }, signal with { Branch = "feature/main" },
-            signal with { Provider = "OtherProvider" }
+            signal with { Provider = "OtherProvider" },
         };
         foreach (var item in unmatched)
             await Scheduler.RequestRepositorySyncAsync(item, default);
@@ -70,9 +75,10 @@ public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixtu
     {
         var initial = await Apply();
         var original = await Pipeline.LatestAsync(source);
-        var secret = await Secrets.Find(Builders<Pole.Features.Secrets.Domain.Secret>.Filter.Empty).SingleAsync();
-        var signal = new GitDependencyWakeSignal(Data.TenantId,
-            new("Secret", secret.Name),
+        var secret = await Secrets.Find(Builders<Secret>.Filter.Empty).SingleAsync();
+        var signal = new GitDependencyWakeSignal(
+            Data.TenantId,
+            new ResourceAddress("Secret", secret.Name),
             secret.Id,
             "values-1");
         await Supply();
@@ -84,20 +90,23 @@ public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixtu
         Assert.Null(reserved.Initiator.RequestedByUserId);
         Assert.IsType<GitRunWaiting>(reserved.State);
         Assert.Equal(2, (await State()).RequestedGeneration);
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
-            (await Pipeline.RecoverAsync(new(Data.TenantId, source))).Status);
+        Assert.Equal(
+            RepositoryPipelineStatus.ConfigurationApplied,
+            (await Pipeline.RecoverAsync(new GitSourceIdentity(Data.TenantId, source))).Status);
 
         repository.Publish(source, Snapshot("2"), "new-head");
-        await SourceStore.RequestSyncAsync(new(Data.TenantId,
+        await SourceStore.RequestSyncAsync(
+            new GitSourceCommand(
+                Data.TenantId,
                 source,
                 1,
                 Guid.NewGuid().ToString(),
-                new(GitRunTrigger.Manual, Data.UserId)),
+                new GitRunInitiator(GitRunTrigger.Manual, Data.UserId)),
             default);
         var ignored = signal with { SignalId = "values-2" };
         await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => Scheduler.WakeDependencyAsync(ignored, default)));
         Assert.Equal(3, (await State()).RequestedGeneration);
-        await Pipeline.RecoverAsync(new(Data.TenantId, source));
+        await Pipeline.RecoverAsync(new GitSourceIdentity(Data.TenantId, source));
         await Scheduler.WakeDependencyAsync(ignored, default);
         Assert.Equal(3, (await State()).RequestedGeneration);
         Assert.NotEqual(initial.Context!.Authority.Commit, (await Pipeline.LatestAsync(source)).Commit);
@@ -110,21 +119,22 @@ public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixtu
         await Supply();
         await Pipeline.ResumeAsync(initial.Context!);
         var releases = await Releases();
-        await Synchronization.UpdateOneAsync(item => item.Source.SourceId == source,
+        await Synchronization.UpdateOneAsync(
+            item => item.Source.SourceId == source,
             Builders<GitSynchronizationState>.Update.Set(item => item.NextPollAtUtc, DateTime.UtcNow.AddMinutes(-1)));
-        Assert.Contains(new GitSourceIdentity(Data.TenantId, source),
-            await Scheduler.RecoverableSourcesAsync(default));
-        await Pipeline.RecoverAsync(new(Data.TenantId, source));
-        Assert.Equal(GitRunCompletion.AlreadyCurrent,
+        Assert.Contains(new GitSourceIdentity(Data.TenantId, source), await Scheduler.RecoverableSourcesAsync(default));
+        await Pipeline.RecoverAsync(new GitSourceIdentity(Data.TenantId, source));
+        Assert.Equal(
+            GitRunCompletion.AlreadyCurrent,
             Assert.IsType<GitRunFinished>((await Pipeline.LatestAsync(source)).State).Completion);
         Assert.Equal(releases, await Releases());
 
         repository.Publish(source, Snapshot("2"), "missed-webhook");
-        await Synchronization.UpdateOneAsync(item => item.Source.SourceId == source,
+        await Synchronization.UpdateOneAsync(
+            item => item.Source.SourceId == source,
             Builders<GitSynchronizationState>.Update.Set(item => item.NextPollAtUtc, DateTime.UtcNow.AddMinutes(-1)));
-        Assert.Contains(new GitSourceIdentity(Data.TenantId, source),
-            await Scheduler.RecoverableSourcesAsync(default));
-        await Pipeline.RecoverAsync(new(Data.TenantId, source));
+        Assert.Contains(new GitSourceIdentity(Data.TenantId, source), await Scheduler.RecoverableSourcesAsync(default));
+        await Pipeline.RecoverAsync(new GitSourceIdentity(Data.TenantId, source));
         Assert.Equal(releases + 1, await Releases());
         Assert.Equal(GitRunTrigger.Poll, (await Pipeline.LatestAsync(source)).Initiator.Trigger);
     }
@@ -134,18 +144,18 @@ public sealed class RepositorySchedulingGlobalTests(MongoReplicaSetFixture fixtu
     {
         await Apply();
         await Scheduler.RequestRepositorySyncAsync(Push("lost-enqueue"), default);
-        var failing = new GitSourceRecoveryScanner(Scheduler,
+        var failing = new GitSourceRecoveryScanner(
+            Scheduler,
             _ => throw new IOException("test enqueue failure"),
             NullLogger<GitSourceRecoveryScanner>.Instance);
         await failing.ScanAsync(default);
         Assert.Equal(2, (await State()).RequestedGeneration);
         Assert.Equal(1, (await State()).CompletedGeneration);
         var dispatched = new List<GitSourceIdentity>();
-        await new GitSourceRecoveryScanner(Scheduler,
-            dispatched.Add,
-            NullLogger<GitSourceRecoveryScanner>.Instance).ScanAsync(default);
-        Assert.Contains(new(Data.TenantId, source), dispatched);
-        await Pipeline.RecoverAsync(new(Data.TenantId, source));
+        await new GitSourceRecoveryScanner(Scheduler, dispatched.Add, NullLogger<GitSourceRecoveryScanner>.Instance)
+            .ScanAsync(default);
+        Assert.Contains(new GitSourceIdentity(Data.TenantId, source), dispatched);
+        await Pipeline.RecoverAsync(new GitSourceIdentity(Data.TenantId, source));
         Assert.Equal(2, (await State()).CompletedGeneration);
     }
 }

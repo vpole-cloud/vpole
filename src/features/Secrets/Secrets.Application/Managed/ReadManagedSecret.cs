@@ -2,15 +2,6 @@ using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Encryption;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
@@ -20,7 +11,8 @@ namespace Pole.Features.Secrets.Application.Managed;
 internal sealed class EnvelopeReadManagedSecret(
     LoadManagedSecret loadSecret,
     LoadSecretVersion loadVersion,
-    IEnvelopeEncryptionService encryption)
+    IEnvelopeEncryptionService encryption
+)
 {
     public async Task<ReadManagedSecretOutcome> InvokeAsync(
         string tenantId,
@@ -33,16 +25,23 @@ internal sealed class EnvelopeReadManagedSecret(
         var version = await loadVersion(secret.TenantId, secret.Id, secret.CurrentVersion, ct);
         if (version is null)
             return new ManagedSecretUnavailable();
-        var result = await encryption.DecryptAsync(version.Value,
-            EnvelopeEncryptionContext.ForTenant(secret.TenantId, "Secret", secret.Id, "values", version.Version), ct);
+        var result = await encryption.DecryptAsync(
+            version.Value,
+            EnvelopeEncryptionContext.ForTenant(secret.TenantId, "Secret", secret.Id, "values", version.Version),
+            ct);
         if (result is not byte[] decrypted)
             return new ManagedSecretEncryptionUnavailable();
         try
         {
             var values = JsonSerializer.Deserialize<ImmutableDictionary<string, string>>(decrypted)!;
-            return new ManagedSecretValues(secret.Id, secret.Name,
-                ((ProviderManagedSecret)secret.Management).KubernetesType == KubernetesSecretType.BasicAuthentication ? ManagedSecretKubernetesType.BasicAuthentication : ManagedSecretKubernetesType.Opaque,
-                secret.CurrentVersion, values);
+            return new ManagedSecretValues(
+                secret.Id,
+                secret.Name,
+                ((ProviderManagedSecret)secret.Management).KubernetesType == KubernetesSecretType.BasicAuthentication
+                    ? ManagedSecretKubernetesType.BasicAuthentication
+                    : ManagedSecretKubernetesType.Opaque,
+                secret.CurrentVersion,
+                values);
         }
         finally
         {

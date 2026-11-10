@@ -5,9 +5,7 @@ using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application;
 
-public union EncryptSecretVersionOutcome(
-    SecretVersion,
-    SecretEncryptionFailed);
+public union EncryptSecretVersionOutcome(SecretVersion, SecretEncryptionFailed);
 
 public delegate Task<EncryptSecretVersionOutcome> EncryptSecretVersion(
     Secret secret,
@@ -16,7 +14,8 @@ public delegate Task<EncryptSecretVersionOutcome> EncryptSecretVersion(
 
 internal sealed class EnvelopeEncryptSecretVersion(
     IEnvelopeEncryptionService encryption,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public async Task<EncryptSecretVersionOutcome> InvokeAsync(
         Secret secret,
@@ -44,7 +43,7 @@ internal sealed class EnvelopeEncryptSecretVersion(
                     secret.CurrentVersion,
                     encrypted,
                     clock.GetUtcNow().UtcDateTime),
-                EnvelopeEncryptionFailed => new SecretEncryptionFailed()
+                EnvelopeEncryptionFailed => new SecretEncryptionFailed(),
             };
         }
         finally

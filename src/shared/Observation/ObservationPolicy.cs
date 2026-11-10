@@ -3,6 +3,7 @@ namespace Pole.Observation;
 /// <summary>One timing contract for demand-driven snapshots; independent of resource/provider semantics.</summary>
 public static class ObservationPolicy
 {
+    public const int ConcurrentReads = 4;
     public static readonly TimeSpan CoordinationInterval = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan CoalesceInterval = TimeSpan.FromMilliseconds(250);
     public static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(30);
@@ -13,5 +14,4 @@ public static class ObservationPolicy
     public static readonly TimeSpan IdleRetention = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(15);
-    public const int ConcurrentReads = 4;
 }

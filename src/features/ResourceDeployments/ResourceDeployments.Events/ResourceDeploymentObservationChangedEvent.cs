@@ -11,7 +11,8 @@ public sealed record ResourceDeploymentObservationChangedEvent(
     string ResourceGroupId,
     long DeploymentRevision,
     long DesiredGeneration,
-    long ObservationVersion) : IPoleEvent
+    long ObservationVersion
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

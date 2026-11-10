@@ -4,7 +4,9 @@ using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.StorageProfiles.Application.Observation;
 
-public sealed class StorageObservationContextLoader(LookupDeploymentTarget lookup)
+public sealed class StorageObservationContextLoader(
+    LookupDeploymentTarget lookup
+)
 {
     public async Task<StorageObservationContext?> LoadAsync(string targetId, CancellationToken ct = default)
     {
@@ -13,9 +15,9 @@ public sealed class StorageObservationContextLoader(LookupDeploymentTarget looku
         var outcome = await lookup(id.ToString(), ct);
         return outcome.Value is DeploymentTargetLookupDto
         {
-            Enabled: true, DeletionRequested: false, ConnectionVersion: > 0
+            Enabled: true, DeletionRequested: false, ConnectionVersion: > 0,
         } target
-            ? new(target.Id, target.ConnectionVersion)
+            ? new StorageObservationContext(target.Id, target.ConnectionVersion)
             : null;
     }
 

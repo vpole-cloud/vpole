@@ -9,7 +9,8 @@ namespace Pole.Features.Functions.Runtime.Kubernetes;
 public readonly record struct FunctionRevisionInKubernetes(
     FunctionApp App,
     FunctionRevision Revision,
-    FunctionResourcePlacement Placement)
+    FunctionResourcePlacement Placement
+)
 {
     public const int AgentPort = 8080;
     public const string ScaleGenerationAnnotation = "pole.io/function-scale-generation";
@@ -21,13 +22,11 @@ public readonly record struct FunctionRevisionInKubernetes(
 
     public static string BuildResourceName(string functionAppId, int revisionNumber)
     {
-        var id = new string(functionAppId
-            .ToLowerInvariant()
-            .Where(char.IsLetterOrDigit)
-            .Take(24)
-            .ToArray());
+        var id = new string(functionAppId.ToLowerInvariant().Where(char.IsLetterOrDigit).Take(24).ToArray());
         if (id.Length == 0)
-            throw new ArgumentException("Function App id must contain an alphanumeric character.", nameof(functionAppId));
+            throw new ArgumentException(
+                "Function App id must contain an alphanumeric character.",
+                nameof(functionAppId));
         return $"fn-{id}-r{revisionNumber.ToString(CultureInfo.InvariantCulture)}";
     }
 
@@ -48,8 +47,8 @@ public readonly record struct FunctionRevisionInKubernetes(
                 {
                     ContainerPort = AgentPort,
                     Name = "agent",
-                    Protocol = "TCP"
-                }
+                    Protocol = "TCP",
+                },
             ],
             Env = BuildEnvironment(trustBundle, secretProjections),
             Resources = new V1ResourceRequirements
@@ -57,13 +56,13 @@ public readonly record struct FunctionRevisionInKubernetes(
                 Requests = new Dictionary<string, ResourceQuantity>
                 {
                     ["cpu"] = new($"{Revision.Spec.Resources.Requests.CpuMillis}m"),
-                    ["memory"] = new($"{Revision.Spec.Resources.Requests.MemoryMi}Mi")
+                    ["memory"] = new($"{Revision.Spec.Resources.Requests.MemoryMi}Mi"),
                 },
                 Limits = new Dictionary<string, ResourceQuantity>
                 {
                     ["cpu"] = new($"{Revision.Spec.Resources.Limits.CpuMillis}m"),
-                    ["memory"] = new($"{Revision.Spec.Resources.Limits.MemoryMi}Mi")
-                }
+                    ["memory"] = new($"{Revision.Spec.Resources.Limits.MemoryMi}Mi"),
+                },
             },
             StartupProbe = HttpProbe(PoleFunctionProtocol.LivenessPath, failureThreshold: 30),
             LivenessProbe = HttpProbe(PoleFunctionProtocol.LivenessPath, failureThreshold: 3),
@@ -73,9 +72,9 @@ public readonly record struct FunctionRevisionInKubernetes(
                 AllowPrivilegeEscalation = false,
                 ReadOnlyRootFilesystem = true,
                 RunAsNonRoot = true,
-                Capabilities = new V1Capabilities { Drop = ["ALL"] }
+                Capabilities = new V1Capabilities { Drop = ["ALL"] },
             },
-            VolumeMounts = [new V1VolumeMount { Name = "tmp", MountPath = "/tmp" }]
+            VolumeMounts = [new V1VolumeMount { Name = "tmp", MountPath = "/tmp" }],
         };
 
         return new V1Deployment
@@ -100,7 +99,7 @@ public readonly record struct FunctionRevisionInKubernetes(
                         SecurityContext = new V1PodSecurityContext
                         {
                             RunAsNonRoot = true,
-                            SeccompProfile = new V1SeccompProfile { Type = "RuntimeDefault" }
+                            SeccompProfile = new V1SeccompProfile { Type = "RuntimeDefault" },
                         },
                         ImagePullSecrets = Revision.Spec.Image.PullSecretName is null
                             ? null
@@ -111,12 +110,12 @@ public readonly record struct FunctionRevisionInKubernetes(
                             new V1Volume
                             {
                                 Name = "tmp",
-                                EmptyDir = new V1EmptyDirVolumeSource()
-                            }
-                        ]
-                    }
-                }
-            }
+                                EmptyDir = new V1EmptyDirVolumeSource(),
+                            },
+                        ],
+                    },
+                },
+            },
         };
     }
 
@@ -137,17 +136,19 @@ public readonly record struct FunctionRevisionInKubernetes(
                     Port = AgentPort,
                     Name = "agent",
                     Protocol = "TCP",
-                    TargetPort = AgentPort
-                }
-            ]
-        }
+                    TargetPort = AgentPort,
+                },
+            ],
+        },
     };
 
     private List<V1EnvVar> BuildEnvironment(
         FunctionAgentTrustBundle? trustBundle,
         IReadOnlyDictionary<string, FunctionSecretProjection>? secretProjections)
     {
-        var environment = Revision.Spec.Configuration.EnvironmentVariables
+        var environment = Revision.Spec
+            .Configuration
+            .EnvironmentVariables
             .Select(pair => Env(pair.Key, pair.Value))
             .ToList();
         if (Revision.Spec.Configuration.SecretReferences.Keys.Any(key =>
@@ -155,18 +156,19 @@ public readonly record struct FunctionRevisionInKubernetes(
             throw new InvalidOperationException(
                 "Function Secret projections must be resolved before manifest creation.");
 
-        environment.AddRange(Revision.Spec.Configuration.SecretReferences.Select(pair => new V1EnvVar
-        {
-            Name = pair.Key,
-            ValueFrom = new V1EnvVarSource
+        environment.AddRange(
+            Revision.Spec.Configuration.SecretReferences.Select(pair => new V1EnvVar
             {
-                SecretKeyRef = new V1SecretKeySelector
+                Name = pair.Key,
+                ValueFrom = new V1EnvVarSource
                 {
-                    Name = secretProjections![pair.Key].KubernetesName,
-                    Key = secretProjections[pair.Key].ProjectedKey
-                }
-            }
-        }));
+                    SecretKeyRef = new V1SecretKeySelector
+                    {
+                        Name = secretProjections![pair.Key].KubernetesName,
+                        Key = secretProjections[pair.Key].ProjectedKey,
+                    },
+                },
+            }));
         environment.AddRange(
         [
             Env("ASPNETCORE_URLS", $"http://+:{AgentPort}"),
@@ -179,34 +181,36 @@ public readonly record struct FunctionRevisionInKubernetes(
                 Revision.Spec.Scaling.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture)),
             Env(
                 "PoleFunctions__DefaultHandlerConcurrencyPerInstance",
-                Revision.Spec.Scaling.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture))
+                Revision.Spec.Scaling.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture)),
         ]);
-        environment.AddRange(Revision.Spec.Handlers.Select(handler => Env(
-            $"PoleFunctions__HandlerConcurrencyPerInstance__{handler.Name}",
-            handler.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture))));
+        environment.AddRange(
+            Revision.Spec.Handlers.Select(handler => Env(
+                $"PoleFunctions__HandlerConcurrencyPerInstance__{handler.Name}",
+                handler.MaxConcurrencyPerInstance.ToString(CultureInfo.InvariantCulture))));
         if (trustBundle is not null)
         {
             environment.Add(Env("PoleFunctions__AgentAuthentication__Issuer", trustBundle.Issuer));
             environment.Add(Env("PoleFunctions__AgentAuthentication__Audience", trustBundle.Audience));
-            environment.Add(new V1EnvVar
-            {
-                Name = "PoleFunctions__AgentAuthentication__TargetUid",
-                ValueFrom = new V1EnvVarSource
+            environment.Add(
+                new V1EnvVar
                 {
-                    FieldRef = new V1ObjectFieldSelector { FieldPath = "metadata.uid" }
-                }
-            });
+                    Name = "PoleFunctions__AgentAuthentication__TargetUid",
+                    ValueFrom = new V1EnvVarSource
+                    {
+                        FieldRef = new V1ObjectFieldSelector { FieldPath = "metadata.uid" },
+                    },
+                });
             for (var index = 0; index < trustBundle.TrustedKeys.Count; index++)
             {
                 var key = trustBundle.TrustedKeys[index];
-                environment.Add(Env(
-                    $"PoleFunctions__AgentAuthentication__TrustedKeys__{index}__KeyId",
-                    key.KeyId));
-                environment.Add(Env(
-                    $"PoleFunctions__AgentAuthentication__TrustedKeys__{index}__SubjectPublicKeyInfoBase64",
-                    key.SubjectPublicKeyInfoBase64));
+                environment.Add(Env($"PoleFunctions__AgentAuthentication__TrustedKeys__{index}__KeyId", key.KeyId));
+                environment.Add(
+                    Env(
+                        $"PoleFunctions__AgentAuthentication__TrustedKeys__{index}__SubjectPublicKeyInfoBase64",
+                        key.SubjectPublicKeyInfoBase64));
             }
         }
+
         return environment;
     }
 
@@ -219,8 +223,8 @@ public readonly record struct FunctionRevisionInKubernetes(
         Labels = labels,
         Annotations = new Dictionary<string, string>
         {
-            ["app.kubernetes.io/managed-by"] = "pole-server"
-        }
+            ["app.kubernetes.io/managed-by"] = "pole-server",
+        },
     };
 
     private V1ObjectMeta DeploymentMetadata(string name, IDictionary<string, string> labels)
@@ -244,13 +248,13 @@ public readonly record struct FunctionRevisionInKubernetes(
         ["pole.io/deployment-target-id"] = Placement.DeploymentTargetId,
         ["pole.io/function-app-id"] = App.Id,
         ["pole.io/function-revision"] = Revision.RevisionNumber.ToString(CultureInfo.InvariantCulture),
-        ["pole.io/function-revision-id"] = Revision.Id
+        ["pole.io/function-revision-id"] = Revision.Id,
     };
 
     private Dictionary<string, string> SelectorLabels() => new()
     {
         ["pole.io/function-app-id"] = App.Id,
-        ["pole.io/function-revision-id"] = Revision.Id
+        ["pole.io/function-revision-id"] = Revision.Id,
     };
 
     private static V1Probe HttpProbe(string path, int failureThreshold) => new()
@@ -259,10 +263,11 @@ public readonly record struct FunctionRevisionInKubernetes(
         PeriodSeconds = 2,
         TimeoutSeconds = 1,
         FailureThreshold = failureThreshold,
-        SuccessThreshold = 1
+        SuccessThreshold = 1,
     };
 }
 
 public sealed record FunctionSecretProjection(
     string KubernetesName,
-    string ProjectedKey);
+    string ProjectedKey
+);

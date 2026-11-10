@@ -5,14 +5,15 @@ public enum TenantRole
     Viewer = 0,
     Member = 1,
     Admin = 2,
-    Owner = 3
+    Owner = 3,
 }
 
 public sealed record TenantContext(
     string TenantId,
     string TenantName,
     TenantRole Role,
-    bool IsPlatformAdmin);
+    bool IsPlatformAdmin
+);
 
 public interface ITenantContextAccessor
 {

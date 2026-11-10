@@ -1,4 +1,3 @@
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Testing.Tests;
@@ -13,7 +12,9 @@ public sealed class TestCoverageCiContractTests
     {
         var workflow = ReadRepositoryFile(".github", "workflows", "kubernetes-lab.yml");
 
-        Assert.Contains("--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"", workflow,
+        Assert.Contains(
+            "--profile \"${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}\"",
+            workflow,
             StringComparison.Ordinal);
         // Collector and bounded execution arguments are exercised by test_quality_gate.py.
         Assert.Contains(
@@ -23,8 +24,7 @@ public sealed class TestCoverageCiContractTests
         Assert.Contains("dotnet tool run reportgenerator", workflow, StringComparison.Ordinal);
         Assert.Contains("Html;Cobertura", workflow, StringComparison.Ordinal);
         Assert.Contains("MarkdownAssembliesSummary", workflow, StringComparison.Ordinal);
-        Assert.Contains("-filefilters:-**/obj/**;-**/*.g.cs;-**/*.generated.cs", workflow,
-            StringComparison.Ordinal);
+        Assert.Contains("-filefilters:-**/obj/**;-**/*.g.cs;-**/*.generated.cs", workflow, StringComparison.Ordinal);
         Assert.Contains("GITHUB_STEP_SUMMARY", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/upload-artifact@v4", workflow, StringComparison.Ordinal);
         Assert.Contains("name: backend-coverage", workflow, StringComparison.Ordinal);
@@ -41,7 +41,9 @@ public sealed class TestCoverageCiContractTests
         Assert.Contains("\"test:coverage\": \"vitest run --coverage\"", package, StringComparison.Ordinal);
         Assert.Contains("\"@vitest/coverage-v8\"", package, StringComparison.Ordinal);
         Assert.Contains("include: ['src/**/*.{ts,tsx}']", viteConfig, StringComparison.Ordinal);
-        Assert.Contains("reporter: ['text-summary', 'html', 'cobertura', 'json-summary']", viteConfig,
+        Assert.Contains(
+            "reporter: ['text-summary', 'html', 'cobertura', 'json-summary']",
+            viteConfig,
             StringComparison.Ordinal);
         Assert.DoesNotContain("threshold", viteConfig, StringComparison.OrdinalIgnoreCase);
     }
@@ -64,9 +66,10 @@ public sealed class TestCoverageCiContractTests
             "rm -rf -- .artifacts/coverage/backend/raw .artifacts/coverage/backend/report",
             documentation,
             StringComparison.Ordinal);
-        Assert.Contains("--results-directory .artifacts/coverage/backend/raw", documentation,
-            StringComparison.Ordinal);
-        Assert.Contains("-reports:.artifacts/coverage/backend/raw/**/*.cobertura.xml", documentation,
+        Assert.Contains("--results-directory .artifacts/coverage/backend/raw", documentation, StringComparison.Ordinal);
+        Assert.Contains(
+            "-reports:.artifacts/coverage/backend/raw/**/*.cobertura.xml",
+            documentation,
             StringComparison.Ordinal);
     }
 

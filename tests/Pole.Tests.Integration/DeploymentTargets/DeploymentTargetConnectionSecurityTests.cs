@@ -1,5 +1,5 @@
-using System.Reflection;
 using System.Net.Security;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -11,8 +11,6 @@ using Pole.Encryption;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
-using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
@@ -24,11 +22,11 @@ public sealed class DeploymentTargetConnectionSecurityTests
     private const string KubeconfigToken = "pole-kubeconfig-secret-token-7a91";
     private const string ServiceAccountToken = "pole-service-account-secret-token-4b62";
 
-    private static readonly Lazy<string> CertificateAuthorityData =
-        new(() => CreateCertificateAuthorityData("pole-test-ca"));
+    private static readonly Lazy<string> CertificateAuthorityData
+        = new(() => CreateCertificateAuthorityData("pole-test-ca"));
 
-    private static readonly Lazy<string> AlternateCertificateAuthorityData =
-        new(() => CreateCertificateAuthorityData("pole-alternate-test-ca"));
+    private static readonly Lazy<string> AlternateCertificateAuthorityData
+        = new(() => CreateCertificateAuthorityData("pole-alternate-test-ca"));
 
     [Fact]
     public async Task Kubeconfig_PrepareAndResolve_UsesEncryptedCanonicalCredentialAndHardenedTransport()
@@ -37,10 +35,11 @@ public sealed class DeploymentTargetConnectionSecurityTests
         var targetId = ObjectId.GenerateNewId().ToString();
         var kubeconfig = CreateKubeconfig(KubeconfigToken);
 
-        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
-            targetId,
-            connectionVersion: 3,
-            new KubeconfigConnectionInput(kubeconfig))).Value);
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await encryption.ConnectionService.PrepareAsync(
+                targetId,
+                connectionVersion: 3,
+                new KubeconfigConnectionInput(kubeconfig))).Value);
         using (prepared)
         {
             var persisted = Assert.IsType<KubeconfigDeploymentTargetConnection>(prepared.Connection);
@@ -51,15 +50,12 @@ public sealed class DeploymentTargetConnectionSecurityTests
             Assert.Equal(
                 LocalKeyFileKeyEncryptionProvider.StableProviderId,
                 persisted.EncryptedKubeconfig.KeyProviderId);
-            Assert.Equal(
-                EnvelopeEncryptionService.CurrentFormatVersion,
-                persisted.EncryptedKubeconfig.FormatVersion);
+            Assert.Equal(EnvelopeEncryptionService.CurrentFormatVersion, persisted.EncryptedKubeconfig.FormatVersion);
 
             AssertHardenedTransport(prepared.Candidate, KubernetesServer);
 
-            var resolved = Assert.IsAssignableFrom<IKubernetes>((await encryption.ConnectionService.CreateAsync(
-                targetId,
-                persisted)).Value);
+            var resolved = Assert.IsAssignableFrom<IKubernetes>(
+                (await encryption.ConnectionService.CreateAsync(targetId, persisted)).Value);
             using (resolved)
             {
                 AssertHardenedTransport(resolved, KubernetesServer);
@@ -84,13 +80,9 @@ public sealed class DeploymentTargetConnectionSecurityTests
             connectionVersion: 1,
             new KubeconfigConnectionInput(kubeconfig));
 
-        var rejection = Assert.IsType<DeploymentTargetConnectionRejected>((result).Value);
+        var rejection = Assert.IsType<DeploymentTargetConnectionRejected>(result.Value);
         Assert.IsType<DeploymentTargetConnectionRejected>(rejection);
-        AssertSafeConnectionRejection(
-            rejection,
-            KubeconfigToken,
-            "pole-basic-password",
-            "pole-should-never-run");
+        AssertSafeConnectionRejection(rejection, KubeconfigToken, "pole-basic-password", "pole-should-never-run");
     }
 
     [Fact]
@@ -99,10 +91,11 @@ public sealed class DeploymentTargetConnectionSecurityTests
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
         var kubeconfig = CreateKubeconfig(KubeconfigToken);
-        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
-            targetId,
-            connectionVersion: 1,
-            new KubeconfigConnectionInput(kubeconfig))).Value);
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await encryption.ConnectionService.PrepareAsync(
+                targetId,
+                connectionVersion: 1,
+                new KubeconfigConnectionInput(kubeconfig))).Value);
 
         using (prepared)
         {
@@ -119,7 +112,9 @@ public sealed class DeploymentTargetConnectionSecurityTests
             Assert.DoesNotContain(CertificateAuthorityData.Value, apiJson, StringComparison.Ordinal);
             Assert.DoesNotContain("encrypted", apiJson, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("serverUrl", apiJson, StringComparison.OrdinalIgnoreCase);
-            Assert.Equal(["Kind", "Version"], dto.Connection.GetType().GetProperties().Select(property => property.Name));
+            Assert.Equal(
+                ["Kind", "Version"],
+                dto.Connection.GetType().GetProperties().Select(property => property.Name));
         }
     }
 
@@ -128,13 +123,14 @@ public sealed class DeploymentTargetConnectionSecurityTests
     {
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
-            targetId,
-            connectionVersion: 5,
-            new ServiceAccountConnectionInput(
-                ServiceAccountServer,
-                CertificateAuthorityData.Value,
-                ServiceAccountToken))).Value);
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await encryption.ConnectionService.PrepareAsync(
+                targetId,
+                connectionVersion: 5,
+                new ServiceAccountConnectionInput(
+                    ServiceAccountServer,
+                    CertificateAuthorityData.Value,
+                    ServiceAccountToken))).Value);
 
         using (prepared)
         {
@@ -145,9 +141,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
             Assert.Equal(
                 LocalKeyFileKeyEncryptionProvider.StableProviderId,
                 persisted.EncryptedCredential.KeyProviderId);
-            Assert.Equal(
-                EnvelopeEncryptionService.CurrentFormatVersion,
-                persisted.EncryptedCredential.FormatVersion);
+            Assert.Equal(EnvelopeEncryptionService.CurrentFormatVersion, persisted.EncryptedCredential.FormatVersion);
 
             var persistedJson = persisted.ToBsonDocument().ToJson();
             Assert.DoesNotContain(ServiceAccountToken, persistedJson, StringComparison.Ordinal);
@@ -159,7 +153,8 @@ public sealed class DeploymentTargetConnectionSecurityTests
             Assert.DoesNotContain(ServiceAccountServer, dtoJson, StringComparison.Ordinal);
             Assert.DoesNotContain("encrypted", dtoJson, StringComparison.OrdinalIgnoreCase);
 
-            var resolved = Assert.IsAssignableFrom<IKubernetes>((await encryption.ConnectionService.CreateAsync(targetId, persisted)).Value);
+            var resolved = Assert.IsAssignableFrom<IKubernetes>(
+                (await encryption.ConnectionService.CreateAsync(targetId, persisted)).Value);
             using (resolved)
             {
                 AssertHardenedTransport(resolved, ServiceAccountServer);
@@ -173,13 +168,14 @@ public sealed class DeploymentTargetConnectionSecurityTests
         using var encryption = TestEncryptionScope.Create();
         using var certificates = TlsCertificateSet.Create("service-account.pole.test");
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
-            targetId,
-            connectionVersion: 1,
-            new ServiceAccountConnectionInput(
-                ServiceAccountServer,
-                Convert.ToBase64String(certificates.TrustedRoot.Export(X509ContentType.Cert)),
-                ServiceAccountToken))).Value);
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await encryption.ConnectionService.PrepareAsync(
+                targetId,
+                connectionVersion: 1,
+                new ServiceAccountConnectionInput(
+                    ServiceAccountServer,
+                    Convert.ToBase64String(certificates.TrustedRoot.Export(X509ContentType.Cert)),
+                    ServiceAccountToken))).Value);
 
         using (prepared)
         {
@@ -187,26 +183,10 @@ public sealed class DeploymentTargetConnectionSecurityTests
             var validator = handler.SslOptions.RemoteCertificateValidationCallback;
             Assert.NotNull(validator);
 
-            Assert.True(validator(
-                handler,
-                certificates.ValidLeaf,
-                null,
-                SslPolicyErrors.None));
-            Assert.False(validator(
-                handler,
-                certificates.WrongHostLeaf,
-                null,
-                SslPolicyErrors.None));
-            Assert.False(validator(
-                handler,
-                certificates.WrongAuthorityLeaf,
-                null,
-                SslPolicyErrors.None));
-            Assert.False(validator(
-                handler,
-                certificates.ExpiredLeaf,
-                null,
-                SslPolicyErrors.None));
+            Assert.True(validator(handler, certificates.ValidLeaf, null, SslPolicyErrors.None));
+            Assert.False(validator(handler, certificates.WrongHostLeaf, null, SslPolicyErrors.None));
+            Assert.False(validator(handler, certificates.WrongAuthorityLeaf, null, SslPolicyErrors.None));
+            Assert.False(validator(handler, certificates.ExpiredLeaf, null, SslPolicyErrors.None));
         }
     }
 
@@ -217,13 +197,14 @@ public sealed class DeploymentTargetConnectionSecurityTests
     {
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
-            targetId,
-            connectionVersion: 1,
-            new ServiceAccountConnectionInput(
-                ServiceAccountServer,
-                CertificateAuthorityData.Value,
-                ServiceAccountToken))).Value);
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await encryption.ConnectionService.PrepareAsync(
+                targetId,
+                connectionVersion: 1,
+                new ServiceAccountConnectionInput(
+                    ServiceAccountServer,
+                    CertificateAuthorityData.Value,
+                    ServiceAccountToken))).Value);
 
         using (prepared)
         {
@@ -253,17 +234,16 @@ public sealed class DeploymentTargetConnectionSecurityTests
     {
         using var encryption = TestEncryptionScope.Create();
         var targetId = ObjectId.GenerateNewId().ToString();
-        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>((await encryption.ConnectionService.PrepareAsync(
-            targetId,
-            connectionVersion: 7,
-            new KubeconfigConnectionInput(CreateKubeconfig(KubeconfigToken)))).Value);
+        var prepared = Assert.IsType<PreparedDeploymentTargetConnection>(
+            (await encryption.ConnectionService.PrepareAsync(
+                targetId,
+                connectionVersion: 7,
+                new KubeconfigConnectionInput(CreateKubeconfig(KubeconfigToken)))).Value);
 
         using (prepared)
         {
             var persisted = Assert.IsType<KubeconfigDeploymentTargetConnection>(prepared.Connection);
-            var requestedTargetId = changedIdentity == "target"
-                ? ObjectId.GenerateNewId().ToString()
-                : targetId;
+            var requestedTargetId = changedIdentity == "target" ? ObjectId.GenerateNewId().ToString() : targetId;
             DeploymentTargetConnection requestedConnection = changedIdentity == "version"
                 ? DeploymentTargetConnectionFactory.CreateKubeconfig(
                     persisted.Version + 1,
@@ -272,9 +252,7 @@ public sealed class DeploymentTargetConnectionSecurityTests
                     persisted.EncryptedKubeconfig)
                 : persisted;
 
-            var result = await encryption.ConnectionService.CreateAsync(
-                requestedTargetId,
-                requestedConnection);
+            var result = await encryption.ConnectionService.CreateAsync(requestedTargetId, requestedConnection);
 
             var failure = Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(result.Value);
             Assert.IsType<StoredDeploymentTargetConnectionUnavailable>(failure);
@@ -311,60 +289,57 @@ public sealed class DeploymentTargetConnectionSecurityTests
 
     private static string CreateUnsafeKubeconfig(string variant)
     {
-        var server = variant == "http"
-            ? "http://cluster.pole.test:6443"
-            : KubernetesServer;
+        var server = variant == "http" ? "http://cluster.pole.test:6443" : KubernetesServer;
         var clusterSettings = variant switch
         {
             "insecure" => "    insecure-skip-tls-verify: true",
             "file" => "    certificate-authority: /pole/ca-file-must-not-be-read.pem",
-            _ => string.Empty
+            _ => "",
         };
         var credentials = variant switch
         {
-            "exec" => "    exec:\n      apiVersion: client.authentication.k8s.io/v1\n      command: pole-should-never-run",
+            "exec" =>
+                "    exec:\n      apiVersion: client.authentication.k8s.io/v1\n      command: pole-should-never-run",
             "basic" => "    username: pole-admin\n    password: pole-basic-password",
             "mixed" =>
                 $"    token: {KubeconfigToken}\n    client-certificate-data: Y2VydGlmaWNhdGU=\n    client-key-data: cHJpdmF0ZS1rZXk=",
-            _ => $"    token: {KubeconfigToken}"
+            _ => $"    token: {KubeconfigToken}",
         };
         return CreateKubeconfig(credentials, server, clusterSettings);
     }
 
     private static string CreateKubeconfig(string token) =>
-        CreateKubeconfig($"    token: {token}", KubernetesServer, string.Empty);
+        CreateKubeconfig($"    token: {token}", KubernetesServer, "");
 
     private static string CreateKubeconfig(
         string credentials,
         string server,
-        string clusterSettings) =>
-        $"""
-        apiVersion: v1
-        kind: Config
-        current-context: pole-context
-        clusters:
-        - name: pole-cluster
-          cluster:
-            server: {server}
-            certificate-authority-data: {CertificateAuthorityData.Value}
-        {clusterSettings}
-        contexts:
-        - name: pole-context
-          context:
-            cluster: pole-cluster
-            user: pole-user
-        users:
-        - name: pole-user
-          user:
-        {credentials}
-        """;
+        string clusterSettings) => $"""
+                                    apiVersion: v1
+                                    kind: Config
+                                    current-context: pole-context
+                                    clusters:
+                                    - name: pole-cluster
+                                      cluster:
+                                        server: {server}
+                                        certificate-authority-data: {CertificateAuthorityData.Value}
+                                    {clusterSettings}
+                                    contexts:
+                                    - name: pole-context
+                                      context:
+                                        cluster: pole-cluster
+                                        user: pole-user
+                                    users:
+                                    - name: pole-user
+                                      user:
+                                    {credentials}
+                                    """;
 
-    private static DeploymentTarget CreateTarget(
-        string id,
-        DeploymentTargetConnection connection)
+    private static DeploymentTarget CreateTarget(string id, DeploymentTargetConnection connection)
     {
         var createdAtUtc = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create("target-" + id,
+        return DeploymentTargetFactory.Create(
+            "target-" + id,
             "Security test target",
             $"cluster-{id}",
             connection,
@@ -405,9 +380,8 @@ public sealed class DeploymentTargetConnectionSecurityTests
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(
-            X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.DigitalSignature,
-            true));
+        request.CertificateExtensions.Add(
+            new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.DigitalSignature, true));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
         using var certificate = request.CreateSelfSigned(
             DateTimeOffset.UtcNow.AddDays(-1),
@@ -432,6 +406,22 @@ public sealed class DeploymentTargetConnectionSecurityTests
 
         public DeploymentTargetConnectionOperations ConnectionService { get; }
 
+        public void Dispose()
+        {
+            _provider.Dispose();
+            var fullDirectory = Path.GetFullPath(_directory);
+            var expectedParent = Path.GetFullPath(
+                Path.Combine(Path.GetTempPath(), "pole-deployment-target-connection-tests"));
+            if (!fullDirectory.StartsWith(
+                    expectedParent + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Refusing to delete a deployment-target test directory outside the expected temporary root.");
+
+            if (Directory.Exists(fullDirectory))
+                Directory.Delete(fullDirectory, recursive: true);
+        }
+
         public static TestEncryptionScope Create()
         {
             var parent = Path.Combine(Path.GetTempPath(), "pole-deployment-target-connection-tests");
@@ -448,26 +438,29 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 CryptographicOperations.ZeroMemory(key);
             }
 
-            var provider = new LocalKeyFileKeyEncryptionProvider(Options.Create(new LocalKeyFileOptions
-            {
-                ActiveKeyId = "deployment-target-test",
-                ActiveKeyVersion = 1,
-                Keys =
-                [
-                    new LocalKeyFileKeyOptions
+            var provider = new LocalKeyFileKeyEncryptionProvider(
+                Options.Create(
+                    new LocalKeyFileOptions
                     {
-                        Id = "deployment-target-test",
-                        Version = 1,
-                        Path = keyPath
-                    }
-                ]
-            }));
+                        ActiveKeyId = "deployment-target-test",
+                        ActiveKeyVersion = 1,
+                        Keys =
+                        [
+                            new LocalKeyFileKeyOptions
+                            {
+                                Id = "deployment-target-test",
+                                Version = 1,
+                                Path = keyPath,
+                            },
+                        ],
+                    }));
             var envelopeEncryption = new EnvelopeEncryptionService(
                 [provider],
-                Options.Create(new EnvelopeEncryptionOptions
-                {
-                    ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId
-                }));
+                Options.Create(
+                    new EnvelopeEncryptionOptions
+                    {
+                        ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId,
+                    }));
             var protector = new DeploymentTargetConnectionProtector(envelopeEncryption);
             return new TestEncryptionScope(
                 directory,
@@ -476,49 +469,30 @@ public sealed class DeploymentTargetConnectionSecurityTests
                     new DeploymentTargetConnectionPreparer(protector).InvokeAsync,
                     new DeploymentTargetKubernetesClientFactory(protector).InvokeAsync));
         }
-
-        public void Dispose()
-        {
-            _provider.Dispose();
-            var fullDirectory = Path.GetFullPath(_directory);
-            var expectedParent = Path.GetFullPath(
-                Path.Combine(Path.GetTempPath(), "pole-deployment-target-connection-tests"));
-            if (!fullDirectory.StartsWith(
-                    expectedParent + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    "Refusing to delete a deployment-target test directory outside the expected temporary root.");
-            }
-
-            if (Directory.Exists(fullDirectory))
-                Directory.Delete(fullDirectory, recursive: true);
-        }
     }
 
     private sealed class DeploymentTargetConnectionOperations(
         PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
-        CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient)
+        CreateDeploymentTargetKubernetesClient createDeploymentTargetKubernetesClient
+    )
     {
         public ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareAsync(
             string deploymentTargetId,
             long connectionVersion,
             DeploymentTargetConnectionInput input,
-            CancellationToken cancellationToken = default) =>
-            prepareDeploymentTargetConnection(
-                deploymentTargetId,
-                connectionVersion,
-                input,
-                cancellationToken);
+            CancellationToken cancellationToken = default) => prepareDeploymentTargetConnection(
+            deploymentTargetId,
+            connectionVersion,
+            input,
+            cancellationToken);
 
         public ValueTask<CreateStoredKubernetesClientOutcome> CreateAsync(
             string deploymentTargetId,
             DeploymentTargetConnection connection,
-            CancellationToken cancellationToken = default) =>
-            createDeploymentTargetKubernetesClient(
-                deploymentTargetId,
-                connection,
-                cancellationToken);
+            CancellationToken cancellationToken = default) => createDeploymentTargetKubernetesClient(
+            deploymentTargetId,
+            connection,
+            cancellationToken);
     }
 
     private sealed class TlsCertificateSet : IDisposable
@@ -547,31 +521,21 @@ public sealed class DeploymentTargetConnectionSecurityTests
         public X509Certificate2 WrongAuthorityLeaf { get; }
         public X509Certificate2 ExpiredLeaf { get; }
 
+        public void Dispose()
+        {
+            foreach (var certificate in _certificates)
+                certificate.Dispose();
+        }
+
         public static TlsCertificateSet Create(string expectedHost)
         {
             var trustedRoot = CreateRoot("pole-trusted-root");
             var wrongRoot = CreateRoot("pole-wrong-root");
             var now = DateTimeOffset.UtcNow;
-            var validLeaf = CreateLeaf(
-                trustedRoot,
-                expectedHost,
-                now.AddMinutes(-5),
-                now.AddHours(1));
-            var wrongHostLeaf = CreateLeaf(
-                trustedRoot,
-                "attacker.pole.test",
-                now.AddMinutes(-5),
-                now.AddHours(1));
-            var wrongAuthorityLeaf = CreateLeaf(
-                wrongRoot,
-                expectedHost,
-                now.AddMinutes(-5),
-                now.AddHours(1));
-            var expiredLeaf = CreateLeaf(
-                trustedRoot,
-                expectedHost,
-                now.AddHours(-2),
-                now.AddHours(-1));
+            var validLeaf = CreateLeaf(trustedRoot, expectedHost, now.AddMinutes(-5), now.AddHours(1));
+            var wrongHostLeaf = CreateLeaf(trustedRoot, "attacker.pole.test", now.AddMinutes(-5), now.AddHours(1));
+            var wrongAuthorityLeaf = CreateLeaf(wrongRoot, expectedHost, now.AddMinutes(-5), now.AddHours(1));
+            var expiredLeaf = CreateLeaf(trustedRoot, expectedHost, now.AddHours(-2), now.AddHours(-1));
             return new TlsCertificateSet(
                 trustedRoot,
                 validLeaf,
@@ -579,12 +543,6 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 wrongAuthorityLeaf,
                 expiredLeaf,
                 [trustedRoot, wrongRoot, validLeaf, wrongHostLeaf, wrongAuthorityLeaf, expiredLeaf]);
-        }
-
-        public void Dispose()
-        {
-            foreach (var certificate in _certificates)
-                certificate.Dispose();
         }
 
         private static X509Certificate2 CreateRoot(string commonName)
@@ -596,13 +554,10 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 HashAlgorithmName.SHA256,
                 RSASignaturePadding.Pkcs1);
             request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-            request.CertificateExtensions.Add(new X509KeyUsageExtension(
-                X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign,
-                true));
+            request.CertificateExtensions.Add(
+                new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
             request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-            return request.CreateSelfSigned(
-                DateTimeOffset.UtcNow.AddDays(-2),
-                DateTimeOffset.UtcNow.AddDays(2));
+            return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(2));
         }
 
         private static X509Certificate2 CreateLeaf(
@@ -618,21 +573,17 @@ public sealed class DeploymentTargetConnectionSecurityTests
                 HashAlgorithmName.SHA256,
                 RSASignaturePadding.Pkcs1);
             request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-            request.CertificateExtensions.Add(new X509KeyUsageExtension(
-                X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
-                true));
-            request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-                new OidCollection { new("1.3.6.1.5.5.7.3.1") },
-                true));
+            request.CertificateExtensions.Add(
+                new X509KeyUsageExtension(
+                    X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment,
+                    true));
+            request.CertificateExtensions.Add(
+                new X509EnhancedKeyUsageExtension(new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, true));
             var subjectAlternativeName = new SubjectAlternativeNameBuilder();
             subjectAlternativeName.AddDnsName(dnsName);
             request.CertificateExtensions.Add(subjectAlternativeName.Build());
             request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-            return request.Create(
-                issuer,
-                notBefore,
-                notAfter,
-                RandomNumberGenerator.GetBytes(16));
+            return request.Create(issuer, notBefore, notAfter, RandomNumberGenerator.GetBytes(16));
         }
     }
 }

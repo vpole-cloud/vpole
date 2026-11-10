@@ -5,20 +5,18 @@ using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-public union GetProviderRepositorySnapshotOutcome(
-    RepositorySourceSnapshot,
-    GitProviderRepositoryAccessError);
+public union GetProviderRepositorySnapshotOutcome(RepositorySourceSnapshot, GitProviderRepositoryAccessError);
 
-public delegate Task<GetProviderRepositorySnapshotOutcome>
-    GetProviderRepositorySnapshot(
-        GitProviderConnection connection,
-        string repositoryId,
-        string branch,
-        CancellationToken cancellationToken = default);
+public delegate Task<GetProviderRepositorySnapshotOutcome> GetProviderRepositorySnapshot(
+    GitProviderConnection connection,
+    string repositoryId,
+    string branch,
+    CancellationToken cancellationToken = default);
 
 internal sealed class GitHubGetProviderRepositorySnapshot(
     IGitHubAppClient gitHubClient,
-    ILogger<GitHubGetProviderRepositorySnapshot> logger)
+    ILogger<GitHubGetProviderRepositorySnapshot> logger
+)
 {
     public async Task<GetProviderRepositorySnapshotOutcome> InvokeAsync(
         GitProviderConnection connection,
@@ -37,7 +35,7 @@ internal sealed class GitHubGetProviderRepositorySnapshot(
         return result switch
         {
             RepositorySourceSnapshot snapshot => snapshot,
-            GitProviderRepositoryAccessError error => error
+            GitProviderRepositoryAccessError error => error,
         };
     }
 }

@@ -9,7 +9,8 @@ public sealed class PrivateAccessSessionCleanup(
     LoadExpiredPrivateAccessSessionCleanupPage loadPage,
     MarkPrivateAccessSessionCleaned markCleaned,
     TimeProvider time,
-    ILogger<PrivateAccessSessionCleanup> logger)
+    ILogger<PrivateAccessSessionCleanup> logger
+)
 {
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -29,8 +30,10 @@ public sealed class PrivateAccessSessionCleanup(
             }
             catch (Exception exception)
             {
-                logger.LogWarning("Private Access session {SessionId} cleanup will retry after {FailureType}.",
-                    session.SessionId, exception.GetType().Name);
+                logger.LogWarning(
+                    "Private Access session {SessionId} cleanup will retry after {FailureType}.",
+                    session.SessionId,
+                    exception.GetType().Name);
             }
         }
     }
@@ -38,7 +41,8 @@ public sealed class PrivateAccessSessionCleanup(
 
 internal sealed class PrivateAccessSessionCleanupService(
     IServiceScopeFactory scopes,
-    ILogger<PrivateAccessSessionCleanupService> logger) : BackgroundService
+    ILogger<PrivateAccessSessionCleanupService> logger
+) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -46,14 +50,12 @@ internal sealed class PrivateAccessSessionCleanupService(
         // namespace ownership and target references survive configuration changes.
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
         while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(30));
-                await scope.ServiceProvider.GetRequiredService<PrivateAccessSessionCleanup>()
-                    .RunAsync(timeout.Token);
+                await scope.ServiceProvider.GetRequiredService<PrivateAccessSessionCleanup>().RunAsync(timeout.Token);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -62,9 +64,7 @@ internal sealed class PrivateAccessSessionCleanupService(
             catch (Exception exception)
             {
                 // Database errors can contain sensitive values. Record only the failure class.
-                logger.LogWarning("Private Access cleanup will retry after {FailureType}.",
-                    exception.GetType().Name);
+                logger.LogWarning("Private Access cleanup will retry after {FailureType}.", exception.GetType().Name);
             }
-        }
     }
 }

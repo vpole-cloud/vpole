@@ -1,22 +1,25 @@
+using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Application;
-using Pole.Features.ComputeProfiles.Application.Catalog;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.ComputeProfiles;
 
 public sealed class ComputeProfileHandlerOutcomeTests
 {
+    private const string ProfileId = "507f1f77bcf86cd799439096";
+    private const string MissingProfileId = "507f1f77bcf86cd799439097";
+    private const string TargetId = "507f1f77bcf86cd799439071";
+
     [Fact]
     public async Task Get_page_wraps_the_read_model_in_its_request_outcome()
     {
-        LoadComputeProfilePage loadPage = (query, cancellationToken) =>
-            Task.FromResult(new ComputeProfilePage([], 0));
+        LoadComputeProfilePage loadPage = (query, cancellationToken) => Task.FromResult(new ComputeProfilePage([], 0));
         var handler = new GetComputeProfilesHandler(loadPage);
 
         var outcome = await handler.HandleAsync(new GetComputeProfilesRequest());
@@ -24,8 +27,7 @@ public sealed class ComputeProfileHandlerOutcomeTests
         var page = outcome switch
         {
             ComputeProfilePageDto value => value,
-            _ => throw new Xunit.Sdk.XunitException(
-                "Expected the compute-profile page outcome.")
+            _ => throw new XunitException("Expected the compute-profile page outcome."),
         };
         Assert.Empty(page.Items);
         Assert.Equal(0, page.TotalCount);
@@ -42,16 +44,13 @@ public sealed class ComputeProfileHandlerOutcomeTests
         };
         var handler = new GetAvailableComputeProfilesHandler(loadAvailable);
 
-        var outcome = await handler.HandleAsync(new GetAvailableComputeProfilesRequest(
-            TargetId,
-            "pole/web-service",
-            "507f1f77bcf86cd799439098"));
+        var outcome = await handler.HandleAsync(
+            new GetAvailableComputeProfilesRequest(TargetId, "pole/web-service", "507f1f77bcf86cd799439098"));
 
         var profiles = outcome switch
         {
             IReadOnlyCollection<AvailableComputeProfileDto> value => value,
-            _ => throw new Xunit.Sdk.XunitException(
-                "Expected the available compute-profiles outcome.")
+            _ => throw new XunitException("Expected the available compute-profiles outcome."),
         };
         Assert.Empty(profiles);
         Assert.NotNull(received);
@@ -66,8 +65,8 @@ public sealed class ComputeProfileHandlerOutcomeTests
         PersistCreatedComputeProfile persist = (profile, cancellationToken) =>
             Task.FromResult<PersistCreatedComputeProfileOutcome>(
                 new DeploymentTargetReferenceChangeRejected(
-                            new DeploymentTargetReferenceOwner("compute-profile", profile.Id),
-                            [TargetId]));
+                    new DeploymentTargetReferenceOwner("compute-profile", profile.Id),
+                    [TargetId]));
         var handler = new CreateComputeProfileHandler(
             ValidTenantAccess,
             ValidTargetMappings,
@@ -89,12 +88,13 @@ public sealed class ComputeProfileHandlerOutcomeTests
             missing,
             ValidTenantAccess,
             ValidTargetMappings,
-            (_, _, _) => throw new Xunit.Sdk.XunitException("Persistence must not be called."),
+            (
+                _, _,
+                _) => throw new XunitException("Persistence must not be called."),
             TimeProvider.System);
 
-        var outcome = await handler.HandleAsync(new UpdateComputeProfileRequest(
-            MissingProfileId,
-            ValidUpdateBody(revision: 1)));
+        var outcome = await handler.HandleAsync(
+            new UpdateComputeProfileRequest(MissingProfileId, ValidUpdateBody(revision: 1)));
 
         var notFound = Assert.IsType<ComputeProfileNotFound>(outcome.Value);
         Assert.Equal(MissingProfileId, notFound.ComputeProfileId);
@@ -103,15 +103,13 @@ public sealed class ComputeProfileHandlerOutcomeTests
     [Fact]
     public async Task Update_returns_default_demotion_rejection_directly()
     {
-        var current = ComputeProfileTestData.CreateProfile(
-            TargetId,
-            isDefault: true,
-            id: ProfileId);
+        var current = ComputeProfileTestData.CreateProfile(TargetId, isDefault: true, id: ProfileId);
         LoadComputeProfileById load = (computeProfileId, cancellationToken) =>
             Task.FromResult<ComputeProfile?>(current);
-        PersistUpdatedComputeProfile persist = (existing, replacement, cancellationToken) =>
-            Task.FromResult<PersistUpdatedComputeProfileOutcome>(
-                new DefaultComputeProfileCannotBeDemoted(existing.Id));
+        PersistUpdatedComputeProfile persist = (
+                existing, replacement,
+                cancellationToken) =>
+            Task.FromResult<PersistUpdatedComputeProfileOutcome>(new DefaultComputeProfileCannotBeDemoted(existing.Id));
         var handler = new UpdateComputeProfileHandler(
             load,
             ValidTenantAccess,
@@ -119,60 +117,50 @@ public sealed class ComputeProfileHandlerOutcomeTests
             persist,
             TimeProvider.System);
 
-        var outcome = await handler.HandleAsync(new UpdateComputeProfileRequest(
-            current.Id,
-            ValidUpdateBody(current.Revision)));
+        var outcome = await handler.HandleAsync(
+            new UpdateComputeProfileRequest(current.Id, ValidUpdateBody(current.Revision)));
 
         var rejected = Assert.IsType<DefaultComputeProfileCannotBeDemoted>(outcome.Value);
         Assert.Equal(current.Id, rejected.ComputeProfileId);
     }
 
-    private const string ProfileId = "507f1f77bcf86cd799439096";
-    private const string MissingProfileId = "507f1f77bcf86cd799439097";
-    private const string TargetId = "507f1f77bcf86cd799439071";
+    private static Task<ValidateComputeProfileTenantAccessOutcome> ValidTenantAccess(
+        ComputeProfileTenantAccess tenantAccess,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<ValidateComputeProfileTenantAccessOutcome>(new ComputeProfileTenantAccessValid());
 
-    private static Task<ValidateComputeProfileTenantAccessOutcome>
-        ValidTenantAccess(
-            ComputeProfileTenantAccess tenantAccess,
-            CancellationToken cancellationToken = default) =>
-        Task.FromResult<ValidateComputeProfileTenantAccessOutcome>(
-            new ComputeProfileTenantAccessValid());
+    private static Task<ValidateComputeProfileTargetMappingsOutcome> ValidTargetMappings(
+        ComputeProfile profile,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<ValidateComputeProfileTargetMappingsOutcome>(new ComputeProfileTargetMappingsValid());
 
-    private static Task<ValidateComputeProfileTargetMappingsOutcome>
-        ValidTargetMappings(
-            ComputeProfile profile,
-            CancellationToken cancellationToken = default) =>
-        Task.FromResult<ValidateComputeProfileTargetMappingsOutcome>(
-            new ComputeProfileTargetMappingsValid());
+    private static CreateComputeProfileRequestBody ValidCreateBody() => new(
+        "test-profile",
+        "General purpose",
+        "Compute profile",
+        new ComputeResourceRequirementsRequestBody(
+            new ComputeResourceValuesRequestBody(250, 256),
+            new ComputeResourceValuesRequestBody(1000, 1024)),
+        "Any",
+        [],
+        ["pole/web-service"],
+        new ComputeProfileTenantAccessRequestBody("all-tenants", []),
+        [new ComputeProfileTargetMappingRequestBody(TargetId, [], [], [], [], null)],
+        IsEnabled: true,
+        IsDefault: false);
 
-    private static CreateComputeProfileRequestBody ValidCreateBody() =>
-        new("test-profile",
-            "General purpose",
-            "Compute profile",
-            new ComputeResourceRequirementsRequestBody(
-                new ComputeResourceValuesRequestBody(250, 256),
-                new ComputeResourceValuesRequestBody(1000, 1024)),
-            "Any",
-            [],
-            ["pole/web-service"],
-            new ComputeProfileTenantAccessRequestBody("all-tenants", []),
-            [new ComputeProfileTargetMappingRequestBody(TargetId, [], [], [], [], null)],
-            IsEnabled: true,
-            IsDefault: false);
-
-    private static UpdateComputeProfileRequestBody ValidUpdateBody(long revision) =>
-        new(
-            "General purpose updated",
-            "Compute profile",
-            new ComputeResourceRequirementsRequestBody(
-                new ComputeResourceValuesRequestBody(250, 256),
-                new ComputeResourceValuesRequestBody(1000, 1024)),
-            "Any",
-            [],
-            ["pole/web-service"],
-            new ComputeProfileTenantAccessRequestBody("all-tenants", []),
-            [new ComputeProfileTargetMappingRequestBody(TargetId, [], [], [], [], null)],
-            IsEnabled: true,
-            IsDefault: false,
-            Revision: revision);
+    private static UpdateComputeProfileRequestBody ValidUpdateBody(long revision) => new(
+        "General purpose updated",
+        "Compute profile",
+        new ComputeResourceRequirementsRequestBody(
+            new ComputeResourceValuesRequestBody(250, 256),
+            new ComputeResourceValuesRequestBody(1000, 1024)),
+        "Any",
+        [],
+        ["pole/web-service"],
+        new ComputeProfileTenantAccessRequestBody("all-tenants", []),
+        [new ComputeProfileTargetMappingRequestBody(TargetId, [], [], [], [], null)],
+        IsEnabled: true,
+        IsDefault: false,
+        Revision: revision);
 }

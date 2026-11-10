@@ -5,33 +5,29 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Encryption;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Credentials;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public static class RewrapDeploymentTargetCredentialsEndpoint
 {
-    public static IEndpointRouteBuilder MapRewrapDeploymentTargetCredentialsEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapRewrapDeploymentTargetCredentialsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/deployment-target-credentials/rewrap", async (
-                IMediator mediator,
-                [AsParameters] RewrapDeploymentTargetCredentialsRequest request,
-                CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                DeploymentTargetCredentialRewrapSummary summary => Results.Ok(summary),
-                DeploymentTargetCredentialRewrapConflict error => DeploymentTargetHttpMappings.Map(error)
-            });
-        })
+        app.MapPost(
+                "/deployment-target-credentials/rewrap",
+                async (
+                    IMediator mediator, [AsParameters] RewrapDeploymentTargetCredentialsRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        DeploymentTargetCredentialRewrapSummary summary => Results.Ok(summary),
+                        DeploymentTargetCredentialRewrapConflict error => DeploymentTargetHttpMappings.Map(error),
+                    });
+                })
             .WithName("RewrapDeploymentTargetCredentials")
             .RequireAuthorization(Policy.Admin)
             .Produces<DeploymentTargetCredentialRewrapSummary>()
@@ -46,21 +42,20 @@ public sealed record RewrapDeploymentTargetCredentialsRequestBody(
     string KeyId,
     int KeyVersion,
     string KeyWrapAlgorithm,
-    int KeyWrapAlgorithmVersion);
+    int KeyWrapAlgorithmVersion
+);
 
 public sealed record RewrapDeploymentTargetCredentialsRequest(
-    [FromBody] RewrapDeploymentTargetCredentialsRequestBody Body)
-    : IMediatorRequest<RewrapDeploymentTargetCredentialsOutcome>;
+    [FromBody] RewrapDeploymentTargetCredentialsRequestBody Body
+) : IMediatorRequest<RewrapDeploymentTargetCredentialsOutcome>;
 
 public union RewrapDeploymentTargetCredentialsOutcome(
     DeploymentTargetCredentialRewrapSummary,
     DeploymentTargetCredentialRewrapConflict);
 
 public sealed class RewrapDeploymentTargetCredentialsHandler(
-    RewrapDeploymentTargetCredentials rewrapDeploymentTargetCredentials)
-    : IMediatorOutcomeHandler<
-        RewrapDeploymentTargetCredentialsRequest,
-        RewrapDeploymentTargetCredentialsOutcome>
+    RewrapDeploymentTargetCredentials rewrapDeploymentTargetCredentials
+) : IMediatorOutcomeHandler<RewrapDeploymentTargetCredentialsRequest, RewrapDeploymentTargetCredentialsOutcome>
 {
     public async Task<RewrapDeploymentTargetCredentialsOutcome> HandleAsync(
         RewrapDeploymentTargetCredentialsRequest request,
@@ -77,7 +72,7 @@ public sealed class RewrapDeploymentTargetCredentialsHandler(
         return rewrapped switch
         {
             DeploymentTargetCredentialRewrapSummary summary => summary,
-            DeploymentTargetCredentialRewrapConflict error => error
+            DeploymentTargetCredentialRewrapConflict error => error,
         };
     }
 }
@@ -86,8 +81,8 @@ public sealed class RewrapDeploymentTargetCredentialsRequestValidator
     : AbstractValidator<RewrapDeploymentTargetCredentialsRequest>
 {
     public RewrapDeploymentTargetCredentialsRequestValidator() => RuleFor(request => request.Body)
-            .NotNull()
-            .SetValidator(new RewrapDeploymentTargetCredentialsRequestBodyValidator());
+        .NotNull()
+        .SetValidator(new RewrapDeploymentTargetCredentialsRequestBodyValidator());
 }
 
 public sealed class RewrapDeploymentTargetCredentialsRequestBodyValidator

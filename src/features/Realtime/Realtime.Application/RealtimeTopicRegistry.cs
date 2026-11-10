@@ -4,14 +4,15 @@ namespace Pole.Features.Realtime.Application;
 
 public sealed class RealtimeTopicRegistry
 {
-    private readonly IReadOnlyDictionary<string, RealtimeTopic> _topics;
     private readonly HashSet<string> _enabled;
+    private readonly IReadOnlyDictionary<string, RealtimeTopic> _topics;
 
     public RealtimeTopicRegistry(IEnumerable<RealtimeTopic> topics, RealtimeOptions options)
     {
         var registered = topics.ToArray();
-        if (registered.Any(topic => string.IsNullOrWhiteSpace(topic.Name) || topic.Name.Length > 100) ||
-            registered.GroupBy(topic => topic.Name, StringComparer.Ordinal).Any(group => group.Count() != 1))
+        if (registered.Any(topic => string.IsNullOrWhiteSpace(topic.Name) || topic.Name.Length > 100) || registered
+                .GroupBy(topic => topic.Name, StringComparer.Ordinal)
+                .Any(group => group.Count() != 1))
             throw new InvalidOperationException("Realtime topics require unique nonempty identities.");
         _topics = registered.ToDictionary(topic => topic.Name, StringComparer.Ordinal);
         _enabled = options.EnabledTopics.ToHashSet(StringComparer.Ordinal);

@@ -6,10 +6,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Request;
 using Pole.Mediator;
@@ -20,17 +16,18 @@ public static class GetFunctionApps
 {
     public static IEndpointRouteBuilder MapGetFunctionAppsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (
-                IMediator mediator,
-                [AsParameters] GetFunctionAppsRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] GetFunctionAppsRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    PaginatedResponse<FunctionAppDto> page => Results.Ok(page)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        PaginatedResponse<FunctionAppDto> page => Results.Ok(page),
+                    });
+                })
             .WithName("GetFunctionApps")
             .Produces<PaginatedResponse<FunctionAppDto>>();
         return app;
@@ -40,15 +37,15 @@ public static class GetFunctionApps
 public sealed record GetFunctionAppsRequest
     : PaginatedRequest, IMediatorRequest<GetFunctionAppsOutcome>, ITenantReadOperation
 {
-    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
+    [FromTenantHeader] public string TenantId { get; init; } = "";
 }
 
 public sealed class GetFunctionAppsHandler(
     LoadFunctionAppPage loadFunctionAppPage,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetFunctionAppsRequest, GetFunctionAppsOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetFunctionAppsRequest, GetFunctionAppsOutcome>
 {
     public async Task<GetFunctionAppsOutcome> HandleAsync(
         GetFunctionAppsRequest request,
@@ -62,8 +59,12 @@ public sealed class GetFunctionAppsHandler(
                 request.PageNumber,
                 request.PageSize),
             cancellationToken);
-        var statuses = await git.StatusesAsync(new(request.TenantId, "FunctionApp",
-            page.Items.Select(item => item.Id).ToArray()), cancellationToken);
+        var statuses = await git.StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                request.TenantId,
+                "FunctionApp",
+                page.Items.Select(item => item.Id).ToArray()),
+            cancellationToken);
         return new PaginatedResponse<FunctionAppDto>(
             page.Items.Select(app => app.ToDto() with { GitOps = statuses.GetValueOrDefault(app.Id) }),
             page.TotalCount,

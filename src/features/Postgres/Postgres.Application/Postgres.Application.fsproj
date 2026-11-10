@@ -8,113 +8,113 @@
     </PropertyGroup>
 
     <ItemGroup>
-    <ProjectReference Include="../../../shared/Observation/Observation.csproj" />
-        <PackageReference Include="FSharp.Core" />
+        <ProjectReference Include="../../../shared/Observation/Observation.csproj"/>
+        <PackageReference Include="FSharp.Core"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="Common\PostgresSettings.fs" />
-        <Compile Include="Common\PostgresQuotaProfile.fs" />
-        <Compile Include="Common\PostgresClusterDto.fs" />
-        <Compile Include="Common\ResourceDeploymentQueryExtensions.fs" />
-        <Compile Include="Common\TypedResultInterop.fs" />
-        <Compile Include="Common\PostgresResourceDeployment.fs" />
-        <Compile Include="Common\PostgresPreparedPlacement.fs" />
-        <Compile Include="Common\PostgresClusterCredentials.fs" />
-        <Compile Include="Common\PostgresClusterEventExtensions.fs" />
-        <Compile Include="Realtime\PostgresRealtimeConsumers.fs" />
-        <Compile Include="Search\PostgresSearchProjectionConsumers.fs" />
-        <Compile Include="PostgresOutcome.fs" />
-        <Compile Include="Mongo\PostgresFilters.fs" />
-        <Compile Include="PostgresPersistenceGuards.fs" />
-        <Compile Include="Connections\PostgresConnectionEndpoints.fs" />
-        <Compile Include="Clusters\LoadPostgresClusterById.fs" />
-        <Compile Include="Clusters\LoadPostgresConnectionEndpoints.fs" />
-        <Compile Include="Clusters\LoadPostgresClusterPage.fs" />
-        <Compile Include="Credentials\PostgresCredentialErrors.fs" />
-        <Compile Include="Credentials\CreatePostgresCredential.fs" />
-        <Compile Include="Credentials\InitializePostgresBootstrap.fs" />
-        <Compile Include="Credentials\LoadPostgresCredential.fs" />
-        <Compile Include="Credentials\RotatePostgresCredential.fs" />
-        <Compile Include="Credentials\PersistRotatedPostgresCredential.fs" />
-        <Compile Include="Credentials\ResolvePostgresClusterCredentials.fs" />
-        <Compile Include="Clusters\PersistCreatedPostgresCluster.fs" />
-        <Compile Include="Clusters\PersistUpdatedPostgresCluster.fs" />
-        <Compile Include="Lifecycle\BeginPostgresClusterDeletion.fs" />
-        <Compile Include="Lifecycle\FinalizePostgresClusterDeletion.fs" />
-        <Compile Include="Declarations\PostgresDeclaration.fs" />
-        <Compile Include="Declarations\PostgresPlanning.fs" />
-        <Compile Include="Declarations\PostgresDeclarationPlanner.fs" />
-        <Compile Include="Declarations\PostgresDeclarationReferences.fs" />
-        <Compile Include="Declarations\PostgresDeclarationExecution.fs" />
-        <Compile Include="Declarations\PostgresDeclarationAdoption.fs" />
-        <Compile Include="Declarations\PostgresDeclarationLifecycle.fs" />
-        <Compile Include="Declarations\DeclarativePostgresProvider.fs" />
-        <Compile Include="PostgresPersistenceRegistration.fs" />
-        <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs" />
-        <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs" />
-        <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs" />
-        <Compile Include="Kubernetes\PostgresResourceDeploymentAdapter.fs" />
-        <Compile Include="Endpoints\PostgresEndpointErrors.fs" />
-        <Compile Include="Common\PostgresHttpMappings.fs" />
-        <Compile Include="Endpoints\CreatePostgresCluster.fs" />
-        <Compile Include="Endpoints\DeletePostgresCluster.fs" />
-        <Compile Include="Endpoints\UpdatePostgresCluster.fs" />
-        <Compile Include="Endpoints\UpdatePostgresClusterPassword.fs" />
-        <Compile Include="Endpoints\GetPostgresClusterConnectionString.fs" />
-        <Compile Include="Endpoints\GetSupportedPostgresVersions.fs" />
-        <Compile Include="Endpoints\GetPostgresClusterById.fs" />
-        <Compile Include="Endpoints\GetPostgresClusters.fs" />
-        <Compile Include="Endpoints\AllPostgresEndpoints.fs" />
-        <Compile Include="Kubernetes/PostgresClusterObservation.fs" />
-        <Compile Include="Kubernetes/PostgresOperatorReadiness.fs" />
-        <Compile Include="Kubernetes/PostgresResourceDeploymentChangeSource.fs" />
-        <Compile Include="Kubernetes/PostgresResourceDeploymentObserver.fs" />
-        <Compile Include="PostgresFeatureRegistration.fs" />
+        <Compile Include="Common\PostgresSettings.fs"/>
+        <Compile Include="Common\PostgresQuotaProfile.fs"/>
+        <Compile Include="Common\PostgresClusterDto.fs"/>
+        <Compile Include="Common\ResourceDeploymentQueryExtensions.fs"/>
+        <Compile Include="Common\TypedResultInterop.fs"/>
+        <Compile Include="Common\PostgresResourceDeployment.fs"/>
+        <Compile Include="Common\PostgresPreparedPlacement.fs"/>
+        <Compile Include="Common\PostgresClusterCredentials.fs"/>
+        <Compile Include="Common\PostgresClusterEventExtensions.fs"/>
+        <Compile Include="Realtime\PostgresRealtimeConsumers.fs"/>
+        <Compile Include="Search\PostgresSearchProjectionConsumers.fs"/>
+        <Compile Include="PostgresOutcome.fs"/>
+        <Compile Include="Mongo\PostgresFilters.fs"/>
+        <Compile Include="PostgresPersistenceGuards.fs"/>
+        <Compile Include="Connections\PostgresConnectionEndpoints.fs"/>
+        <Compile Include="Clusters\LoadPostgresClusterById.fs"/>
+        <Compile Include="Clusters\LoadPostgresConnectionEndpoints.fs"/>
+        <Compile Include="Clusters\LoadPostgresClusterPage.fs"/>
+        <Compile Include="Credentials\PostgresCredentialErrors.fs"/>
+        <Compile Include="Credentials\CreatePostgresCredential.fs"/>
+        <Compile Include="Credentials\InitializePostgresBootstrap.fs"/>
+        <Compile Include="Credentials\LoadPostgresCredential.fs"/>
+        <Compile Include="Credentials\RotatePostgresCredential.fs"/>
+        <Compile Include="Credentials\PersistRotatedPostgresCredential.fs"/>
+        <Compile Include="Credentials\ResolvePostgresClusterCredentials.fs"/>
+        <Compile Include="Clusters\PersistCreatedPostgresCluster.fs"/>
+        <Compile Include="Clusters\PersistUpdatedPostgresCluster.fs"/>
+        <Compile Include="Lifecycle\BeginPostgresClusterDeletion.fs"/>
+        <Compile Include="Lifecycle\FinalizePostgresClusterDeletion.fs"/>
+        <Compile Include="Declarations\PostgresDeclaration.fs"/>
+        <Compile Include="Declarations\PostgresPlanning.fs"/>
+        <Compile Include="Declarations\PostgresDeclarationPlanner.fs"/>
+        <Compile Include="Declarations\PostgresDeclarationReferences.fs"/>
+        <Compile Include="Declarations\PostgresDeclarationExecution.fs"/>
+        <Compile Include="Declarations\PostgresDeclarationAdoption.fs"/>
+        <Compile Include="Declarations\PostgresDeclarationLifecycle.fs"/>
+        <Compile Include="Declarations\DeclarativePostgresProvider.fs"/>
+        <Compile Include="PostgresPersistenceRegistration.fs"/>
+        <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs"/>
+        <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs"/>
+        <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs"/>
+        <Compile Include="Kubernetes\PostgresResourceDeploymentAdapter.fs"/>
+        <Compile Include="Endpoints\PostgresEndpointErrors.fs"/>
+        <Compile Include="Common\PostgresHttpMappings.fs"/>
+        <Compile Include="Endpoints\CreatePostgresCluster.fs"/>
+        <Compile Include="Endpoints\DeletePostgresCluster.fs"/>
+        <Compile Include="Endpoints\UpdatePostgresCluster.fs"/>
+        <Compile Include="Endpoints\UpdatePostgresClusterPassword.fs"/>
+        <Compile Include="Endpoints\GetPostgresClusterConnectionString.fs"/>
+        <Compile Include="Endpoints\GetSupportedPostgresVersions.fs"/>
+        <Compile Include="Endpoints\GetPostgresClusterById.fs"/>
+        <Compile Include="Endpoints\GetPostgresClusters.fs"/>
+        <Compile Include="Endpoints\AllPostgresEndpoints.fs"/>
+        <Compile Include="Kubernetes/PostgresClusterObservation.fs"/>
+        <Compile Include="Kubernetes/PostgresOperatorReadiness.fs"/>
+        <Compile Include="Kubernetes/PostgresResourceDeploymentChangeSource.fs"/>
+        <Compile Include="Kubernetes/PostgresResourceDeploymentObserver.fs"/>
+        <Compile Include="PostgresFeatureRegistration.fs"/>
     </ItemGroup>
 
     <ItemGroup>
-        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
     </ItemGroup>
 
     <PropertyGroup>
         <WarningsAsErrors>$(WarningsAsErrors);FS0025</WarningsAsErrors>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="FluentValidation" />
-        <PackageReference Include="KubernetesClient" />
+        <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="KubernetesClient"/>
     </ItemGroup>
     <ItemGroup>
-      <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
-      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
-      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
-      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts.HttpMapping\StorageProfiles.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
-      <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
-      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj" />
-      <ProjectReference Include="..\..\GitOps\GitOps.Contracts\GitOps.Contracts.csproj" />
-      <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
-      <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
-      <ProjectReference Include="..\..\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj" />
-      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
-      <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
-      <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj" />
-      <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj" />
-      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
-      <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
-      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
-      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
-      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
+        <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj"/>
+        <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj"/>
+        <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj"/>
+        <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts.HttpMapping\StorageProfiles.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj"/>
+        <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj"/>
+        <ProjectReference Include="..\..\GitOps\GitOps.Contracts\GitOps.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\Quotas\Quotas.Primitives\Quotas.Primitives.csproj"/>
+        <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj"/>
+        <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj"/>
+        <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Request\Request.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj"/>
     </ItemGroup>
 </Project>

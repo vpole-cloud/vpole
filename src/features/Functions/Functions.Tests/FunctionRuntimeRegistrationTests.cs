@@ -16,8 +16,6 @@ public sealed class FunctionRuntimeRegistrationTests
 
         services.AddFunctionRuntimeFeature(configuration);
 
-        Assert.DoesNotContain(
-            services,
-            descriptor => descriptor.ServiceType == typeof(IFunctionRevisionActivator));
+        Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == typeof(IFunctionRevisionActivator));
     }
 }

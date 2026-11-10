@@ -15,18 +15,22 @@ public sealed record WebServiceCreatedEvent(
     WebServiceSpecSnapshot Spec,
     WebServiceExposureSnapshot Exposure,
     ImmutableHashSet<string> Tags,
-    ImmutableList<WebServiceDesiredDeploymentSnapshot> Deployments) : IPoleEvent
+    ImmutableList<WebServiceDesiredDeploymentSnapshot> Deployments
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
 public sealed record WebServiceExposureSnapshot(
     string Mode,
-    string GeneratedHostnameLabelPrefix);
+    string GeneratedHostnameLabelPrefix
+);
+
 public sealed record WebServiceDesiredDeploymentSnapshot(
     string ResourceDeploymentId,
     string DeploymentTargetId,
     long ResourceRevision,
     long DeploymentGeneration,
     string Operation,
-    ImmutableList<string> Hostnames);
+    ImmutableList<string> Hostnames
+);

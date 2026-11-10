@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Domain;
 
@@ -12,7 +11,8 @@ public delegate Task<TenantQuotaPolicy> PersistTenantQuotaPolicy(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoPersistTenantQuotaPolicy(
-    IMongoCollection<TenantQuotaPolicy> policies)
+    IMongoCollection<TenantQuotaPolicy> policies
+)
 {
     public async Task<TenantQuotaPolicy> InvokeAsync(
         string tenantId,
@@ -20,14 +20,9 @@ internal sealed class MongoPersistTenantQuotaPolicy(
         DateTime updatedAtUtc,
         CancellationToken cancellationToken = default)
     {
-        var existing = await policies
-            .Find(QuotaPolicyFilters.ByTenant(tenantId))
+        var existing = await policies.Find(QuotaPolicyFilters.ByTenant(tenantId))
             .FirstOrDefaultAsync(cancellationToken);
-        var policy = QuotaDomainFactory.CreatePolicy(
-            tenantId,
-            limits,
-            updatedAtUtc,
-            existing?.CreatedAtUtc);
+        var policy = QuotaDomainFactory.CreatePolicy(tenantId, limits, updatedAtUtc, existing?.CreatedAtUtc);
         await policies.ReplaceOneAsync(
             QuotaPolicyFilters.ByTenant(tenantId),
             policy,

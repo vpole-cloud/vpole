@@ -2,10 +2,10 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Realtime.Contracts;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Realtime;
 using Pole.Features.Postgres.Events;
+using Pole.Features.Realtime.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Xunit;
 
@@ -25,7 +25,8 @@ public sealed class PostgresRealtimeTests
     {
         var hints = new List<RealtimeChange>();
         var consumer = Consumer(hints);
-        var spec = new PostgresClusterSpecSnapshot(1,
+        var spec = new PostgresClusterSpecSnapshot(
+            1,
             7,
             "private-storage-profile",
             17,
@@ -36,7 +37,9 @@ public sealed class PostgresRealtimeTests
             "created" => consumer.HandleAsync(
                 new PostgresClusterCreatedEvent(core, Resource, "private-name", Group, 6, spec),
                 default),
-            "updated" => consumer.HandleAsync(new PostgresClusterUpdatedEvent(core,
+            "updated" => consumer.HandleAsync(
+                new PostgresClusterUpdatedEvent(
+                    core,
                     Resource,
                     "private-name",
                     Group,
@@ -46,7 +49,7 @@ public sealed class PostgresRealtimeTests
             "deleted" => consumer.HandleAsync(
                 new PostgresClusterDeletedEvent(core, Resource, "private-name", Group, 6, spec),
                 default),
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(),
         });
         Assert.Equal(new RealtimeChange("postgres", Tenant, Resource, Group, 6), Assert.Single(hints));
         Assert.DoesNotContain("private", JsonSerializer.Serialize(hints));
@@ -75,7 +78,7 @@ public sealed class PostgresRealtimeTests
                         EventCore = core,
                         ResourceType = type,
                         ResourceId = Resource,
-                        ResourceGroupId = Group
+                        ResourceGroupId = Group,
                     },
                     default),
                 "deletion-requested" => consumer.HandleAsync(
@@ -84,11 +87,12 @@ public sealed class PostgresRealtimeTests
                         EventCore = core,
                         ResourceType = type,
                         ResourceId = Resource,
-                        ResourceGroupId = Group
+                        ResourceGroupId = Group,
                     },
                     default),
                 "started" => consumer.HandleAsync(
-                    new ResourceDeploymentReconciliationStartedEvent("deployment",
+                    new ResourceDeploymentReconciliationStartedEvent(
+                        "deployment",
                         type,
                         Resource,
                         Group,
@@ -97,18 +101,19 @@ public sealed class PostgresRealtimeTests
                         "Apply",
                         6)
                     {
-                        EventCore = core
+                        EventCore = core,
                     },
                     default),
                 "applied" => consumer.HandleAsync(
                     new ResourceDeploymentAppliedEvent("deployment", type, Resource, "cell", 4, 6)
                     {
                         EventCore = core,
-                        ResourceGroupId = Group
+                        ResourceGroupId = Group,
                     },
                     default),
                 "failed" => consumer.HandleAsync(
-                    new ResourceDeploymentFailedEvent("deployment",
+                    new ResourceDeploymentFailedEvent(
+                        "deployment",
                         type,
                         Resource,
                         "cell",
@@ -119,17 +124,17 @@ public sealed class PostgresRealtimeTests
                         6)
                     {
                         EventCore = core,
-                        ResourceGroupId = Group
+                        ResourceGroupId = Group,
                     },
                     default),
                 "deleted" => consumer.HandleAsync(
                     new ResourceDeploymentDeletedEvent("deployment", type, Resource, "cell", 4, 6)
                     {
                         EventCore = core,
-                        ResourceGroupId = Group
+                        ResourceGroupId = Group,
                     },
                     default),
-                _ => throw new InvalidOperationException()
+                _ => throw new InvalidOperationException(),
             });
         }
 
@@ -144,27 +149,31 @@ public sealed class PostgresRealtimeTests
     public async Task HistoricalRequestsWithoutAdditiveIdentityInvalidateTenantReadsBroadly()
     {
         var hints = new List<RealtimeChange>();
-        var payload =
-            "{\"resourceDeploymentId\":\"deployment\",\"runtimeCellId\":\"cell\",\"generation\":4,\"resourceRevision\":6,\"eventCore\":{\"tenantId\":\"" +
+        var payload
+            = "{\"resourceDeploymentId\":\"deployment\",\"runtimeCellId\":\"cell\",\"generation\":4,\"resourceRevision\":6,\"eventCore\":{\"tenantId\":\"" +
             Tenant + "\"}}";
         await Consumer(hints)
             .HandleAsync(
-                JsonSerializer.Deserialize<ResourceDeploymentReconciliationRequestedEvent>(payload,
+                JsonSerializer.Deserialize<ResourceDeploymentReconciliationRequestedEvent>(
+                    payload,
                     EventExtensions.SerializerOptions)!,
                 default);
         await Consumer(hints)
             .HandleAsync(
-                JsonSerializer.Deserialize<ResourceDeploymentDeletionRequestedEvent>(payload,
+                JsonSerializer.Deserialize<ResourceDeploymentDeletionRequestedEvent>(
+                    payload,
                     EventExtensions.SerializerOptions)!,
                 default);
         Assert.Equal(2, hints.Count);
-        Assert.All(hints,
+        Assert.All(
+            hints,
             hint => Assert.Equal(new RealtimeChange("postgres", Tenant, Revision: 6, Generation: 4), hint));
         await Consumer(hints)
-            .HandleAsync(new ResourceDeploymentDeletedEvent("deployment", "pole/postgresql", Resource, "cell", 4, 6)
-            {
-                EventCore = EventCore.Create(Tenant)
-            },
+            .HandleAsync(
+                new ResourceDeploymentDeletedEvent("deployment", "pole/postgresql", Resource, "cell", 4, 6)
+                {
+                    EventCore = EventCore.Create(Tenant),
+                },
                 default);
         Assert.Equal(new RealtimeChange("postgres", Tenant, Resource, Revision: 6, Generation: 4), hints[2]);
     }
@@ -174,16 +183,16 @@ public sealed class PostgresRealtimeTests
     {
         var services = new ServiceCollection();
         services.AddPostgresFeature(new ConfigurationBuilder().Build());
-        Assert.Equal(new RealtimeTopic("postgres", RealtimeScope.Tenant),
-            Assert.Single(services
-                .Where(descriptor => descriptor.ServiceType == typeof(RealtimeTopic))
-                .Select(descriptor => descriptor.ImplementationInstance)));
+        Assert.Equal(
+            new RealtimeTopic("postgres", RealtimeScope.Tenant),
+            Assert.Single(
+                services.Where(descriptor => descriptor.ServiceType == typeof(RealtimeTopic))
+                    .Select(descriptor => descriptor.ImplementationInstance)));
     }
 
-    private static NotifyPostgresChangedConsumer Consumer(List<RealtimeChange> hints) =>
-        new((change, _) =>
-        {
-            hints.Add(change);
-            return Task.CompletedTask;
-        });
+    private static NotifyPostgresChangedConsumer Consumer(List<RealtimeChange> hints) => new((change, _) =>
+    {
+        hints.Add(change);
+        return Task.CompletedTask;
+    });
 }

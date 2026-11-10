@@ -22,7 +22,7 @@ internal static class SecretIdentity
             AllSecretDeployments => new AllSecretDeployments(),
             SelectedSecretDeployments selected => new SelectedSecretDeployments(
                 selected.DeploymentIds.Select(ObjectId).ToImmutableArray()),
-            _ => throw new InvalidOperationException("Unknown deployment selection.")
-        }
+            _ => throw new InvalidOperationException("Unknown deployment selection."),
+        },
     };
 }

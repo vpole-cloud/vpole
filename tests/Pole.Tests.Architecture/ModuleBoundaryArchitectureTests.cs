@@ -5,18 +5,15 @@ namespace Pole.Tests.Architecture;
 
 public sealed class ModuleBoundaryArchitectureTests
 {
-    private static readonly IReadOnlyList<DocumentedProjectException>
-        TemporaryProjectReferenceAllowlist = [];
+    private static readonly IReadOnlyList<DocumentedProjectException> TemporaryProjectReferenceAllowlist = [];
 
-    private static readonly IReadOnlyList<DocumentedProjectException>
-        TemporarySharedProjectReferenceAllowlist = [];
+    private static readonly IReadOnlyList<DocumentedProjectException> TemporarySharedProjectReferenceAllowlist = [];
 
-    private static readonly IReadOnlyList<DocumentedSourceException>
-        TemporaryIntegrationEventPlacementAllowlist = [];
+    private static readonly IReadOnlyList<DocumentedSourceException> TemporaryIntegrationEventPlacementAllowlist = [];
 
     // Distribution is independent: built-in workloads are still providers to generic capabilities.
-    private static readonly IReadOnlyDictionary<string, FeatureRole> FeatureRoles =
-        new Dictionary<string, FeatureRole>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, FeatureRole> FeatureRoles
+        = new Dictionary<string, FeatureRole>(StringComparer.Ordinal)
         {
             ["ComputeProfiles"] = FeatureRole.Platform,
             ["ContainerRegistries"] = FeatureRole.Platform,
@@ -40,15 +37,15 @@ public sealed class ModuleBoundaryArchitectureTests
             ["SourceBuilds"] = FeatureRole.BuiltIn,
             ["WebServices"] = FeatureRole.BuiltIn,
             ["Postgres"] = FeatureRole.ServiceProvider,
-            ["RedisServices"] = FeatureRole.ServiceProvider
+            ["RedisServices"] = FeatureRole.ServiceProvider,
         };
 
     [Fact]
     public void EveryProductionFeature_HasAnExplicitArchitecturalRole()
     {
         var projects = LoadProductionFeatureProjects(Path.Combine(FindRepositoryRoot(), "src/features"));
-        Assert.DoesNotContain(projects.Values.Select(project => project.Feature)
-                .Distinct(StringComparer.Ordinal),
+        Assert.DoesNotContain(
+            projects.Values.Select(project => project.Feature).Distinct(StringComparer.Ordinal),
             feature => !FeatureRoles.ContainsKey(feature));
     }
 
@@ -93,15 +90,8 @@ public sealed class ModuleBoundaryArchitectureTests
             FeatureRole.Platform => target is FeatureRole.Platform,
             FeatureRole.BuiltIn => target is not FeatureRole.ServiceProvider,
             FeatureRole.ServiceProvider => true,
-            _ => throw new ArgumentOutOfRangeException(nameof(sourceFeature))
+            _ => throw new ArgumentOutOfRangeException(nameof(sourceFeature)),
         };
-    }
-
-    private enum FeatureRole
-    {
-        Platform,
-        BuiltIn,
-        ServiceProvider
     }
 
     [Theory]
@@ -112,18 +102,10 @@ public sealed class ModuleBoundaryArchitectureTests
     [InlineData("Runtime", false)]
     [InlineData("Primitives", false)]
     [InlineData("ContractHttpMapping", false)]
-    public void ForeignHttpMappingCompanions_AreAvailableOnlyToApplication(
-        string sourceRole,
-        bool expected)
+    public void ForeignHttpMappingCompanions_AreAvailableOnlyToApplication(string sourceRole, bool expected)
     {
-        var source = new ProjectNode("Consumer",
-            "Consumer.Project",
-            Enum.Parse<ProjectRole>(sourceRole),
-            string.Empty);
-        var target = new ProjectNode("Provider",
-            "Provider.Contracts.HttpMapping",
-            ProjectRole.ContractHttpMapping,
-            string.Empty);
+        var source = new ProjectNode("Consumer", "Consumer.Project", Enum.Parse<ProjectRole>(sourceRole), "");
+        var target = new ProjectNode("Provider", "Provider.Contracts.HttpMapping", ProjectRole.ContractHttpMapping, "");
 
         Assert.Equal(expected, IsAllowed(source, target));
     }
@@ -135,15 +117,16 @@ public sealed class ModuleBoundaryArchitectureTests
         var visited = new HashSet<string>(StringComparer.Ordinal);
         Visit(Path.Combine(root, "src/api/Pole.Platform.Hosting/Pole.Platform.Hosting.csproj"));
         Visit(Path.Combine(root, "src/api/Pole.Testing/Pole.Testing.csproj"));
-        var centralTests =
-            File.ReadAllText(Path.Combine(root, "tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj"));
+        var centralTests = File.ReadAllText(
+            Path.Combine(root, "tests/Pole.Tests.Integration/Pole.Tests.Integration.csproj"));
         Assert.DoesNotContain("RedisServices", centralTests);
         Assert.DoesNotContain("Postgres", centralTests);
         foreach (var feature in new[] { "RedisServices", "Postgres" })
-            foreach (var project in Directory.EnumerateFiles(Path.Combine(root, "src/features", feature),
-                         "*.*proj",
-                         SearchOption.AllDirectories))
-                Assert.DoesNotContain("Pole.Tests.Integration.csproj", File.ReadAllText(project));
+        foreach (var project in Directory.EnumerateFiles(
+                     Path.Combine(root, "src/features", feature),
+                     "*.*proj",
+                     SearchOption.AllDirectories))
+            Assert.DoesNotContain("Pole.Tests.Integration.csproj", File.ReadAllText(project));
 
         void Visit(string project)
         {
@@ -153,11 +136,15 @@ public sealed class ModuleBoundaryArchitectureTests
             Assert.DoesNotContain("Pole.Server.csproj", project);
             foreach (var feature in new[] { "RedisServices", "WebServices", "Postgres", "Functions" })
                 Assert.DoesNotContain($"{Path.DirectorySeparatorChar}{feature}{Path.DirectorySeparatorChar}", project);
-            foreach (var reference in XDocument.Load(project).Descendants("ProjectReference")
+            foreach (var reference in XDocument.Load(project)
+                         .Descendants("ProjectReference")
                          .Where(reference => reference.Attribute("ReferenceOutputAssembly")?.Value != "false"))
-                Visit(Path.Combine(Path.GetDirectoryName(project)!,
-                    reference.Attribute("Include")!.Value
-                        .Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
+                Visit(
+                    Path.Combine(
+                        Path.GetDirectoryName(project)!,
+                        reference.Attribute("Include")!.Value
+                            .Replace('\\', Path.DirectorySeparatorChar)
+                            .Replace('/', Path.DirectorySeparatorChar)));
         }
     }
 
@@ -176,26 +163,26 @@ public sealed class ModuleBoundaryArchitectureTests
             .Descendants("ProjectReference")
             .Select(element => element.Attribute("Include")?.Value)
             .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => Path.GetFileNameWithoutExtension(
-                value!.Replace('\\', Path.DirectorySeparatorChar)))
+            .Select(value => Path.GetFileNameWithoutExtension(value!.Replace('\\', Path.DirectorySeparatorChar)))
             .ToArray();
 
-        Assert.DoesNotContain(references,
-            reference =>
-                reference.EndsWith(".Events", StringComparison.Ordinal) && reference != "Search.Events" ||
+        Assert.DoesNotContain(
+            references,
+            reference => (reference.EndsWith(".Events", StringComparison.Ordinal) && reference != "Search.Events") ||
                 reference.StartsWith("ResourceDeployments.", StringComparison.Ordinal));
 
         var sourceText = Directory
             .EnumerateFiles(Path.GetDirectoryName(projectPath)!, "*.fs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .Select(File.ReadAllText);
-        Assert.DoesNotContain(sourceText,
-            source =>
-                source.Contains("Pole.Features.ResourceGroups", StringComparison.Ordinal) ||
+        Assert.DoesNotContain(
+            sourceText,
+            source => source.Contains("Pole.Features.ResourceGroups", StringComparison.Ordinal) ||
                 source.Contains("Pole.Features.WebServices", StringComparison.Ordinal) ||
                 source.Contains("Pole.Features.RedisServices", StringComparison.Ordinal) ||
-                source.Contains("Pole.Features.Postgres", StringComparison.Ordinal) ||
-                source.Contains("Pole.Features.ResourceDeployments", StringComparison.Ordinal));
+                source.Contains("Pole.Features.Postgres", StringComparison.Ordinal) || source.Contains(
+                    "Pole.Features.ResourceDeployments",
+                    StringComparison.Ordinal));
     }
 
     [Fact]
@@ -208,7 +195,7 @@ public sealed class ModuleBoundaryArchitectureTests
             "WebServices/WebServices.Application/WebServices.Application.csproj",
             "RedisServices/RedisServices.Application/RedisServices.Application.csproj",
             "Postgres/Postgres.Application/Postgres.Application.fsproj",
-            "ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj"
+            "ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj",
         ];
 
         foreach (var relativePath in applicationProjects)
@@ -222,8 +209,7 @@ public sealed class ModuleBoundaryArchitectureTests
                 .Descendants("ProjectReference")
                 .Select(element => element.Attribute("Include")?.Value)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Select(value => Path.GetFileNameWithoutExtension(
-                    value!.Replace('\\', Path.DirectorySeparatorChar)))
+                .Select(value => Path.GetFileNameWithoutExtension(value!.Replace('\\', Path.DirectorySeparatorChar)))
                 .Where(identity => identity.StartsWith("Search.", StringComparison.Ordinal))
                 .ToArray();
 
@@ -243,16 +229,12 @@ public sealed class ModuleBoundaryArchitectureTests
             .Select(edge => new ProjectEdge(edge.Source.Identity, edge.Target.Identity))
             .ToHashSet();
 
-        var allowlistedEdges = TemporaryProjectReferenceAllowlist
-            .Select(exception => exception.Edge)
-            .ToHashSet();
-        var unexpected = violations
-            .Except(allowlistedEdges)
+        var allowlistedEdges = TemporaryProjectReferenceAllowlist.Select(exception => exception.Edge).ToHashSet();
+        var unexpected = violations.Except(allowlistedEdges)
             .OrderBy(edge => edge.Source, StringComparer.Ordinal)
             .ThenBy(edge => edge.Target, StringComparer.Ordinal)
             .ToArray();
-        var staleAllowlistEntries = allowlistedEdges
-            .Except(violations)
+        var staleAllowlistEntries = allowlistedEdges.Except(violations)
             .OrderBy(edge => edge.Source, StringComparer.Ordinal)
             .ThenBy(edge => edge.Target, StringComparer.Ordinal)
             .ToArray();
@@ -269,17 +251,13 @@ public sealed class ModuleBoundaryArchitectureTests
         var sharedRoot = Path.Combine(repositoryRoot, "src", "shared");
         var projects = LoadProductionFeatureProjects(featureRoot);
         var violations = projects.Values
-            .Where(project => project.Role is
-                ProjectRole.Contracts or
-                ProjectRole.ContractHttpMapping or
-                ProjectRole.Events)
+            .Where(project =>
+                project.Role is ProjectRole.Contracts or ProjectRole.ContractHttpMapping or ProjectRole.Events)
             .SelectMany(project => LoadSharedReferences(project, sharedRoot))
             .Where(edge => !IsAllowedSharedReference(edge.Source, edge.TargetIdentity))
             .Select(edge => new ProjectEdge(edge.Source.Identity, edge.TargetIdentity))
             .ToHashSet();
-        var allowlistedEdges = TemporarySharedProjectReferenceAllowlist
-            .Select(exception => exception.Edge)
-            .ToHashSet();
+        var allowlistedEdges = TemporarySharedProjectReferenceAllowlist.Select(exception => exception.Edge).ToHashSet();
 
         Assert.Empty(violations.Except(allowlistedEdges));
         Assert.Empty(allowlistedEdges.Except(violations));
@@ -302,33 +280,22 @@ public sealed class ModuleBoundaryArchitectureTests
             {
                 var source = File.ReadAllText(path);
                 return source.Contains("[EntityName(", StringComparison.Ordinal) ||
-                       source.Contains("[<EntityName", StringComparison.Ordinal);
+                    source.Contains("[<EntityName", StringComparison.Ordinal);
             })
-            .Select(path => Path
-                .GetRelativePath(repositoryRoot, path)
-                .Replace(Path.DirectorySeparatorChar, '/'))
+            .Select(path => Path.GetRelativePath(repositoryRoot, path).Replace(Path.DirectorySeparatorChar, '/'))
             .ToHashSet(StringComparer.Ordinal);
 
-        var allowlistedPaths = TemporaryIntegrationEventPlacementAllowlist
-            .Select(exception => exception.RelativePath)
+        var allowlistedPaths = TemporaryIntegrationEventPlacementAllowlist.Select(exception => exception.RelativePath)
             .ToHashSet(StringComparer.Ordinal);
-        var unexpected = violations
-            .Except(allowlistedPaths)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        var staleAllowlistEntries = allowlistedPaths
-            .Except(violations)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+        var unexpected = violations.Except(allowlistedPaths).Order(StringComparer.Ordinal).ToArray();
+        var staleAllowlistEntries = allowlistedPaths.Except(violations).Order(StringComparer.Ordinal).ToArray();
 
         Assert.Empty(unexpected);
         Assert.Empty(staleAllowlistEntries);
     }
 
-    private static IReadOnlyDictionary<string, ProjectNode> LoadProductionFeatureProjects(
-        string featureRoot) =>
-        Directory
-            .EnumerateFiles(featureRoot, "*.*proj", SearchOption.AllDirectories)
+    private static IReadOnlyDictionary<string, ProjectNode> LoadProductionFeatureProjects(string featureRoot) =>
+        Directory.EnumerateFiles(featureRoot, "*.*proj", SearchOption.AllDirectories)
             .Select(path => ProjectNode.Create(featureRoot, path))
             .Where(project => project.Role is not ProjectRole.Other)
             .ToDictionary(project => project.FullPath, StringComparer.Ordinal);
@@ -338,58 +305,43 @@ public sealed class ModuleBoundaryArchitectureTests
         IReadOnlyDictionary<string, ProjectNode> projects)
     {
         var document = XDocument.Load(source.FullPath);
-        foreach (var reference in document
-                     .Descendants("ProjectReference")
+        foreach (var reference in document.Descendants("ProjectReference")
                      .Select(element => element.Attribute("Include")?.Value)
                      .Where(value => !string.IsNullOrWhiteSpace(value)))
         {
-            var normalizedReference = reference!
-                .Replace('\\', Path.DirectorySeparatorChar)
+            var normalizedReference = reference!.Replace('\\', Path.DirectorySeparatorChar)
                 .Replace('/', Path.DirectorySeparatorChar);
-            var targetPath = Path.GetFullPath(Path.Combine(
-                Path.GetDirectoryName(source.FullPath)!,
-                normalizedReference));
+            var targetPath
+                = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source.FullPath)!, normalizedReference));
             if (projects.TryGetValue(targetPath, out var target))
                 yield return new ProjectReferenceEdge(source, target);
         }
     }
 
-    private static IEnumerable<SharedProjectReferenceEdge> LoadSharedReferences(
-        ProjectNode source,
-        string sharedRoot)
+    private static IEnumerable<SharedProjectReferenceEdge> LoadSharedReferences(ProjectNode source, string sharedRoot)
     {
-        var normalizedSharedRoot = Path.GetFullPath(sharedRoot)
-            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var normalizedSharedRoot = Path.GetFullPath(sharedRoot).TrimEnd(Path.DirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
         var document = XDocument.Load(source.FullPath);
-        foreach (var reference in document
-                     .Descendants("ProjectReference")
+        foreach (var reference in document.Descendants("ProjectReference")
                      .Select(element => element.Attribute("Include")?.Value)
                      .Where(value => !string.IsNullOrWhiteSpace(value)))
         {
-            var normalizedReference = reference!
-                .Replace('\\', Path.DirectorySeparatorChar)
+            var normalizedReference = reference!.Replace('\\', Path.DirectorySeparatorChar)
                 .Replace('/', Path.DirectorySeparatorChar);
-            var targetPath = Path.GetFullPath(Path.Combine(
-                Path.GetDirectoryName(source.FullPath)!,
-                normalizedReference));
+            var targetPath
+                = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source.FullPath)!, normalizedReference));
             if (!targetPath.StartsWith(normalizedSharedRoot, StringComparison.Ordinal))
                 continue;
 
-            yield return new SharedProjectReferenceEdge(
-                source,
-                Path.GetFileNameWithoutExtension(targetPath));
+            yield return new SharedProjectReferenceEdge(source, Path.GetFileNameWithoutExtension(targetPath));
         }
     }
 
-    private static bool IsAllowedSharedReference(
-        ProjectNode source,
-        string targetIdentity)
+    private static bool IsAllowedSharedReference(ProjectNode source, string targetIdentity)
     {
-        if (source is { Role: ProjectRole.Contracts, Identity: "Outbox.Contracts" } &&
-            targetIdentity == "Events")
-        {
+        if (source is { Role: ProjectRole.Contracts, Identity: "Outbox.Contracts" } && targetIdentity == "Events")
             return true;
-        }
 
         return source.Role switch
         {
@@ -398,54 +350,35 @@ public sealed class ModuleBoundaryArchitectureTests
             ProjectRole.ContractHttpMapping => targetIdentity is "ASP",
             ProjectRole.Compiler => false,
             ProjectRole.Events => targetIdentity is "Events" or "Workloads",
-            _ => true
+            _ => true,
         };
     }
 
-    private static bool IsAllowed(ProjectNode source, ProjectNode target) =>
-        source.Role switch
-        {
-            ProjectRole.Migrations or ProjectRole.Primitives => false,
-            ProjectRole.Compiler when source.Feature == target.Feature =>
-                target.Role is ProjectRole.Contracts or ProjectRole.Primitives,
-            ProjectRole.Compiler => false,
-            ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events
-                when source.Feature == target.Feature =>
-                target.Role is ProjectRole.Primitives,
-            ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events => false,
-            ProjectRole.ContractHttpMapping when source.Feature == target.Feature =>
-                target.Role is ProjectRole.Contracts,
-            ProjectRole.ContractHttpMapping => false,
-            ProjectRole.Application when source.Feature == target.Feature =>
-                target.Role is ProjectRole.Compiler or
-                    ProjectRole.Primitives or
-                    ProjectRole.Domain or
-                    ProjectRole.Contracts or
-                    ProjectRole.ContractHttpMapping or
-                    ProjectRole.Events,
-            ProjectRole.Application =>
-                target.Role is ProjectRole.Contracts or
-                    ProjectRole.ContractHttpMapping or
-                    ProjectRole.Events ||
-                target.Role is ProjectRole.Primitives &&
-                ReferencesProviderContract(source, target.Feature),
-            ProjectRole.Runtime when source.Feature == target.Feature =>
-                target.Role is ProjectRole.Primitives or
-                    ProjectRole.Domain or
-                    ProjectRole.Contracts or
-                    ProjectRole.Events or
-                    ProjectRole.Application,
-            ProjectRole.Runtime =>
-                target.Role is ProjectRole.Contracts or
-                    ProjectRole.Events ||
-                target.Role is ProjectRole.Primitives &&
-                ReferencesProviderContract(source, target.Feature),
-            _ => true
-        };
+    private static bool IsAllowed(ProjectNode source, ProjectNode target) => source.Role switch
+    {
+        ProjectRole.Migrations or ProjectRole.Primitives => false,
+        ProjectRole.Compiler when source.Feature == target.Feature => target.Role is ProjectRole.Contracts
+            or ProjectRole.Primitives,
+        ProjectRole.Compiler => false,
+        ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events when source.Feature == target.Feature =>
+            target.Role is ProjectRole.Primitives,
+        ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events => false,
+        ProjectRole.ContractHttpMapping when source.Feature == target.Feature => target.Role is ProjectRole.Contracts,
+        ProjectRole.ContractHttpMapping => false,
+        ProjectRole.Application when source.Feature == target.Feature => target.Role is ProjectRole.Compiler
+            or ProjectRole.Primitives or ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.ContractHttpMapping
+            or ProjectRole.Events,
+        ProjectRole.Application => target.Role is ProjectRole.Contracts or ProjectRole.ContractHttpMapping
+            or ProjectRole.Events || (target.Role is ProjectRole.Primitives &&
+            ReferencesProviderContract(source, target.Feature)),
+        ProjectRole.Runtime when source.Feature == target.Feature => target.Role is ProjectRole.Primitives
+            or ProjectRole.Domain or ProjectRole.Contracts or ProjectRole.Events or ProjectRole.Application,
+        ProjectRole.Runtime => target.Role is ProjectRole.Contracts or ProjectRole.Events ||
+            (target.Role is ProjectRole.Primitives && ReferencesProviderContract(source, target.Feature)),
+        _ => true,
+    };
 
-    private static bool ReferencesProviderContract(
-        ProjectNode source,
-        string providerFeature)
+    private static bool ReferencesProviderContract(ProjectNode source, string providerFeature)
     {
         var expectedIdentity = $"{providerFeature}.Contracts";
         return XDocument.Load(source.FullPath)
@@ -461,15 +394,12 @@ public sealed class ModuleBoundaryArchitectureTests
 
     private static bool IsProductionSourceFile(string path)
     {
-        if (!path.EndsWith(".cs", StringComparison.Ordinal) &&
-            !path.EndsWith(".fs", StringComparison.Ordinal))
-        {
+        if (!path.EndsWith(".cs", StringComparison.Ordinal) && !path.EndsWith(".fs", StringComparison.Ordinal))
             return false;
-        }
 
         var normalized = path.Replace('\\', '/');
         return !normalized.Contains("/bin/", StringComparison.Ordinal) &&
-               !normalized.Contains("/obj/", StringComparison.Ordinal);
+            !normalized.Contains("/obj/", StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()
@@ -485,11 +415,19 @@ public sealed class ModuleBoundaryArchitectureTests
         throw new DirectoryNotFoundException("Could not locate the Pole repository root.");
     }
 
+    private enum FeatureRole
+    {
+        Platform,
+        BuiltIn,
+        ServiceProvider,
+    }
+
     private sealed record ProjectNode(
-    string Feature,
-    string Identity,
-    ProjectRole Role,
-    string FullPath)
+        string Feature,
+        string Identity,
+        ProjectRole Role,
+        string FullPath
+    )
     {
         public static ProjectNode Create(string featureRoot, string fullPath)
         {
@@ -524,21 +462,25 @@ public sealed class ModuleBoundaryArchitectureTests
     }
 
     private sealed record ProjectReferenceEdge(
-    ProjectNode Source,
-    ProjectNode Target);
+        ProjectNode Source,
+        ProjectNode Target
+    );
 
     private sealed record SharedProjectReferenceEdge(
-    ProjectNode Source,
-    string TargetIdentity);
+        ProjectNode Source,
+        string TargetIdentity
+    );
 
     private sealed record ProjectEdge(
-    string Source,
-    string Target);
+        string Source,
+        string Target
+    );
 
     private sealed record DocumentedProjectException(
-    ProjectEdge Edge,
-    string Reason,
-    string TrackingIssue)
+        ProjectEdge Edge,
+        string Reason,
+        string TrackingIssue
+    )
     {
         public static DocumentedProjectException Create(
             string source,
@@ -550,14 +492,15 @@ public sealed class ModuleBoundaryArchitectureTests
             ArgumentException.ThrowIfNullOrWhiteSpace(target);
             ArgumentException.ThrowIfNullOrWhiteSpace(reason);
             ArgumentException.ThrowIfNullOrWhiteSpace(trackingIssue);
-            return new(new ProjectEdge(source, target), reason, trackingIssue);
+            return new DocumentedProjectException(new ProjectEdge(source, target), reason, trackingIssue);
         }
     }
 
     private sealed record DocumentedSourceException(
-    string RelativePath,
-    string Reason,
-    string TrackingIssue)
+        string RelativePath,
+        string Reason,
+        string TrackingIssue
+    )
     {
         public static DocumentedSourceException Create(
             string relativePath,
@@ -567,7 +510,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
             ArgumentException.ThrowIfNullOrWhiteSpace(reason);
             ArgumentException.ThrowIfNullOrWhiteSpace(trackingIssue);
-            return new(relativePath, reason, trackingIssue);
+            return new DocumentedSourceException(relativePath, reason, trackingIssue);
         }
     }
 
@@ -582,6 +525,6 @@ public sealed class ModuleBoundaryArchitectureTests
         Application,
         Runtime,
         Compiler,
-        Primitives
+        Primitives,
     }
 }

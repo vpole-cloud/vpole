@@ -26,55 +26,30 @@ public sealed class OutboxSettingsValidator : IValidateOptions<OutboxSettings>
         var failures = new List<string>();
         RequirePositive(options.BatchSize, nameof(options.BatchSize), failures);
         if (!OutboxCronExpression.IsValid(options.ProcessingCronExpression))
-        {
             failures.Add(
                 $"{OutboxSettings.SectionName}:{nameof(options.ProcessingCronExpression)} " +
                 "must be a valid five-field cron expression.");
-        }
 
         if (options.ProcessingTriggerInterval is { } processingTriggerInterval)
-        {
-            RequirePositive(
-                processingTriggerInterval,
-                nameof(options.ProcessingTriggerInterval),
-                failures);
-        }
+            RequirePositive(processingTriggerInterval, nameof(options.ProcessingTriggerInterval), failures);
 
-        RequirePositive(
-            options.InitialRetryDelay,
-            nameof(options.InitialRetryDelay),
-            failures);
-        RequirePositive(
-            options.MaximumRetryDelay,
-            nameof(options.MaximumRetryDelay),
-            failures);
+        RequirePositive(options.InitialRetryDelay, nameof(options.InitialRetryDelay), failures);
+        RequirePositive(options.MaximumRetryDelay, nameof(options.MaximumRetryDelay), failures);
         if (options.MaximumRetryDelay < options.InitialRetryDelay)
-        {
             failures.Add(
                 $"{OutboxSettings.SectionName}:{nameof(options.MaximumRetryDelay)} must be " +
                 $"greater than or equal to {nameof(options.InitialRetryDelay)}.");
-        }
 
-        RequirePositive(
-            options.PublishedRetentionDays,
-            nameof(options.PublishedRetentionDays),
-            failures);
-        RequirePositive(
-            options.AbandonedRetentionDays,
-            nameof(options.AbandonedRetentionDays),
-            failures);
+        RequirePositive(options.PublishedRetentionDays, nameof(options.PublishedRetentionDays), failures);
+        RequirePositive(options.AbandonedRetentionDays, nameof(options.AbandonedRetentionDays), failures);
         if (options.AbandonedRetentionDays < options.PublishedRetentionDays)
-        {
             failures.Add(
                 $"{OutboxSettings.SectionName}:{nameof(options.AbandonedRetentionDays)} must be " +
                 $"greater than or equal to {nameof(options.PublishedRetentionDays)}.");
-        }
 
         RequirePositive(options.CleanupBatchSize, nameof(options.CleanupBatchSize), failures);
 
-        return failures.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(failures);
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
     private static void RequirePositive(
@@ -83,10 +58,7 @@ public sealed class OutboxSettingsValidator : IValidateOptions<OutboxSettings>
         ICollection<string> failures)
     {
         if (value <= 0)
-        {
-            failures.Add(
-                $"{OutboxSettings.SectionName}:{propertyName} must be greater than zero.");
-        }
+            failures.Add($"{OutboxSettings.SectionName}:{propertyName} must be greater than zero.");
     }
 
     private static void RequirePositive(
@@ -95,10 +67,7 @@ public sealed class OutboxSettingsValidator : IValidateOptions<OutboxSettings>
         ICollection<string> failures)
     {
         if (value <= TimeSpan.Zero)
-        {
-            failures.Add(
-                $"{OutboxSettings.SectionName}:{propertyName} must be greater than zero.");
-        }
+            failures.Add($"{OutboxSettings.SectionName}:{propertyName} must be greater than zero.");
     }
 }
 
@@ -110,7 +79,7 @@ internal static class OutboxCronExpression
         (0, 23),
         (1, 31),
         (1, 12),
-        (0, 7)
+        (0, 7),
     ];
 
     public static bool IsValid(string? expression)
@@ -118,37 +87,24 @@ internal static class OutboxCronExpression
         if (string.IsNullOrWhiteSpace(expression))
             return false;
 
-        var fields = expression.Split(
-            ' ',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return fields.Length == FiveFieldRanges.Length &&
-               fields.Select((field, index) =>
-                       IsValidField(field, FiveFieldRanges[index]))
-                   .All(valid => valid);
+        var fields = expression.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return fields.Length == FiveFieldRanges.Length && fields
+            .Select((field, index) => IsValidField(field, FiveFieldRanges[index]))
+            .All(valid => valid);
     }
 
-    private static bool IsValidField(
-        string field,
-        (int Minimum, int Maximum) range) =>
-        field.Length > 0 &&
-        field.Split(',', StringSplitOptions.TrimEntries)
-            .All(part => IsValidPart(part, range));
+    private static bool IsValidField(string field, (int Minimum, int Maximum) range) => field.Length > 0 &&
+        field.Split(',', StringSplitOptions.TrimEntries).All(part => IsValidPart(part, range));
 
-    private static bool IsValidPart(
-        string part,
-        (int Minimum, int Maximum) range)
+    private static bool IsValidPart(string part, (int Minimum, int Maximum) range)
     {
         var stepParts = part.Split('/');
-        if (stepParts.Length > 2 ||
-            stepParts.Length == 2 &&
-            !TryReadNumber(
+        if (stepParts.Length > 2 || (stepParts.Length == 2 && !TryReadNumber(
                 stepParts[1],
                 minimum: 1,
                 maximum: range.Maximum - range.Minimum + 1,
-                out _))
-        {
+                out _)))
             return false;
-        }
 
         var value = stepParts[0];
         if (value == "*")
@@ -156,38 +112,16 @@ internal static class OutboxCronExpression
 
         var rangeParts = value.Split('-');
         if (rangeParts.Length == 1)
-        {
-            return TryReadNumber(
-                rangeParts[0],
-                range.Minimum,
-                range.Maximum,
-                out _);
-        }
+            return TryReadNumber(rangeParts[0], range.Minimum, range.Maximum, out _);
 
-        return rangeParts.Length == 2 &&
-               TryReadNumber(
-                   rangeParts[0],
-                   range.Minimum,
-                   range.Maximum,
-                   out var start) &&
-               TryReadNumber(
-                   rangeParts[1],
-                   range.Minimum,
-                   range.Maximum,
-                   out var end) &&
-               start <= end;
+        return rangeParts.Length == 2 && TryReadNumber(rangeParts[0], range.Minimum, range.Maximum, out var start) &&
+            TryReadNumber(rangeParts[1], range.Minimum, range.Maximum, out var end) && start <= end;
     }
 
     private static bool TryReadNumber(
         string value,
         int minimum,
         int maximum,
-        out int parsed) =>
-        int.TryParse(
-            value,
-            NumberStyles.None,
-            CultureInfo.InvariantCulture,
-            out parsed) &&
-        parsed >= minimum &&
-        parsed <= maximum;
+        out int parsed) => int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out parsed) &&
+        parsed >= minimum && parsed <= maximum;
 }

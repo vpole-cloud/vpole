@@ -1,11 +1,5 @@
 using Hangfire;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 
 namespace Pole.Features.ResourceDeployments.Application.Jobs;
@@ -15,7 +9,8 @@ public sealed class ResourceDeploymentRecoveryJob(
     RecoverResourceDeployment recoverResourceDeployment,
     ResourceDeploymentMetrics metrics,
     ResourceDeploymentSettings settings,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     private static readonly TimeSpan PendingRecoveryDelay = TimeSpan.FromSeconds(30);
 
@@ -42,12 +37,8 @@ public sealed class ResourceDeploymentRecoveryJob(
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var staleClaimRecoveryCount = await recoverResourceDeployment(
-            deploymentId,
-            now,
-            cancellationToken);
+        var staleClaimRecoveryCount = await recoverResourceDeployment(deploymentId, now, cancellationToken);
 
         metrics.RecordStaleClaimRecoveries(staleClaimRecoveryCount);
     }
-
 }

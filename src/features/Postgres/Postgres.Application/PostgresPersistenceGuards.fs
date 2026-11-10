@@ -15,7 +15,7 @@ module PostgresPersistenceGuards =
         ensureObjectId "tenantId" tenantId
         ensureObjectId "clusterId" clusterId
 
-    let cluster (cluster : PostgresCluster) =
+    let cluster (cluster: PostgresCluster) =
         if isNull (box cluster) then
             nullArg "cluster"
 
@@ -47,17 +47,23 @@ module PostgresPersistenceGuards =
         if pageSize < 1 then
             invalidArg "pageSize" "Page size must be greater than zero."
 
-    let sameIdentity (current : PostgresCluster) (replacement : PostgresCluster) =
+    let sameIdentity (current: PostgresCluster) (replacement: PostgresCluster) =
         cluster current
         cluster replacement
 
-        if current.TenantId <> replacement.TenantId || current.Id <> replacement.Id || current.Name <> replacement.Name then
+        if
+            current.TenantId <> replacement.TenantId
+            || current.Id <> replacement.Id
+            || current.Name <> replacement.Name
+        then
             invalidOp "A PostgreSQL cluster replacement must preserve tenant, resource identity, and immutable name."
 
-        if current.GroupId <> replacement.GroupId
-           || current.Spec.Version <> replacement.Spec.Version
-           || current.Spec.DeploymentMode <> replacement.Spec.DeploymentMode
-           || current.Spec.StorageProfileId <> replacement.Spec.StorageProfileId then
+        if
+            current.GroupId <> replacement.GroupId
+            || current.Spec.Version <> replacement.Spec.Version
+            || current.Spec.DeploymentMode <> replacement.Spec.DeploymentMode
+            || current.Spec.StorageProfileId <> replacement.Spec.StorageProfileId
+        then
             invalidOp "A PostgreSQL cluster replacement must preserve group, version, mode, and storage identity."
 
         if current.PlanningFence <> replacement.PlanningFence then
@@ -65,27 +71,35 @@ module PostgresPersistenceGuards =
 
         match current.Provisioning, replacement.Provisioning with
         | :? DirectPostgresProvisioning, :? DirectPostgresProvisioning -> ()
-        | (:? PreparedPostgresProvisioning as before), (:? PreparedPostgresProvisioning as after)
-            when before.Bootstrap = after.Bootstrap -> ()
-        | (:? PreparedPostgresProvisioning as before), (:? ConfiguredPostgresProvisioning as after)
-            when before.Bootstrap = after.Bootstrap -> ()
-        | (:? ConfiguredPostgresProvisioning as before), (:? ConfiguredPostgresProvisioning as after)
-            when before.Bootstrap = after.Bootstrap -> ()
+        | (:? PreparedPostgresProvisioning as before), (:? PreparedPostgresProvisioning as after) when
+            before.Bootstrap = after.Bootstrap
+            ->
+            ()
+        | (:? PreparedPostgresProvisioning as before), (:? ConfiguredPostgresProvisioning as after) when
+            before.Bootstrap = after.Bootstrap
+            ->
+            ()
+        | (:? ConfiguredPostgresProvisioning as before), (:? ConfiguredPostgresProvisioning as after) when
+            before.Bootstrap = after.Bootstrap
+            ->
+            ()
         | _ -> invalidOp "A PostgreSQL cluster replacement must preserve its immutable bootstrap identity."
 
-    let activeUpdate (current : PostgresCluster) (replacement : PostgresCluster) =
+    let activeUpdate (current: PostgresCluster) (replacement: PostgresCluster) =
         sameIdentity current replacement
+
         match current.Lifecycle, replacement.Lifecycle with
         | :? ActivePostgresClusterLifecycle, :? ActivePostgresClusterLifecycle -> ()
         | _ -> invalidOp "PostgreSQL updates must replace an active cluster with an active cluster."
 
-    let deletionTransition (current : PostgresCluster) (replacement : PostgresCluster) =
+    let deletionTransition (current: PostgresCluster) (replacement: PostgresCluster) =
         sameIdentity current replacement
+
         match current.Lifecycle, replacement.Lifecycle with
         | :? ActivePostgresClusterLifecycle, :? DeletingPostgresClusterLifecycle -> ()
         | _ -> invalidOp "PostgreSQL deletion must transition an active cluster to deleting."
 
-    let transaction (session : IClientSessionHandle) operation =
+    let transaction (session: IClientSessionHandle) operation =
         if isNull (box session) then
             nullArg "session"
 

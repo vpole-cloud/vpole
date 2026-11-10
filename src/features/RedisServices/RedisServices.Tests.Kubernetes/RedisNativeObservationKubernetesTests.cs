@@ -1,9 +1,7 @@
-using Pole.Observation;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
 using k8s;
-using KubernetesClient = k8s.Kubernetes;
 using k8s.Models;
 using MongoDB.Bson;
 using Pole.Features.Core.Kubernetes;
@@ -13,17 +11,19 @@ using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.RedisServices.Tests.Kubernetes.Infrastructure;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Testing;
-using Pole.Workloads;
+using Pole.Observation;
 using Xunit;
 using Xunit.Abstractions;
+using KubernetesClient = k8s.Kubernetes;
 
 namespace Pole.Features.RedisServices.Tests.Kubernetes.RedisServices;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Feature", "RedisServices")]
-public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixture fixture, ITestOutputHelper output)
-    : KubernetesIntegrationTestBase(fixture)
+public sealed class RedisNativeObservationKubernetesTests(
+    KubernetesClusterFixture fixture,
+    ITestOutputHelper output
+) : KubernetesIntegrationTestBase(fixture)
 {
     [KubernetesFact]
     public async Task Owned_StatefulSet_source_observes_real_Pod_UID_change_and_withdraws_foreign_controller()
@@ -31,7 +31,8 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         using var client = new KubernetesClient(Target.CreateConfiguration(), new KubernetesWatchHeaders());
         var targetId = RedisTestData.DefaultDeploymentTargetId;
-        var resource = RedisFactory.Create(RedisTestData.TenantId,
+        var resource = RedisFactory.Create(
+            RedisTestData.TenantId,
             "redis-observation",
             Id(),
             new RedisSpec(new Storage(1, RedisTestData.DefaultStorageProfileId)),
@@ -39,7 +40,8 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         var deploymentId = Id();
         var scopeId = Id();
         var cellId = Id();
-        var identity = new WorkloadIdentityLabels(resource.TenantId,
+        var identity = new WorkloadIdentityLabels(
+            resource.TenantId,
             resource.ResourceGroupId,
             scopeId,
             cellId,
@@ -47,12 +49,13 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
             "Redis",
             resource.Id,
             deploymentId);
-        var compute = new ResourceDeploymentComputeConfiguration(Id(),
+        var compute = new ResourceDeploymentComputeConfiguration(
+            Id(),
             1,
             targetId,
             "test",
-            new(250, 128),
-            new(1000, 256),
+            new ResourceDeploymentComputeResourceValues(250, 128),
+            new ResourceDeploymentComputeResourceValues(1000, 256),
             ComputeArchitecture.Any,
             [],
             [],
@@ -60,11 +63,12 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
             [],
             [],
             null);
-        var storage =
-            new ResourceDeploymentStorageConfiguration(RedisTestData.DefaultStorageProfileId,
-                1,
-                Target.StorageClassName);
-        var context = new ResourceDeploymentObservationContext(new ResourceDeploymentReconciliationSnapshot(
+        var storage = new ResourceDeploymentStorageConfiguration(
+            RedisTestData.DefaultStorageProfileId,
+            1,
+            Target.StorageClassName);
+        var context = new ResourceDeploymentObservationContext(
+            new ResourceDeploymentReconciliationSnapshot(
                 deploymentId,
                 resource.TenantId,
                 RedisResourceDeployment.ResourceType,
@@ -80,18 +84,23 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
             1,
             1);
         var manifest = resource.ToKubernetes(NamespaceName, storage, compute, identity);
-        Assert.IsType<RedisKubernetesApplied>((await RedisKubernetesResourceManager.ApplyAsync(client,
-            manifest,
-            RedisResourceDeploymentMetadata.Create(deploymentId, cellId, targetId, 1, DateTime.UtcNow),
-            deadline.Token)).Value);
-        var controller =
-            await client.AppsV1.ReadNamespacedStatefulSetAsync(resource.Name,
-                NamespaceName,
-                cancellationToken: deadline.Token);
+        Assert.IsType<RedisKubernetesApplied>(
+            (await RedisKubernetesResourceManager.ApplyAsync(
+                client,
+                manifest,
+                RedisResourceDeploymentMetadata.Create(deploymentId, cellId, targetId, 1, DateTime.UtcNow),
+                deadline.Token)).Value);
+        var controller = await client.AppsV1.ReadNamespacedStatefulSetAsync(
+            resource.Name,
+            NamespaceName,
+            cancellationToken: deadline.Token);
         var binding = controller.Metadata.Uid;
         AssertOwned(controller.Metadata, identity);
         var provider = new ExactClient(client, targetId);
-        var observer = new RedisResourceDeploymentObserver((tenant, id, _) =>
+        var observer = new RedisResourceDeploymentObserver(
+            (
+                tenant, id,
+                _) =>
             {
                 Assert.Equal(resource.TenantId, tenant);
                 Assert.Equal(resource.Id, id);
@@ -110,24 +119,31 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
 
         Assert.True(ready?.Observation is ObservedWorkload { Ready: true });
         var instance = Assert.Single(Assert.IsType<AvailableWorkloadDiagnostics>(ready!.Diagnostics).Instances);
-        var pod = await client.CoreV1.ReadNamespacedPodAsync(instance.Name,
+        var pod = await client.CoreV1.ReadNamespacedPodAsync(
+            instance.Name,
             NamespaceName,
             cancellationToken: deadline.Token);
         Assert.Equal(instance.Uid, pod.Metadata.Uid);
         AssertOwned(pod.Metadata, identity);
         Assert.True(KubernetesOwnedWatchItem.ControlledBy(pod.Metadata, binding, "StatefulSet", "apps/v1"));
-        var service = await client.CoreV1.ReadNamespacedServiceAsync(RedisInKubernetes.BuildServiceName(resource.Name),
+        var service = await client.CoreV1.ReadNamespacedServiceAsync(
+            RedisInKubernetes.BuildServiceName(resource.Name),
             NamespaceName,
             cancellationToken: deadline.Token);
         AssertOwned(service.Metadata, identity);
-        var slices = await client.DiscoveryV1.ListNamespacedEndpointSliceAsync(NamespaceName,
+        var slices = await client.DiscoveryV1.ListNamespacedEndpointSliceAsync(
+            NamespaceName,
             labelSelector: $"kubernetes.io/service-name={service.Metadata.Name}",
             cancellationToken: deadline.Token);
         Assert.NotEmpty(slices.Items);
-        Assert.All(slices.Items,
+        Assert.All(
+            slices.Items,
             slice => Assert.True(
                 KubernetesOwnedWatchItem.ControlledBy(slice.Metadata, service.Metadata.Uid, "Service", "v1")));
-        var source = new RedisResourceDeploymentChangeSource((_, _, _) => Task.FromResult<Redis?>(resource),
+        var source = new RedisResourceDeploymentChangeSource(
+            (
+                _, _,
+                _) => Task.FromResult<Redis?>(resource),
             provider,
             (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(TargetDto(id)),
             new Budget(),
@@ -136,33 +152,37 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         var changes = source.WatchAsync(context, watchLifetime.Token).GetAsyncEnumerator();
         try
         {
-            await NextAsync(changes,
+            await NextAsync(
+                changes,
                 ResourceDeploymentObservationChangeKind.SourceReady,
                 TimeSpan.FromSeconds(30),
                 watchLifetime);
             Assert.Equal(binding, changes.Current.BindingId);
-            var guardedController = await client.AppsV1.ReadNamespacedStatefulSetAsync(resource.Name,
+            var guardedController = await client.AppsV1.ReadNamespacedStatefulSetAsync(
+                resource.Name,
                 NamespaceName,
                 cancellationToken: deadline.Token);
             Assert.Equal(binding, guardedController.Metadata.Uid);
             AssertOwned(guardedController.Metadata, identity);
-            var freshPod =
-                await client.CoreV1.ReadNamespacedPodAsync(instance.Name,
-                    NamespaceName,
-                    cancellationToken: deadline.Token);
+            var freshPod = await client.CoreV1.ReadNamespacedPodAsync(
+                instance.Name,
+                NamespaceName,
+                cancellationToken: deadline.Token);
             Assert.Equal(instance.Uid, freshPod.Metadata.Uid);
             AssertOwned(freshPod.Metadata, identity);
             Assert.True(KubernetesOwnedWatchItem.ControlledBy(freshPod.Metadata, binding, "StatefulSet", "apps/v1"));
             var latency = Stopwatch.StartNew();
-            await client.CoreV1.DeleteNamespacedPodAsync(instance.Name,
+            await client.CoreV1.DeleteNamespacedPodAsync(
+                instance.Name,
                 NamespaceName,
                 body: new V1DeleteOptions
                 {
                     GracePeriodSeconds = 0,
-                    Preconditions = new V1Preconditions { Uid = instance.Uid }
+                    Preconditions = new V1Preconditions { Uid = instance.Uid },
                 },
                 cancellationToken: deadline.Token);
-            await NextAsync(changes,
+            await NextAsync(
+                changes,
                 ResourceDeploymentObservationChangeKind.Invalidated,
                 TimeSpan.FromSeconds(5),
                 watchLifetime);
@@ -172,27 +192,32 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
             var postDelete = await observer.ObserveBoundAsync(context, binding, deadline.Token);
             if (postDelete.Diagnostics is AvailableWorkloadDiagnostics after)
                 Assert.DoesNotContain(after.Instances, item => item.Uid == instance.Uid);
-            var freshController = await client.AppsV1.ReadNamespacedStatefulSetAsync(resource.Name,
+            var freshController = await client.AppsV1.ReadNamespacedStatefulSetAsync(
+                resource.Name,
                 NamespaceName,
                 cancellationToken: deadline.Token);
             Assert.Equal(binding, freshController.Metadata.Uid);
             AssertOwned(freshController.Metadata, identity);
-            await client.AppsV1.PatchNamespacedStatefulSetAsync(new V1Patch(JsonSerializer.Serialize(new
-            {
-                metadata = new
-                {
-                    uid = binding,
-                    labels = new Dictionary<string, string>
-                    {
-                        ["pole.io/resource-id"] = "observation-test-foreign"
-                    }
-                }
-            }),
+            await client.AppsV1.PatchNamespacedStatefulSetAsync(
+                new V1Patch(
+                    JsonSerializer.Serialize(
+                        new
+                        {
+                            metadata = new
+                            {
+                                uid = binding,
+                                labels = new Dictionary<string, string>
+                                {
+                                    ["pole.io/resource-id"] = "observation-test-foreign",
+                                },
+                            },
+                        }),
                     V1Patch.PatchType.MergePatch),
                 resource.Name,
                 NamespaceName,
                 cancellationToken: deadline.Token);
-            await NextAsync(changes,
+            await NextAsync(
+                changes,
                 ResourceDeploymentObservationChangeKind.BindingChanged,
                 TimeSpan.FromSeconds(5),
                 watchLifetime);
@@ -206,8 +231,10 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         }
 
         // Dedicated target client remains owned by this test after every source stream is disposed.
-        Assert.Equal(binding,
-            (await client.AppsV1.ReadNamespacedStatefulSetAsync(resource.Name,
+        Assert.Equal(
+            binding,
+            (await client.AppsV1.ReadNamespacedStatefulSetAsync(
+                resource.Name,
                 NamespaceName,
                 cancellationToken: deadline.Token)).Metadata.Uid);
         // KubernetesIntegrationTestBase checks namespace UID/run/worktree ownership and removes only this test's namespace/PVCs.
@@ -220,7 +247,8 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         Assert.True(KubernetesWorkloadObservation.Owns(meta, identity));
     }
 
-    private static async Task NextAsync(IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
+    private static async Task NextAsync(
+        IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
         ResourceDeploymentObservationChangeKind kind,
         TimeSpan timeout,
         CancellationTokenSource lifetime)
@@ -259,12 +287,14 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
 
     private static string Id() => ObjectId.GenerateNewId().ToString();
 
-    private static DeploymentTargetLookupDto TargetDto(string id) => new(id,
+    private static DeploymentTargetLookupDto TargetDto(string id) => new(
+        id,
         "test",
         "cluster",
         "kubeconfig",
         1,
-        new DeploymentTargetWorkloadConfigurationLookupDto(1,
+        new DeploymentTargetWorkloadConfigurationLookupDto(
+            1,
             null,
             new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
         1,
@@ -275,7 +305,10 @@ public sealed class RedisNativeObservationKubernetesTests(KubernetesClusterFixtu
         TechnicalName: "test-target",
         NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
-    private sealed class ExactClient(IKubernetes client, string target) : IKubernetesClientProvider
+    private sealed class ExactClient(
+        IKubernetes client,
+        string target
+    ) : IKubernetesClientProvider
     {
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {

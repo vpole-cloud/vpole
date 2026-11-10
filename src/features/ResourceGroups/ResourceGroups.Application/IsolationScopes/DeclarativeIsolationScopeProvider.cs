@@ -5,7 +5,6 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
@@ -13,7 +12,9 @@ using Pole.Workloads;
 
 namespace Pole.Features.ResourceGroups.Application.IsolationScopes;
 
-public sealed record IsolationScopeDeclaration(string ResourceGroup);
+public sealed record IsolationScopeDeclaration(
+    string ResourceGroup
+);
 
 public sealed record IsolationScopeDeclarationUnavailable : IDeclarationFailure;
 
@@ -25,19 +26,136 @@ internal sealed class DeclarativeIsolationScopeProvider(
     FenceResourceGroupPlanningSnapshot fenceGroup,
     StoreOutboxWrites outbox,
     TimeProvider clock,
-    MongoBeginIsolationScopeDeletion deletion) : ITransactionalDeclarativeResourceProvider,
-        IDeclarativeResourceLifecycleProvider, IDeclarativeAdoptionPreviewProvider
+    MongoBeginIsolationScopeDeletion deletion
+) : ITransactionalDeclarativeResourceProvider, IDeclarativeResourceLifecycleProvider,
+    IDeclarativeAdoptionPreviewProvider
 {
+    public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
+        PreviewLifecycleAdoptionRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = await ReadCurrentAsync(
+            new ReadCurrentDeclarationRequest(request.TenantId, request.Declaration.Address),
+            session,
+            cancellationToken);
+        if (current is not CurrentDeclaration found || found.ResourceId != request.ResourceId)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        var spec = DeclarationJson.Read<IsolationScopeDeclaration>(request.Declaration.Spec);
+        var reference = request.References.SingleOrDefault(item => item.Address == new ResourceAddress(
+            "ResourceGroup",
+            spec.ResourceGroup));
+        if (reference is null || await loadGroup(
+                new ResourceGroupPlanningRequest(request.TenantId, reference.ResourceId),
+                session,
+                cancellationToken) is not ResourceGroupPlanningSnapshot parent)
+            return new DeclarationReadBlocked(new IsolationScopeDeclarationUnavailable());
+
+        return new GitLifecycleAdoptionPreview(
+            found,
+            Project(parent.ResourceGroupId) with
+            {
+                Dependencies = new DeclarationVersionToken(GroupVersions(parent)),
+            },
+            request.References);
+    }
+
+    public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
+        ReadLifecycleResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var current = await scopes.Find(
+                session,
+                IsolationScopeFilters.ByTenantAndId(request.TenantId, request.Resource.ResourceId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is null)
+            return new GitLifecycleResourceAbsent();
+
+        if (current.IsDefault)
+            return new DeclarationReadBlocked(new GitLifecycleResourceProtected());
+        if (request.Resource.Address.Kind != Kind || current.Name != request.Resource.Address.Name)
+            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
+
+        var parent = await groups
+            .Find(session, ResourceGroupFilters.ByTenantAndId(request.TenantId, current.ResourceGroupId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (parent is null)
+            return new DeclarationReadBlocked(new IsolationScopeDeclarationUnavailable());
+
+        return new GitLifecycleResourceSnapshot(
+            request.Resource,
+            ResourceGroupLifecycleVersions.Scope(current, parent),
+            current.Lifecycle is ActiveIsolationScopeLifecycleState
+                ? GitLifecyclePresence.Active
+                : GitLifecyclePresence.Deleting,
+            GitLifecycleProtection.ConfigurationOnly,
+            GitLifecycleVersionSemantics.ObservedDocuments);
+    }
+
+    public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(
+        RemoveLifecycleResourceRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var read = await ReadLifecycleAsync(
+            new ReadLifecycleResourceRequest(request.Authority.TenantId, request.Resource),
+            session,
+            cancellationToken);
+        if (read is GitLifecycleResourceAbsent)
+            return new GitLifecycleResourceRemoved();
+
+        if (read is DeclarationReadBlocked blocked)
+            return blocked;
+        if (!ResourceGroupLifecycleVersions.Same(((GitLifecycleResourceSnapshot)read.Value).Version, request.Expected))
+            return new DeclarationPreconditionsChanged();
+
+        var current = await scopes.Find(
+                session,
+                IsolationScopeFilters.ByTenantAndId(request.Authority.TenantId, request.Resource.ResourceId))
+            .SingleAsync(cancellationToken);
+        var outcome = await deletion.ExecuteAsync(
+            new BeginIsolationScopeDeletionRequest(
+                request.Authority.TenantId,
+                current.ResourceGroupId,
+                current.Id,
+                request.Authority),
+            session,
+            cancellationToken);
+        return outcome switch
+        {
+            IsolationScopeDeletionCompleted => new GitLifecycleResourceRemoved(),
+            IsolationScopeDeletionRequested => new GitLifecycleRemovalRequested(),
+            IsolationScopeDeletionError error => error switch
+            {
+                IsolationScopeNotFound => new GitLifecycleResourceRemoved(),
+                DefaultIsolationScopeDeletionForbidden => new DeclarationReadBlocked(
+                    new GitLifecycleResourceProtected()),
+                ResourceGroupNotFound or ResourceGroupDeleting or IsolationScopeDeploymentInProgress
+                    or IsolationScopeReferenced => new DeclarationReadBlocked(new GitLifecycleDependencyRetained()),
+                ResourceGroupRevisionConflict conflict => conflict.Reason ==
+                    ResourceGroupRevisionConflictReason.GitOwnedConfiguration
+                        ? new StaleGitExecution()
+                        : new DeclarationPreconditionsChanged(),
+            },
+        };
+    }
+
     public string Kind => "IsolationScope";
 
     public string DescribeFailure(IDeclarationFailure failure) => failure switch
     {
         IsolationScopeDeclarationUnavailable => nameof(IsolationScopeDeclarationUnavailable),
-        _ => throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure))
+        _ => throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure)),
     };
 
-    public DeclarationFacts Facts(JsonElement spec) =>
-        new(new("ResourceGroup", DeclarationJson.Read<IsolationScopeDeclaration>(spec).ResourceGroup), [], [], [], []);
+    public DeclarationFacts Facts(JsonElement spec) => new(
+        new ResourceAddress("ResourceGroup", DeclarationJson.Read<IsolationScopeDeclaration>(spec).ResourceGroup),
+        [],
+        [],
+        [],
+        []);
 
     public JsonElement NormalizeAndValidate(JsonElement spec)
     {
@@ -48,166 +166,77 @@ internal sealed class DeclarativeIsolationScopeProvider(
 
     public IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec)
     {
-        DeclarationJson.Require(ResourceTechnicalName.IsValid(address.Name) &&
-            address.Name != IsolationScopeFactory.DefaultScopeName, DeclarationFieldPaths.MetadataName);
+        DeclarationJson.Require(
+            ResourceTechnicalName.IsValid(address.Name) && address.Name != IsolationScopeFactory.DefaultScopeName,
+            DeclarationFieldPaths.MetadataName);
         return
         [
-            new(DeclarationPhase.Prepare,
-                [new(new("ResourceGroup", DeclarationJson.Read<IsolationScopeDeclaration>(spec).ResourceGroup),
-                    DeclarationPhase.Prepare)])
+            new DeclarationStep(
+                DeclarationPhase.Prepare,
+                [
+                    new DeclarationDependency(
+                        new ResourceAddress(
+                            "ResourceGroup",
+                            DeclarationJson.Read<IsolationScopeDeclaration>(spec).ResourceGroup),
+                        DeclarationPhase.Prepare),
+                ]),
         ];
     }
 
     public async Task<string?> ResolveAsync(
         ResolveDeclaredResourceRequest request,
         IClientSessionHandle session,
-        CancellationToken cancellationToken) =>
-        (await scopes.Find(session, IsolationScopeFilters.ByTechnicalName(request.TenantId, request.Name))
-            .FirstOrDefaultAsync(cancellationToken))?.Id;
+        CancellationToken cancellationToken) => (await scopes
+        .Find(session, IsolationScopeFilters.ByTechnicalName(request.TenantId, request.Name))
+        .FirstOrDefaultAsync(cancellationToken))?.Id;
 
     public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken cancellationToken) =>
-        git.ExecuteAsync(operation, async (session, ct) =>
-        {
-            var parent = await AcceptedGroupAsync(operation.Input, session, ct);
-            if (parent is null)
-                return new(operation.ResourceId, new IsolationScopeDeclarationUnavailable());
-
-            var current = await scopes.Find(session,
-                IsolationScopeFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
-                .FirstOrDefaultAsync(ct);
-            if (current is not null)
-                return new(operation.ResourceId, new DeclarationPreconditionsChanged());
-
-            var created = IsolationScopeFactory.CreateAdditional(operation.Context.TenantId,
-                parent.ResourceGroupId, operation.Declaration.Address.Name,
-                new(operation.ResourceId, clock.GetUtcNow().UtcDateTime));
-            var written = await groups.UpdateOneAsync(session,
-                ResourceGroupFilters.ActiveAtRevision(parent.TenantId, parent.ResourceGroupId, parent.Revision),
-                Builders<ResourceGroup>.Update.Inc(group => group.Revision, 1)
-                    .Set(group => group.UpdatedAtUtc, created.CreatedAtUtc), cancellationToken: ct);
-            if (written.ModifiedCount != 1)
-                return new(operation.ResourceId, new DeclarationPreconditionsChanged());
-
-            try
+        git.ExecuteAsync(
+            operation,
+            async (session, ct) =>
             {
-                await scopes.InsertOneAsync(session, created, cancellationToken: ct);
-            }
-            catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(exception,
-                IsolationScopeIndexes.TenantName, scopes.CollectionNamespace.CollectionName))
-            {
-                return new(operation.ResourceId, new DeclarationPreconditionsChanged());
-            }
+                var parent = await AcceptedGroupAsync(operation.Input, session, ct);
+                if (parent is null)
+                    return new GitOperationResult(operation.ResourceId, new IsolationScopeDeclarationUnavailable());
 
-            await outbox(session, [OutboxWrite.Create(created.ToCreatedEvent())], ct);
-            return new(operation.ResourceId, Changed: true);
-        }, cancellationToken);
+                var current = await scopes.Find(
+                        session,
+                        IsolationScopeFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
+                    .FirstOrDefaultAsync(ct);
+                if (current is not null)
+                    return new GitOperationResult(operation.ResourceId, new DeclarationPreconditionsChanged());
 
-    private async Task<ResourceGroupPlanningSnapshot?> AcceptedGroupAsync(
-        GitOperationInput operation,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken)
-    {
-        var spec = DeclarationJson.Read<IsolationScopeDeclaration>(operation.Declaration.Spec);
-        var groupId = await git.ResolveAcceptedAsync(new(operation.Context, operation.ResourceId,
-            new("ResourceGroup", spec.ResourceGroup)), session, cancellationToken);
-        return groupId is not null && await loadGroup(new(operation.Context.TenantId, groupId),
-            session, cancellationToken) is ResourceGroupPlanningSnapshot group ? group : null;
-    }
+                var created = IsolationScopeFactory.CreateAdditional(
+                    operation.Context.TenantId,
+                    parent.ResourceGroupId,
+                    operation.Declaration.Address.Name,
+                    new IsolationScopeFactory.CreateOptions(operation.ResourceId, clock.GetUtcNow().UtcDateTime));
+                var written = await groups.UpdateOneAsync(
+                    session,
+                    ResourceGroupFilters.ActiveAtRevision(parent.TenantId, parent.ResourceGroupId, parent.Revision),
+                    Builders<ResourceGroup>.Update
+                        .Inc(group => group.Revision, 1)
+                        .Set(group => group.UpdatedAtUtc, created.CreatedAtUtc),
+                    cancellationToken: ct);
+                if (written.ModifiedCount != 1)
+                    return new GitOperationResult(operation.ResourceId, new DeclarationPreconditionsChanged());
 
-    private static DeclarationDocumentVersion[] GroupVersions(ResourceGroupPlanningSnapshot group) =>
-    [
-        new(ResourceGroupVersionKeys.Revision(group.ResourceGroupId), group.Revision),
-        new(ResourceGroupVersionKeys.IsolationScopeRevision(group.DefaultIsolationScopeId), group.ScopeRevision)
-    ];
+                try
+                {
+                    await scopes.InsertOneAsync(session, created, cancellationToken: ct);
+                }
+                catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
+                                                                exception,
+                                                                IsolationScopeIndexes.TenantName,
+                                                                scopes.CollectionNamespace.CollectionName))
+                {
+                    return new GitOperationResult(operation.ResourceId, new DeclarationPreconditionsChanged());
+                }
 
-    private static DeclarationProjection Project(string groupId) =>
-        new(DeclarationJson.Write(new { resourceGroupId = groupId }), DeclarationJson.Write(new { }));
-
-    public async Task<ReadLifecycleResourceOutcome> ReadLifecycleAsync(
-        ReadLifecycleResourceRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken)
-    {
-        var current = await scopes.Find(session,
-            IsolationScopeFilters.ByTenantAndId(request.TenantId, request.Resource.ResourceId))
-            .FirstOrDefaultAsync(cancellationToken);
-        if (current is null)
-            return new GitLifecycleResourceAbsent();
-
-        if (current.IsDefault)
-            return new DeclarationReadBlocked(new GitLifecycleResourceProtected());
-        if (request.Resource.Address.Kind != Kind || current.Name != request.Resource.Address.Name)
-            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
-
-        var parent = await groups.Find(session,
-            ResourceGroupFilters.ByTenantAndId(request.TenantId, current.ResourceGroupId))
-            .FirstOrDefaultAsync(cancellationToken);
-        if (parent is null)
-            return new DeclarationReadBlocked(new IsolationScopeDeclarationUnavailable());
-
-        return new GitLifecycleResourceSnapshot(request.Resource, ResourceGroupLifecycleVersions.Scope(current, parent),
-            current.Lifecycle is ActiveIsolationScopeLifecycleState ? GitLifecyclePresence.Active :
-                GitLifecyclePresence.Deleting, GitLifecycleProtection.ConfigurationOnly,
-                GitLifecycleVersionSemantics.ObservedDocuments);
-    }
-
-    public async Task<RemoveLifecycleResourceOutcome> RemoveAsync(
-        RemoveLifecycleResourceRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken)
-    {
-        var read = await ReadLifecycleAsync(new(request.Authority.TenantId, request.Resource),
-            session, cancellationToken);
-        if (read is GitLifecycleResourceAbsent)
-            return new GitLifecycleResourceRemoved();
-
-        if (read is DeclarationReadBlocked blocked)
-            return blocked;
-        if (!ResourceGroupLifecycleVersions.Same(((GitLifecycleResourceSnapshot)read.Value).Version, request.Expected))
-            return new DeclarationPreconditionsChanged();
-
-        var current = await scopes.Find(session, IsolationScopeFilters.ByTenantAndId(
-            request.Authority.TenantId, request.Resource.ResourceId)).SingleAsync(cancellationToken);
-        var outcome = await deletion.ExecuteAsync(new(request.Authority.TenantId, current.ResourceGroupId, current.Id,
-            request.Authority), session, cancellationToken);
-        return outcome switch
-        {
-            IsolationScopeDeletionCompleted => new GitLifecycleResourceRemoved(),
-            IsolationScopeDeletionRequested => new GitLifecycleRemovalRequested(),
-            IsolationScopeDeletionError error => error switch
-            {
-                IsolationScopeNotFound => new GitLifecycleResourceRemoved(),
-                DefaultIsolationScopeDeletionForbidden =>
-                    new DeclarationReadBlocked(new GitLifecycleResourceProtected()),
-                ResourceGroupNotFound or ResourceGroupDeleting or IsolationScopeDeploymentInProgress or
-                    IsolationScopeReferenced => new DeclarationReadBlocked(new GitLifecycleDependencyRetained()),
-                ResourceGroupRevisionConflict conflict => conflict.Reason ==
-                    ResourceGroupRevisionConflictReason.GitOwnedConfiguration
-                    ? new StaleGitExecution() : new DeclarationPreconditionsChanged()
-            }
-        };
-    }
-
-    public async Task<PreviewLifecycleAdoptionOutcome> PreviewAdoptionAsync(
-        PreviewLifecycleAdoptionRequest request,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken)
-    {
-        var current = await ReadCurrentAsync(new(request.TenantId, request.Declaration.Address), session,
+                await outbox(session, [OutboxWrite.Create(created.ToCreatedEvent())], ct);
+                return new GitOperationResult(operation.ResourceId, Changed: true);
+            },
             cancellationToken);
-        if (current is not CurrentDeclaration found || found.ResourceId != request.ResourceId)
-            return new DeclarationReadBlocked(new DeclarationIdentityChanged());
-
-        var spec = DeclarationJson.Read<IsolationScopeDeclaration>(request.Declaration.Spec);
-        var reference = request.References.SingleOrDefault(item => item.Address == new ResourceAddress(
-            "ResourceGroup", spec.ResourceGroup));
-        if (reference is null || await loadGroup(new(request.TenantId, reference.ResourceId),
-                session, cancellationToken) is not ResourceGroupPlanningSnapshot parent)
-            return new DeclarationReadBlocked(new IsolationScopeDeclarationUnavailable());
-
-        return new GitLifecycleAdoptionPreview(found, Project(parent.ResourceGroupId) with
-        { Dependencies = new(GroupVersions(parent)) }, request.References);
-    }
 
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request,
@@ -218,8 +247,9 @@ internal sealed class DeclarativeIsolationScopeProvider(
             ? await scopes.Find(session, IsolationScopeFilters.ByTenantAndId(request.TenantId, operation.ResourceId))
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
-        current ??= await scopes.Find(session, IsolationScopeFilters.ByTechnicalName(request.TenantId,
-            request.Address.Name)).FirstOrDefaultAsync(cancellationToken);
+        current ??= await scopes
+            .Find(session, IsolationScopeFilters.ByTechnicalName(request.TenantId, request.Address.Name))
+            .FirstOrDefaultAsync(cancellationToken);
         if (current is null)
             return new CurrentDeclarationMissing();
 
@@ -229,9 +259,14 @@ internal sealed class DeclarativeIsolationScopeProvider(
         if (current.Lifecycle is not ActiveIsolationScopeLifecycleState)
             return new DeclarationReadBlocked(new IsolationScopeDeclarationUnavailable());
 
-        return new CurrentDeclaration(current.Id,
-            new([
-                new(ResourceGroupVersionKeys.IsolationScopeRevision(current.Id), current.Revision)]),
+        return new CurrentDeclaration(
+            current.Id,
+            new DeclarationVersionToken(
+            [
+                new DeclarationDocumentVersion(
+                    ResourceGroupVersionKeys.IsolationScopeRevision(current.Id),
+                    current.Revision),
+            ]),
             Project(current.ResourceGroupId),
             DeclarationConfigurationState.Configured);
     }
@@ -249,15 +284,23 @@ internal sealed class DeclarativeIsolationScopeProvider(
         else
         {
             var spec = DeclarationJson.Read<IsolationScopeDeclaration>(request.Declaration.Spec);
-            var id = await git.ResolveAsync(new(request.TenantId, new("ResourceGroup", spec.ResourceGroup)),
-                session, cancellationToken);
-            group = id is not null && await loadGroup(new(request.TenantId, id), session, cancellationToken)
-                is ResourceGroupPlanningSnapshot found ? found : null;
+            var id = await git.ResolveAsync(
+                new ResolveGitResourceRequest(
+                    request.TenantId,
+                    new ResourceAddress("ResourceGroup", spec.ResourceGroup)),
+                session,
+                cancellationToken);
+            group = id is not null && await loadGroup(
+                new ResourceGroupPlanningRequest(request.TenantId, id),
+                session,
+                cancellationToken) is ResourceGroupPlanningSnapshot found
+                ? found
+                : null;
         }
 
         return group is null
             ? new DeclarationReadBlocked(new IsolationScopeDeclarationUnavailable())
-            : Project(group.ResourceGroupId) with { Dependencies = new(GroupVersions(group)) };
+            : Project(group.ResourceGroupId) with { Dependencies = new DeclarationVersionToken(GroupVersions(group)) };
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(
@@ -269,14 +312,16 @@ internal sealed class DeclarativeIsolationScopeProvider(
         if (group is null || !GroupVersions(group).All(request.Expected.Documents.Contains))
             return new DeclarationPreconditionsChanged();
 
-        var current = await scopes.Find(session,
-            IsolationScopeFilters.ByTenantAndId(request.Operation.Context.TenantId, request.Operation.ResourceId))
+        var current = await scopes.Find(
+                session,
+                IsolationScopeFilters.ByTenantAndId(request.Operation.Context.TenantId, request.Operation.ResourceId))
             .FirstOrDefaultAsync(cancellationToken);
         var expected = request.Expected.Documents.SingleOrDefault(document =>
             document.DocumentId == ResourceGroupVersionKeys.IsolationScopeRevision(request.Operation.ResourceId));
-        if (current is null ? expected is not null :
-            expected?.Revision != current.Revision || current.ResourceGroupId != group.ResourceGroupId ||
-            current.Lifecycle is not ActiveIsolationScopeLifecycleState)
+        if (current is null
+                ? expected is not null
+                : expected?.Revision != current.Revision || current.ResourceGroupId != group.ResourceGroupId ||
+                current.Lifecycle is not ActiveIsolationScopeLifecycleState)
             return new DeclarationPreconditionsChanged();
 
         // Scope lifecycle writes share the parent aggregate fence; no business timestamp/revision changes here.
@@ -284,4 +329,35 @@ internal sealed class DeclarativeIsolationScopeProvider(
             ? new DeclarationFenced()
             : new DeclarationPreconditionsChanged();
     }
+
+    private async Task<ResourceGroupPlanningSnapshot?> AcceptedGroupAsync(
+        GitOperationInput operation,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken)
+    {
+        var spec = DeclarationJson.Read<IsolationScopeDeclaration>(operation.Declaration.Spec);
+        var groupId = await git.ResolveAcceptedAsync(
+            new ResolveAcceptedGitReferenceRequest(
+                operation.Context,
+                operation.ResourceId,
+                new ResourceAddress("ResourceGroup", spec.ResourceGroup)),
+            session,
+            cancellationToken);
+        return groupId is not null && await loadGroup(
+            new ResourceGroupPlanningRequest(operation.Context.TenantId, groupId),
+            session,
+            cancellationToken) is ResourceGroupPlanningSnapshot group
+            ? group
+            : null;
+    }
+
+    private static DeclarationDocumentVersion[] GroupVersions(ResourceGroupPlanningSnapshot group) =>
+    [
+        new(ResourceGroupVersionKeys.Revision(group.ResourceGroupId), group.Revision),
+        new(ResourceGroupVersionKeys.IsolationScopeRevision(group.DefaultIsolationScopeId), group.ScopeRevision),
+    ];
+
+    private static DeclarationProjection Project(string groupId) => new(
+        DeclarationJson.Write(new { resourceGroupId = groupId }),
+        DeclarationJson.Write(new { }));
 }

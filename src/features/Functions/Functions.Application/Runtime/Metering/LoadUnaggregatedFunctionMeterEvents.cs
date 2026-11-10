@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -11,13 +9,14 @@ public delegate Task<IReadOnlyList<FunctionMeterEvent>> LoadUnaggregatedFunction
     CancellationToken cancellationToken = default);
 
 public sealed class MongoLoadUnaggregatedFunctionMeterEvents(
-    IMongoCollection<FunctionMeterEvent> functionMeterEvents)
+    IMongoCollection<FunctionMeterEvent> functionMeterEvents
+)
 {
     public async Task<IReadOnlyList<FunctionMeterEvent>> InvokeAsync(
         int take,
-        CancellationToken cancellationToken = default) =>
-        await functionMeterEvents.Find(FunctionMeterAggregationFilters.Unaggregated())
-            .SortBy(meter => meter.OccurredAtUtcDateTime)
-            .Limit(take)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await functionMeterEvents
+        .Find(FunctionMeterAggregationFilters.Unaggregated())
+        .SortBy(meter => meter.OccurredAtUtcDateTime)
+        .Limit(take)
+        .ToListAsync(cancellationToken);
 }

@@ -1,8 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pole.Database;
-using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Application.Reservations;
 using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
@@ -17,7 +15,8 @@ internal sealed class QuotaAdmissionExecutor(
     ApplyQuotaUsageDelta applyQuotaUsageDelta,
     IQuotaUsageRelease releaseUsage,
     CancelQuotaReservation cancelQuotaReservation,
-    ILogger<QuotaAdmissionExecutor> logger) : IQuotaAdmissionExecutor
+    ILogger<QuotaAdmissionExecutor> logger
+) : IQuotaAdmissionExecutor
 {
     public async Task<TOutcome> ExecuteOutcomeAsync<TSpec, TOutcome>(
         ExecuteQuotaAdmissionRequest<TSpec, TOutcome> request,
@@ -69,30 +68,31 @@ internal sealed class QuotaAdmissionExecutor(
                             case QuotaReservationCommitted:
                                 break;
                             case QuotaReservationNotFound error:
-                                return transaction.Abort(request.QuotaError(
-                                    new QuotaExecutionError(new QuotaReservationCommitError(error))));
+                                return transaction.Abort(
+                                    request.QuotaError(
+                                        new QuotaExecutionError(new QuotaReservationCommitError(error))));
                             case QuotaReservationCancelled error:
-                                return transaction.Abort(request.QuotaError(
-                                    new QuotaExecutionError(new QuotaReservationCommitError(error))));
+                                return transaction.Abort(
+                                    request.QuotaError(
+                                        new QuotaExecutionError(new QuotaReservationCommitError(error))));
                             case QuotaReservationExpired error:
-                                return transaction.Abort(request.QuotaError(
-                                    new QuotaExecutionError(new QuotaReservationCommitError(error))));
+                                return transaction.Abort(
+                                    request.QuotaError(
+                                        new QuotaExecutionError(new QuotaReservationCommitError(error))));
                         }
                     }
 
                     if (request.Mutation is DeleteQuotaMutation<TSpec> delete)
-                    {
-                        await releaseUsage.ReleaseAsync(new ReleaseQuotaUsageRequest<TSpec>(request.TenantId,
-                            delete.Spec), transaction.Session, transactionCancellationToken);
-                    }
+                        await releaseUsage.ReleaseAsync(
+                            new ReleaseQuotaUsageRequest<TSpec>(request.TenantId, delete.Spec),
+                            transaction.Session,
+                            transactionCancellationToken);
                     else if (!negativeDelta.IsEmpty)
-                    {
                         await applyQuotaUsageDelta(
                             request.TenantId,
                             negativeDelta,
                             transaction.Session,
                             transactionCancellationToken);
-                    }
 
                     var decision = await request.MutationCallback(
                         new QuotaAdmissionTransactionContext<TOutcome>(transaction.Session),
@@ -100,10 +100,8 @@ internal sealed class QuotaAdmissionExecutor(
                     committed = decision is QuotaAdmissionTransactionCommit<TOutcome>;
                     return decision switch
                     {
-                        QuotaAdmissionTransactionCommit<TOutcome> commit =>
-                            transaction.Commit(commit.Outcome),
-                        QuotaAdmissionTransactionAbort<TOutcome> abort =>
-                            transaction.Abort(abort.Outcome)
+                        QuotaAdmissionTransactionCommit<TOutcome> commit => transaction.Commit(commit.Outcome),
+                        QuotaAdmissionTransactionAbort<TOutcome> abort => transaction.Abort(abort.Outcome),
                     };
                 },
                 cancellationToken: cancellationToken);
@@ -120,9 +118,7 @@ internal sealed class QuotaAdmissionExecutor(
         }
     }
 
-    private static QuotaDelta CalculateDelta<TSpec>(
-        QuotaCatalog catalog,
-        QuotaMutation<TSpec> mutation) =>
+    private static QuotaDelta CalculateDelta<TSpec>(QuotaCatalog catalog, QuotaMutation<TSpec> mutation) =>
         mutation switch
         {
             CreateQuotaMutation<TSpec> create => catalog.Calculate(create.Spec),
@@ -132,8 +128,7 @@ internal sealed class QuotaAdmissionExecutor(
             DeleteQuotaMutation<TSpec> delete => QuotaDelta.Difference(
                 QuotaDelta.Empty,
                 catalog.Calculate(delete.Spec)),
-            _ => throw new InvalidOperationException(
-                $"Unknown quota mutation type '{mutation.GetType().FullName}'.")
+            _ => throw new InvalidOperationException($"Unknown quota mutation type '{mutation.GetType().FullName}'."),
         };
 
     private async Task CancelBestEffortAsync(QuotaReservationLease? reservation)
@@ -143,9 +138,7 @@ internal sealed class QuotaAdmissionExecutor(
 
         try
         {
-            await cancelQuotaReservation(
-                reservation.ReservationId,
-                CancellationToken.None);
+            await cancelQuotaReservation(reservation.ReservationId, CancellationToken.None);
         }
         catch (Exception exception)
         {

@@ -5,14 +5,18 @@ namespace Pole.Features.GitOps.Contracts;
 
 public sealed record ReadRegisteredResourceOwnershipRequest(
     string TenantId,
-    string ResourceId);
+    string ResourceId
+);
 
-public sealed record IndependentRegisteredResourceOwnership(DeclarationVersionToken Version);
+public sealed record IndependentRegisteredResourceOwnership(
+    DeclarationVersionToken Version
+);
 
 public sealed record ManagedRegisteredResourceOwnership(
     ResourceTypeId OwnerType,
     string OwnerId,
-    DeclarationVersionToken Version);
+    DeclarationVersionToken Version
+);
 
 public union ReadRegisteredResourceOwnershipOutcome(
     IndependentRegisteredResourceOwnership,
@@ -22,7 +26,8 @@ public union ReadRegisteredResourceOwnershipOutcome(
 public sealed record FenceRegisteredResourceOwnershipRequest(
     string TenantId,
     string ResourceId,
-    DeclarationVersionToken Expected);
+    DeclarationVersionToken Expected
+);
 
 // A generated registration is finalized by its concrete owner, rather than as a separate declaration.
 public interface IDeclarativeRegistrationOwnershipProvider

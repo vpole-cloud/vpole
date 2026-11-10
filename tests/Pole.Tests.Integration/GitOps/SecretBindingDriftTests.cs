@@ -11,7 +11,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class SecretBindingDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class SecretBindingDriftTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task BindingSameCommitRepairsMappingWithoutChangingPinsOrCreatingRelease()
@@ -22,12 +24,21 @@ public sealed class SecretBindingDriftTests(MongoReplicaSetFixture fixture) : De
         await Pipeline.ResumeAsync(initial.Context!);
         var secret = await Secrets.Find(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
         var binding = secret.Bindings.Single();
-        await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret with
-        {
-            Revision = secret.Revision + 1,
-            Bindings = [binding with { KeyMappings = ImmutableDictionary<string, string>.Empty
-                .Add("API_TOKEN", "API_TOKEN").Add("UNUSED", "RENAMED") }]
-        });
+        await Secrets.ReplaceOneAsync(
+            item => item.Id == secret.Id,
+            secret with
+            {
+                Revision = secret.Revision + 1,
+                Bindings =
+                [
+                    binding with
+                    {
+                        KeyMappings = ImmutableDictionary<string, string>.Empty
+                            .Add("API_TOKEN", "API_TOKEN")
+                            .Add("UNUSED", "RENAMED"),
+                    },
+                ],
+            });
         var releases = await Releases();
         var repaired = await Apply(snapshot);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, repaired.Status);
@@ -37,9 +48,9 @@ public sealed class SecretBindingDriftTests(MongoReplicaSetFixture fixture) : De
         Assert.Equal(binding.Pins.Retained.ToArray(), current.Pins.Retained.ToArray());
         Assert.Equal(releases, await Releases());
         var queries = Services.GetRequiredService<GitRepositoryQueries>();
-        var operations = await queries.OperationsAsync(Data.TenantId, source, repaired.Context!.RunId, 1, 20,
-            default);
-        Assert.Equal(GitPlannedAction.Update,
+        var operations = await queries.OperationsAsync(Data.TenantId, source, repaired.Context!.RunId, 1, 20, default);
+        Assert.Equal(
+            GitPlannedAction.Update,
             operations!.Items.Single(item => item.Kind == "SecretBinding").Plan!.Action);
         var events = await BusinessEvents();
         var stable = await Apply(snapshot);

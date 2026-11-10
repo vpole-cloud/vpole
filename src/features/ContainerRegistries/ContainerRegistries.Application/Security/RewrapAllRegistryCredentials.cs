@@ -1,15 +1,16 @@
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Credentials;
-using Pole.Features.ContainerRegistries.Application.Mongo;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
 public sealed record RegistryCredentialRewrapSummary(
     long Examined,
     long Rewrapped,
-    long ConcurrentChanges);
+    long ConcurrentChanges
+);
 
 public sealed record RegistryCredentialRewrapRejected;
+
 public sealed record RegistryCredentialRewrapFailed;
 
 public union RegistryCredentialRewrapOutcome(
@@ -17,14 +18,14 @@ public union RegistryCredentialRewrapOutcome(
     RegistryCredentialRewrapRejected,
     RegistryCredentialRewrapFailed);
 
-public delegate Task<RegistryCredentialRewrapOutcome>
-    RewrapAllRegistryCredentials(
-        EnvelopeEncryptionKeyReference expectedActiveKey,
-        CancellationToken cancellationToken = default);
+public delegate Task<RegistryCredentialRewrapOutcome> RewrapAllRegistryCredentials(
+    EnvelopeEncryptionKeyReference expectedActiveKey,
+    CancellationToken cancellationToken = default);
 
 public sealed class RegistryCredentialRewrapService(
     RegistryCredentialRewrapPersistence persistence,
-    IEnvelopeEncryptionService envelopeEncryption)
+    IEnvelopeEncryptionService envelopeEncryption
+)
 {
     private const int BatchSize = 100;
 
@@ -51,8 +52,7 @@ public sealed class RegistryCredentialRewrapService(
                 cancellationToken.ThrowIfCancellationRequested();
                 examined++;
                 cursor = credential.Id;
-                if (credential.SecretVersion < 1 ||
-                    ReferencesKey(credential.EncryptedSecret, expectedActiveKey))
+                if (credential.SecretVersion < 1 || ReferencesKey(credential.EncryptedSecret, expectedActiveKey))
                 {
                     if (credential.SecretVersion < 1)
                         return new RegistryCredentialRewrapFailed();
@@ -66,11 +66,8 @@ public sealed class RegistryCredentialRewrapService(
                         credential.Id,
                         credential.SecretVersion),
                     cancellationToken);
-                if (rewrappedEnvelope is not EncryptedValue envelope ||
-                    !ReferencesKey(envelope, expectedActiveKey))
-                {
+                if (rewrappedEnvelope is not EncryptedValue envelope || !ReferencesKey(envelope, expectedActiveKey))
                     return new RegistryCredentialRewrapFailed();
-                }
 
                 if (await persistence.TryReplaceEnvelopeAsync(credential, envelope, cancellationToken))
                     rewrapped++;
@@ -85,9 +82,7 @@ public sealed class RegistryCredentialRewrapService(
         return new RegistryCredentialRewrapSummary(examined, rewrapped, concurrentChanges);
     }
 
-    private static bool ReferencesKey(
-        EncryptedValue envelope,
-        EnvelopeEncryptionKeyReference key) =>
+    private static bool ReferencesKey(EncryptedValue envelope, EnvelopeEncryptionKeyReference key) =>
         string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
         string.Equals(envelope.KeyEncryptionKeyId, key.KeyId, StringComparison.Ordinal) &&
         envelope.KeyEncryptionKeyVersion == key.KeyVersion &&

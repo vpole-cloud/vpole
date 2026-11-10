@@ -3,19 +3,18 @@ using Pole.Features.ContainerRegistries.Contracts;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
-public union ProtectRegistryCredentialOutcome(
-    EncryptedValue,
-    RegistryCredentialProtectionFailed);
+public union ProtectRegistryCredentialOutcome(EncryptedValue, RegistryCredentialProtectionFailed);
 
-public delegate ValueTask<ProtectRegistryCredentialOutcome>
-    ProtectRegistryCredentialSecret(
-        string tenantId,
-        string credentialId,
-        long secretVersion,
-        string secret,
-        CancellationToken cancellationToken = default);
+public delegate ValueTask<ProtectRegistryCredentialOutcome> ProtectRegistryCredentialSecret(
+    string tenantId,
+    string credentialId,
+    long secretVersion,
+    string secret,
+    CancellationToken cancellationToken = default);
 
-public sealed class EnvelopeProtectRegistryCredentialSecret(IEnvelopeEncryptionService encryption)
+public sealed class EnvelopeProtectRegistryCredentialSecret(
+    IEnvelopeEncryptionService encryption
+)
 {
     public async ValueTask<ProtectRegistryCredentialOutcome> InvokeAsync(
         string tenantId,
@@ -31,7 +30,7 @@ public sealed class EnvelopeProtectRegistryCredentialSecret(IEnvelopeEncryptionS
         return result switch
         {
             EncryptedValue encrypted => encrypted,
-            EnvelopeEncryptionFailed => new RegistryCredentialProtectionFailed()
+            EnvelopeEncryptionFailed => new RegistryCredentialProtectionFailed(),
         };
     }
 }
@@ -41,11 +40,10 @@ internal static class RegistryCredentialEncryptionContext
     internal static EnvelopeEncryptionContext Create(
         string tenantId,
         string credentialId,
-        long secretVersion) =>
-        EnvelopeEncryptionContext.ForTenant(
-            tenantId,
-            "container-registry-credential",
-            credentialId,
-            "secret",
-            secretVersion);
+        long secretVersion) => EnvelopeEncryptionContext.ForTenant(
+        tenantId,
+        "container-registry-credential",
+        credentialId,
+        "secret",
+        secretVersion);
 }

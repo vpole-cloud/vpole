@@ -1,11 +1,6 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
@@ -13,7 +8,8 @@ namespace Pole.Features.ResourceDeployments.Application.Queries;
 
 internal sealed class MongoLoadResourceDeployments(
     IMongoCollection<ResourceDeployment> resourceDeployments,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<IReadOnlyDictionary<string, PlacementSummaryDto>> InvokeAsync(
         LoadResourceDeploymentsRequest request,
@@ -29,16 +25,15 @@ internal sealed class MongoLoadResourceDeployments(
         var policies = await isolation.LoadAsync(
             deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
             cancellationToken);
-        return deployments
-            .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
+        return deployments.GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,
                 group =>
                 {
                     var candidates = group.Take(2).ToArray();
                     return candidates.Length == 1
-                        ? candidates[0].ToPlacementSummaryDto(policies[candidates[
-                            0].ResolvedPlacement.DeploymentTargetId])
+                        ? candidates[0]
+                            .ToPlacementSummaryDto(policies[candidates[0].ResolvedPlacement.DeploymentTargetId])
                         : throw new InvalidOperationException(
                             $"Single-target resource '{group.Key}' has multiple deployments.");
                 },

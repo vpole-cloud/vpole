@@ -7,11 +7,16 @@ public sealed record NamedComputeProfileRequest(
     ResourceTypeId ResourceType,
     string Name,
     string DeploymentTargetId,
-    long Revision);
+    long Revision
+);
 
-public sealed record NamedComputeProfileUnavailable(string Name);
+public sealed record NamedComputeProfileUnavailable(
+    string Name
+);
 
-public sealed record NamedComputeProfileAmbiguous(string Name);
+public sealed record NamedComputeProfileAmbiguous(
+    string Name
+);
 
 public union ResolveNamedComputeProfileOutcome(
     ResolvedComputeProfile,

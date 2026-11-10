@@ -2,10 +2,14 @@ using MongoDB.Driver;
 
 namespace Pole.Features.Quotas.Contracts;
 
-public sealed record QuotaAdmissionTransactionCommit<TOutcome>(TOutcome Outcome)
+public sealed record QuotaAdmissionTransactionCommit<TOutcome>(
+    TOutcome Outcome
+)
     where TOutcome : notnull;
 
-public sealed record QuotaAdmissionTransactionAbort<TOutcome>(TOutcome Outcome)
+public sealed record QuotaAdmissionTransactionAbort<TOutcome>(
+    TOutcome Outcome
+)
     where TOutcome : notnull;
 
 public union QuotaAdmissionTransactionDecision<TOutcome>(
@@ -14,8 +18,8 @@ public union QuotaAdmissionTransactionDecision<TOutcome>(
     where TOutcome : notnull;
 
 /// <summary>
-/// Gives a quota-guarded mutation access to the caller-owned Mongo session and requires an
-/// explicit decision to commit or abort its typed outcome.
+///     Gives a quota-guarded mutation access to the caller-owned Mongo session and requires an
+///     explicit decision to commit or abort its typed outcome.
 /// </summary>
 public sealed class QuotaAdmissionTransactionContext<TOutcome>
     where TOutcome : notnull

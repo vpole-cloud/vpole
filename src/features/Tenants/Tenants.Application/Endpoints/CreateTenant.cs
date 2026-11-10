@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Common;
-using Pole.Features.Tenants.Application.Mongo;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
@@ -17,17 +16,21 @@ public static class CreateTenant
 {
     public static IEndpointRouteBuilder MapCreateTenantEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateTenantRequest request, CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                TenantDto tenant => Results.Created($"/api/v1/tenants/{tenant.Id}", tenant)
-            });
-        })
-        .WithName("CreateTenant")
-        .RequireAuthorization(Policy.Admin)
-        .Produces<TenantDto>(StatusCodes.Status201Created);
+        app.MapPost(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] CreateTenantRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        TenantDto tenant => Results.Created($"/api/v1/tenants/{tenant.Id}", tenant),
+                    });
+                })
+            .WithName("CreateTenant")
+            .RequireAuthorization(Policy.Admin)
+            .Produces<TenantDto>(StatusCodes.Status201Created);
 
         return app;
     }
@@ -37,16 +40,17 @@ public sealed record CreateTenantRequest(
     [FromBody] CreateTenantRequestBody Body,
     [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
     [FromClaim(Claims.Email)] ClaimValue CurrentUserEmail
-    ) : IMediatorRequest<CreateTenantOutcome>;
+) : IMediatorRequest<CreateTenantOutcome>;
 
 public union CreateTenantOutcome(TenantDto);
 
 public sealed record CreateTenantRequestBody(
-    string Name);
+    string Name
+);
 
 public sealed class CreateTenantHandler(
-    PersistCreatedTenant persistCreatedTenant)
-    : IMediatorOutcomeHandler<CreateTenantRequest, CreateTenantOutcome>
+    PersistCreatedTenant persistCreatedTenant
+) : IMediatorOutcomeHandler<CreateTenantRequest, CreateTenantOutcome>
 {
     public async Task<CreateTenantOutcome> HandleAsync(
         CreateTenantRequest request,

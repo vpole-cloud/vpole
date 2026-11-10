@@ -8,7 +8,9 @@ public delegate Task<SourceBuildLog?> LoadSourceBuildLog(
     string jobId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadSourceBuildLog(SourceBuildLogPersistence persistence)
+internal sealed class MongoLoadSourceBuildLog(
+    SourceBuildLogPersistence persistence
+)
 {
     public Task<SourceBuildLog?> InvokeAsync(
         string tenantId,

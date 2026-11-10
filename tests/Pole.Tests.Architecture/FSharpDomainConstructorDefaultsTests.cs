@@ -27,7 +27,8 @@ public sealed class FSharpDomainConstructorDefaultsTests
         Assert.Equal(rejected, HasOptionalConstructor(source));
     }
 
-    private static bool HasOptionalConstructor(string source) => Regex.IsMatch(source,
+    private static bool HasOptionalConstructor(string source) => Regex.IsMatch(
+        source,
         @"(?:\btype\s+\w+(?:<[^>]+>)?\s*(?:(?:private|internal|public)\s*)?|\bnew\s*)\([^)]*\?\w+\s*:",
         RegexOptions.CultureInvariant);
 }

@@ -3,10 +3,7 @@ using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
@@ -27,17 +24,17 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<Unit> runMongoTransaction,
     TimeProvider timeProvider,
-    IGitLifecycleCleanupProofRecorder cleanupProofs)
+    IGitLifecycleCleanupProofRecorder cleanupProofs
+)
 {
     public Task InvokeAsync(
         string tenantId,
         string resourceGroupId,
         string isolationScopeId,
-        CancellationToken cancellationToken = default) =>
-        runMongoTransaction(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runMongoTransaction(
+        async (transaction, ct) =>
         {
-            var resourceGroup = await resourceGroups
-                .Find(
+            var resourceGroup = await resourceGroups.Find(
                     transaction.Session,
                     ResourceGroupFilters.ByTenantAndId(tenantId, resourceGroupId))
                 .FirstOrDefaultAsync(ct);
@@ -45,28 +42,18 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 return transaction.Commit(Unit.Value);
             if (resourceGroup.Lifecycle is not ActiveResourceGroupLifecycleState &&
                 resourceGroup.Lifecycle is not DeletingResourceGroupLifecycleState)
-            {
                 throw new InvalidOperationException(
                     $"Resource group '{resourceGroupId}' has an unsupported lifecycle state.");
-            }
 
-            var scope = await isolationScopes
-                .Find(
+            var scope = await isolationScopes.Find(
                     transaction.Session,
-                IsolationScopeFilters.ByTenantResourceGroupAndId(
-                        tenantId,
-                        resourceGroupId,
-                        isolationScopeId))
+                    IsolationScopeFilters.ByTenantResourceGroupAndId(tenantId, resourceGroupId, isolationScopeId))
                 .FirstOrDefaultAsync(ct);
-            if (scope is not null &&
-                scope.Lifecycle is not ActiveIsolationScopeLifecycleState &&
+            if (scope is not null && scope.Lifecycle is not ActiveIsolationScopeLifecycleState &&
                 scope.Lifecycle is not DeletingIsolationScopeLifecycleState)
-            {
                 throw new InvalidOperationException(
                     $"Isolation scope '{scope.Id}' has an unsupported lifecycle state.");
-            }
-            var resourceGroupDeleting =
-                resourceGroup.Lifecycle is DeletingResourceGroupLifecycleState;
+            var resourceGroupDeleting = resourceGroup.Lifecycle is DeletingResourceGroupLifecycleState;
             var scopeDeleting = scope?.Lifecycle is DeletingIsolationScopeLifecycleState;
             if (!resourceGroupDeleting && !scopeDeleting)
                 return transaction.Commit(Unit.Value);
@@ -94,53 +81,50 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
             var subject = scopeDeleting && scope is { IsDefault: false }
                 ? new GitDeclaredCleanupResource("IsolationScope", scope.Id)
                 : new GitDeclaredCleanupResource("ResourceGroup", resourceGroup.Id);
-            await cleanupProofs.RecordAsync(new(tenantId, subject,
-                ScopeFinalizationCleanupKey(isolationScopeId, resourceGroup.Revision),
-                [new(ResourceGroupVersionKeys.Revision(resourceGroupId), resourceGroup.Revision,
-                    checked(resourceGroup.Revision + 1))]), transaction.Session, ct);
+            await cleanupProofs.RecordAsync(
+                new RecordGitLifecycleCleanupRequest(
+                    tenantId,
+                    subject,
+                    ScopeFinalizationCleanupKey(isolationScopeId, resourceGroup.Revision),
+                    [
+                        new GitCleanupVersionTransition(
+                            ResourceGroupVersionKeys.Revision(resourceGroupId),
+                            resourceGroup.Revision,
+                            checked(resourceGroup.Revision + 1)),
+                    ]),
+                transaction.Session,
+                ct);
 
             if (scope is not null)
             {
-                var unfinishedCellExists = await runtimeCells
-                    .Find(
+                var unfinishedCellExists = await runtimeCells.Find(
                         transaction.Session,
-                        RuntimeCellFilters.NotDeleted(
-                            tenantId,
-                            resourceGroupId,
-                            isolationScopeId))
+                        RuntimeCellFilters.NotDeleted(tenantId, resourceGroupId, isolationScopeId))
                     .AnyAsync(ct);
                 if (unfinishedCellExists)
                     return transaction.Commit(Unit.Value);
 
                 await runtimeCells.DeleteManyAsync(
                     transaction.Session,
-                    RuntimeCellFilters.ByTenantResourceGroupAndScope(
-                        tenantId,
-                        resourceGroupId,
-                        isolationScopeId),
+                    RuntimeCellFilters.ByTenantResourceGroupAndScope(tenantId, resourceGroupId, isolationScopeId),
                     cancellationToken: ct);
                 await isolationScopes.DeleteOneAsync(
                     transaction.Session,
-                    IsolationScopeFilters.ByTenantResourceGroupAndId(
-                        tenantId,
-                        resourceGroupId,
-                        isolationScopeId),
+                    IsolationScopeFilters.ByTenantResourceGroupAndId(tenantId, resourceGroupId, isolationScopeId),
                     cancellationToken: ct);
             }
 
             if (!resourceGroupDeleting)
                 return transaction.Commit(Unit.Value);
 
-            var remainingScopeExists = await isolationScopes
-                .Find(
+            var remainingScopeExists = await isolationScopes.Find(
                     transaction.Session,
                     IsolationScopeFilters.ByTenantAndResourceGroup(tenantId, resourceGroupId))
                 .AnyAsync(ct);
             if (remainingScopeExists)
                 return transaction.Commit(Unit.Value);
 
-            var remainingCellExists = await runtimeCells
-                .Find(
+            var remainingCellExists = await runtimeCells.Find(
                     transaction.Session,
                     RuntimeCellFilters.ByTenantAndResourceGroup(tenantId, resourceGroupId))
                 .AnyAsync(ct);
@@ -152,15 +136,11 @@ internal sealed class MongoFinalizeResourceGroupDeletion(
                 ResourceGroupFilters.Deleting(tenantId, resourceGroupId),
                 cancellationToken: ct);
             if (deletion.DeletedCount == 1)
-            {
-                await storeOutboxWrites(
-                    transaction.Session,
-                    [OutboxWrite.Create(resourceGroup.ToDeleteEvent())],
-                    ct);
-            }
+                await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(resourceGroup.ToDeleteEvent())], ct);
 
             return transaction.Commit(Unit.Value);
-        }, cancellationToken);
+        },
+        cancellationToken);
 
     private static string ScopeFinalizationCleanupKey(string id, long revision) => $"ScopeFinalization/{id}/{revision}";
 }

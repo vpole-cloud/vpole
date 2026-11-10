@@ -8,26 +8,38 @@ namespace Pole.Features.SourceBuilds.Tests;
 
 public sealed class DeclarativeBuildConfigurationTests
 {
-    private readonly DeclarativeSourceBuildConfigurationProvider provider =
-        new(null!, null!, null!, null!, null!, null!, null!, null!, TimeProvider.System, null!);
+    private readonly DeclarativeSourceBuildConfigurationProvider provider = new(
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        TimeProvider.System,
+        null!);
 
     [Fact]
     public void ExplicitRecipeNeedsNeitherAnalysisCandidateNorManifestPath()
     {
-        var spec = JsonSerializer.SerializeToElement(new
-        {
-            repository = "application",
-            webService = "api",
-            recipe = new { dockerfile = "FROM scratch\n" }
-        });
+        var spec = JsonSerializer.SerializeToElement(
+            new
+            {
+                repository = "application",
+                webService = "api",
+                recipe = new { dockerfile = "FROM scratch\n" },
+            });
         var normalized = provider.NormalizeAndValidate(spec);
         Assert.Equal("FROM scratch\n", normalized.GetProperty("recipe").GetProperty("dockerfile").GetString());
         var facts = provider.Facts(normalized);
         Assert.False(facts.ReferencesShareScope);
-        Assert.Contains(facts.References,
+        Assert.Contains(
+            facts.References,
             item => item.Target == new ResourceAddress("SourceRepository", "application"));
         Assert.Contains(facts.References, item => item.Target == new ResourceAddress("WebService", "api"));
-        var step = Assert.Single(provider.Steps(new("SourceBuildConfiguration", "api-build"), normalized));
+        var step = Assert.Single(
+            provider.Steps(new ResourceAddress("SourceBuildConfiguration", "api-build"), normalized));
         Assert.Equal(DeclarationPhase.Configure, step.Phase);
         Assert.All(step.Dependencies, item => Assert.Equal(DeclarationPhase.Prepare, item.Phase));
     }
@@ -45,7 +57,8 @@ public sealed class DeclarativeBuildConfigurationTests
     [Fact]
     public void CandidateMetadataIsNotAnExecutableRecipeField()
     {
-        using var document = JsonDocument.Parse("""
+        using var document = JsonDocument.Parse(
+            """
             {"repository":"application","webService":"api",
              "recipe":{"dockerfile":"FROM scratch","candidateKey":"candidate"}}
             """);

@@ -2,10 +2,7 @@ using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Domain;
@@ -32,43 +29,53 @@ internal sealed class FunctionDeclarationExecution(
     RequestResourceDeploymentSetApply applyPlacements,
     AdmitConsumerSecretReferences admitSecrets,
     PersistFunctionAppRevision persistRevision,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public async Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct)
     {
         if (operation.Phase is not (DeclarationPhase.Prepare or DeclarationPhase.Configure) ||
             operation.Plan.Decision is not (CreateDeclarationPlan or UpdateDeclarationPlan))
-            return await BlockAsync(operation,
-                new FunctionDeclarationRejected(FunctionDeclarationError.UnexpectedOperation), ct);
+            return await BlockAsync(
+                operation,
+                new FunctionDeclarationRejected(FunctionDeclarationError.UnexpectedOperation),
+                ct);
 
-        var loaded = await transactions.InvokeOutcomeAsync<ReadFunctionPlanningOutcome>(async (tx, token) =>
-            tx.Commit(await planning.ReadPlanningAsync(operation.Input, tx.Session, token)), ct);
+        var loaded = await transactions.InvokeOutcomeAsync<ReadFunctionPlanningOutcome>(
+            async (tx, token) => tx.Commit(await planning.ReadPlanningAsync(operation.Input, tx.Session, token)),
+            ct);
         if (loaded is DeclarationReadBlocked blocked)
             return await BlockAsync(operation, blocked.Failure, ct);
 
         var dependencies = (FunctionPlanningDependencies)loaded.Value;
         if (operation.Phase == DeclarationPhase.Configure && dependencies.Current?.Root.PendingRevisionId is not null)
-            return await BlockAsync(operation,
-                new FunctionDeclarationRejected(FunctionDeclarationError.PendingRevision), ct);
+            return await BlockAsync(
+                operation,
+                new FunctionDeclarationRejected(FunctionDeclarationError.PendingRevision),
+                ct);
 
         var declaration = FunctionDeclarationJson.Read(operation.Declaration.Spec);
         var spec = FunctionDeclarationJson.Spec(declaration, dependencies.SecretReferences, null);
-        var nextQuota = operation.Phase == DeclarationPhase.Prepare ? new FunctionQuotaAllocation(1, 0, 0, 0)
-            : FunctionQuotaAllocation.Peak(FunctionQuotaAllocation.FromRevision(spec),
+        var nextQuota = operation.Phase == DeclarationPhase.Prepare
+            ? new FunctionQuotaAllocation(1, 0, 0, 0)
+            : FunctionQuotaAllocation.Peak(
+                FunctionQuotaAllocation.FromRevision(spec),
                 dependencies.Current?.Active is { } active
-                    ? FunctionQuotaAllocation.FromRevision(active.Spec) : new(1, 0, 0, 0));
+                    ? FunctionQuotaAllocation.FromRevision(active.Spec)
+                    : new FunctionQuotaAllocation(1, 0, 0, 0));
         QuotaMutation<FunctionQuotaAllocation> mutation = dependencies.Current is { } current
             ? new UpdateQuotaMutation<FunctionQuotaAllocation>(current.Root.AdmittedQuota, nextQuota)
             : new CreateQuotaMutation<FunctionQuotaAllocation>(nextQuota);
         GitOperationResult result;
         try
         {
-            result = await quotas.ExecuteOutcomeAsync<FunctionQuotaAllocation, GitOperationResult>(
+            result = await quotas.ExecuteOutcomeAsync(
                 new ExecuteQuotaAdmissionRequest<FunctionQuotaAllocation, GitOperationResult>(
                     TenantId: operation.Context.TenantId,
                     ResourceKey: FunctionAppQuotaResourceKey.Create(operation.ResourceId),
                     Mutation: mutation,
-                    QuotaError: _ => new(operation.ResourceId,
+                    QuotaError: _ => new GitOperationResult(
+                        operation.ResourceId,
                         new FunctionDeclarationRejected(FunctionDeclarationError.QuotaUnavailable)),
                     MutationCallback: async (tx, token) =>
                     {
@@ -76,139 +83,223 @@ internal sealed class FunctionDeclarationExecution(
                         if (rejected is not null)
                             return tx.Abort(rejected);
 
-                        var root = await resources.Find(tx.Session,
-                            FunctionAppFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
+                        var root = await resources.Find(
+                                tx.Session,
+                                FunctionAppFilters.ByTenantAndId(operation.Context.TenantId, operation.ResourceId))
                             .FirstOrDefaultAsync(token);
                         if (root?.NextRevisionNumber != dependencies.Current?.Root.NextRevisionNumber)
-                            return tx.Abort(new(operation.ResourceId, new DeclarationPreconditionsChanged()));
+                            return tx.Abort(
+                                new GitOperationResult(operation.ResourceId, new DeclarationPreconditionsChanged()));
 
                         var authoritative = dependencies;
                         if (root is not null)
                         {
                             var state = await planning.ReadCurrentStateAsync(root, tx.Session, token);
                             if (state is DeclarationReadBlocked unavailable)
-                                return tx.Abort(new(operation.ResourceId, unavailable.Failure));
+                                return tx.Abort(new GitOperationResult(operation.ResourceId, unavailable.Failure));
 
                             authoritative = dependencies with { Current = (FunctionPlanningCurrent)state.Value };
                         }
 
                         var execution = new FunctionExecution(operation, authoritative, nextQuota);
                         var outcome = operation.Phase == DeclarationPhase.Prepare && root is null
-                            ? await PrepareAsync(execution, tx.Session, token)
+                            ?
+                            await PrepareAsync(execution, tx.Session, token)
                             : operation.Phase == DeclarationPhase.Configure && root is not null
                                 ? await ConfigureAsync(execution, tx.Session, token)
                                 : new GitOperationResult(operation.ResourceId, new DeclarationPreconditionsChanged());
                         if (!outcome.Applied)
                             return tx.Abort(outcome);
 
-                        var completed = await git.CompleteAsync(new(operation, outcome), tx.Session, token);
+                        var completed = await git.CompleteAsync(
+                            new CompleteGitOperationRequest(operation, outcome),
+                            tx.Session,
+                            token);
                         return completed.Applied ? tx.Commit(completed) : tx.Abort(completed);
-                    }), cancellationToken: ct);
+                    }),
+                cancellationToken: ct);
         }
-        catch (Exception exception) when (MongoDuplicateKey.IsForIndex(exception,
-            FunctionAppIndexes.TenantName, resources.CollectionNamespace.CollectionName) ||
-            MongoDuplicateKey.IsForIdIndex(exception, routes.CollectionNamespace.CollectionName))
+        catch (Exception exception) when (MongoDuplicateKey.IsForIndex(
+                                              exception,
+                                              FunctionAppIndexes.TenantName,
+                                              resources.CollectionNamespace.CollectionName) ||
+                                          MongoDuplicateKey.IsForIdIndex(
+                                              exception,
+                                              routes.CollectionNamespace.CollectionName))
         {
-            return await BlockAsync(operation,
-                new FunctionDeclarationRejected(FunctionDeclarationError.ExplicitAdoptionRequired), ct);
+            return await BlockAsync(
+                operation,
+                new FunctionDeclarationRejected(FunctionDeclarationError.ExplicitAdoptionRequired),
+                ct);
         }
 
         return result.Applied || result.Failure is DeclarationPreconditionsChanged or StaleGitExecution
-            ? result : await BlockAsync(operation, result.Failure!, ct);
+            ? result
+            : await BlockAsync(operation, result.Failure!, ct);
     }
 
     private async Task<GitOperationResult> PrepareAsync(
-        FunctionExecution execution, IClientSessionHandle session, CancellationToken ct)
+        FunctionExecution execution,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var (operation, dependencies, _) = execution;
         var declaration = FunctionDeclarationJson.Read(operation.Declaration.Spec);
-        if (await registrar.RegisterAsync(new(operation.Context.TenantId, dependencies.Scope.ResourceGroupId,
-                new(FunctionResourceDeployment.ResourceType, operation.ResourceId, operation.Declaration.Address.Name)),
-                session, ct) is ResourceRegistrationMutationError)
-            return new(operation.ResourceId,
+        if (await registrar.RegisterAsync(
+                new RegisterResourceRequest(
+                    operation.Context.TenantId,
+                    dependencies.Scope.ResourceGroupId,
+                    new ResourceRegistrationDescriptor(
+                        FunctionResourceDeployment.ResourceType,
+                        operation.ResourceId,
+                        operation.Declaration.Address.Name)),
+                session,
+                ct) is ResourceRegistrationMutationError)
+            return new GitOperationResult(
+                operation.ResourceId,
                 new FunctionDeclarationRejected(FunctionDeclarationError.ResourceRegistrationUnavailable));
 
         var target = dependencies.Target.Target;
-        var created = await createPlacement(new(ObjectId.GenerateNewId().ToString(), operation.Context.TenantId,
-            FunctionResourceDeployment.ResourceType, operation.ResourceId, dependencies.Scope.ResourceGroupId,
-            dependencies.Scope.IsolationScopeId, new(target.Id, target.WorkloadConfiguration.Revision, null),
-            dependencies.Compute.Compute.ToFunctionResourceDeploymentConfiguration(declaration.Resources),
-            Storage: null, ResourcePlacementCapability.SingleTarget, DeferredActivation: true, PinnedCompute: true),
-            session, ct);
+        var created = await createPlacement(
+            new CreateResourceDeploymentRequest(
+                ObjectId.GenerateNewId().ToString(),
+                operation.Context.TenantId,
+                FunctionResourceDeployment.ResourceType,
+                operation.ResourceId,
+                dependencies.Scope.ResourceGroupId,
+                dependencies.Scope.IsolationScopeId,
+                new ResolvedResourceDeploymentTarget(target.Id, target.WorkloadConfiguration.Revision, null),
+                dependencies.Compute.Compute.ToFunctionResourceDeploymentConfiguration(declaration.Resources),
+                Storage: null,
+                ResourcePlacementCapability.SingleTarget,
+                DeferredActivation: true,
+                PinnedCompute: true),
+            session,
+            ct);
         if (created is not PlacementSummaryDto placement)
-            return new(operation.ResourceId,
+            return new GitOperationResult(
+                operation.ResourceId,
                 new FunctionDeclarationRejected(FunctionDeclarationError.PlacementUnavailable));
 
         var now = clock.GetUtcNow();
-        var app = FunctionAppFactory.CreatePrepared(operation.Context.TenantId, dependencies.Scope.ResourceGroupId,
-            new(placement.DeploymentId, placement.RuntimeCellId, placement.DeploymentTargetId),
-            operation.Declaration.Address.Name, declaration.FunctionRoute, now,
+        var app = FunctionAppFactory.CreatePrepared(
+            operation.Context.TenantId,
+            dependencies.Scope.ResourceGroupId,
+            new FunctionPlacementIdentity(
+                placement.DeploymentId,
+                placement.RuntimeCellId,
+                placement.DeploymentTargetId),
+            operation.Declaration.Address.Name,
+            declaration.FunctionRoute,
+            now,
             FunctionAppFactory.DefaultCreateOptions with { FunctionAppId = operation.ResourceId });
         await routes.InsertOneAsync(session, FunctionRouteBindingFactory.Reserve(app, now), cancellationToken: ct);
         await resources.InsertOneAsync(session, app, cancellationToken: ct);
-        return new(app.Id, Changed: true);
+        return new GitOperationResult(app.Id, Changed: true);
     }
 
     private async Task<GitOperationResult> ConfigureAsync(
-        FunctionExecution execution, IClientSessionHandle session, CancellationToken ct)
+        FunctionExecution execution,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var (operation, dependencies, quota) = execution;
         var current = dependencies.Current!;
         var root = current.Root;
         if (root.PendingRevisionId is not null)
-            return new(root.Id, new DeclarationPreconditionsChanged());
+            return new GitOperationResult(root.Id, new DeclarationPreconditionsChanged());
 
         var declaration = FunctionDeclarationJson.Read(operation.Declaration.Spec);
         var spec = FunctionDeclarationJson.Spec(declaration, dependencies.SecretReferences, current.Latest?.Spec.Image);
         spec = spec with
         {
-            Handlers = FunctionTriggerReconciler.Reconcile(current.Latest?.Spec.Handlers ?? [], spec.Handlers)
+            Handlers = FunctionTriggerReconciler.Reconcile(current.Latest?.Spec.Handlers ?? [], spec.Handlers),
         };
-        var admitted = await admitSecrets(new(root.TenantId, root.ResourceGroupId, dependencies.Scope.IsolationScopeId,
-            FunctionResourceDeployment.ResourceType, root.Id, PreviousSecrets(current),
-            FunctionSecretReferences.From(spec.Configuration), ConsumerSecretAvailabilityPolicy.RequireAvailable,
-            PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed), session, ct);
+        var admitted = await admitSecrets(
+            new AdmitConsumerSecretReferencesRequest(
+                root.TenantId,
+                root.ResourceGroupId,
+                dependencies.Scope.IsolationScopeId,
+                FunctionResourceDeployment.ResourceType,
+                root.Id,
+                PreviousSecrets(current),
+                FunctionSecretReferences.From(spec.Configuration),
+                ConsumerSecretAvailabilityPolicy.RequireAvailable,
+                PreviousSecretReferenceRetention.KeepUntilRolloutConfirmed),
+            session,
+            ct);
         if (admitted is ConsumerSecretReferenceUnavailable unavailable)
-            return new(root.Id, new FunctionDeclarationSecretRejected(unavailable.Reason));
+            return new GitOperationResult(root.Id, new FunctionDeclarationSecretRejected(unavailable.Reason));
 
         var now = clock.GetUtcNow();
-        var revision = FunctionRevision.CreateProvisioning(ObjectId.GenerateNewId().ToString(), root.TenantId,
-            root.Id, root.NextRevisionNumber, spec, now);
-        var persisted = await persistRevision(new(root, revision, quota,
-            declaration.Tags.ToImmutableHashSet(StringComparer.Ordinal), now, operation.Context), session, ct);
+        var revision = FunctionRevision.CreateProvisioning(
+            ObjectId.GenerateNewId().ToString(),
+            root.TenantId,
+            root.Id,
+            root.NextRevisionNumber,
+            spec,
+            now);
+        var persisted = await persistRevision(
+            new PersistFunctionAppRevisionRequest(
+                root,
+                revision,
+                quota,
+                declaration.Tags.ToImmutableHashSet(StringComparer.Ordinal),
+                now,
+                operation.Context),
+            session,
+            ct);
         if (persisted is FunctionAppGitOwnedConfiguration)
-            return new(root.Id, new GitDeclarationOwnershipConflict());
+            return new GitOperationResult(root.Id, new GitDeclarationOwnershipConflict());
 
         if (persisted is not FunctionRevision)
-            return new(root.Id, new DeclarationPreconditionsChanged());
+            return new GitOperationResult(root.Id, new DeclarationPreconditionsChanged());
 
         var placement = current.Placements.Items[0];
-        var applied = await applyPlacements(new(root.TenantId, FunctionResourceDeployment.ResourceType, root.Id,
-            revision.RevisionNumber,
-            [new(placement.DeploymentId, placement.Revision,
-                new(placement.Compute.ComputeProfileId, placement.Compute.ComputeProfileRevision),
-                new PreserveIngress(),
-                dependencies.Compute.Compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
-                FixedReplicas: 1, PinnedCompute: true)]), session, ct);
+        var applied = await applyPlacements(
+            new ResourceDeploymentSetApplyRequest(
+                root.TenantId,
+                FunctionResourceDeployment.ResourceType,
+                root.Id,
+                revision.RevisionNumber,
+                [
+                    new ResourceDeploymentSetApplyItem(
+                        placement.DeploymentId,
+                        placement.Revision,
+                        new ComputeProfileReference(
+                            placement.Compute.ComputeProfileId,
+                            placement.Compute.ComputeProfileRevision),
+                        new PreserveIngress(),
+                        dependencies.Compute.Compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
+                        FixedReplicas: 1,
+                        PinnedCompute: true),
+                ]),
+            session,
+            ct);
         return applied switch
         {
-            MutatedResourceDeployments => new(root.Id, Changed: true),
+            MutatedResourceDeployments => new GitOperationResult(root.Id, Changed: true),
             ResourceDeploymentMutationError
             {
-                Value: ResourceDeploymentChanged or
-                ResourceDeploymentComputeConfigurationChanged
-            } => new(root.Id, new DeclarationPreconditionsChanged()),
-            _ => new(root.Id, new FunctionDeclarationRejected(FunctionDeclarationError.PlacementUnavailable))
+                Value: ResourceDeploymentChanged or ResourceDeploymentComputeConfigurationChanged,
+            } => new GitOperationResult(root.Id, new DeclarationPreconditionsChanged()),
+            _ => new GitOperationResult(
+                root.Id,
+                new FunctionDeclarationRejected(FunctionDeclarationError.PlacementUnavailable)),
         };
     }
 
     private Task<GitOperationResult> BlockAsync(
-        GitOperation operation, IDeclarationFailure failure, CancellationToken ct) =>
-        git.ExecuteAsync(operation,
-            (_, _) => Task.FromResult(new GitOperationResult(operation.ResourceId, failure)), ct);
+        GitOperation operation,
+        IDeclarationFailure failure,
+        CancellationToken ct) => git.ExecuteAsync(
+        operation,
+        (_, _) => Task.FromResult(new GitOperationResult(operation.ResourceId, failure)),
+        ct);
 
     private sealed record FunctionExecution(
         GitOperation Operation,
         FunctionPlanningDependencies Dependencies,
-        FunctionQuotaAllocation Quota);
+        FunctionQuotaAllocation Quota
+    );
 }

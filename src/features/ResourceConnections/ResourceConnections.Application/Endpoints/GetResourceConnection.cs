@@ -6,13 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Mediator;
 using Pole.Validation;
 using static Pole.Features.ResourceConnections.Application.ResourceConnectionHttpProblemMappings;
@@ -21,26 +15,24 @@ namespace Pole.Features.ResourceConnections.Application.Endpoints;
 
 public sealed record GetResourceConnectionRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetResourceConnectionOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetResourceConnectionOutcome>, ITenantReadOperation;
 
-public sealed record ResourceConnectionNotFound(string Id);
+public sealed record ResourceConnectionNotFound(
+    string Id
+);
 
-public union GetResourceConnectionOutcome(
-    ResourceConnectionDto,
-    ResourceConnectionNotFound);
+public union GetResourceConnectionOutcome(ResourceConnectionDto, ResourceConnectionNotFound);
 
-public sealed class GetResourceConnectionRequestValidator
-    : AbstractValidator<GetResourceConnectionRequest>
+public sealed class GetResourceConnectionRequestValidator : AbstractValidator<GetResourceConnectionRequest>
 {
-    public GetResourceConnectionRequestValidator() =>
-        RuleFor(request => request.Id).MongoObjectId("Connection ID");
+    public GetResourceConnectionRequestValidator() => RuleFor(request => request.Id).MongoObjectId("Connection ID");
 }
 
 public sealed class GetResourceConnectionHandler(
     LoadResourceConnection loadConnection,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetResourceConnectionRequest, GetResourceConnectionOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetResourceConnectionRequest, GetResourceConnectionOutcome>
 {
     public async Task<GetResourceConnectionOutcome> HandleAsync(
         GetResourceConnectionRequest request,
@@ -51,27 +43,27 @@ public sealed class GetResourceConnectionHandler(
             ? new ResourceConnectionNotFound(request.Id)
             : connection.ToDto() with
             {
-                GitOps = await git.StatusAsync(new(request.TenantId, "ResourceConnection", request.Id),
-                    cancellationToken)
+                GitOps = await git.StatusAsync(
+                    new LoadGitResourceStatusRequest(request.TenantId, "ResourceConnection", request.Id),
+                    cancellationToken),
             };
     }
 }
 
 public static class GetResourceConnectionEndpoint
 {
-    public static IEndpointRouteBuilder MapGetResourceConnectionEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapGetResourceConnectionEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] GetResourceConnectionRequest request,
-                CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken))
-                .ToHttpResult(outcome => outcome switch
-                {
-                    ResourceConnectionDto response => Results.Ok(response),
-                    ResourceConnectionNotFound error => MapNotFound(error)
-                }))
+        app.MapGet(
+                "/{Id}",
+                async (
+                        IMediator mediator, [AsParameters] GetResourceConnectionRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        ResourceConnectionDto response => Results.Ok(response),
+                        ResourceConnectionNotFound error => MapNotFound(error),
+                    }))
             .WithName("GetResourceConnection")
             .Produces<ResourceConnectionDto>();
         return app;

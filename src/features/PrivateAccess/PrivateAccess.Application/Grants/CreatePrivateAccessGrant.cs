@@ -1,13 +1,8 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
-using Pole.Features.PrivateAccess.Application.Admission;
 using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
-using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.PrivateAccess.Events;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -25,12 +20,17 @@ public sealed record CreatePrivateAccessGrantCommand(
     string ResourceId,
     string ResourceDeploymentId,
     string EndpointId,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc
+);
 
 public sealed record PrivateAccessManageRoleRequired;
+
 public sealed record PrivateAccessSubjectNotMember;
+
 public sealed record PrivateAccessResourceUnavailable;
+
 public sealed record PrivateAccessEndpointUnsupported;
+
 public sealed record PrivateAccessGrantExpiryInvalid;
 
 public union CreatePrivateAccessGrantPersistenceOutcome(
@@ -54,32 +54,29 @@ internal sealed class MongoCreatePrivateAccessGrant(
     IMongoCollection<PrivateAccessGrant> grants,
     IMongoCollection<PrivateAccessAudit> audit,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public Task<CreatePrivateAccessGrantPersistenceOutcome> InvokeAsync(
         CreatePrivateAccessGrantCommand command,
-        CancellationToken cancellationToken = default) =>
-        transactions(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => transactions(
+        async (transaction, ct) =>
         {
             var actor = await loadTenantMember(
-                new LoadTenantMemberRequest(
-                    TenantId: command.TenantId,
-                    UserId: command.ActorUserId),
+                new LoadTenantMemberRequest(TenantId: command.TenantId, UserId: command.ActorUserId),
                 session: transaction.Session,
                 cancellationToken: ct);
             if (actor is not TenantMemberSnapshot { Role: >= TenantMembershipRole.Admin })
-                return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
-                    new PrivateAccessManageRoleRequired()));
+                return transaction.Abort(
+                    new CreatePrivateAccessGrantPersistenceOutcome(new PrivateAccessManageRoleRequired()));
 
             var subject = await loadTenantMember(
-                new LoadTenantMemberRequest(
-                    TenantId: command.TenantId,
-                    UserId: command.SubjectUserId),
+                new LoadTenantMemberRequest(TenantId: command.TenantId, UserId: command.SubjectUserId),
                 session: transaction.Session,
                 cancellationToken: ct);
             if (subject is not TenantMemberSnapshot)
-                return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
-                    new PrivateAccessSubjectNotMember()));
+                return transaction.Abort(
+                    new CreatePrivateAccessGrantPersistenceOutcome(new PrivateAccessSubjectNotMember()));
 
             var registered = await fenceResource(
                 new FenceRegisteredResourceRequest(
@@ -89,8 +86,8 @@ internal sealed class MongoCreatePrivateAccessGrant(
                 session: transaction.Session,
                 cancellationToken: ct);
             if (registered is null)
-                return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
-                    new PrivateAccessResourceUnavailable()));
+                return transaction.Abort(
+                    new CreatePrivateAccessGrantPersistenceOutcome(new PrivateAccessResourceUnavailable()));
 
             var placement = await loadPlacement(
                 new LoadExactResourceDeploymentAccessPlacementRequest(
@@ -100,41 +97,63 @@ internal sealed class MongoCreatePrivateAccessGrant(
                     DeploymentId: command.ResourceDeploymentId),
                 session: transaction.Session,
                 cancellationToken: ct);
-            if (placement is null ||
-                placement.ResourceGroupId != registered.ResourceGroupId ||
+            if (placement is null || placement.ResourceGroupId != registered.ResourceGroupId ||
                 placement.Status != ResourceDeploymentStatus.Applied ||
                 placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
-            {
-                return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
-                    new PrivateAccessResourceUnavailable()));
-            }
+                return transaction.Abort(
+                    new CreatePrivateAccessGrantPersistenceOutcome(new PrivateAccessResourceUnavailable()));
 
             var endpoint = await endpointCatalog.ResolveAsync(
-                command.TenantId, command.ResourceType, command.ResourceId,
-                command.EndpointId, transaction.Session, ct);
+                command.TenantId,
+                command.ResourceType,
+                command.ResourceId,
+                command.EndpointId,
+                transaction.Session,
+                ct);
             if (endpoint is null)
-                return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
-                    new PrivateAccessEndpointUnsupported()));
+                return transaction.Abort(
+                    new CreatePrivateAccessGrantPersistenceOutcome(new PrivateAccessEndpointUnsupported()));
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
             if (command.ExpiresAtUtc <= now)
-                return transaction.Abort(new CreatePrivateAccessGrantPersistenceOutcome(
-                    new PrivateAccessGrantExpiryInvalid()));
+                return transaction.Abort(
+                    new CreatePrivateAccessGrantPersistenceOutcome(new PrivateAccessGrantExpiryInvalid()));
             var grant = PrivateAccessGrantFactory.Create(
-                command.TenantId, command.SubjectUserId, command.ResourceType.Value,
-                command.ResourceId, command.ResourceDeploymentId, command.EndpointId,
-                command.ActorUserId, now, command.ExpiresAtUtc);
-            await grants.InsertOneAsync(transaction.Session, grant, cancellationToken: ct);
-            await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
                 command.TenantId,
-                grant.Id, null, command.ActorUserId, now, new PrivateAccessGrantCreatedAudit()),
+                command.SubjectUserId,
+                command.ResourceType.Value,
+                command.ResourceId,
+                command.ResourceDeploymentId,
+                command.EndpointId,
+                command.ActorUserId,
+                now,
+                command.ExpiresAtUtc);
+            await grants.InsertOneAsync(transaction.Session, grant, cancellationToken: ct);
+            await audit.InsertOneAsync(
+                transaction.Session,
+                PrivateAccessAuditFactory.Create(
+                    command.TenantId,
+                    grant.Id,
+                    null,
+                    command.ActorUserId,
+                    now,
+                    new PrivateAccessGrantCreatedAudit()),
                 cancellationToken: ct);
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new PrivateAccessGrantCreatedEvent(
-                    grant.Id, grant.SubjectUserId, grant.ResourceDeploymentId, grant.EndpointId)
-                {
-                    EventCore = EventCore.Create(command.TenantId)
-                })], ct);
+            await storeOutboxWrites(
+                transaction.Session,
+                [
+                    OutboxWrite.Create(
+                        new PrivateAccessGrantCreatedEvent(
+                            grant.Id,
+                            grant.SubjectUserId,
+                            grant.ResourceDeploymentId,
+                            grant.EndpointId)
+                        {
+                            EventCore = EventCore.Create(command.TenantId),
+                        }),
+                ],
+                ct);
             return transaction.Commit(new CreatePrivateAccessGrantPersistenceOutcome(grant));
-        }, cancellationToken);
+        },
+        cancellationToken);
 }

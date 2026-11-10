@@ -1,4 +1,5 @@
 namespace Pole.Features.Postgres.Tests;
+
 internal static class TestData
 {
     public const string TenantId = "507f1f77bcf86cd799439011";

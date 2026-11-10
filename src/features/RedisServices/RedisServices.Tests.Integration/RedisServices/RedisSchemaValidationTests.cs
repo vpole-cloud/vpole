@@ -1,17 +1,17 @@
 using System.Collections.Immutable;
 using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Domain;
-using Pole.Features.Shared.Models;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Tests.Integration.Infrastructure;
-using Pole.Testing;
+using Pole.Features.Shared.Models;
 using Xunit;
 
 namespace Pole.Features.RedisServices.Tests.Integration.RedisServices;
 
 [Collection(IntegrationTestCollection.Name)]
-public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+public sealed class RedisSchemaValidationTests(
+    MongoReplicaSetFixture fixture
+) : IAsyncLifetime
 {
     private const string CollectionName = "RedisServices";
 
@@ -30,7 +30,7 @@ public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) :
         [
             CreateRedis(new PreparedRedisLifecycle()),
             CreateRedis(new ActiveRedisLifecycle()),
-            CreateRedis(new DeletingRedisLifecycle(DateTime.UtcNow))
+            CreateRedis(new DeletingRedisLifecycle(DateTime.UtcNow)),
         ]);
     }
 
@@ -52,10 +52,12 @@ public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) :
     {
         await new RedisSchemaValidationMigration().Up(fixture.Database);
 
-        await CreateContract().AssertRejectsAsync(
-            CreateRedis(new DeletingRedisLifecycle(DateTime.UtcNow)),
-            document => document[nameof(Redis.Lifecycle)].AsBsonDocument.Remove(
-                nameof(DeletingRedisLifecycle.RequestedAtUtc)));
+        await CreateContract()
+            .AssertRejectsAsync(
+                CreateRedis(new DeletingRedisLifecycle(DateTime.UtcNow)),
+                document => document[nameof(Redis.Lifecycle)]
+                    .AsBsonDocument
+                    .Remove(nameof(DeletingRedisLifecycle.RequestedAtUtc)));
     }
 
     [Fact]
@@ -63,26 +65,24 @@ public sealed class RedisSchemaValidationTests(MongoReplicaSetFixture fixture) :
     {
         await new RedisSchemaValidationMigration().Up(fixture.Database);
 
-        await CreateContract().AssertRejectsAsync(
-            CreateRedis(new ActiveRedisLifecycle()),
-            document => document[nameof(Redis.Spec)].AsBsonDocument["Resources"] =
-                new BsonDocument());
+        await CreateContract()
+            .AssertRejectsAsync(
+                CreateRedis(new ActiveRedisLifecycle()),
+                document => document[nameof(Redis.Spec)].AsBsonDocument["Resources"] = new BsonDocument());
     }
 
-    private MongoDocumentContractTester<Redis> CreateContract() =>
-        new(fixture.Database, CollectionName);
+    private MongoDocumentContractTester<Redis> CreateContract() => new(fixture.Database, CollectionName);
 
     private static Redis CreateRedis(RedisLifecycle lifecycle) => RedisFactory.Create(
         RedisTestData.TenantId,
         "cache",
         ObjectId.GenerateNewId().ToString(),
-        new RedisSpec(
-            new Storage(5, RedisTestData.DefaultStorageProfileId)),
+        new RedisSpec(new Storage(5, RedisTestData.DefaultStorageProfileId)),
         RedisFactory.DefaultCreateOptions with
         {
             Id = ObjectId.GenerateNewId().ToString(),
             Tags = ImmutableHashSet.Create("development"),
             Events = ImmutableList.Create(new ServiceEvent(DateTime.UtcNow, "created")),
-            Lifecycle = lifecycle
+            Lifecycle = lifecycle,
         });
 }

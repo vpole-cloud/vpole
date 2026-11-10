@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.SourceBuilds.Contracts</AssemblyName>
-    <RootNamespace>Pole.Features.SourceBuilds.Contracts</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="MongoDB.Driver" />
-    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.SourceBuilds.Contracts</AssemblyName>
+        <RootNamespace>Pole.Features.SourceBuilds.Contracts</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="MongoDB.Driver"/>
+        <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj"/>
+    </ItemGroup>
 </Project>

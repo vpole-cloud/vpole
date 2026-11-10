@@ -22,7 +22,10 @@ module private Implementation =
     let allowanceType = "Pole.Architecture.ViolateArchitectureAttribute"
 
     let forbidden =
-        set [ "MongoDB.Bson.BsonDocument"; "MongoDB.Bson.BsonArray"; "MongoDB.Bson.BsonValue" ]
+        set
+            [ "MongoDB.Bson.BsonDocument"
+              "MongoDB.Bson.BsonArray"
+              "MongoDB.Bson.BsonValue" ]
 
     let fullName (entity: FSharpEntity) =
         entity.TryFullName |> Option.defaultValue entity.DisplayName
@@ -77,15 +80,18 @@ module private Implementation =
         else
             match snd attribute.ConstructorArguments[0], snd attribute.ConstructorArguments[1] with
             | (:? string as id), (:? string as reason) ->
-                id.Length = 7 && id.StartsWith("POLE", StringComparison.Ordinal)
+                id.Length = 7
+                && id.StartsWith("POLE", StringComparison.Ordinal)
                 && (id.Substring(4) |> Seq.forall Char.IsDigit)
                 && not (String.IsNullOrWhiteSpace(reason))
             | _ -> false
 
     let isValidAllowance (attribute: FSharpAttribute) =
-        validArguments attribute && (snd attribute.ConstructorArguments[0] :?> string) = rule
+        validArguments attribute
+        && (snd attribute.ConstructorArguments[0] :?> string) = rule
 
-    let allowed symbol = attributes symbol |> Seq.exists isValidAllowance
+    let allowed symbol =
+        attributes symbol |> Seq.exists isValidAllowance
 
     let rec declaringTypeAllowed (entity: FSharpEntity option) =
         match entity with
@@ -101,7 +107,8 @@ module private Implementation =
            | _ -> false
 
     let positionBeforeOrEqual (left: pos) (right: pos) =
-        left.Line < right.Line || (left.Line = right.Line && left.Column <= right.Column)
+        left.Line < right.Line
+        || (left.Line = right.Line && left.Column <= right.Column)
 
     let contains (scope: range) (location: range) =
         scope.FileName = location.FileName
@@ -115,14 +122,19 @@ module private Implementation =
 
         let memberScope (memberValue: FSharpMemberOrFunctionOrValue) (body: FSharpExpr) =
             let declaration = memberValue.DeclarationLocation
+
             let tree =
                 match parsedFiles.TryGetValue(declaration.FileName) with
                 | true, value -> value
                 | _ ->
                     let parsed =
-                        checker.ParseFile(declaration.FileName,
-                            SourceText.ofString(File.ReadAllText(declaration.FileName)), parsingOptions)
+                        checker.ParseFile(
+                            declaration.FileName,
+                            SourceText.ofString (File.ReadAllText(declaration.FileName)),
+                            parsingOptions
+                        )
                         |> Async.RunSynchronously
+
                     parsedFiles.Add(declaration.FileName, parsed.ParseTree)
                     parsed.ParseTree
 
@@ -181,6 +193,7 @@ module private Implementation =
                     | SynModuleDecl.NamespaceFragment value -> yield! moduleRanges value
                     | _ -> ()
             }
+
         and moduleRanges (SynModuleOrNamespace(_, _, _, nodes, _, _, _, location, _)) =
             seq {
                 yield location
@@ -200,6 +213,7 @@ module private Implementation =
                     | SynModuleSigDecl.NamespaceFragment value -> yield! signatureModuleRanges value
                     | _ -> ()
             }
+
         and signatureModuleRanges (SynModuleOrNamespaceSig(_, _, _, nodes, _, _, _, location, _)) =
             seq {
                 yield location
@@ -208,7 +222,7 @@ module private Implementation =
 
         for file, entities in types |> Array.groupBy (fun entity -> entity.DeclarationLocation.FileName) do
             let parsed =
-                checker.ParseFile(file, SourceText.ofString(File.ReadAllText(file)), parsingOptions)
+                checker.ParseFile(file, SourceText.ofString (File.ReadAllText(file)), parsingOptions)
                 |> Async.RunSynchronously
 
             let ranges =
@@ -219,14 +233,18 @@ module private Implementation =
             for entity in entities do
                 // Match a semantically validated attribute to its actual syntax declaration.
                 // This includes record fields and constructor signatures with no body node.
-                let candidates = ranges |> Array.filter (fun location -> contains location entity.DeclarationLocation)
+                let candidates =
+                    ranges
+                    |> Array.filter (fun location -> contains location entity.DeclarationLocation)
 
                 if candidates.Length = 0 then
                     invalidOp $"Could not locate the F# declaration for architecture exception '{entity.DisplayName}'."
 
                 let scope =
-                    candidates |> Array.minBy (fun location ->
+                    candidates
+                    |> Array.minBy (fun location ->
                         location.EndLine - location.StartLine, location.EndColumn - location.StartColumn)
+
                 scopes.Add(scope)
 
         scopes
@@ -246,7 +264,8 @@ module private Implementation =
             && (argument.EndsWith(".fs", StringComparison.OrdinalIgnoreCase)
                 || argument.EndsWith(".fsi", StringComparison.OrdinalIgnoreCase))
 
-        let fullPath (path: string) = Path.GetFullPath(path.Trim('"'), directory)
+        let fullPath (path: string) =
+            Path.GetFullPath(path.Trim('"'), directory)
 
         let normalizeReference (argument: string) =
             let prefix =
@@ -256,8 +275,10 @@ module private Implementation =
             match prefix with
             | Some prefix ->
                 let path = fullPath (argument.Substring(prefix.Length))
+
                 if not (File.Exists(path)) then
                     invalidOp $"Missing F# semantic-check reference '{path}'. Build the solution first."
+
                 prefix + path
             | None -> argument
 
@@ -270,11 +291,13 @@ module private Implementation =
             if not (File.Exists(source)) then
                 invalidOp $"Missing F# semantic-check source '{source}'."
 
-        let others = compilerArgs |> Array.filter (isSource >> not) |> Array.map normalizeReference
+        let others =
+            compilerArgs |> Array.filter (isSource >> not) |> Array.map normalizeReference
 
         let hasReferences =
-            others |> Array.exists (fun argument ->
-                argument.StartsWith("-r:") || argument.StartsWith("--reference:"))
+            others
+            |> Array.exists (fun argument -> argument.StartsWith("-r:") || argument.StartsWith("--reference:"))
+
         if not hasReferences then
             invalidOp $"No F# references for '{projectPath}'. Resolve references after building the solution."
 
@@ -292,7 +315,9 @@ type RawBsonCheck private () =
         let directory = Path.GetDirectoryName(projectPath)
         let sources, otherOptions = Implementation.normalizeOptions projectPath compilerArgs
         let checker = FSharpChecker.Create(keepAssemblyContents = true)
-        let originalOptions = checker.GetProjectOptionsFromCommandLineArgs(projectPath, otherOptions)
+
+        let originalOptions =
+            checker.GetProjectOptionsFromCommandLineArgs(projectPath, otherOptions)
 
         let options =
             { originalOptions with
@@ -300,8 +325,10 @@ type RawBsonCheck private () =
                 OtherOptions = otherOptions }
 
         let results = checker.ParseAndCheckProject(options) |> Async.RunSynchronously
-        let errors = results.Diagnostics
-                     |> Array.filter (fun diagnostic -> diagnostic.Severity = FSharpDiagnosticSeverity.Error)
+
+        let errors =
+            results.Diagnostics
+            |> Array.filter (fun diagnostic -> diagnostic.Severity = FSharpDiagnosticSeverity.Error)
 
         if results.HasCriticalErrors || errors.Length > 0 then
             let details = errors |> Array.map string |> String.concat Environment.NewLine
@@ -316,13 +343,23 @@ type RawBsonCheck private () =
         for usage in uses do
             if usage.IsFromDefinition then
                 for attribute in Implementation.attributes usage.Symbol do
-                    if Implementation.isAllowance attribute && checkedAttributes.Add(attribute.Range)
-                       && not (Implementation.validArguments attribute) then
-                        violations.Add(Implementation.violation directory attribute.Range
-                            "ViolateArchitecture requires a specific POLE rule ID and a nonblank reason.")
+                    if
+                        Implementation.isAllowance attribute
+                        && checkedAttributes.Add(attribute.Range)
+                        && not (Implementation.validArguments attribute)
+                    then
+                        violations.Add(
+                            Implementation.violation
+                                directory
+                                attribute.Range
+                                "ViolateArchitecture requires a specific POLE rule ID and a nonblank reason."
+                        )
 
-            let inAllowedBody = scopes |> Seq.exists (fun scope -> Implementation.contains scope usage.Range)
-            let allowedDefinition = usage.IsFromDefinition && Implementation.declarationAllowed usage.Symbol
+            let inAllowedBody =
+                scopes |> Seq.exists (fun scope -> Implementation.contains scope usage.Range)
+
+            let allowedDefinition =
+                usage.IsFromDefinition && Implementation.declarationAllowed usage.Symbol
 
             if not inAllowedBody && not allowedDefinition then
                 let bannedTypes =
@@ -336,8 +373,13 @@ type RawBsonCheck private () =
 
                 if bannedTypes.Length > 0 then
                     let names = String.Join(", ", bannedTypes)
-                    violations.Add(Implementation.violation directory usage.Range
-                        $"Production code must use typed MongoDB models instead of {names}.")
+
+                    violations.Add(
+                        Implementation.violation
+                            directory
+                            usage.Range
+                            $"Production code must use typed MongoDB models instead of {names}."
+                    )
 
         violations
         |> Seq.distinctBy (fun item -> item.FilePath, item.Line, item.Column, item.Message)

@@ -6,19 +6,24 @@ namespace Pole.Features.Secrets.Contracts;
 
 public sealed record ConsumerSecretKeyReference(
     string SecretId,
-    string Key);
+    string Key
+);
+
 public sealed record ConsumerSecretReferencesAdmitted;
+
 public enum ConsumerSecretReferenceError
 {
     SecretBindingUnavailable,
     SecretValuesMissing,
     SecretKeyUnavailable,
     SecretDeploymentCoverageUnavailable,
-    SecretConsumerUnavailable
+    SecretConsumerUnavailable,
 }
+
 public sealed record ConsumerSecretReferenceUnavailable(
     string SecretId,
-    ConsumerSecretReferenceError Reason);
+    ConsumerSecretReferenceError Reason
+);
 
 public static class ConsumerSecretReferenceErrorCodes
 {
@@ -29,21 +34,28 @@ public static class ConsumerSecretReferenceErrorCodes
         ConsumerSecretReferenceError.SecretKeyUnavailable => "SecretKeyUnavailable",
         ConsumerSecretReferenceError.SecretDeploymentCoverageUnavailable => "SecretDeploymentCoverageUnavailable",
         ConsumerSecretReferenceError.SecretConsumerUnavailable => "SecretConsumerUnavailable",
-        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+        _ => throw new ArgumentOutOfRangeException(nameof(reason)),
     };
 }
-public sealed record ConsumerSecretProjectionPending(string SecretId);
+
+public sealed record ConsumerSecretProjectionPending(
+    string SecretId
+);
+
 public sealed record ConsumerSecretProjectionKey(
     string SecretId,
     string SourceKey,
     string KubernetesName,
     string ProjectedKey,
-    long AppliedVersion);
-public sealed record ConsumerSecretProjectionKeys(ImmutableArray<ConsumerSecretProjectionKey> Keys);
+    long AppliedVersion
+);
 
-public union AdmitConsumerSecretReferencesOutcome(
-    ConsumerSecretReferencesAdmitted,
-    ConsumerSecretReferenceUnavailable);
+public sealed record ConsumerSecretProjectionKeys(
+    ImmutableArray<ConsumerSecretProjectionKey> Keys
+);
+
+public union AdmitConsumerSecretReferencesOutcome(ConsumerSecretReferencesAdmitted, ConsumerSecretReferenceUnavailable);
+
 public union EnsureConsumerSecretProjectionsOutcome(
     ConsumerSecretProjectionKeys,
     ConsumerSecretReferenceUnavailable,
@@ -52,22 +64,28 @@ public union EnsureConsumerSecretProjectionsOutcome(
 public enum ConsumerSecretAvailabilityPolicy
 {
     RequireAvailable,
-    AllowUnavailableForCleanup
+    AllowUnavailableForCleanup,
 }
 
 public enum PreviousSecretReferenceRetention
 {
     DoNotRetain,
-    KeepUntilRolloutConfirmed
+    KeepUntilRolloutConfirmed,
 }
 
-/// <summary>Authorizes logical keys for all desired consumer placements and pins keys against concurrent rotation. No values leave Secrets.</summary>
+/// <summary>
+///     Authorizes logical keys for all desired consumer placements and pins keys against concurrent rotation. No
+///     values leave Secrets.
+/// </summary>
 public delegate Task<AdmitConsumerSecretReferencesOutcome> AdmitConsumerSecretReferences(
     AdmitConsumerSecretReferencesRequest request,
     IClientSessionHandle session,
     CancellationToken ct);
 
-/// <summary>Returns native name/key references only after rechecking current binding authority and the exact projection generation.</summary>
+/// <summary>
+///     Returns native name/key references only after rechecking current binding authority and the exact projection
+///     generation.
+/// </summary>
 public delegate Task<EnsureConsumerSecretProjectionsOutcome> EnsureConsumerSecretProjections(
     EnsureConsumerSecretProjectionsRequest request,
     CancellationToken ct);
@@ -81,11 +99,13 @@ public sealed record AdmitConsumerSecretReferencesRequest(
     IReadOnlyCollection<ConsumerSecretKeyReference> PreviousReferences,
     IReadOnlyCollection<ConsumerSecretKeyReference> DesiredReferences,
     ConsumerSecretAvailabilityPolicy Availability,
-    PreviousSecretReferenceRetention Retention);
+    PreviousSecretReferenceRetention Retention
+);
 
 public sealed record EnsureConsumerSecretProjectionsRequest(
     string TenantId,
     ResourceTypeId ConsumerType,
     string ConsumerId,
     string DeploymentId,
-    IReadOnlyCollection<ConsumerSecretKeyReference> References);
+    IReadOnlyCollection<ConsumerSecretKeyReference> References
+);

@@ -7,8 +7,9 @@ using Xunit;
 namespace Pole.Tests.Integration.Observability;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class OutboxObservabilityTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     private const string TraceId = "0123456789abcdef0123456789abcdef";
     private const string CorrelationId = "correlation-from-test";
@@ -23,7 +24,8 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         _ = result.AssertSuccess();
 
         var outboxMessage = await DbContext.OutboxMessages
-            .Find(message => message.TenantId == Data.TenantId && message.EventType == "pole.resource-groups/v1/resource-group-created")
+            .Find(message => message.TenantId == Data.TenantId &&
+                message.EventType == "pole.resource-groups/v1/resource-group-created")
             .SingleAsync();
 
         Assert.Equal(TraceId, outboxMessage.TraceId);
@@ -34,6 +36,4 @@ public sealed class OutboxObservabilityTests(MongoReplicaSetFixture fixture)
         Assert.Equal(TraceId, eventCore.GetProperty("traceId").GetString());
         Assert.Equal(CorrelationId, eventCore.GetProperty("correlationId").GetString());
     }
-
-
 }

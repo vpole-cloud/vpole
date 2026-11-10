@@ -7,7 +7,8 @@ namespace Pole.Features.ResourceGroups.Events;
 public sealed record ResourceRegisteredEvent(
     string ResourceGroupId,
     string ResourceType,
-    string ResourceId) : IPoleEvent
+    string ResourceId
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

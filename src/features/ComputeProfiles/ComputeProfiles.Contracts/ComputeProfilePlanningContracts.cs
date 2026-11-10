@@ -8,14 +8,18 @@ public sealed record ComputeProfilePlanningRequest(
     ResourceTypeId ResourceType,
     string ComputeProfileId,
     string DeploymentTargetId,
-    long Revision);
+    long Revision
+);
 
 public sealed record ComputeProfilePlanningSnapshot(
     ComputeProfilePlanningRequest Request,
     long PolicyRevision,
-    ResolvedComputeProfile Compute);
+    ResolvedComputeProfile Compute
+);
 
-public sealed record ComputeProfilePlanningUnavailable(ComputeProfileResolutionError Error);
+public sealed record ComputeProfilePlanningUnavailable(
+    ComputeProfileResolutionError Error
+);
 
 public sealed record ComputeProfilePlanningFenced;
 
@@ -35,8 +39,8 @@ public delegate Task<ResolveComputeProfilePlanningSnapshotOutcome> ResolveComput
     CancellationToken cancellationToken);
 
 /// <summary>
-/// Takes real write fences without changing business revisions. A rejected guard requires
-/// the caller to abort the entire transaction, including any preceding guards.
+///     Takes real write fences without changing business revisions. A rejected guard requires
+///     the caller to abort the entire transaction, including any preceding guards.
 /// </summary>
 public delegate Task<FenceComputeProfilePlanningSnapshotOutcome> FenceComputeProfilePlanningSnapshot(
     ComputeProfilePlanningSnapshot request,

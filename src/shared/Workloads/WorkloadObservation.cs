@@ -7,7 +7,9 @@ namespace Pole.Workloads;
 [JsonDerivedType(typeof(UnavailableWorkloadObservation), "Unavailable")]
 public closed record WorkloadObservation;
 
-public sealed record UnavailableWorkloadObservation(string Reason) : WorkloadObservation;
+public sealed record UnavailableWorkloadObservation(
+    string Reason
+) : WorkloadObservation;
 
 public sealed record ObservedWorkload(
     bool Ready,
@@ -20,7 +22,8 @@ public sealed record ObservedWorkload(
     bool PodsTruncated,
     IReadOnlyList<ObservedWorkloadPod> Pods,
     IReadOnlyList<ObservedWorkloadEvent> Events,
-    string? EventsUnavailableReason) : WorkloadObservation;
+    string? EventsUnavailableReason
+) : WorkloadObservation;
 
 public sealed record ObservedWorkloadPod(
     string Name,
@@ -28,9 +31,11 @@ public sealed record ObservedWorkloadPod(
     bool Ready,
     bool CurrentGeneration,
     int RestartCount,
-    IReadOnlyList<string> Reasons);
+    IReadOnlyList<string> Reasons
+);
 
 public sealed record ObservedWorkloadEvent(
     string Reason,
     int Count,
-    DateTime? LastSeenAtUtc);
+    DateTime? LastSeenAtUtc
+);

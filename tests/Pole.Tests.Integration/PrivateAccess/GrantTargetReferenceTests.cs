@@ -15,8 +15,9 @@ using Xunit;
 namespace Pole.Tests.Integration.PrivateAccess;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class GrantTargetReferenceTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
     public override Task DisposeAsync() => base.DisposeAsync();
@@ -35,86 +36,79 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture)
             DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
             ObjectId.GenerateNewId().ToString());
         var added = await new MongoRunTransaction(Fixture.Client)
-            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
-                async (transaction, ct) =>
-                {
-                    var result = await apply(
-                        new ApplyDeploymentTargetReferenceChangesRequest(
-                            specialOwner,
-                            [paused.Id],
-                            []),
-                        transaction.Session,
-                        ct);
-                    return result is DeploymentTargetReferencesChanged
-                        ? transaction.Commit(result)
-                        : transaction.Abort(result);
-                });
+            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, ct) =>
+            {
+                var result = await apply(
+                    new ApplyDeploymentTargetReferenceChangesRequest(specialOwner, [paused.Id], []),
+                    transaction.Session,
+                    ct);
+                return result is DeploymentTargetReferencesChanged
+                    ? transaction.Commit(result)
+                    : transaction.Abort(result);
+            });
         Assert.IsType<DeploymentTargetReferencesChanged>(added.Value);
-        Assert.Equal(1, await Fixture.DbContext.DeploymentTargetReferences
-            .CountDocumentsAsync(item => item.OwnerType ==
-                DeploymentTargetReferenceOwnerTypes.PrivateAccessSession));
+        Assert.Equal(
+            1,
+            await Fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(item =>
+                item.OwnerType == DeploymentTargetReferenceOwnerTypes.PrivateAccessSession));
 
         var ordinary = await new MongoRunTransaction(Fixture.Client)
-            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
-                async (transaction, ct) =>
-                {
-                    var result = await apply(
-                        new ApplyDeploymentTargetReferenceChangesRequest(
-                            new DeploymentTargetReferenceOwner(
-                            "ordinary-workload", ObjectId.GenerateNewId().ToString()),
-                            [paused.Id],
-                            []),
-                        transaction.Session,
-                        ct);
-                    return result is DeploymentTargetReferencesChanged
-                        ? transaction.Commit(result)
-                        : transaction.Abort(result);
-                });
+            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, ct) =>
+            {
+                var result = await apply(
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        new DeploymentTargetReferenceOwner("ordinary-workload", ObjectId.GenerateNewId().ToString()),
+                        [paused.Id],
+                        []),
+                    transaction.Session,
+                    ct);
+                return result is DeploymentTargetReferencesChanged
+                    ? transaction.Commit(result)
+                    : transaction.Abort(result);
+            });
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(ordinary.Value);
 
-        var fence = new MongoFenceDeploymentTargetPrivateAccess(
-            Fixture.DbContext.DeploymentTargets).InvokeAsync;
+        var fence = new MongoFenceDeploymentTargetPrivateAccess(Fixture.DbContext.DeploymentTargets).InvokeAsync;
         var checkedTarget = await new MongoRunTransaction(Fixture.Client)
-            .InvokeOutcomeAsync<FenceDeploymentTargetPrivateAccessOutcome>(
-                async (transaction, ct) =>
-                {
-                    var result = await fence(paused.Id, transaction.Session, ct);
-                    return result is PrivateAccessDeploymentTargetReady
-                        ? transaction.Commit(result)
-                        : transaction.Abort(result);
-                });
+            .InvokeOutcomeAsync<FenceDeploymentTargetPrivateAccessOutcome>(async (transaction, ct) =>
+            {
+                var result = await fence(paused.Id, transaction.Session, ct);
+                return result is PrivateAccessDeploymentTargetReady
+                    ? transaction.Commit(result)
+                    : transaction.Abort(result);
+            });
         Assert.IsType<PrivateAccessDeploymentTargetReady>(checkedTarget.Value);
     }
 
     [Fact]
     public async Task PrivateAccessReference_RejectsIsolationOverrideWithoutAttestedEnforcement()
     {
-        var target = CreateTarget().AttestNetworkPolicy(
-            NetworkPolicyEnforcement.Unsupported,
-            allowIsolationNotEnforced: true,
-            DateTime.UtcNow.AddSeconds(1));
+        var target = CreateTarget()
+            .AttestNetworkPolicy(
+                NetworkPolicyEnforcement.Unsupported,
+                allowIsolationNotEnforced: true,
+                DateTime.UtcNow.AddSeconds(1));
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var apply = new MongoApplyDeploymentTargetReferenceChanges(
             Fixture.DbContext.DeploymentTargets,
             Fixture.DbContext.DeploymentTargetReferences,
             TimeProvider.System).InvokeAsync;
         var result = await new MongoRunTransaction(Fixture.Client)
-            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(
-                async (transaction, ct) =>
-                {
-                    var admission = await apply(
-                        new ApplyDeploymentTargetReferenceChangesRequest(
-                            new DeploymentTargetReferenceOwner(
+            .InvokeOutcomeAsync<ApplyDeploymentTargetReferenceChangesOutcome>(async (transaction, ct) =>
+            {
+                var admission = await apply(
+                    new ApplyDeploymentTargetReferenceChangesRequest(
+                        new DeploymentTargetReferenceOwner(
                             DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
                             ObjectId.GenerateNewId().ToString()),
-                            [target.Id],
-                            []),
-                        transaction.Session,
-                        ct);
-                    return admission is DeploymentTargetReferencesChanged
-                        ? transaction.Commit(admission)
-                        : transaction.Abort(admission);
-                });
+                        [target.Id],
+                        []),
+                    transaction.Session,
+                    ct);
+                return admission is DeploymentTargetReferencesChanged
+                    ? transaction.Commit(admission)
+                    : transaction.Abort(admission);
+            });
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
     }
 
@@ -136,8 +130,12 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture)
                 TimeProvider.System).InvokeAsync);
         using var provider = services.BuildServiceProvider();
         var tenantId = ObjectId.GenerateNewId().ToString();
-        var identity = new PrivateAccessGatewayIdentity(tenantId, target.Id,
-            PrivateAccessGatewayIds.StableId(tenantId, target.Id), 1, 1);
+        var identity = new PrivateAccessGatewayIdentity(
+            tenantId,
+            target.Id,
+            PrivateAccessGatewayIds.StableId(tenantId, target.Id),
+            1,
+            1);
 
         var saved = await provider.GetRequiredService<SavePrivateAccessGatewayRegistration>()(
             new SavePrivateAccessGatewayRegistrationRequest(
@@ -147,17 +145,22 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture)
                 Endpoints: []));
 
         Assert.True(saved);
-        var reference = Assert.Single(await Fixture.DbContext.DeploymentTargetReferences
-            .Find(item => item.DeploymentTargetId == target.Id).ToListAsync());
-        Assert.Equal(DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway,
-            reference.OwnerType);
+        var reference = Assert.Single(
+            await Fixture.DbContext
+                .DeploymentTargetReferences
+                .Find(item => item.DeploymentTargetId == target.Id)
+                .ToListAsync());
+        Assert.Equal(DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway, reference.OwnerType);
         Assert.Equal(identity.GatewayId, reference.OwnerId);
-        Assert.False(await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(
-            identity with { Revision = 2 }));
-        Assert.True(await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(
-            identity));
-        Assert.Empty(await Fixture.DbContext.DeploymentTargetReferences
-            .Find(item => item.DeploymentTargetId == target.Id).ToListAsync());
+        Assert.False(
+            await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(
+                identity with { Revision = 2 }));
+        Assert.True(await provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>()(identity));
+        Assert.Empty(
+            await Fixture.DbContext
+                .DeploymentTargetReferences
+                .Find(item => item.DeploymentTargetId == target.Id)
+                .ToListAsync());
     }
 
     private static DeploymentTarget CreateTarget()
@@ -165,20 +168,22 @@ public sealed class GrantTargetReferenceTests(MongoReplicaSetFixture fixture)
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create("target-" + id,
-            "Private access target",
-            $"kubernetes:kube-system:{id}",
-            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
-            DeploymentTargetHealth.Healthy(connectionVersion, now),
-            DeploymentTargetCapabilities.Observed(
-                connectionVersion,
-                now,
-                "v1.35.0",
-                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
-                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
-            DeploymentTargetTestData.CreateWorkloadConfiguration(),
-            enabled: true,
-            acceptsWorkloads: true,
-            new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();
+        return DeploymentTargetFactory.Create(
+                "target-" + id,
+                "Private access target",
+                $"kubernetes:kube-system:{id}",
+                DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
+                DeploymentTargetHealth.Healthy(connectionVersion, now),
+                DeploymentTargetCapabilities.Observed(
+                    connectionVersion,
+                    now,
+                    "v1.35.0",
+                    new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                    new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
+                DeploymentTargetTestData.CreateWorkloadConfiguration(),
+                enabled: true,
+                acceptsWorkloads: true,
+                new DeploymentTargetFactory.CreateOptions(id, now))
+            .AttestForTests();
     }
 }

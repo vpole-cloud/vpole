@@ -45,12 +45,32 @@ public sealed class ResourceDeploymentDtoContractTests
     [Fact]
     public void Placement_round_trip_preserves_typed_defaults_and_isolation()
     {
-        var placement = new PlacementSummaryDto("deployment", "scope", "cell", "target", 1, 0,
-            ResourceDeploymentStatus.Prepared, null, new(new("profile", 3), "Small", new(100, 128), new(200, 256), []),
-            [], ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1,
+        var placement = new PlacementSummaryDto(
+            "deployment",
+            "scope",
+            "cell",
+            "target",
+            1,
+            0,
+            ResourceDeploymentStatus.Prepared,
+            null,
+            new ComputeConfigurationSummaryDto(
+                new ComputeProfileReference("profile", 3),
+                "Small",
+                new ComputeResourceValuesDto(100, 128),
+                new ComputeResourceValuesDto(200, 256),
+                []),
+            [],
+            ResourceRevision: 1,
+            FixedReplicas: 1,
+            Ingress: null,
+            DeploymentRevision: 1,
             DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
-            Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished",
-            null));
+            Isolation: new ResourceDeploymentIsolationDto(
+                "Unknown",
+                "EnforcementRequired",
+                "EnforcementNotEstablished",
+                null));
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var json = JsonSerializer.Serialize(placement, options);
         var restored = JsonSerializer.Deserialize<PlacementSummaryDto>(json, options)!;

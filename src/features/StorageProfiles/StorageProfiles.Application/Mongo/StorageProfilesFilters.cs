@@ -11,8 +11,7 @@ internal static class StorageProfileFilters
     public static FilterDefinition<StorageProfile> ByTechnicalName(string name) =>
         Builders<StorageProfile>.Filter.Eq(profile => profile.TechnicalName, name);
 
-    public static FilterDefinition<StorageProfile> All() =>
-        Builders<StorageProfile>.Filter.Empty;
+    public static FilterDefinition<StorageProfile> All() => Builders<StorageProfile>.Filter.Empty;
 
     public static FilterDefinition<StorageProfile> ById(string storageProfileId) =>
         Builders<StorageProfile>.Filter.Eq(profile => profile.Id, storageProfileId);
@@ -23,13 +22,11 @@ internal static class StorageProfileFilters
         return Builders<StorageProfile>.Filter.And(
             ById(profile.Id),
             Builders<StorageProfile>.Filter.Eq(candidate => candidate.Revision, profile.Revision),
-            Builders<StorageProfile>.Filter.Eq(
-                candidate => candidate.ResolutionFence,
-                profile.ResolutionFence));
+            Builders<StorageProfile>.Filter.Eq(candidate => candidate.ResolutionFence, profile.ResolutionFence));
     }
 
-    public static FilterDefinition<StorageProfile> AtPolicy(string id, long revision) =>
-        ById(id) & Builders<StorageProfile>.Filter.Eq(profile => profile.Revision, revision) &
+    public static FilterDefinition<StorageProfile> AtPolicy(string id, long revision) => ById(id) &
+        Builders<StorageProfile>.Filter.Eq(profile => profile.Revision, revision) &
         Builders<StorageProfile>.Filter.Lt(profile => profile.ResolutionFence, long.MaxValue);
 
     public static FilterDefinition<StorageProfile> Default() =>
@@ -47,8 +44,7 @@ internal static class StorageProfileFilters
                 profile => profile.TargetMappings,
                 mapping => mapping.DeploymentTargetId == deploymentTargetId));
 
-    public static FilterDefinition<StorageProfile> AvailableAtResolution(
-        StorageProfileResolutionFenceRequest request)
+    public static FilterDefinition<StorageProfile> AvailableAtResolution(StorageProfileResolutionFenceRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         var mapping = Builders<StorageProfileTargetMapping>.Filter.And(
@@ -60,16 +56,10 @@ internal static class StorageProfileFilters
                 request.StorageClassName));
         return Builders<StorageProfile>.Filter.And(
             ById(request.StorageProfileId),
-            Builders<StorageProfile>.Filter.Eq(
-                profile => profile.Revision,
-                request.StorageProfileRevision),
+            Builders<StorageProfile>.Filter.Eq(profile => profile.Revision, request.StorageProfileRevision),
             Builders<StorageProfile>.Filter.Eq(profile => profile.IsEnabled, true),
-            Builders<StorageProfile>.Filter.ElemMatch(
-                profile => profile.TargetMappings,
-                mapping),
-            Builders<StorageProfile>.Filter.Lt(
-                profile => profile.ResolutionFence,
-                long.MaxValue));
+            Builders<StorageProfile>.Filter.ElemMatch(profile => profile.TargetMappings, mapping),
+            Builders<StorageProfile>.Filter.Lt(profile => profile.ResolutionFence, long.MaxValue));
     }
 }
 
@@ -81,17 +71,19 @@ internal static class StorageObservationFilters
     internal static FilterDefinition<StorageObservationDemandDocument> ForDemandScope(MongoObservationScope scope) =>
         Builders<StorageObservationDemandDocument>.Filter.Eq(item => item.DeploymentTargetId, scope.Id);
 
-    internal static FilterDefinition<StorageObservationSnapshotDocument> ForSnapshotScope(MongoObservationScope scope) =>
+    internal static FilterDefinition<StorageObservationSnapshotDocument>
+        ForSnapshotScope(MongoObservationScope scope) =>
         Builders<StorageObservationSnapshotDocument>.Filter.Eq(item => item.Id, scope.Id);
 
     internal static FilterDefinition<StorageObservationControlDocument> ForControlContext(
-        StorageObservationContext context) =>
-        Builders<StorageObservationControlDocument>.Filter.Eq(item => item.ConnectionVersion, context.ConnectionVersion);
+        StorageObservationContext context) => Builders<StorageObservationControlDocument>.Filter.Eq(
+        item => item.ConnectionVersion,
+        context.ConnectionVersion);
 
     internal static FilterDefinition<StorageObservationSnapshotDocument> ForSnapshotContext(
-        StorageObservationContext context) =>
-        Builders<StorageObservationSnapshotDocument>.Filter.Eq(item => item.ConnectionVersion,
-            context.ConnectionVersion);
+        StorageObservationContext context) => Builders<StorageObservationSnapshotDocument>.Filter.Eq(
+        item => item.ConnectionVersion,
+        context.ConnectionVersion);
 }
 
 internal static class StorageProfileRevisionFilters

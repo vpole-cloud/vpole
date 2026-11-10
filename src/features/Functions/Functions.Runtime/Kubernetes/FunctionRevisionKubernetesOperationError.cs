@@ -1,14 +1,24 @@
 namespace Pole.Features.Functions.Runtime.Kubernetes;
 
-public sealed record FunctionRevisionKubernetesUnavailable(string Message);
+public sealed record FunctionRevisionKubernetesUnavailable(
+    string Message
+);
 
-public sealed record FunctionRevisionGatewaySourceUnavailable(string Message);
+public sealed record FunctionRevisionGatewaySourceUnavailable(
+    string Message
+);
 
-public sealed record FunctionRevisionSecretsUnavailable(string Message);
+public sealed record FunctionRevisionSecretsUnavailable(
+    string Message
+);
 
-public sealed record FunctionRevisionKubernetesOperationRejected(string Message);
+public sealed record FunctionRevisionKubernetesOperationRejected(
+    string Message
+);
 
-public sealed record FunctionRevisionKubernetesOperationInvalid(string Message);
+public sealed record FunctionRevisionKubernetesOperationInvalid(
+    string Message
+);
 
 public union FunctionRevisionKubernetesOperationError(
     FunctionRevisionKubernetesUnavailable,
@@ -25,6 +35,6 @@ public static class FunctionRevisionKubernetesOperationErrorExtensions
         FunctionRevisionGatewaySourceUnavailable unavailable => unavailable.Message,
         FunctionRevisionSecretsUnavailable unavailable => unavailable.Message,
         FunctionRevisionKubernetesOperationRejected rejected => rejected.Message,
-        FunctionRevisionKubernetesOperationInvalid invalid => invalid.Message
+        FunctionRevisionKubernetesOperationInvalid invalid => invalid.Message,
     };
 }

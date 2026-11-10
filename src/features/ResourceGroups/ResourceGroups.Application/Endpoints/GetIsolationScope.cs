@@ -3,17 +3,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.IsolationScopes;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
@@ -21,8 +17,8 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record GetIsolationScopeRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string ScopeId,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetIsolationScopeOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetIsolationScopeOutcome>, ITenantReadOperation;
 
 public union GetIsolationScopeOutcome(
     IsolationScopeDto,
@@ -32,17 +28,14 @@ public union GetIsolationScopeOutcome(
 public sealed class GetIsolationScopeHandler(
     LoadResourceGroup loadResourceGroup,
     LoadIsolationScope loadIsolationScope,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetIsolationScopeRequest, GetIsolationScopeOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetIsolationScopeRequest, GetIsolationScopeOutcome>
 {
     public async Task<GetIsolationScopeOutcome> HandleAsync(
         GetIsolationScopeRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resourceGroup = await loadResourceGroup(
-            request.TenantId,
-            request.ResourceGroupId,
-            cancellationToken);
+        var resourceGroup = await loadResourceGroup(request.TenantId, request.ResourceGroupId, cancellationToken);
         if (resourceGroup is null)
             return new ResourceGroupNotFound(request.ResourceGroupId);
 
@@ -55,20 +48,19 @@ public sealed class GetIsolationScopeHandler(
             ? new IsolationScopeNotFound(request.ScopeId)
             : scope.ToDto() with
             {
-                GitOps = await git.StatusAsync(new(request.TenantId, "IsolationScope", scope.Id), cancellationToken)
+                GitOps = await git.StatusAsync(
+                    new LoadGitResourceStatusRequest(request.TenantId, "IsolationScope", scope.Id),
+                    cancellationToken),
             };
     }
 }
 
-public sealed class GetIsolationScopeRequestValidator
-    : AbstractValidator<GetIsolationScopeRequest>
+public sealed class GetIsolationScopeRequestValidator : AbstractValidator<GetIsolationScopeRequest>
 {
     public GetIsolationScopeRequestValidator()
     {
-        RuleFor(request => request.ResourceGroupId)
-            .MongoObjectId("Resource group ID");
-        RuleFor(request => request.ScopeId)
-            .MongoObjectId("Isolation scope ID");
+        RuleFor(request => request.ResourceGroupId).MongoObjectId("Resource group ID");
+        RuleFor(request => request.ScopeId).MongoObjectId("Isolation scope ID");
     }
 }
 
@@ -76,19 +68,20 @@ public static class GetIsolationScopeEndpoint
 {
     public static IEndpointRouteBuilder MapGetIsolationScopeEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{ResourceGroupId}/isolation-scopes/{ScopeId}", async (
-                IMediator mediator,
-                [AsParameters] GetIsolationScopeRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{ResourceGroupId}/isolation-scopes/{ScopeId}",
+                async (
+                    IMediator mediator, [AsParameters] GetIsolationScopeRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    IsolationScopeDto scope => Results.Ok(scope),
-                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error),
-                    IsolationScopeNotFound error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        IsolationScopeDto scope => Results.Ok(scope),
+                        ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error),
+                        IsolationScopeNotFound error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("GetIsolationScope")
             .WithSummary("Gets an isolation scope owned by a resource group.")
             .Produces<IsolationScopeDto>();

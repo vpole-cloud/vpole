@@ -8,16 +8,16 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FSharp.Core" />
-        <PackageReference Include="MongoDB.Driver" />
+        <PackageReference Include="FSharp.Core"/>
+        <PackageReference Include="MongoDB.Driver"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="PostgresProvisioning.fs" />
-        <Compile Include="PostgresCluster.fs" />
+        <Compile Include="PostgresProvisioning.fs"/>
+        <Compile Include="PostgresCluster.fs"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
+        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
     </ItemGroup>
 </Project>

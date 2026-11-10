@@ -16,7 +16,8 @@ public enum RepositoryExecutionDisposition { NoWork, Handled, LeaseLost }
 public sealed record RepositoryExecutionReport(
     RepositoryExecutionDisposition Disposition,
     GitMutationContext? Context,
-    IReadOnlyList<GitOperationResult> Operations);
+    IReadOnlyList<GitOperationResult> Operations
+);
 
 // Hangfire stores only these server-owned identifiers. Mongo is the source of scheduling and lease truth.
 public sealed class RepositorySourceJob(
@@ -29,21 +30,27 @@ public sealed class RepositorySourceJob(
     GitPrunePlanning prune,
     IOptions<GitOpsWorkerOptions> options,
     TimeProvider clock,
-    ILogger<RepositorySourceJob> logger)
+    ILogger<RepositorySourceJob> logger
+)
 {
     [AutomaticRetry(Attempts = 0)]
-    public async Task ExecuteAsync(string tenantId, string sourceId, CancellationToken ct) =>
-        await ProcessAsync(new(tenantId, sourceId), ct);
+    public async Task ExecuteAsync(
+        string tenantId,
+        string sourceId,
+        CancellationToken ct) => await ProcessAsync(new GitSourceIdentity(tenantId, sourceId), ct);
 
     public async Task<RepositoryExecutionReport> ProcessAsync(GitSourceIdentity source, CancellationToken ct)
     {
         var outcome = await runs.ClaimAsync(source, Guid.NewGuid().ToString("N"), ct);
         if (outcome is not GitWorkClaim claim)
-            return new(RepositoryExecutionDisposition.NoWork, null, []);
+            return new RepositoryExecutionReport(RepositoryExecutionDisposition.NoWork, null, []);
 
         logger.LogInformation(
             "GitOps attempt started for source {SourceId}, run {RunId}, attempt {Attempt}; startedAtUtc={StartedAtUtc:O}",
-            source.SourceId, claim.Run.Id, claim.Handle.Identity.Attempt, DateTime.UtcNow);
+            source.SourceId,
+            claim.Run.Id,
+            claim.Handle.Identity.Attempt,
+            DateTime.UtcNow);
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var heartbeat = KeepLeaseAsync(claim.Handle, execution);
         try
@@ -52,12 +59,15 @@ public sealed class RepositorySourceJob(
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && execution.IsCancellationRequested)
         {
-            return new(RepositoryExecutionDisposition.LeaseLost, null, []);
+            return new RepositoryExecutionReport(RepositoryExecutionDisposition.LeaseLost, null, []);
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
             // Retain bounded recovery state, while letting unexpected failures reach the normal job error path.
-            await runs.DelayAsync(claim.Handle, new("ExecutionInfrastructureFailure", null, null, null), ct);
+            await runs.DelayAsync(
+                claim.Handle,
+                new GitRunDiagnostic("ExecutionInfrastructureFailure", null, null, null),
+                ct);
             throw;
         }
         finally
@@ -108,7 +118,8 @@ public sealed class RepositorySourceJob(
             return await FailAsync(claim.Handle, "RepositoryProviderUnavailable", ct);
 
         var location = claim.Run.Repository;
-        var reference = new RepositorySourceReference(claim.Source.TenantId,
+        var reference = new RepositorySourceReference(
+            claim.Source.TenantId,
             location.ConnectionId,
             location.ExternalRepositoryId);
         var access = await repository.CheckAccessAsync(reference, ct);
@@ -118,7 +129,9 @@ public sealed class RepositorySourceJob(
         var run = claim.Run;
         if (run.Input is GitInputUnresolved)
         {
-            var resolution = await repository.ResolveCommitAsync(new(reference, location.Branch), ct);
+            var resolution = await repository.ResolveCommitAsync(
+                new ResolveRepositoryCommitRequest(reference, location.Branch),
+                ct);
             if (resolution is not RepositoryCommitResolved resolved)
                 return await HandleResolveFailureAsync(claim.Handle, resolution, ct);
 
@@ -129,7 +142,6 @@ public sealed class RepositorySourceJob(
 
         if (run.Input is GitInputPinned pinned)
         {
-
             if (run.RetryOfRunId is null && claim.PreviouslyAppliedSnapshot is { } previous &&
                 previous.Commit == pinned.Commit)
             {
@@ -139,21 +151,23 @@ public sealed class RepositorySourceJob(
             }
             else
             {
-                var read = await repository.ReadSnapshotAsync(new(reference, pinned.Commit, location.ManifestDirectory),
+                var read = await repository.ReadSnapshotAsync(
+                    new ReadRepositorySnapshotRequest(reference, pinned.Commit, location.ManifestDirectory),
                     ct);
                 if (read is not RepositorySnapshotRead snapshot)
                     return await HandleReadFailureAsync(claim.Handle, read, ct);
                 if (snapshot.Commit != pinned.Commit)
                     return await FailAsync(claim.Handle, "RepositoryCommitMismatch", ct);
 
-                var compiled = compiler.Compile(snapshot.Files.Select(item => new ManifestFile(item.Path, item.Content))
-                    .ToArray());
+                var compiled = compiler.Compile(
+                    snapshot.Files.Select(item => new ManifestFile(item.Path, item.Content)).ToArray());
                 if (!compiled.Valid)
                 {
-                    var diagnostics = compiled.Diagnostics.Select(item =>
-                        new GitRunDiagnostic(item.Code, item.File, item.Document, item.Field)).ToImmutableArray();
+                    var diagnostics = compiled.Diagnostics
+                        .Select(item => new GitRunDiagnostic(item.Code, item.File, item.Document, item.Field))
+                        .ToImmutableArray();
                     return await runs.CompleteAsync(claim.Handle, GitRunCompletion.Failed, diagnostics, ct)
-                        ? new(RepositoryExecutionDisposition.Handled, null, [])
+                        ? new RepositoryExecutionReport(RepositoryExecutionDisposition.Handled, null, [])
                         : Lost();
                 }
 
@@ -174,8 +188,11 @@ public sealed class RepositorySourceJob(
         {
             GitPruneNotRequired => await snapshotExecutor.ExecuteAsync(claim, input, ct),
             GitPruneAuthorized authorized => await lifecycle.ExecuteAsync(authorized.Claim, ct),
-            GitPruneAwaitingConfirmation or GitPruneBlocked => new(RepositoryExecutionDisposition.Handled, null, []),
-            StaleGitExecution => Lost()
+            GitPruneAwaitingConfirmation or GitPruneBlocked => new RepositoryExecutionReport(
+                RepositoryExecutionDisposition.Handled,
+                null,
+                []),
+            StaleGitExecution => Lost(),
         };
     }
 
@@ -183,47 +200,53 @@ public sealed class RepositorySourceJob(
         GitRunHandle handle,
         CheckRepositoryAccessOutcome outcome,
         CancellationToken ct) => outcome switch
-        {
-            RepositoryAccessDenied => FailAsync(handle, nameof(RepositoryAccessDenied), ct),
-            RepositoryNotFound => FailAsync(handle, nameof(RepositoryNotFound), ct),
-            RepositoryTemporarilyUnavailable => DelayAsync(handle, ct),
-            RepositoryAccessGranted => throw new InvalidOperationException("Successful access was already handled.")
-        };
+    {
+        RepositoryAccessDenied => FailAsync(handle, nameof(RepositoryAccessDenied), ct),
+        RepositoryNotFound => FailAsync(handle, nameof(RepositoryNotFound), ct),
+        RepositoryTemporarilyUnavailable => DelayAsync(handle, ct),
+        RepositoryAccessGranted => throw new InvalidOperationException("Successful access was already handled."),
+    };
 
     private Task<RepositoryExecutionReport> HandleResolveFailureAsync(
         GitRunHandle handle,
         ResolveRepositoryCommitOutcome outcome,
         CancellationToken ct) => outcome switch
-        {
-            RepositoryAccessDenied => FailAsync(handle, nameof(RepositoryAccessDenied), ct),
-            RepositoryNotFound => FailAsync(handle, nameof(RepositoryNotFound), ct),
-            RepositoryRefNotFound => FailAsync(handle, nameof(RepositoryRefNotFound), ct),
-            RepositoryTemporarilyUnavailable => DelayAsync(handle, ct),
-            RepositoryCommitResolved => throw new InvalidOperationException("Resolved commit was already handled.")
-        };
+    {
+        RepositoryAccessDenied => FailAsync(handle, nameof(RepositoryAccessDenied), ct),
+        RepositoryNotFound => FailAsync(handle, nameof(RepositoryNotFound), ct),
+        RepositoryRefNotFound => FailAsync(handle, nameof(RepositoryRefNotFound), ct),
+        RepositoryTemporarilyUnavailable => DelayAsync(handle, ct),
+        RepositoryCommitResolved => throw new InvalidOperationException("Resolved commit was already handled."),
+    };
 
     private Task<RepositoryExecutionReport> HandleReadFailureAsync(
         GitRunHandle handle,
         ReadRepositorySnapshotOutcome outcome,
         CancellationToken ct) => outcome switch
-        {
-            RepositoryAccessDenied => FailAsync(handle, nameof(RepositoryAccessDenied), ct),
-            RepositoryNotFound => FailAsync(handle, nameof(RepositoryNotFound), ct),
-            RepositoryRefNotFound => FailAsync(handle, nameof(RepositoryRefNotFound), ct),
-            RepositoryDirectoryNotFound => FailAsync(handle, nameof(RepositoryDirectoryNotFound), ct),
-            RepositorySnapshotRejected rejected => FailAsync(handle, rejected.Reason.ToString(), ct),
-            RepositoryTemporarilyUnavailable => DelayAsync(handle, ct),
-            RepositorySnapshotRead => throw new InvalidOperationException("Successful snapshot was already handled.")
-        };
+    {
+        RepositoryAccessDenied => FailAsync(handle, nameof(RepositoryAccessDenied), ct),
+        RepositoryNotFound => FailAsync(handle, nameof(RepositoryNotFound), ct),
+        RepositoryRefNotFound => FailAsync(handle, nameof(RepositoryRefNotFound), ct),
+        RepositoryDirectoryNotFound => FailAsync(handle, nameof(RepositoryDirectoryNotFound), ct),
+        RepositorySnapshotRejected rejected => FailAsync(handle, rejected.Reason.ToString(), ct),
+        RepositoryTemporarilyUnavailable => DelayAsync(handle, ct),
+        RepositorySnapshotRead => throw new InvalidOperationException("Successful snapshot was already handled."),
+    };
 
-    private async Task<RepositoryExecutionReport> FailAsync(GitRunHandle handle, string code, CancellationToken ct) =>
-        await runs.CompleteAsync(handle, GitRunCompletion.Failed, [new(code, null, null, null)], ct)
-            ? new(RepositoryExecutionDisposition.Handled, null, [])
+    private async Task<RepositoryExecutionReport> FailAsync(
+        GitRunHandle handle,
+        string code,
+        CancellationToken ct) =>
+        await runs.CompleteAsync(handle, GitRunCompletion.Failed, [new GitRunDiagnostic(code, null, null, null)], ct)
+            ? new RepositoryExecutionReport(RepositoryExecutionDisposition.Handled, null, [])
             : Lost();
 
     private async Task<RepositoryExecutionReport> DelayAsync(GitRunHandle handle, CancellationToken ct) =>
-        await runs.DelayAsync(handle, new(nameof(RepositoryTemporarilyUnavailable), null, null, null), ct)
-            ? new(RepositoryExecutionDisposition.Handled, null, [])
+        await runs.DelayAsync(
+            handle,
+            new GitRunDiagnostic(nameof(RepositoryTemporarilyUnavailable), null, null, null),
+            ct)
+            ? new RepositoryExecutionReport(RepositoryExecutionDisposition.Handled, null, [])
             : Lost();
 
     private static RepositoryExecutionReport Lost() => new(RepositoryExecutionDisposition.LeaseLost, null, []);

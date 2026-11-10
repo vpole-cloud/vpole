@@ -9,10 +9,13 @@ public sealed class KubernetesClusterFixture : IAsyncLifetime
     private KubernetesLabTarget? _target;
 
     public IKubernetes Client { get; private set; } = null!;
-    public KubernetesLabTarget Target => _target
-        ?? throw new InvalidOperationException("The Kubernetes lab fixture is not initialized.");
-    public KubernetesLabState State => _state
-        ?? throw new InvalidOperationException("The Kubernetes lab fixture is not initialized.");
+
+    public KubernetesLabTarget Target =>
+        _target ?? throw new InvalidOperationException("The Kubernetes lab fixture is not initialized.");
+
+    public KubernetesLabState State =>
+        _state ?? throw new InvalidOperationException("The Kubernetes lab fixture is not initialized.");
+
     public TestRunIdentity Identity { get; } = TestRunIdentity.Create();
 
     public async Task InitializeAsync()

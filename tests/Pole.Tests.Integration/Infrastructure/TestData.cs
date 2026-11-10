@@ -1,13 +1,9 @@
 using System.Collections.Immutable;
-using Microsoft.FSharp.Core;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Application.Endpoints;
-using Pole.Features.Shared.Models;
+using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.WebServices.Application.Common;
@@ -38,7 +34,8 @@ public static class TestData
                 "v1.35.0",
                 new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
                 new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
-            workloadConfiguration: DeploymentTargetWorkloadConfiguration.Create(null,
+            workloadConfiguration: DeploymentTargetWorkloadConfiguration.Create(
+                null,
                 DeploymentTargetNetworkSources.None),
             enabled: true,
             acceptsWorkloads: true,
@@ -48,92 +45,82 @@ public static class TestData
     public static CreateResourceGroupRequest CreateResourceGroupRequest(
         string tenantId,
         string name = "alpha",
-        string description = "primary group")
-        => new(new CreateResourceGroupRequestBody(
+        string description = "primary group") => new(
+        new CreateResourceGroupRequestBody(
             Name: name,
             Description: description,
             Tags: ImmutableHashSet.Create("home", "lab")),
-            tenantId);
+        tenantId);
 
     public static CreateWebServiceRequest CreateWebServiceRequest(
         string resourceGroupId,
         string tenantId,
         string actorUserId,
         string actorEmail,
-        string name = "web-api")
-        => new(new CreateWebServiceRequestBody(
+        string name = "web-api") => new(
+        new CreateWebServiceRequestBody(
             Name: name,
             ResourceGroupId: resourceGroupId,
             Spec: ValidWebServiceSpec(),
-            Placement: new WebServicePlacementRequest(null,
+            Placement: new WebServicePlacementRequest(
+                null,
                 [new WebServiceDeploymentTargetRequest(DefaultDeploymentTargetId, 2)]),
             Tags: ImmutableHashSet<string>.Empty,
             Exposure: WebServiceExposureMode.Public),
-            tenantId,
-            new ClaimValue<string>(actorUserId),
-            new ClaimValue<string>(actorEmail));
+        tenantId,
+        new ClaimValue<string>(actorUserId),
+        new ClaimValue<string>(actorEmail));
 
     public static WebServiceSpecDto ValidWebServiceSpec() => new(
         Image: new ImageInfoDto("docker.io", "nginx", "1.27"),
-        Config: new WebServiceConfigDto()
+        Config: new WebServiceConfigDto
         {
-            EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT",
-                "Development"),
+            EnvironmentVariables
+                = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
             PortMappings = [new PortMappingDto(80, "8080", "TCP", "http")],
             ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReferenceDto>.Empty,
-            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty
+            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReferenceDto>.Empty,
         },
         Autoscaling: null,
-        Probes: new ProbeSpecDto(
-            Startup: ValidProbe(),
-            Liveness: ValidProbe(),
-            Readiness: ValidProbe()));
+        Probes: new ProbeSpecDto(Startup: ValidProbe(), Liveness: ValidProbe(), Readiness: ValidProbe()));
 
-    public static ResolvedStorageProfile DefaultResolvedStorageProfile(string storageClassName = "standard") =>
-        new(
-            DefaultStorageProfileId,
-            ProfileRevision: 1,
-            DefaultDeploymentTargetId,
-            "Standard",
-            storageClassName,
-            StorageMediaType.SSD,
-            StoragePerformanceTier.Standard);
+    public static ResolvedStorageProfile DefaultResolvedStorageProfile(string storageClassName = "standard") => new(
+        DefaultStorageProfileId,
+        ProfileRevision: 1,
+        DefaultDeploymentTargetId,
+        "Standard",
+        storageClassName,
+        StorageMediaType.SSD,
+        StoragePerformanceTier.Standard);
 
     public static StorageProfile SeedStorageProfile(
         string id = DefaultStorageProfileId,
         string storageClassName = "standard",
         bool isEnabled = true,
         bool isDefault = true,
-        StorageProfileTenantAccess? tenantAccess = null)
-    {
-        return StorageProfileFactory.Create(
-            technicalName: "storage-" + id,
-            displayName: "Standard",
-            description: "Default test storage",
-            mediaType: StorageMediaType.SSD,
-            performanceTier: StoragePerformanceTier.Standard,
-            isEnabled: isEnabled,
-            isDefault: isDefault,
-            targetMappings:
-            [
-                StorageProfileTargetMapping.Create(
-                    DefaultDeploymentTargetId,
-                    storageClassName)
-            ],
-            allowedResourceTypes:
-            [
-                ResourceTypeId.Create("third-party/widget"),
-                ResourceTypeId.Create("pole/postgresql")
-            ],
-            tenantAccess: tenantAccess ?? StorageProfileTenantAccess.Create(
-                StorageProfileTenantAccessMode.AllTenants,
-                []),
-            sizeLimits: StorageProfileSizeLimits.Create(1, 100),
-            options: StorageProfileFactory.DefaultOptions with
-            {
-                Id = id
-            });
-    }
+        StorageProfileTenantAccess? tenantAccess = null) => StorageProfileFactory.Create(
+        technicalName: "storage-" + id,
+        displayName: "Standard",
+        description: "Default test storage",
+        mediaType: StorageMediaType.SSD,
+        performanceTier: StoragePerformanceTier.Standard,
+        isEnabled: isEnabled,
+        isDefault: isDefault,
+        targetMappings:
+        [
+            StorageProfileTargetMapping.Create(DefaultDeploymentTargetId, storageClassName),
+        ],
+        allowedResourceTypes:
+        [
+            ResourceTypeId.Create("third-party/widget"),
+            ResourceTypeId.Create("pole/postgresql"),
+        ],
+        tenantAccess: tenantAccess ?? StorageProfileTenantAccess.Create(StorageProfileTenantAccessMode.AllTenants, []),
+        sizeLimits: StorageProfileSizeLimits.Create(1, 100),
+        options: StorageProfileFactory.DefaultOptions with
+        {
+            Id = id,
+        });
 
     public static ComputeProfile SeedComputeProfile(
         string id = DefaultComputeProfileId,
@@ -143,34 +130,28 @@ public static class TestData
         long limitMemoryMi = 1024,
         bool isDefault = true,
         IEnumerable<string>? deploymentTargetIds = null,
-        string? technicalName = null) =>
-        ComputeProfileFactory.Create(technicalName ?? (id == DefaultComputeProfileId ? "small" : "profile-" + id),
-            "Default",
-            "Default test compute profile",
-            ComputeProfileResourceRequirements.Create(
-                ComputeProfileResourceQuantity.Create(
-                    requestedCpuMillis,
-                    requestedMemoryMi),
-                ComputeProfileResourceQuantity.Create(
-                    limitCpuMillis,
-                    limitMemoryMi)),
-            ComputeArchitecture.Any,
-            extendedResources: [],
-            allowedResourceTypes:
-            [
-                ResourceTypeId.Create("pole/web-service"),
-                ResourceTypeId.Create("third-party/widget"),
-                ResourceTypeId.Create("pole/postgresql"),
-                ResourceTypeId.Create("pole/function-app")
-            ],
-            AllTenantsComputeProfileAccess.Create(),
-            (deploymentTargetIds ?? [DefaultDeploymentTargetId])
-                .Select(targetId => ComputeProfileTargetMapping.Create(targetId)),
-            isEnabled: true,
-            isDefault,
-            new ComputeProfileFactory.CreateOptions(
-                id,
-                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+        string? technicalName = null) => ComputeProfileFactory.Create(
+        technicalName ?? (id == DefaultComputeProfileId ? "small" : "profile-" + id),
+        "Default",
+        "Default test compute profile",
+        ComputeProfileResourceRequirements.Create(
+            ComputeProfileResourceQuantity.Create(requestedCpuMillis, requestedMemoryMi),
+            ComputeProfileResourceQuantity.Create(limitCpuMillis, limitMemoryMi)),
+        ComputeArchitecture.Any,
+        extendedResources: [],
+        allowedResourceTypes:
+        [
+            ResourceTypeId.Create("pole/web-service"),
+            ResourceTypeId.Create("third-party/widget"),
+            ResourceTypeId.Create("pole/postgresql"),
+            ResourceTypeId.Create("pole/function-app"),
+        ],
+        AllTenantsComputeProfileAccess.Create(),
+        (deploymentTargetIds ?? [DefaultDeploymentTargetId]).Select(targetId =>
+            ComputeProfileTargetMapping.Create(targetId)),
+        isEnabled: true,
+        isDefault,
+        new ComputeProfileFactory.CreateOptions(id, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
 
     public static ProbeConfigDto ValidProbe() => new(
         Path: "/health",
@@ -185,7 +166,7 @@ public static class TestData
     {
         var options = ResourceGroupFactory.DefaultCreateOptions with
         {
-            Tags = ImmutableHashSet.Create("seed")
+            Tags = ImmutableHashSet.Create("seed"),
         };
 
         return ResourceGroupFactory.Create(
@@ -206,7 +187,7 @@ public static class TestData
         var options = defaultOptions with
         {
             Id = id ?? defaultOptions.Id,
-            ActiveRevision = activeRevision
+            ActiveRevision = activeRevision,
         };
 
         return WebServiceFactory.Create(
@@ -226,7 +207,8 @@ public static class TestData
             new WebServiceImageInfoSnapshot(spec.Image!.Server, spec.Image.Name, spec.Image.Tag),
             new WebServiceConfigSnapshot(
                 spec.Config.EnvironmentVariables,
-                spec.Config.PortMappings
+                spec.Config
+                    .PortMappings
                     .Select(mapping => new PortMappingSnapshot(
                         mapping.ServicePort,
                         mapping.TargetPort,
@@ -246,15 +228,13 @@ public static class TestData
                 ToProbeSnapshot(spec.Probes.Liveness),
                 ToProbeSnapshot(spec.Probes.Readiness)));
 
-        static WebServiceProbeConfigSnapshot ToProbeSnapshot(ProbeConfigDto probe) =>
-            new(
-                probe.Path,
-                probe.Port,
-                probe.InitialDelaySeconds,
-                probe.PeriodSeconds,
-                probe.TimeoutSeconds,
-                probe.FailureThreshold,
-                probe.SuccessThreshold);
+        static WebServiceProbeConfigSnapshot ToProbeSnapshot(ProbeConfigDto probe) => new(
+            probe.Path,
+            probe.Port,
+            probe.InitialDelaySeconds,
+            probe.PeriodSeconds,
+            probe.TimeoutSeconds,
+            probe.FailureThreshold,
+            probe.SuccessThreshold);
     }
-
 }

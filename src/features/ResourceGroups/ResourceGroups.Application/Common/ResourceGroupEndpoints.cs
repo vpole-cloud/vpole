@@ -27,5 +27,4 @@ public static class ResourceGroupEndpoints
             return app;
         }
     }
-
 }

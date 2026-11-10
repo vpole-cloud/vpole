@@ -5,12 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
@@ -24,11 +21,12 @@ public sealed record CreateDeploymentTargetRequestBody(
     bool Enabled,
     bool AcceptsWorkloads,
     DeploymentTargetWorkloadConfigurationRequestBody WorkloadConfiguration,
-    DeploymentTargetConnectionRequestBody Connection);
+    DeploymentTargetConnectionRequestBody Connection
+);
 
 public sealed record CreateDeploymentTargetRequest(
-    [FromBody] CreateDeploymentTargetRequestBody Body)
-    : IMediatorRequest<CreateDeploymentTargetOutcome>;
+    [FromBody] CreateDeploymentTargetRequestBody Body
+) : IMediatorRequest<CreateDeploymentTargetOutcome>;
 
 public union CreateDeploymentTargetOutcome(
     DeploymentTargetDto,
@@ -41,8 +39,8 @@ public sealed class CreateDeploymentTargetHandler(
     PersistCreatedDeploymentTarget persistCreatedDeploymentTarget,
     PrepareDeploymentTargetConnection prepareDeploymentTargetConnection,
     ProbeDeploymentTargetConnection probeDeploymentTargetConnection,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<CreateDeploymentTargetRequest, CreateDeploymentTargetOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<CreateDeploymentTargetRequest, CreateDeploymentTargetOutcome>
 {
     public async Task<CreateDeploymentTargetOutcome> HandleAsync(
         CreateDeploymentTargetRequest request,
@@ -65,10 +63,8 @@ public sealed class CreateDeploymentTargetHandler(
                 prepared.Connection.Version,
                 cancellationToken: cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
-            {
                 return ConnectionValidationFailure(
                     observation.Health.FailureMessage ?? "The Kubernetes connection is not usable.");
-            }
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var target = DeploymentTargetFactory.Create(
@@ -86,39 +82,35 @@ public sealed class CreateDeploymentTargetHandler(
             if (inserted is DeploymentTarget persisted)
                 return persisted.ToDto();
 
-            return ((PersistCreatedDeploymentTargetError)inserted.Value) switch
+            return (PersistCreatedDeploymentTargetError)inserted.Value switch
             {
                 DeploymentTargetPublicBaseDomainConflict conflict => conflict,
                 DeploymentTargetIdentityConflict conflict => conflict,
-                DeploymentTargetTechnicalNameConflict conflict => conflict
+                DeploymentTargetTechnicalNameConflict conflict => conflict,
             };
         }
     }
 
-    private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) => new(new Dictionary<string, string[]>
-    {
-        ["Body.Connection"] = [safeMessage]
-    });
-
+    private static DeploymentTargetConnectionRejected ConnectionValidationFailure(string safeMessage) => new(
+        new Dictionary<string, string[]>
+        {
+            ["Body.Connection"] = [safeMessage],
+        });
 }
 
-public sealed class CreateDeploymentTargetRequestValidator
-    : AbstractValidator<CreateDeploymentTargetRequest>
+public sealed class CreateDeploymentTargetRequestValidator : AbstractValidator<CreateDeploymentTargetRequest>
 {
     public CreateDeploymentTargetRequestValidator() => RuleFor(request => request.Body)
-            .NotNull()
-            .SetValidator(new CreateDeploymentTargetRequestBodyValidator());
+        .NotNull()
+        .SetValidator(new CreateDeploymentTargetRequestBodyValidator());
 }
 
-public sealed class CreateDeploymentTargetRequestBodyValidator
-    : AbstractValidator<CreateDeploymentTargetRequestBody>
+public sealed class CreateDeploymentTargetRequestBodyValidator : AbstractValidator<CreateDeploymentTargetRequestBody>
 {
     public CreateDeploymentTargetRequestBodyValidator()
     {
         RuleFor(body => body.TechnicalName).Must(ResourceTechnicalName.IsValid);
-        RuleFor(body => body.DisplayName)
-            .NotEmpty()
-            .MaximumLength(80);
+        RuleFor(body => body.DisplayName).NotEmpty().MaximumLength(80);
         RuleFor(body => body.AcceptsWorkloads)
             .Equal(false)
             .When(body => !body.Enabled)
@@ -126,9 +118,7 @@ public sealed class CreateDeploymentTargetRequestBodyValidator
         RuleFor(body => body.WorkloadConfiguration)
             .NotNull()
             .SetValidator(new DeploymentTargetWorkloadConfigurationRequestBodyValidator());
-        RuleFor(body => body.Connection)
-            .NotNull()
-            .SetValidator(new DeploymentTargetConnectionRequestBodyValidator());
+        RuleFor(body => body.Connection).NotNull().SetValidator(new DeploymentTargetConnectionRequestBodyValidator());
     }
 }
 
@@ -136,23 +126,24 @@ public static class CreateDeploymentTargetEndpoint
 {
     public static IEndpointRouteBuilder MapCreateDeploymentTargetEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (
-                IMediator mediator,
-                [AsParameters] CreateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                DeploymentTargetDto target => Results.Created(
-                    $"/api/v1/platform/deployment-targets/{target.Id}",
-                    target),
-                DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetIdentityConflict error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetTechnicalNameConflict error => DeploymentTargetHttpMappings.Map(error)
-            });
-        })
+        app.MapPost(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] CreateDeploymentTargetRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        DeploymentTargetDto target => Results.Created(
+                            $"/api/v1/platform/deployment-targets/{target.Id}",
+                            target),
+                        DeploymentTargetConnectionRejected error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetIdentityConflict error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetTechnicalNameConflict error => DeploymentTargetHttpMappings.Map(error),
+                    });
+                })
             .WithName("CreateDeploymentTarget")
             .Produces<DeploymentTargetDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status409Conflict)

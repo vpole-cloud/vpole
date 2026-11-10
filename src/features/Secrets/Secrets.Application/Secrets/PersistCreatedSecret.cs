@@ -2,19 +2,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.Secrets.Application.Secrets;
 
@@ -41,7 +31,8 @@ internal sealed class MongoPersistCreatedSecret(
     AdmitResourceScopeReference admitScope,
     IResourceRegistrar registrar,
     StoreSecretChange publish,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public async Task<PersistCreatedSecretResult> InvokeAsync(
         string tenantId,
@@ -68,41 +59,42 @@ internal sealed class MongoPersistCreatedSecret(
         var encrypted = await encrypt(secret, values, ct);
         if (encrypted is not SecretVersion version)
             return new SecretEncryptionFailed();
-        return await transactions.InvokeOutcomeAsync<PersistCreatedSecretResult>(async (tx, token) =>
-        {
-            if (await admitScope(
-                new AdmitResourceScopeReferenceRequest(
-                    TenantId: tenantId,
-                    ResourceGroupId: groupId,
-                    IsolationScopeId: scopeId,
-                    Consumer: null),
-                session: tx.Session,
-                cancellationToken: token) is ResourceScopeReferenceUnavailable)
-                return tx.Abort(new SecretReferenceRejected());
+        return await transactions.InvokeOutcomeAsync<PersistCreatedSecretResult>(
+            async (tx, token) =>
+            {
+                if (await admitScope(
+                        new AdmitResourceScopeReferenceRequest(
+                            TenantId: tenantId,
+                            ResourceGroupId: groupId,
+                            IsolationScopeId: scopeId,
+                            Consumer: null),
+                        session: tx.Session,
+                        cancellationToken: token) is ResourceScopeReferenceUnavailable)
+                    return tx.Abort(new SecretReferenceRejected());
 
-            var registration = await registrar.RegisterAsync(
-                new RegisterResourceRequest(
-                    TenantId: tenantId,
-                    ResourceGroupId: groupId,
-                    Resource: new(SecretResource.Type, secret.Id, secret.Name)),
-                session: tx.Session,
-                cancellationToken: token);
-            if (registration is ResourceRegistrationMutationError)
-                return tx.Abort(new SecretReferenceRejected());
-            try
-            {
-                await secrets.InsertOneAsync(tx.Session, secret, cancellationToken: token);
-            }
-            catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
-            {
-                return tx.Abort(new SecretNameAlreadyExists());
-            }
-            await versions.InsertOneAsync(
-                tx.Session,
-                version,
-                cancellationToken: token);
-            await publish(tx.Session, secret, new SecretCreated(), token);
-            return tx.Commit(secret);
-        }, ct);
+                var registration = await registrar.RegisterAsync(
+                    new RegisterResourceRequest(
+                        TenantId: tenantId,
+                        ResourceGroupId: groupId,
+                        Resource: new ResourceRegistrationDescriptor(SecretResource.Type, secret.Id, secret.Name)),
+                    session: tx.Session,
+                    cancellationToken: token);
+                if (registration is ResourceRegistrationMutationError)
+                    return tx.Abort(new SecretReferenceRejected());
+                try
+                {
+                    await secrets.InsertOneAsync(tx.Session, secret, cancellationToken: token);
+                }
+                catch (MongoWriteException exception) when (exception.WriteError.Category ==
+                                                            ServerErrorCategory.DuplicateKey)
+                {
+                    return tx.Abort(new SecretNameAlreadyExists());
+                }
+
+                await versions.InsertOneAsync(tx.Session, version, cancellationToken: token);
+                await publish(tx.Session, secret, new SecretCreated(), token);
+                return tx.Commit(secret);
+            },
+            ct);
     }
 }

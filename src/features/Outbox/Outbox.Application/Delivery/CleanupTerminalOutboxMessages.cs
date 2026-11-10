@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Mongo;
 
 namespace Pole.Features.Outbox.Application.Delivery;
@@ -7,18 +6,21 @@ namespace Pole.Features.Outbox.Application.Delivery;
 public sealed record OutboxCleanupRequest(
     DateTime PublishedCutoffUtc,
     DateTime AbandonedCutoffUtc,
-    int BatchSize);
+    int BatchSize
+);
 
 public sealed record OutboxCleanupResult(
     long PublishedCount,
-    long AbandonedCount);
+    long AbandonedCount
+);
 
 public delegate Task<OutboxCleanupResult> CleanupTerminalOutboxMessages(
     OutboxCleanupRequest request,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoCleanupTerminalOutboxMessages(
-    IMongoCollection<OutboxMessage> messages)
+    IMongoCollection<OutboxMessage> messages
+)
 {
     public async Task<OutboxCleanupResult> InvokeAsync(
         OutboxCleanupRequest request,
@@ -47,10 +49,7 @@ internal sealed class MongoCleanupTerminalOutboxMessages(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var deleted = await DeletePublishedBatchAsync(
-                cutoffUtc,
-                batchSize,
-                cancellationToken);
+            var deleted = await DeletePublishedBatchAsync(cutoffUtc, batchSize, cancellationToken);
             totalDeleted += deleted;
             if (deleted < batchSize)
                 return totalDeleted;
@@ -62,10 +61,8 @@ internal sealed class MongoCleanupTerminalOutboxMessages(
         int batchSize,
         CancellationToken cancellationToken)
     {
-        var ids = await messages
-            .Find(OutboxMessageFilters.ExpiredPublished(cutoffUtc))
-            .SortBy(message =>
-                ((PublishedOutboxMessageState)message.State).PublishedAtUtc)
+        var ids = await messages.Find(OutboxMessageFilters.ExpiredPublished(cutoffUtc))
+            .SortBy(message => ((PublishedOutboxMessageState)message.State).PublishedAtUtc)
             .ThenBy(message => message.Id)
             .Limit(batchSize)
             .Project(message => message.Id)
@@ -74,9 +71,7 @@ internal sealed class MongoCleanupTerminalOutboxMessages(
         if (ids.Count == 0)
             return 0;
 
-        var result = await messages.DeleteManyAsync(
-            OutboxMessageFilters.PublishedWithIds(ids),
-            cancellationToken);
+        var result = await messages.DeleteManyAsync(OutboxMessageFilters.PublishedWithIds(ids), cancellationToken);
         return result.DeletedCount;
     }
 
@@ -89,10 +84,7 @@ internal sealed class MongoCleanupTerminalOutboxMessages(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var deleted = await DeleteAbandonedBatchAsync(
-                cutoffUtc,
-                batchSize,
-                cancellationToken);
+            var deleted = await DeleteAbandonedBatchAsync(cutoffUtc, batchSize, cancellationToken);
             totalDeleted += deleted;
             if (deleted < batchSize)
                 return totalDeleted;
@@ -104,10 +96,8 @@ internal sealed class MongoCleanupTerminalOutboxMessages(
         int batchSize,
         CancellationToken cancellationToken)
     {
-        var ids = await messages
-            .Find(OutboxMessageFilters.ExpiredAbandoned(cutoffUtc))
-            .SortBy(message =>
-                ((AbandonedOutboxMessageState)message.State).AbandonedAtUtc)
+        var ids = await messages.Find(OutboxMessageFilters.ExpiredAbandoned(cutoffUtc))
+            .SortBy(message => ((AbandonedOutboxMessageState)message.State).AbandonedAtUtc)
             .ThenBy(message => message.Id)
             .Limit(batchSize)
             .Project(message => message.Id)
@@ -116,9 +106,7 @@ internal sealed class MongoCleanupTerminalOutboxMessages(
         if (ids.Count == 0)
             return 0;
 
-        var result = await messages.DeleteManyAsync(
-            OutboxMessageFilters.AbandonedWithIds(ids),
-            cancellationToken);
+        var result = await messages.DeleteManyAsync(OutboxMessageFilters.AbandonedWithIds(ids), cancellationToken);
         return result.DeletedCount;
     }
 }

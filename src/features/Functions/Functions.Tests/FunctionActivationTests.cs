@@ -7,6 +7,7 @@ using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
 using Pole.Functions.Protocol;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Features.Functions.Tests;
 
@@ -20,17 +21,17 @@ public sealed class FunctionActivationTests
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
         var service = new FunctionServiceKey(TargetId, "functions", "orders-agent");
 
-        registry.ApplySlice(TargetId, Slice(
-            "slice-a",
-            service,
-            Endpoint("10.0.0.1", ready: true),
-            Endpoint("10.0.0.2", ready: false)));
-        registry.ApplySlice(TargetId, Slice(
-            "slice-b",
-            service,
-            Endpoint("10.0.0.1", ready: true),
-            Endpoint("10.0.0.3", ready: true, terminating: true),
-            Endpoint("10.0.0.4", ready: true)));
+        registry.ApplySlice(
+            TargetId,
+            Slice("slice-a", service, Endpoint("10.0.0.1", ready: true), Endpoint("10.0.0.2", ready: false)));
+        registry.ApplySlice(
+            TargetId,
+            Slice(
+                "slice-b",
+                service,
+                Endpoint("10.0.0.1", ready: true),
+                Endpoint("10.0.0.3", ready: true, terminating: true),
+                Endpoint("10.0.0.4", ready: true)));
 
         var snapshot = registry.GetSnapshot(service);
 
@@ -53,16 +54,18 @@ public sealed class FunctionActivationTests
         var service = new FunctionServiceKey(TargetId, "functions", "orders-agent");
         var nonPod = Endpoint("10.0.0.1", ready: true) with
         {
-            TargetRef = new V1ObjectReference { Kind = "Service", Uid = "service-1" }
+            TargetRef = new V1ObjectReference { Kind = "Service", Uid = "service-1" },
         };
 
-        registry.ApplySlice(TargetId, Slice(
-            "slice-untrusted",
-            service,
-            nonPod,
-            Endpoint("127.0.0.1", ready: true),
-            Endpoint("169.254.10.2", ready: true),
-            Endpoint("not-an-ip", ready: true)));
+        registry.ApplySlice(
+            TargetId,
+            Slice(
+                "slice-untrusted",
+                service,
+                nonPod,
+                Endpoint("127.0.0.1", ready: true),
+                Endpoint("169.254.10.2", ready: true),
+                Endpoint("not-an-ip", ready: true)));
 
         Assert.False(registry.GetSnapshot(service).HasReadyEndpoints);
     }
@@ -103,12 +106,8 @@ public sealed class FunctionActivationTests
         var first = new FunctionServiceKey(TargetId, "functions", "orders-agent");
         var second = new FunctionServiceKey(secondTargetId, "functions", "orders-agent");
 
-        registry.ApplySlice(
-            TargetId,
-            Slice("orders", first, Endpoint("10.0.0.1", ready: true)));
-        registry.ApplySlice(
-            secondTargetId,
-            Slice("orders", second, Endpoint("10.1.0.1", ready: true)));
+        registry.ApplySlice(TargetId, Slice("orders", first, Endpoint("10.0.0.1", ready: true)));
+        registry.ApplySlice(secondTargetId, Slice("orders", second, Endpoint("10.1.0.1", ready: true)));
 
         Assert.Equal("10.0.0.1", Assert.Single(registry.GetSnapshot(first).Endpoints).Address);
         Assert.Equal("10.1.0.1", Assert.Single(registry.GetSnapshot(second).Endpoints).Address);
@@ -123,10 +122,7 @@ public sealed class FunctionActivationTests
     {
         var subject = CreateSubject();
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        registry.ApplySlice(TargetId, Slice(
-            "ready",
-            Service(subject),
-            Endpoint("10.0.0.1", ready: true)));
+        registry.ApplySlice(TargetId, Slice("ready", Service(subject), Endpoint("10.0.0.1", ready: true)));
         var coordinator = new FakeActivationCoordinator();
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
@@ -136,7 +132,7 @@ public sealed class FunctionActivationTests
         var snapshot = result switch
         {
             FunctionEndpointSnapshot success => success,
-            FunctionRevisionActivationError error => throw new Xunit.Sdk.XunitException(error.Message())
+            FunctionRevisionActivationError error => throw new XunitException(error.Message()),
         };
         Assert.Equal("10.0.0.1", Assert.Single(snapshot.Endpoints).Address);
         Assert.Equal(0, coordinator.BeginCalls);
@@ -148,17 +144,12 @@ public sealed class FunctionActivationTests
     {
         var subject = CreateSubject();
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
-        registry.ApplySlice(TargetId, Slice(
-            "ready",
-            Service(subject),
-            Endpoint("10.0.0.1", ready: true)));
+        registry.ApplySlice(TargetId, Slice("ready", Service(subject), Endpoint("10.0.0.1", ready: true)));
         var coordinator = new FakeActivationCoordinator(generation: 43);
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
-        var activation = activator.EnsureActiveAsync(
-            subject,
-            forceScaleFence: true);
+        var activation = activator.EnsureActiveAsync(subject, forceScaleFence: true);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         manager.CompleteScale();
         var result = await activation;
@@ -184,23 +175,22 @@ public sealed class FunctionActivationTests
         var second = activator.EnsureActiveAsync(subject);
 
         Assert.Equal(1, manager.ScaleCalls);
-        registry.ApplySlice(TargetId, Slice(
-            "ready",
-            Service(subject),
-            Endpoint("10.0.0.8", ready: true)));
+        registry.ApplySlice(TargetId, Slice("ready", Service(subject), Endpoint("10.0.0.8", ready: true)));
         manager.CompleteScale();
 
         var results = await Task.WhenAll(first, second);
 
-        Assert.All(results, result =>
-        {
-            var snapshot = result switch
+        Assert.All(
+            results,
+            result =>
             {
-                FunctionEndpointSnapshot success => success,
-                FunctionRevisionActivationError error => throw new Xunit.Sdk.XunitException(error.Message())
-            };
-            Assert.Equal("10.0.0.8", Assert.Single(snapshot.Endpoints).Address);
-        });
+                var snapshot = result switch
+                {
+                    FunctionEndpointSnapshot success => success,
+                    FunctionRevisionActivationError error => throw new XunitException(error.Message()),
+                };
+                Assert.Equal("10.0.0.8", Assert.Single(snapshot.Endpoints).Address);
+            });
         Assert.Equal(1, manager.ScaleCalls);
         Assert.Equal(42, manager.LastGeneration);
         Assert.Equal(1, coordinator.BeginCalls);
@@ -213,7 +203,9 @@ public sealed class FunctionActivationTests
         var subject = CreateSubject();
         var registry = new FunctionEndpointRegistry(TimeProvider.System);
         var coordinator = new FakeActivationCoordinator(
-            begin: (_, _, _) => throw new InvalidOperationException("Orleans is unavailable."));
+            begin: (
+                _, _,
+                _) => throw new InvalidOperationException("Orleans is unavailable."));
         var manager = new ControlledKubernetesManager();
         var activator = new FunctionRevisionActivator(registry, coordinator, manager, TimeProvider.System);
 
@@ -222,12 +214,12 @@ public sealed class FunctionActivationTests
         var failure = result switch
         {
             FunctionRevisionActivationError error => error,
-            FunctionEndpointSnapshot => throw new Xunit.Sdk.XunitException("Expected activation failure.")
+            FunctionEndpointSnapshot => throw new XunitException("Expected activation failure."),
         };
         var unavailable = failure switch
         {
             FunctionActivationCoordinatorUnavailable error => error,
-            var error => throw new Xunit.Sdk.XunitException($"Expected coordinator failure, got {error.GetType().Name}.")
+            var error => throw new XunitException($"Expected coordinator failure, got {error.GetType().Name}."),
         };
         Assert.Contains("coordination is unavailable", unavailable.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, manager.ScaleCalls);
@@ -246,21 +238,21 @@ public sealed class FunctionActivationTests
 
         var activation = activator.EnsureActiveAsync(subject);
         await manager.ScaleStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        manager.CompleteScale(new FunctionRevisionKubernetesOperationError(
-            new FunctionRevisionKubernetesOperationRejected(
-                "The shared generation was already applied.")));
+        manager.CompleteScale(
+            new FunctionRevisionKubernetesOperationError(
+                new FunctionRevisionKubernetesOperationRejected("The shared generation was already applied.")));
 
         var result = await activation;
 
         var failure = result switch
         {
             FunctionRevisionActivationError error => error,
-            FunctionEndpointSnapshot => throw new Xunit.Sdk.XunitException("Expected activation failure.")
+            FunctionEndpointSnapshot => throw new XunitException("Expected activation failure."),
         };
         var scaleFailure = failure switch
         {
             FunctionActivationScaleRejected error => error,
-            var error => throw new Xunit.Sdk.XunitException($"Expected scale failure, got {error.GetType().Name}.")
+            var error => throw new XunitException($"Expected scale failure, got {error.GetType().Name}."),
         };
         Assert.True(scaleFailure.Error is FunctionRevisionKubernetesOperationRejected);
         Assert.Equal(17, manager.LastGeneration);
@@ -268,11 +260,10 @@ public sealed class FunctionActivationTests
         Assert.Equal(0, coordinator.CompleteCalls);
     }
 
-    private static FunctionServiceKey Service(FunctionRevisionInKubernetes subject) =>
-        new(
-            subject.Placement.DeploymentTargetId,
-            subject.Namespace,
-            subject.ServiceName);
+    private static FunctionServiceKey Service(FunctionRevisionInKubernetes subject) => new(
+        subject.Placement.DeploymentTargetId,
+        subject.Namespace,
+        subject.ServiceName);
 
     private static FunctionRevisionInKubernetes CreateSubject()
     {
@@ -282,19 +273,13 @@ public sealed class FunctionActivationTests
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
                 ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
+            new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
             new FunctionScalingPolicy(0, 5, 4, 8, 5, 30),
             [
                 new FunctionHandlerSpec(
                     "webhook",
                     4,
-                    new HttpFunctionTriggerSpec(
-                        string.Empty,
-                        "orders",
-                        ["POST"],
-                        FunctionExposure.Public))
+                    new HttpFunctionTriggerSpec("", "orders", ["POST"], FunctionExposure.Public)),
             ]);
         var created = FunctionAppFactory.Create(
             "tenant-1",
@@ -313,7 +298,7 @@ public sealed class FunctionActivationTests
         {
             Id = "507f1f77bcf86cd799439012",
             FunctionAppId = app.Id,
-            RevisionNumber = 3
+            RevisionNumber = 3,
         };
         return new FunctionRevisionInKubernetes(
             app,
@@ -330,35 +315,37 @@ public sealed class FunctionActivationTests
         string name,
         FunctionServiceKey service,
         params V1Endpoint[] endpoints) => new()
+    {
+        Metadata = new V1ObjectMeta
         {
-            Metadata = new V1ObjectMeta
+            Name = name,
+            NamespaceProperty = service.Namespace,
+            Labels = new Dictionary<string, string>
             {
-                Name = name,
-                NamespaceProperty = service.Namespace,
-                Labels = new Dictionary<string, string>
-                {
-                    ["kubernetes.io/service-name"] = service.ServiceName
-                }
+                ["kubernetes.io/service-name"] = service.ServiceName,
             },
-            AddressType = "IPv4",
-            Ports = [new Discoveryv1EndpointPort { Name = "agent", Protocol = "TCP", Port = 8080 }],
-            Endpoints = endpoints
-        };
+        },
+        AddressType = "IPv4",
+        Ports = [new Discoveryv1EndpointPort { Name = "agent", Protocol = "TCP", Port = 8080 }],
+        Endpoints = endpoints,
+    };
 
-    private static V1Endpoint Endpoint(string address, bool ready, bool terminating = false) => new()
+    private static V1Endpoint Endpoint(
+        string address,
+        bool ready,
+        bool terminating = false) => new()
     {
         Addresses = [address],
         Conditions = new V1EndpointConditions { Ready = ready, Terminating = terminating },
-        TargetRef = new V1ObjectReference { Kind = "Pod", Uid = $"pod-{address}" }
+        TargetRef = new V1ObjectReference { Kind = "Pod", Uid = $"pod-{address}" },
     };
 
     private sealed class ControlledKubernetesManager : IFunctionRevisionKubernetesManager
     {
-        private readonly TaskCompletionSource<FunctionRevisionKubernetesMutationOutcome> scaleCompletion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<FunctionRevisionKubernetesMutationOutcome> scaleCompletion
+            = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource ScaleStarted { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ScaleStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int ScaleCalls { get; private set; }
 
@@ -379,8 +366,7 @@ public sealed class FunctionActivationTests
         public Task<FunctionRevisionKubernetesMutationOutcome> ScaleProvisioningAsync(
             FunctionRevisionInKubernetes revision,
             int replicas,
-            CancellationToken cancellationToken = default) =>
-            ScaleAsync(revision, replicas, 0, cancellationToken);
+            CancellationToken cancellationToken = default) => ScaleAsync(revision, replicas, 0, cancellationToken);
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ScaleAsync(
             FunctionRevisionInKubernetes revision,
@@ -397,8 +383,7 @@ public sealed class FunctionActivationTests
         public Task<FunctionReplicaStateOutcome> ReadReplicaStateAsync(
             FunctionRevisionInKubernetes revision,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<FunctionReplicaStateOutcome>(
-                new FunctionReplicaState(0, 0, 0, 0));
+            Task.FromResult<FunctionReplicaStateOutcome>(new FunctionReplicaState(0, 0, 0));
 
         public void CompleteScale(FunctionRevisionKubernetesMutationOutcome? result = null) =>
             scaleCompletion.TrySetResult(result ?? new FunctionRevisionKubernetesMutationCompleted());
@@ -408,7 +393,8 @@ public sealed class FunctionActivationTests
         long generation = 1,
         string leaseId = "activation-lease",
         Func<FunctionRevisionCoordinationKey, FunctionActivationBeginRequest, CancellationToken,
-            Task<FunctionActivationBeginDecision>>? begin = null) : IFunctionActivationCoordinator
+            Task<FunctionActivationBeginDecision>>? begin = null
+    ) : IFunctionActivationCoordinator
     {
         private int beginCalls;
         private int completeCalls;
@@ -428,16 +414,17 @@ public sealed class FunctionActivationTests
             if (begin is not null)
                 return begin(key, request, cancellationToken);
 
-            return Task.FromResult(new FunctionActivationBeginDecision(
-                FunctionActivationBeginDecisionKind.Granted,
-                new FunctionActivationLease(
-                    request.OperationId,
-                    leaseId,
-                    generation,
-                    request.DesiredReplicas,
-                    DateTimeOffset.MaxValue),
-                FunctionActivationRejection.None,
-                0));
+            return Task.FromResult(
+                new FunctionActivationBeginDecision(
+                    FunctionActivationBeginDecisionKind.Granted,
+                    new FunctionActivationLease(
+                        request.OperationId,
+                        leaseId,
+                        generation,
+                        request.DesiredReplicas,
+                        DateTimeOffset.MaxValue),
+                    FunctionActivationRejection.None,
+                    0));
         }
 
         public Task<FunctionActivationCompleteDecision> CompleteActivationAsync(

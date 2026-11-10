@@ -1,8 +1,8 @@
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
 /// <summary>
-/// Plaintext connection material accepted only at the deployment-target write boundary.
-/// Implementations deliberately redact their string representation.
+///     Plaintext connection material accepted only at the deployment-target write boundary.
+///     Implementations deliberately redact their string representation.
 /// </summary>
 public abstract class DeploymentTargetConnectionInput
 {
@@ -19,7 +19,8 @@ public sealed class InClusterConnectionInput : DeploymentTargetConnectionInput
 
 public sealed class KubeconfigConnectionInput(
     string kubeconfig,
-    string? contextName = null) : DeploymentTargetConnectionInput
+    string? contextName = null
+) : DeploymentTargetConnectionInput
 {
     public string Kubeconfig { get; } = kubeconfig;
     public string? ContextName { get; } = contextName;
@@ -28,7 +29,8 @@ public sealed class KubeconfigConnectionInput(
 public sealed class ServiceAccountConnectionInput(
     string serverUrl,
     string certificateAuthorityData,
-    string token) : DeploymentTargetConnectionInput
+    string token
+) : DeploymentTargetConnectionInput
 {
     public string ServerUrl { get; } = serverUrl;
     public string CertificateAuthorityData { get; } = certificateAuthorityData;

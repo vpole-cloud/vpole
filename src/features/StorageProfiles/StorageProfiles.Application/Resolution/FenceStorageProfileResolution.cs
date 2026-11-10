@@ -8,7 +8,8 @@ namespace Pole.Features.StorageProfiles.Application.Resolution;
 
 internal sealed class MongoFenceStorageProfileResolution(
     IMongoCollection<StorageProfile> storageProfiles,
-    IMongoCollection<StorageProfileRevision> revisions)
+    IMongoCollection<StorageProfileRevision> revisions
+)
 {
     public async Task<FenceStorageProfileResolutionOutcome> InvokeAsync(
         StorageProfileResolutionFenceRequest request,
@@ -30,8 +31,9 @@ internal sealed class MongoFenceStorageProfileResolution(
             var selected = current;
             if (current.Revision != request.StorageProfileRevision)
             {
-                var historical = await revisions.Find(session,
-                    StorageProfileRevisionFilters.Identity(current.Id, request.StorageProfileRevision))
+                var historical = await revisions.Find(
+                        session,
+                        StorageProfileRevisionFilters.Identity(current.Id, request.StorageProfileRevision))
                     .FirstOrDefaultAsync(cancellationToken);
                 if (historical is null)
                     return new StorageProfileResolutionFenceRejected(request.StorageProfileId);
@@ -43,7 +45,8 @@ internal sealed class MongoFenceStorageProfileResolution(
                     mapping.StorageClassName == request.StorageClassName))
                 return new StorageProfileResolutionFenceRejected(request.StorageProfileId);
 
-            var pinnedFence = await storageProfiles.UpdateOneAsync(session,
+            var pinnedFence = await storageProfiles.UpdateOneAsync(
+                session,
                 StorageProfileFilters.AtSnapshot(current) &
                 StorageProfileFilters.AtPolicy(current.Id, current.Revision),
                 Builders<StorageProfile>.Update.Inc(profile => profile.ResolutionFence, 1),
@@ -66,23 +69,17 @@ internal sealed class MongoFenceStorageProfileResolution(
     private static void EnsureValidRequest(StorageProfileResolutionFenceRequest request)
     {
         if (!ObjectId.TryParse(request.StorageProfileId, out _) ||
-            !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
-            request.StorageProfileRevision < 1 || request.PolicyRevision is <= 0 ||
+            !ObjectId.TryParse(request.DeploymentTargetId, out _) || request.StorageProfileRevision < 1 ||
+            request.PolicyRevision is <= 0 ||
             !StorageProfileTargetMapping.IsValidStorageClassName(request.StorageClassName))
-        {
-            throw new ArgumentException(
-                "A valid resolved storage profile is required.",
-                nameof(request));
-        }
+            throw new ArgumentException("A valid resolved storage profile is required.", nameof(request));
     }
 
     private static void EnsureTransaction(IClientSessionHandle session)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!session.IsInTransaction)
-        {
             throw new InvalidOperationException(
                 "Storage-profile resolution fencing must run inside the logical resource transaction.");
-        }
     }
 }

@@ -4,8 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Catalog;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -20,8 +20,8 @@ namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
 public sealed record DeleteComputeProfileRequest(
     [FromRoute(Name = "computeProfileId")] string ComputeProfileId,
-    [FromQuery] long Revision)
-    : IMediatorRequest<DeleteComputeProfileOutcome>;
+    [FromQuery] long Revision
+) : IMediatorRequest<DeleteComputeProfileOutcome>;
 
 public union DeleteComputeProfileOutcome(
     ComputeProfileDeleted,
@@ -32,50 +32,47 @@ public union DeleteComputeProfileOutcome(
     ComputeProfileReferencedByResourceDeployment);
 
 public sealed class DeleteComputeProfileHandler(
-    DeleteComputeProfile deleteComputeProfile)
-    : IMediatorOutcomeHandler<DeleteComputeProfileRequest, DeleteComputeProfileOutcome>
+    DeleteComputeProfile deleteComputeProfile
+) : IMediatorOutcomeHandler<DeleteComputeProfileRequest, DeleteComputeProfileOutcome>
 {
     public Task<DeleteComputeProfileOutcome> HandleAsync(
         DeleteComputeProfileRequest request,
-        CancellationToken cancellationToken = default)
-        => deleteComputeProfile(
-            request.ComputeProfileId,
-            request.Revision,
-            cancellationToken);
+        CancellationToken cancellationToken = default) => deleteComputeProfile(
+        request.ComputeProfileId,
+        request.Revision,
+        cancellationToken);
 }
 
-public sealed class DeleteComputeProfileRequestValidator
-    : AbstractValidator<DeleteComputeProfileRequest>
+public sealed class DeleteComputeProfileRequestValidator : AbstractValidator<DeleteComputeProfileRequest>
 {
     public DeleteComputeProfileRequestValidator()
     {
-        RuleFor(request => request.ComputeProfileId)
-            .MongoObjectId("Compute profile ID");
+        RuleFor(request => request.ComputeProfileId).MongoObjectId("Compute profile ID");
         RuleFor(request => request.Revision).GreaterThan(0);
     }
 }
 
 public static class DeleteComputeProfileEndpoint
 {
-    public static IEndpointRouteBuilder MapDeleteComputeProfileEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapDeleteComputeProfileEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{computeProfileId}", async (
-                IMediator mediator,
-                [AsParameters] DeleteComputeProfileRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{computeProfileId}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteComputeProfileRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ComputeProfileDeleted => Results.NoContent(),
-                    ComputeProfileNotFound error => MapNotFound(error),
-                    ComputeProfileRevisionConflict error => MapRevisionConflict(error),
-                    DefaultComputeProfileCannotBeDeleted error => MapDefaultDeletionRejected(error),
-                    DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error),
-                    ComputeProfileReferencedByResourceDeployment error => MapComputeProfileReferenced(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ComputeProfileDeleted => Results.NoContent(),
+                        ComputeProfileNotFound error => MapNotFound(error),
+                        ComputeProfileRevisionConflict error => MapRevisionConflict(error),
+                        DefaultComputeProfileCannotBeDeleted error => MapDefaultDeletionRejected(error),
+                        DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error),
+                        ComputeProfileReferencedByResourceDeployment error => MapComputeProfileReferenced(error),
+                    });
+                })
             .WithName("DeleteComputeProfile")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

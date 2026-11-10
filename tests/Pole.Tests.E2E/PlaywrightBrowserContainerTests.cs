@@ -23,13 +23,16 @@ public sealed class PlaywrightBrowserContainerTests
             var page = await context.NewPageAsync();
             await page.SetContentAsync("<title>Browser transport ready</title>");
             Assert.Equal("Browser transport ready", await page.TitleAsync());
-            await context.RouteAsync(address, async route =>
-            {
-                firstRoutes++;
-                await route.FulfillAsync(new() { ContentType = "text/html", Body = "<title>First journey</title>" });
-            });
+            await context.RouteAsync(
+                address,
+                async route =>
+                {
+                    firstRoutes++;
+                    await route.FulfillAsync(
+                        new RouteFulfillOptions { ContentType = "text/html", Body = "<title>First journey</title>" });
+                });
             await page.GotoAsync(address);
-            await context.AddCookiesAsync([new() { Name = "journey", Value = "first", Url = address }]);
+            await context.AddCookiesAsync([new Cookie { Name = "journey", Value = "first", Url = address }]);
             await page.EvaluateAsync("localStorage.setItem('journey', 'first')");
             Assert.Single(await context.CookiesAsync());
             Assert.Equal(1, firstRoutes);
@@ -40,11 +43,14 @@ public sealed class PlaywrightBrowserContainerTests
         await using (var context = await browser.NewContextAsync())
         {
             Assert.Empty(await context.CookiesAsync());
-            await context.RouteAsync(address, route => route.FulfillAsync(new()
-            {
-                ContentType = "text/html",
-                Body = "<title>Second journey</title>"
-            }));
+            await context.RouteAsync(
+                address,
+                route => route.FulfillAsync(
+                    new RouteFulfillOptions
+                    {
+                        ContentType = "text/html",
+                        Body = "<title>Second journey</title>",
+                    }));
             var page = await context.NewPageAsync();
             await page.GotoAsync(address);
             Assert.Equal("Second journey", await page.TitleAsync());

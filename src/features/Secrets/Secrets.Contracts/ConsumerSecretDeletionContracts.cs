@@ -6,11 +6,14 @@ namespace Pole.Features.Secrets.Contracts;
 public sealed record EnsureConsumerSecretBindingRemovalRequest(
     string TenantId,
     ResourceTypeId ConsumerType,
-    string ConsumerId);
+    string ConsumerId
+);
 
 public sealed record ConsumerSecretBindingsRemovable;
 
-public sealed record ConsumerSecretBindingsRequireRemoval(int BindingCount);
+public sealed record ConsumerSecretBindingsRequireRemoval(
+    int BindingCount
+);
 
 public sealed record ConsumerSecretBindingDeletionChanged;
 

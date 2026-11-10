@@ -1,11 +1,6 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
@@ -13,7 +8,8 @@ namespace Pole.Features.ResourceDeployments.Application.Queries;
 
 internal sealed class MongoLoadResourceDeploymentSets(
     IMongoCollection<ResourceDeployment> resourceDeployments,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> InvokeAsync(
         LoadResourceDeploymentSetsRequest request,
@@ -31,12 +27,10 @@ internal sealed class MongoLoadResourceDeploymentSets(
         var policies = await isolation.LoadAsync(
             deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId),
             cancellationToken);
-        return deployments
-            .GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
+        return deployments.GroupBy(deployment => deployment.ResourceId, StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,
-                group => (IReadOnlyList<PlacementSummaryDto>)group
-                    .Select(deployment =>
+                group => (IReadOnlyList<PlacementSummaryDto>)group.Select(deployment =>
                         deployment.ToPlacementSummaryDto(policies[deployment.ResolvedPlacement.DeploymentTargetId]))
                     .ToArray(),
                 StringComparer.Ordinal);

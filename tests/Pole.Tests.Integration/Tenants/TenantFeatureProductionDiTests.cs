@@ -1,43 +1,42 @@
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.Tenants;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Members;
-using Pole.Features.Tenants.Application.Mongo;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 using Pole.Mediator;
 using Pole.Platform.Hosting;
-using Pole.Server.Extensions;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Tenants;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class TenantFeatureProductionDiTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public void FeatureRegistration_ResolvesTheTenantCapabilityGraph()
     {
         var services = new ServiceCollection();
         services.AddSingleton<IMongoDatabase>(Fixture.Database);
-        services.AddSingleton<IMongoClient>(Fixture.Client);
+        services.AddSingleton(Fixture.Client);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
 
-        Assert.DoesNotContain(services,
-            descriptor =>
-                descriptor.ServiceType.Name.Contains("DbContext", StringComparison.Ordinal));
-        Assert.Contains(services,
-            descriptor =>
-                descriptor.ServiceType == typeof(LoadTenantIdentity) &&
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType.Name.Contains("DbContext", StringComparison.Ordinal));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(LoadTenantIdentity) &&
                 descriptor.Lifetime == ServiceLifetime.Scoped);
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
@@ -60,8 +59,7 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         services.AddTenantsFeature();
         services.AddPoleMediator();
 
-        var pipelineTypes = services
-            .Where(descriptor => descriptor.ServiceType == typeof(IPipelineBehavior<,>))
+        var pipelineTypes = services.Where(descriptor => descriptor.ServiceType == typeof(IPipelineBehavior<,>))
             .Select(descriptor => descriptor.ImplementationType)
             .ToArray();
 
@@ -70,7 +68,7 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
                 typeof(LoggingBehavior<,>),
                 typeof(ValidationBehavior<,>),
                 typeof(TenantAuthorizationBehavior<,>),
-                typeof(TenantMemberAuthorizationBehavior<,>)
+                typeof(TenantMemberAuthorizationBehavior<,>),
             ],
             pipelineTypes);
     }
@@ -79,7 +77,7 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
     public async Task TenantExistenceContract_RejectsMalformedObjectIds()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IMongoDatabase>(Fixture.Database);
+        services.AddSingleton(Fixture.Database);
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -92,10 +90,10 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
     public async Task TenantContracts_ReturnNamedSuccessAndMissingOutcomes()
     {
         var tenant = TenantFactory.Create("Contract lookup");
-        var missingTenantId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
+        var missingTenantId = ObjectId.GenerateNewId().ToString();
         await Fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(tenant);
         var services = new ServiceCollection();
-        services.AddSingleton<IMongoDatabase>(Fixture.Database);
+        services.AddSingleton(Fixture.Database);
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -109,12 +107,12 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         var missingIds = missing switch
         {
             TenantSetNotFound missingSet => missingSet.TenantIds,
-            TenantsExist => throw new Xunit.Sdk.XunitException("Expected missing tenants.")
+            TenantsExist => throw new XunitException("Expected missing tenants."),
         };
         Assert.Equal([missingTenantId], missingIds);
         Assert.True(await load(tenant.Id) is TenantIdentitySnapshot { DisplayName: "Contract lookup" });
-        Assert.True(await load(missingTenantId) is TenantIdentityNotFound notFound &&
-                    notFound.TenantId == missingTenantId);
+        Assert.True(
+            await load(missingTenantId) is TenantIdentityNotFound notFound && notFound.TenantId == missingTenantId);
     }
 
     [Fact]
@@ -126,14 +124,11 @@ public sealed class TenantFeatureProductionDiTests(MongoReplicaSetFixture fixtur
         var mappings = provider.GetServices<HttpProblemMapping>().ToArray();
 
         Assert.NotEmpty(mappings);
-        Assert.All(mappings,
-            mapping =>
-                Assert.True(typeof(IMediatorRejection).IsAssignableFrom(mapping.MappedType)));
+        Assert.All(mappings, mapping => Assert.True(typeof(IMediatorRejection).IsAssignableFrom(mapping.MappedType)));
         Assert.Contains(mappings, mapping => mapping.MappedType == typeof(TenantNotFound));
         Assert.Contains(mappings, mapping => mapping.MappedType == typeof(TenantMemberNotFound));
     }
 
     private static void AssertResolved<T>(IServiceProvider provider)
-        where T : notnull =>
-        Assert.NotNull(provider.GetRequiredService<T>());
+        where T : notnull => Assert.NotNull(provider.GetRequiredService<T>());
 }

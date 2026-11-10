@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
@@ -13,17 +12,17 @@ public union CommitQuotaReservationOutcome(
     QuotaReservationCancelled,
     QuotaReservationExpired);
 
-public delegate Task<CommitQuotaReservationOutcome>
-    CommitQuotaReservation(
-        string reservationId,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<CommitQuotaReservationOutcome> CommitQuotaReservation(
+    string reservationId,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
 internal sealed class MongoCommitQuotaReservation(
     IMongoCollection<QuotaReservation> reservations,
     IMongoCollection<TenantQuotaUsage> usages,
     QuotaSettings settings,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<CommitQuotaReservationOutcome> InvokeAsync(
         string reservationId,
@@ -44,14 +43,13 @@ internal sealed class MongoCommitQuotaReservation(
                 QuotaDomainFactory.CommitReservation(nowUtc, settings.FinalizedReservationHistory)),
             new FindOneAndUpdateOptions<QuotaReservation, QuotaReservation>
             {
-                ReturnDocument = ReturnDocument.Before
+                ReturnDocument = ReturnDocument.Before,
             },
             cancellationToken);
 
         if (finalized is null)
         {
-            var existing = await reservations
-                .Find(session, QuotaReservationFilters.ById(reservationId))
+            var existing = await reservations.Find(session, QuotaReservationFilters.ById(reservationId))
                 .FirstOrDefaultAsync(cancellationToken);
             return existing?.State switch
             {
@@ -60,16 +58,11 @@ internal sealed class MongoCommitQuotaReservation(
                 CancelledQuotaReservationState => new QuotaReservationCancelled(reservationId),
                 ActiveQuotaReservationState => new QuotaReservationExpired(reservationId),
                 _ => throw new InvalidOperationException(
-                    $"Quota reservation '{reservationId}' has an unsupported state.")
+                    $"Quota reservation '{reservationId}' has an unsupported state."),
             };
         }
 
-        var usage = await MongoQuotaUsage.TouchAsync(
-            usages,
-            session,
-            finalized.TenantId,
-            nowUtc,
-            cancellationToken);
+        var usage = await MongoQuotaUsage.TouchAsync(usages, session, finalized.TenantId, nowUtc, cancellationToken);
         var values = QuotaValues.Add(usage.Values, finalized.Delta);
         await usages.UpdateOneAsync(
             session,

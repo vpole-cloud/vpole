@@ -25,19 +25,21 @@ public sealed record FunctionApp(
     ImmutableHashSet<string> Tags,
     long PlanningFence,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc) : ITenantOwned;
+    DateTimeOffset UpdatedAtUtc
+) : ITenantOwned;
 
 public sealed record FunctionPlacementIdentity(
     string ResourceDeploymentId,
     string RuntimeCellId,
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);
 
 public enum FunctionAppDesiredState
 {
     Enabled,
     Suspended,
     Deleting,
-    Prepared
+    Prepared,
 }
 
 public enum FunctionAppStatus
@@ -48,7 +50,7 @@ public enum FunctionAppStatus
     Suspended,
     Failed,
     Deleting,
-    Prepared
+    Prepared,
 }
 
 public sealed record FunctionRevision(
@@ -61,7 +63,8 @@ public sealed record FunctionRevision(
     FunctionRevisionSpec Spec,
     FunctionRevisionStatus Status,
     long PlanningFence,
-    DateTimeOffset CreatedAtUtc) : ITenantOwned
+    DateTimeOffset CreatedAtUtc
+) : ITenantOwned
 {
     public static FunctionRevision CreateProvisioning(
         string id,
@@ -69,49 +72,53 @@ public sealed record FunctionRevision(
         string functionAppId,
         int revisionNumber,
         FunctionRevisionSpec spec,
-        DateTimeOffset createdAtUtc) =>
-        new(
-            id,
-            tenantId,
-            functionAppId,
-            revisionNumber,
-            spec,
-            new ProvisioningFunctionRevisionStatus(),
-            PlanningFence: 0,
-            createdAtUtc);
+        DateTimeOffset createdAtUtc) => new(
+        id,
+        tenantId,
+        functionAppId,
+        revisionNumber,
+        spec,
+        new ProvisioningFunctionRevisionStatus(),
+        PlanningFence: 0,
+        createdAtUtc);
 
     public FunctionRevision MarkReady(DateTimeOffset readyAtUtc)
     {
         if (Status is not ProvisioningFunctionRevisionStatus)
-            throw new InvalidOperationException($"Cannot mark Function revision ready from status '{Status.GetType().Name}'.");
+            throw new InvalidOperationException(
+                $"Cannot mark Function revision ready from status '{Status.GetType().Name}'.");
         return this with { Status = new ReadyFunctionRevisionStatus(readyAtUtc) };
     }
 
     public FunctionRevision Activate()
     {
         if (Status is not ReadyFunctionRevisionStatus ready)
-            throw new InvalidOperationException($"Cannot activate Function revision from status '{Status.GetType().Name}'.");
+            throw new InvalidOperationException(
+                $"Cannot activate Function revision from status '{Status.GetType().Name}'.");
         return this with { Status = new ActiveFunctionRevisionStatus(ready.ReadyAtUtc) };
     }
 
     public FunctionRevision Drain()
     {
         if (Status is not ActiveFunctionRevisionStatus active)
-            throw new InvalidOperationException($"Cannot drain Function revision from status '{Status.GetType().Name}'.");
+            throw new InvalidOperationException(
+                $"Cannot drain Function revision from status '{Status.GetType().Name}'.");
         return this with { Status = new DrainingFunctionRevisionStatus(active.ReadyAtUtc) };
     }
 
     public FunctionRevision Retire()
     {
         if (Status is not DrainingFunctionRevisionStatus draining)
-            throw new InvalidOperationException($"Cannot retire Function revision from status '{Status.GetType().Name}'.");
+            throw new InvalidOperationException(
+                $"Cannot retire Function revision from status '{Status.GetType().Name}'.");
         return this with { Status = new RetiredFunctionRevisionStatus(draining.ReadyAtUtc) };
     }
 
     public FunctionRevision Fail(FunctionRevisionFailure failure)
     {
         if (Status is not (ProvisioningFunctionRevisionStatus or ReadyFunctionRevisionStatus))
-            throw new InvalidOperationException($"Cannot fail Function revision from status '{Status.GetType().Name}'.");
+            throw new InvalidOperationException(
+                $"Cannot fail Function revision from status '{Status.GetType().Name}'.");
         return this with { Status = new FailedFunctionRevisionStatus(failure) };
     }
 }
@@ -137,19 +144,29 @@ public abstract record FunctionRevisionStatus;
 public sealed record ProvisioningFunctionRevisionStatus : FunctionRevisionStatus;
 
 [BsonDiscriminator("ready")]
-public sealed record ReadyFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+public sealed record ReadyFunctionRevisionStatus(
+    DateTimeOffset ReadyAtUtc
+) : FunctionRevisionStatus;
 
 [BsonDiscriminator("active")]
-public sealed record ActiveFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+public sealed record ActiveFunctionRevisionStatus(
+    DateTimeOffset ReadyAtUtc
+) : FunctionRevisionStatus;
 
 [BsonDiscriminator("draining")]
-public sealed record DrainingFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+public sealed record DrainingFunctionRevisionStatus(
+    DateTimeOffset ReadyAtUtc
+) : FunctionRevisionStatus;
 
 [BsonDiscriminator("retired")]
-public sealed record RetiredFunctionRevisionStatus(DateTimeOffset ReadyAtUtc) : FunctionRevisionStatus;
+public sealed record RetiredFunctionRevisionStatus(
+    DateTimeOffset ReadyAtUtc
+) : FunctionRevisionStatus;
 
 [BsonDiscriminator("failed")]
-public sealed record FailedFunctionRevisionStatus(FunctionRevisionFailure Failure) : FunctionRevisionStatus;
+public sealed record FailedFunctionRevisionStatus(
+    FunctionRevisionFailure Failure
+) : FunctionRevisionStatus;
 
 public sealed record FunctionRevisionSpec(
     FunctionImage Image,
@@ -157,36 +174,40 @@ public sealed record FunctionRevisionSpec(
     FunctionConfiguration Configuration,
     FunctionResources Resources,
     FunctionScalingPolicy Scaling,
-    ImmutableList<FunctionHandlerSpec> Handlers);
+    ImmutableList<FunctionHandlerSpec> Handlers
+);
 
 public sealed record FunctionImage(
     string Server,
     string Name,
     string Tag,
     string? Digest,
-    string? PullSecretName)
+    string? PullSecretName
+)
 {
-    [BsonIgnore]
-    public string Reference => Digest is null
-        ? $"{Server}/{Name}:{Tag}"
-        : $"{Server}/{Name}@{Digest}";
+    [BsonIgnore] public string Reference => Digest is null ? $"{Server}/{Name}:{Tag}" : $"{Server}/{Name}@{Digest}";
 }
 
 public sealed record FunctionConfiguration(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableDictionary<string, FunctionSecretReference> SecretReferences);
+    ImmutableDictionary<string, FunctionSecretReference> SecretReferences
+);
 
 public sealed record FunctionSecretReference(
-    [property: BsonRepresentation(BsonType.ObjectId)] string SecretId,
-    string Key);
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string SecretId,
+    string Key
+);
 
 public sealed record FunctionResources(
     FunctionResourceValues Requests,
-    FunctionResourceValues Limits);
+    FunctionResourceValues Limits
+);
 
 public sealed record FunctionResourceValues(
     int CpuMillis,
-    int MemoryMi);
+    int MemoryMi
+);
 
 public sealed record FunctionScalingPolicy(
     int MinInstances,
@@ -194,7 +215,8 @@ public sealed record FunctionScalingPolicy(
     int TargetConcurrencyPerInstance,
     int MaxConcurrencyPerInstance,
     int ScaleDownDelaySeconds,
-    int ActivationTimeoutSeconds)
+    int ActivationTimeoutSeconds
+)
 {
     public const int MinimumActivationTimeoutSeconds = 1;
     public const int MaximumActivationTimeoutSeconds = 120;
@@ -203,22 +225,25 @@ public sealed record FunctionScalingPolicy(
 public sealed record FunctionHandlerSpec(
     string Name,
     int MaxConcurrencyPerInstance,
-    FunctionTriggerSpec Trigger);
+    FunctionTriggerSpec Trigger
+);
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(HttpFunctionTriggerSpec), typeof(TimerFunctionTriggerSpec))]
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(HttpFunctionTriggerSpec), "http")]
 [JsonDerivedType(typeof(TimerFunctionTriggerSpec), "timer")]
-public abstract record FunctionTriggerSpec(string TriggerId);
+public abstract record FunctionTriggerSpec(
+    string TriggerId
+);
 
 [BsonDiscriminator("http")]
 public sealed record HttpFunctionTriggerSpec(
     string TriggerId,
     string Route,
     ImmutableHashSet<string> Methods,
-    FunctionExposure Exposure)
-    : FunctionTriggerSpec(TriggerId);
+    FunctionExposure Exposure
+) : FunctionTriggerSpec(TriggerId);
 
 [BsonDiscriminator("timer")]
 public sealed record TimerFunctionTriggerSpec(
@@ -228,38 +253,39 @@ public sealed record TimerFunctionTriggerSpec(
     TimerConcurrencyPolicy ConcurrencyPolicy,
     TimerMisfirePolicy MisfirePolicy,
     int ScheduleVersion,
-    FunctionRetryPolicy Retry)
-    : FunctionTriggerSpec(TriggerId);
+    FunctionRetryPolicy Retry
+) : FunctionTriggerSpec(TriggerId);
 
 public enum FunctionExposure
 {
     Internal,
-    Public
+    Public,
 }
 
 public enum TimerConcurrencyPolicy
 {
     Allow,
-    Forbid
+    Forbid,
 }
 
 public enum TimerMisfirePolicy
 {
     Skip,
-    FireOnce
+    FireOnce,
 }
 
 public sealed record FunctionRetryPolicy(
     int MaxAttempts,
-    ImmutableList<int> BackoffSeconds);
+    ImmutableList<int> BackoffSeconds
+);
 
 public sealed record FunctionRevisionFailure(
     string Code,
-    string Message);
+    string Message
+);
 
 public sealed record FunctionRouteBinding(
-    [property: BsonId]
-    string NormalizedRoute,
+    [property: BsonId] string NormalizedRoute,
     string TenantId,
     string FunctionAppId,
     ImmutableList<FunctionHttpRouteBinding> HttpRoutes,
@@ -268,13 +294,22 @@ public sealed record FunctionRouteBinding(
     int? ActiveRevisionNumber,
     long PlanningFence,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc) : ITenantOwned;
+    DateTimeOffset UpdatedAtUtc
+) : ITenantOwned;
 
 public static class FunctionRouteBindingFactory
 {
     public static FunctionRouteBinding Reserve(FunctionApp app, DateTimeOffset now) => new(
-        app.FunctionRoute, app.TenantId, app.Id, [], FunctionRouteBindingState.Reserved,
-        ActiveRevisionId: null, ActiveRevisionNumber: null, PlanningFence: 0, now, now);
+        app.FunctionRoute,
+        app.TenantId,
+        app.Id,
+        [],
+        FunctionRouteBindingState.Reserved,
+        ActiveRevisionId: null,
+        ActiveRevisionNumber: null,
+        PlanningFence: 0,
+        now,
+        now);
 }
 
 public sealed record FunctionHttpRouteBinding(
@@ -282,53 +317,40 @@ public sealed record FunctionHttpRouteBinding(
     string HandlerName,
     string HandlerRoute,
     ImmutableHashSet<string> Methods,
-    FunctionExposure Exposure);
+    FunctionExposure Exposure
+);
 
 public enum FunctionRouteBindingState
 {
     Reserved,
     Active,
-    Disabled
+    Disabled,
 }
 
 public sealed record FunctionQuotaAllocation(
     long FunctionAppCount,
     long TotalCpuMillis,
     long TotalMemoryMi,
-    long WorkloadInstances)
+    long WorkloadInstances
+)
 {
-    public static FunctionQuotaAllocation FromRevision(FunctionRevisionSpec spec) =>
-        new(
-            1,
-            checked((long)spec.Resources.Requests.CpuMillis * spec.Scaling.MaxInstances),
-            checked((long)spec.Resources.Requests.MemoryMi * spec.Scaling.MaxInstances),
-            spec.Scaling.MaxInstances);
+    public static FunctionQuotaAllocation FromRevision(FunctionRevisionSpec spec) => new(
+        1,
+        checked((long)spec.Resources.Requests.CpuMillis * spec.Scaling.MaxInstances),
+        checked((long)spec.Resources.Requests.MemoryMi * spec.Scaling.MaxInstances),
+        spec.Scaling.MaxInstances);
 
-    public static FunctionQuotaAllocation Peak(
-        FunctionQuotaAllocation first,
-        FunctionQuotaAllocation second) =>
-        new(
-            Math.Max(first.FunctionAppCount, second.FunctionAppCount),
-            Math.Max(first.TotalCpuMillis, second.TotalCpuMillis),
-            Math.Max(first.TotalMemoryMi, second.TotalMemoryMi),
-            Math.Max(first.WorkloadInstances, second.WorkloadInstances));
+    public static FunctionQuotaAllocation Peak(FunctionQuotaAllocation first, FunctionQuotaAllocation second) => new(
+        Math.Max(first.FunctionAppCount, second.FunctionAppCount),
+        Math.Max(first.TotalCpuMillis, second.TotalCpuMillis),
+        Math.Max(first.TotalMemoryMi, second.TotalMemoryMi),
+        Math.Max(first.WorkloadInstances, second.WorkloadInstances));
 }
 
 public static class FunctionAppFactory
 {
-    public sealed record CreateOptions(
-        string FunctionAppId,
-        string RevisionId);
-
     public static CreateOptions DefaultCreateOptions =>
-        new(
-            ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString());
-
-    public sealed record CreateResult(
-        FunctionApp FunctionApp,
-        FunctionRevision Revision,
-        FunctionRouteBinding RouteBinding);
+        new(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString());
 
     public static CreateResult Create(
         string tenantId,
@@ -355,17 +377,17 @@ public static class FunctionAppFactory
                     {
                         HttpFunctionTriggerSpec http => http with
                         {
-                            TriggerId = Guid.NewGuid().ToString("N")
+                            TriggerId = Guid.NewGuid().ToString("N"),
                         },
                         TimerFunctionTriggerSpec timer => timer with
                         {
                             TriggerId = Guid.NewGuid().ToString("N"),
-                            ScheduleVersion = 1
+                            ScheduleVersion = 1,
                         },
-                        _ => throw new InvalidOperationException("Unknown Function trigger spec.")
-                    }
+                        _ => throw new InvalidOperationException("Unknown Function trigger spec."),
+                    },
                 })
-                .ToImmutableList()
+                .ToImmutableList(),
         };
         var app = new FunctionApp(
             functionAppId,
@@ -404,26 +426,36 @@ public static class FunctionAppFactory
         string functionRoute,
         DateTimeOffset now,
         CreateOptions options) => new(
-            options.FunctionAppId,
-            tenantId,
-            resourceGroupId,
-            placement,
-            name,
-            name.Trim().ToLowerInvariant(),
-            NormalizeRoute(functionRoute),
-            ActiveRevisionId: null,
-            PendingRevisionId: null,
-            NextRevisionNumber: 1,
-            FunctionAppDesiredState.Prepared,
-            FunctionAppStatus.Prepared,
-            new FunctionQuotaAllocation(1, 0, 0, 0),
-            ImmutableHashSet<string>.Empty,
-            PlanningFence: 0,
-            now,
-            now);
+        options.FunctionAppId,
+        tenantId,
+        resourceGroupId,
+        placement,
+        name,
+        name.Trim().ToLowerInvariant(),
+        NormalizeRoute(functionRoute),
+        ActiveRevisionId: null,
+        PendingRevisionId: null,
+        NextRevisionNumber: 1,
+        FunctionAppDesiredState.Prepared,
+        FunctionAppStatus.Prepared,
+        new FunctionQuotaAllocation(1, 0, 0, 0),
+        ImmutableHashSet<string>.Empty,
+        PlanningFence: 0,
+        now,
+        now);
 
-    public static string NormalizeRoute(string route) =>
-        route.Trim().Trim('/').ToLowerInvariant();
+    public static string NormalizeRoute(string route) => route.Trim().Trim('/').ToLowerInvariant();
+
+    public sealed record CreateOptions(
+        string FunctionAppId,
+        string RevisionId
+    );
+
+    public sealed record CreateResult(
+        FunctionApp FunctionApp,
+        FunctionRevision Revision,
+        FunctionRouteBinding RouteBinding
+    );
 }
 
 public sealed record FunctionRevisionSpecInput(
@@ -432,14 +464,14 @@ public sealed record FunctionRevisionSpecInput(
     FunctionConfiguration Configuration,
     FunctionResources Resources,
     FunctionScalingPolicy Scaling,
-    ImmutableList<FunctionHandlerSpec> Handlers)
+    ImmutableList<FunctionHandlerSpec> Handlers
+)
 {
-    public FunctionRevisionSpec ToRevisionSpec() =>
-        new(
-            Image,
-            RuntimeProtocolVersion,
-            Configuration,
-            Resources,
-            Scaling,
-            Handlers);
+    public FunctionRevisionSpec ToRevisionSpec() => new(
+        Image,
+        RuntimeProtocolVersion,
+        Configuration,
+        Resources,
+        Scaling,
+        Handlers);
 }

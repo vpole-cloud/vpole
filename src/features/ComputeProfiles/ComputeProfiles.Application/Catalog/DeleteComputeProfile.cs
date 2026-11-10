@@ -10,13 +10,16 @@ using Pole.Features.ComputeProfiles.Events;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ComputeProfiles.Application.Catalog;
 
-public sealed record DefaultComputeProfileCannotBeDeleted(string ComputeProfileId);
+public sealed record DefaultComputeProfileCannotBeDeleted(
+    string ComputeProfileId
+);
 
-public sealed record ComputeProfileDeleted(string ComputeProfileId);
+public sealed record ComputeProfileDeleted(
+    string ComputeProfileId
+);
 
 public delegate Task<DeleteComputeProfileOutcome> DeleteComputeProfile(
     string computeProfileId,
@@ -28,67 +31,51 @@ internal sealed class MongoDeleteComputeProfile(
     ApplyDeploymentTargetReferenceChanges applyTargetReferenceChanges,
     EnsureComputeProfileUnreferenced ensureResourceDeploymentUnreferenced,
     RunMongoOutcomeTransaction<DeleteComputeProfileOutcome> runMongoTransaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public Task<DeleteComputeProfileOutcome> InvokeAsync(
         string computeProfileId,
         long expectedRevision,
-        CancellationToken cancellationToken = default) =>
-        runMongoTransaction(async (transaction, ct) =>
-            {
-                var profile = await computeProfiles
-                    .Find(transaction.Session, ComputeProfileFilters.ById(computeProfileId))
-                    .FirstOrDefaultAsync(ct);
-                if (profile is null)
-                {
-                    return transaction.Abort(
-                        new ComputeProfileNotFound(computeProfileId));
-                }
+        CancellationToken cancellationToken = default) => runMongoTransaction(
+        async (transaction, ct) =>
+        {
+            var profile = await computeProfiles.Find(transaction.Session, ComputeProfileFilters.ById(computeProfileId))
+                .FirstOrDefaultAsync(ct);
+            if (profile is null)
+                return transaction.Abort(new ComputeProfileNotFound(computeProfileId));
 
-                if (profile.Revision != expectedRevision)
-                {
-                    return transaction.Abort(
-                        new ComputeProfileRevisionConflict(computeProfileId));
-                }
+            if (profile.Revision != expectedRevision)
+                return transaction.Abort(new ComputeProfileRevisionConflict(computeProfileId));
 
-                if (profile.IsDefault)
-                {
-                    return transaction.Abort(
-                        new DefaultComputeProfileCannotBeDeleted(computeProfileId));
-                }
+            if (profile.IsDefault)
+                return transaction.Abort(new DefaultComputeProfileCannotBeDeleted(computeProfileId));
 
-                var unreferenced = await ensureResourceDeploymentUnreferenced(
-                    computeProfileId,
-                    transaction.Session,
-                    ct);
-                if (unreferenced is ComputeProfileReferencedByResourceDeployment referenceError)
-                {
-                    return transaction.Abort(referenceError);
-                }
+            var unreferenced = await ensureResourceDeploymentUnreferenced(computeProfileId, transaction.Session, ct);
+            if (unreferenced is ComputeProfileReferencedByResourceDeployment referenceError)
+                return transaction.Abort(referenceError);
 
-                var deleted = await computeProfiles.DeleteOneAsync(
-                    transaction.Session,
-                    ComputeProfileFilters.AtRevision(computeProfileId, expectedRevision),
-                    cancellationToken: ct);
-                if (deleted.DeletedCount != 1)
-                {
-                    return transaction.Abort(
-                        new ComputeProfileRevisionConflict(computeProfileId));
-                }
+            var deleted = await computeProfiles.DeleteOneAsync(
+                transaction.Session,
+                ComputeProfileFilters.AtRevision(computeProfileId, expectedRevision),
+                cancellationToken: ct);
+            if (deleted.DeletedCount != 1)
+                return transaction.Abort(new ComputeProfileRevisionConflict(computeProfileId));
 
-                var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
-                    applyTargetReferenceChanges,
-                    profile,
-                    [],
-                    profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
-                    transaction.Session,
-                    ct);
-                if (references is DeploymentTargetReferenceChangeRejected error)
-                    return transaction.Abort(error);
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))],
-                    ct);
-                return transaction.Commit(new ComputeProfileDeleted(computeProfileId));
-            },
-            cancellationToken);
+            var references = await ComputeProfileTargetReferences.ApplyChangesAsync(
+                applyTargetReferenceChanges,
+                profile,
+                [],
+                profile.TargetMappings.Select(mapping => mapping.DeploymentTargetId),
+                transaction.Session,
+                ct);
+            if (references is DeploymentTargetReferenceChangeRejected error)
+                return transaction.Abort(error);
+            await storeOutboxWrites(
+                transaction.Session,
+                [OutboxWrite.Create(new ComputeProfileCatalogChangedEvent(profile.Id, profile.Revision))],
+                ct);
+            return transaction.Commit(new ComputeProfileDeleted(computeProfileId));
+        },
+        cancellationToken);
 }

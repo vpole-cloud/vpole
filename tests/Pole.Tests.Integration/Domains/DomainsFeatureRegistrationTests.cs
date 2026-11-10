@@ -1,11 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Xunit;
 
@@ -42,15 +38,13 @@ public sealed class DomainsFeatureRegistrationTests
     }
 
     private static void AssertScoped<T>(IEnumerable<ServiceDescriptor> services)
-        where T : notnull =>
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(T) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
+        where T : notnull => Assert.Contains(
+        services,
+        descriptor => descriptor.ServiceType == typeof(T) && descriptor.Lifetime == ServiceLifetime.Scoped);
 
     private static void AssertHttpMapping<T>(IEnumerable<ServiceDescriptor> services)
-        where T : notnull =>
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(HttpProblemMapping) &&
-            descriptor.ImplementationInstance is HttpProblemMapping mapping &&
-            mapping.MappedType == typeof(T));
+        where T : notnull => Assert.Contains(
+        services,
+        descriptor => descriptor.ServiceType == typeof(HttpProblemMapping) &&
+            descriptor.ImplementationInstance is HttpProblemMapping mapping && mapping.MappedType == typeof(T));
 }

@@ -1,5 +1,5 @@
 using MongoDB.Bson;
-using Pole.Features.ContainerRegistries.Application.Mongo;
+using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
@@ -13,22 +13,20 @@ public union EnsureTenantContainerRegistryProjectOutcome(
     ContainerRegistryProviderError,
     RegistryCredentialProtectionFailed);
 
-public delegate Task<EnsureTenantContainerRegistryProjectOutcome>
-    EnsureTenantContainerRegistryProject(
-        string tenantId,
-        string initiatedByUserId,
-        CancellationToken cancellationToken = default);
+public delegate Task<EnsureTenantContainerRegistryProjectOutcome> EnsureTenantContainerRegistryProject(
+    string tenantId,
+    string initiatedByUserId,
+    CancellationToken cancellationToken = default);
 
-internal union CreateRegistryCredentialOutcome(
-    RegistryCredential,
-    RegistryCredentialProtectionFailed);
+internal union CreateRegistryCredentialOutcome(RegistryCredential, RegistryCredentialProtectionFailed);
 
 public sealed class ContainerRegistryProvisioningService(
     RegistryProvisioningPersistence persistence,
     IContainerRegistryClient registryClient,
     ProtectRegistryCredentialSecret protectSecret,
     RegistryProvisioningCleanupService cleanupService,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     private const long InitialSecretVersion = 1;
 
@@ -47,8 +45,13 @@ public sealed class ContainerRegistryProvisioningService(
         var provisioning = (ProvisioningRegistryProject)project.State;
         var names = RegistryRobotNames.ForAttempt(provisioning.AttemptId);
         var nameOnlyAttempt = new RegistryProvisioningAttempt(
-            provisioning.AttemptId, project.Name, project.Name, names.Build, names.Pull,
-            null, null,
+            provisioning.AttemptId,
+            project.Name,
+            project.Name,
+            names.Build,
+            names.Pull,
+            null,
+            null,
             provisioning.StartedAtUtc + RegistryProvisioningCleanupPolicy.NameVerificationHorizon);
 
         ProvisionRegistryProjectOutcome provisioned;
@@ -63,15 +66,23 @@ public sealed class ContainerRegistryProvisioningService(
             await CompensateFailureAsync(project.Id, nameOnlyAttempt, InterruptedFailure());
             throw;
         }
+
         if (provisioned.Value is ContainerRegistryProviderError providerError)
         {
             await CompensateFailureAsync(project.Id, nameOnlyAttempt, ProviderFailure(providerError));
             return providerError;
         }
+
         var remoteProject = (ProvisionedRegistryProject)provisioned.Value;
         var attempt = new RegistryProvisioningAttempt(
-            provisioning.AttemptId, project.Name, remoteProject.ExternalProjectId, names.Build, names.Pull,
-            remoteProject.BuildCredential.ExternalRobotId, remoteProject.PullCredential.ExternalRobotId, null);
+            provisioning.AttemptId,
+            project.Name,
+            remoteProject.ExternalProjectId,
+            names.Build,
+            names.Pull,
+            remoteProject.BuildCredential.ExternalRobotId,
+            remoteProject.PullCredential.ExternalRobotId,
+            null);
         try
         {
             var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -92,20 +103,30 @@ public sealed class ContainerRegistryProvisioningService(
             }
 
             var build = await CreateCredentialAsync(
-                project, RegistryCredentialPurpose.BuildPushPull, remoteProject.BuildCredential, now, cancellationToken);
+                project,
+                RegistryCredentialPurpose.BuildPushPull,
+                remoteProject.BuildCredential,
+                now,
+                cancellationToken);
             if (build.Value is RegistryCredentialProtectionFailed buildFailure)
             {
                 await CompensateFailureAsync(project.Id, attempt, CredentialFailure());
                 return buildFailure;
             }
+
             var protectedBuild = (RegistryCredential)build.Value;
             var pull = await CreateCredentialAsync(
-                project, RegistryCredentialPurpose.RuntimePull, remoteProject.PullCredential, now, cancellationToken);
+                project,
+                RegistryCredentialPurpose.RuntimePull,
+                remoteProject.PullCredential,
+                now,
+                cancellationToken);
             if (pull.Value is RegistryCredentialProtectionFailed pullFailure)
             {
                 await CompensateFailureAsync(project.Id, attempt, CredentialFailure());
                 return pullFailure;
             }
+
             var protectedPull = (RegistryCredential)pull.Value;
 
             var persistedAt = timeProvider.GetUtcNow().UtcDateTime;
@@ -132,11 +153,13 @@ public sealed class ContainerRegistryProvisioningService(
                     return committed;
                 throw;
             }
+
             if (persisted.Value is TenantContainerRegistryProvisioningConflict persistError)
             {
                 await CompensateFailureAsync(project.Id, attempt, ConcurrentFailure());
                 return persistError;
             }
+
             return (RegistryProject)persisted.Value;
         }
         catch
@@ -162,18 +185,17 @@ public sealed class ContainerRegistryProvisioningService(
             cancellationToken);
         return encrypted switch
         {
-            Pole.Encryption.EncryptedValue success =>
-                RegistryCredentialFactory.Create(
-                    project.TenantId,
-                    project.Id,
-                    purpose,
-                    credential.ExternalRobotId,
-                    credential.Username,
-                    InitialSecretVersion,
-                    success,
-                    credential.ExpiresAtUtc,
-                    new RegistryCredentialFactory.CreateOptions(credentialId, now)),
-            RegistryCredentialProtectionFailed error => error
+            EncryptedValue success => RegistryCredentialFactory.Create(
+                project.TenantId,
+                project.Id,
+                purpose,
+                credential.ExternalRobotId,
+                credential.Username,
+                InitialSecretVersion,
+                success,
+                credential.ExpiresAtUtc,
+                new RegistryCredentialFactory.CreateOptions(credentialId, now)),
+            RegistryCredentialProtectionFailed error => error,
         };
     }
 
@@ -186,7 +208,7 @@ public sealed class ContainerRegistryProvisioningService(
         try
         {
             var cleanup = await cleanupService.ClaimCleanupAsync(projectId, attempt, failure, timeout.Token) ??
-                          await persistence.FindMatchingCleanupAsync(projectId, attempt, timeout.Token);
+                await persistence.FindMatchingCleanupAsync(projectId, attempt, timeout.Token);
             if (cleanup is not null && cleanup.CleanupNotBeforeUtc <= timeProvider.GetUtcNow().UtcDateTime)
                 await cleanupService.CleanupAsync(projectId, cleanup, timeout.Token);
         }
@@ -205,12 +227,10 @@ public sealed class ContainerRegistryProvisioningService(
         try
         {
             var cleanup = await cleanupService.ClaimCleanupAsync(
-                              projectId,
-                              attempt,
-                              RegistryProvisioningFailure.Interrupted(
-                                  "Container registry provisioning persistence was interrupted."),
-                              timeout.Token) ??
-                          await persistence.FindMatchingCleanupAsync(projectId, attempt, timeout.Token);
+                projectId,
+                attempt,
+                RegistryProvisioningFailure.Interrupted("Container registry provisioning persistence was interrupted."),
+                timeout.Token) ?? await persistence.FindMatchingCleanupAsync(projectId, attempt, timeout.Token);
             if (cleanup is not null)
             {
                 await cleanupService.CleanupAsync(projectId, cleanup, timeout.Token);
@@ -219,11 +239,11 @@ public sealed class ContainerRegistryProvisioningService(
 
             var current = await persistence.LoadByIdAsync(projectId, timeout.Token);
             return current?.State is ReadyRegistryProject ready &&
-                   ready.ExternalProjectId == expectedReady.ExternalProjectId &&
-                   ready.BuildCredentialId == expectedReady.BuildCredentialId &&
-                   ready.PullCredentialId == expectedReady.PullCredentialId
-                ? current
-                : null;
+                ready.ExternalProjectId == expectedReady.ExternalProjectId &&
+                ready.BuildCredentialId == expectedReady.BuildCredentialId &&
+                ready.PullCredentialId == expectedReady.PullCredentialId
+                    ? current
+                    : null;
         }
         catch (Exception)
         {
@@ -231,18 +251,23 @@ public sealed class ContainerRegistryProvisioningService(
         }
     }
 
-    private static RegistryProvisioningFailure ProviderFailure(ContainerRegistryProviderError error) =>
-        error switch
-        {
-            ContainerRegistryProviderNotConfigured => new("container-registries.provider.not-configured", "Harbor is not configured."),
-            ContainerRegistryProviderUnavailable => new("container-registries.provider.unavailable", "Harbor is unavailable.")
-        };
+    private static RegistryProvisioningFailure ProviderFailure(ContainerRegistryProviderError error) => error switch
+    {
+        ContainerRegistryProviderNotConfigured => new RegistryProvisioningFailure(
+            "container-registries.provider.not-configured",
+            "Harbor is not configured."),
+        ContainerRegistryProviderUnavailable => new RegistryProvisioningFailure(
+            "container-registries.provider.unavailable",
+            "Harbor is unavailable."),
+    };
 
-    private static RegistryProvisioningFailure ConcurrentFailure() =>
-        new("container-registries.provisioning.conflict", "The registry project provisioning state changed concurrently.");
+    private static RegistryProvisioningFailure ConcurrentFailure() => new(
+        "container-registries.provisioning.conflict",
+        "The registry project provisioning state changed concurrently.");
 
-    private static RegistryProvisioningFailure CredentialFailure() =>
-        new("container-registries.credential.protection-failed", "The registry credential could not be protected.");
+    private static RegistryProvisioningFailure CredentialFailure() => new(
+        "container-registries.credential.protection-failed",
+        "The registry credential could not be protected.");
 
     private static RegistryProvisioningFailure InterruptedFailure() =>
         RegistryProvisioningFailure.Interrupted("Container registry provisioning was interrupted.");

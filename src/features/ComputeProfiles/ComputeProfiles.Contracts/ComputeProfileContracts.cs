@@ -6,34 +6,41 @@ namespace Pole.Features.ComputeProfiles.Contracts;
 
 public sealed record ComputeResourceValues(
     long CpuMillis,
-    long MemoryMi);
+    long MemoryMi
+);
 
 public sealed record ComputeExtendedResourceValue(
     string Name,
-    long Quantity);
+    long Quantity
+);
 
 public sealed record ComputeNodeSelectorValue(
     string Key,
-    string Value);
+    string Value
+);
 
 public sealed record ComputeNodeAffinityExpressionValue(
     string Key,
     ComputeNodeAffinityOperator Operator,
-    ImmutableList<string> Values);
+    ImmutableList<string> Values
+);
 
 public sealed record ComputeNodeAffinityTermValue(
-    ImmutableList<ComputeNodeAffinityExpressionValue> Expressions);
+    ImmutableList<ComputeNodeAffinityExpressionValue> Expressions
+);
 
 public sealed record ComputePreferredNodeAffinityTermValue(
     int Weight,
-    ComputeNodeAffinityTermValue Term);
+    ComputeNodeAffinityTermValue Term
+);
 
 public sealed record ComputeTolerationValue(
     string? Key,
     ComputeTolerationOperator Operator,
     string? Value,
     ComputeTaintEffect Effect,
-    long? TolerationSeconds);
+    long? TolerationSeconds
+);
 
 public sealed record ResolvedComputeProfile(
     string ComputeProfileId,
@@ -48,13 +55,15 @@ public sealed record ResolvedComputeProfile(
     ImmutableList<ComputeNodeAffinityTermValue> RequiredNodeAffinity,
     ImmutableList<ComputePreferredNodeAffinityTermValue> PreferredNodeAffinity,
     ImmutableList<ComputeTolerationValue> Tolerations,
-    string? RuntimeClassName);
+    string? RuntimeClassName
+);
 
 public sealed record ComputeProfileResolutionRequest(
     string? ComputeProfileId,
     string DeploymentTargetId,
     string TenantId,
-    ResourceTypeId ResourceType);
+    ResourceTypeId ResourceType
+);
 
 public delegate Task<ResolveComputeProfileOutcome> ResolveComputeProfile(
     ComputeProfileResolutionRequest request,
@@ -63,20 +72,24 @@ public delegate Task<ResolveComputeProfileOutcome> ResolveComputeProfile(
 public sealed record ComputeProfileTargetResolutionRequest(
     string DeploymentTargetId,
     string? ComputeProfileId,
-    long? Revision = null);
+    long? Revision = null
+);
 
 /// <summary>
-/// Resolves the compute profile required by each selected deployment target.
-/// Every target is resolved for one tenant and logical resource type.
+///     Resolves the compute profile required by each selected deployment target.
+///     Every target is resolved for one tenant and logical resource type.
 /// </summary>
 public sealed record ComputeProfileBatchResolutionRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    IReadOnlyList<ComputeProfileTargetResolutionRequest> Targets);
+    IReadOnlyList<ComputeProfileTargetResolutionRequest> Targets
+);
 
 public sealed record DefaultComputeProfileNotConfigured;
 
-public sealed record ComputeProfileNotFound(string ComputeProfileId);
+public sealed record ComputeProfileNotFound(
+    string ComputeProfileId
+);
 
 public enum ComputeProfileUnavailableReason
 {
@@ -84,12 +97,13 @@ public enum ComputeProfileUnavailableReason
     ResourceTypeNotAllowed,
     TenantNotAllowed,
     DeploymentTargetNotConfigured,
-    RevisionUnavailable
+    RevisionUnavailable,
 }
 
 public sealed record ComputeProfileUnavailable(
     string ComputeProfileId,
-    ComputeProfileUnavailableReason Reason);
+    ComputeProfileUnavailableReason Reason
+);
 
 public union ComputeProfileResolutionError(
     DefaultComputeProfileNotConfigured,
@@ -106,30 +120,25 @@ public sealed record ComputeProfileResolutionFenceRequest(
     string DeploymentTargetId,
     string TenantId,
     ResourceTypeId ResourceType,
-    bool PinnedRevision = false);
+    bool PinnedRevision = false
+);
 
 public sealed record ComputeProfileResolutionFenceRejected(
-    IReadOnlyList<string> ComputeProfileIds);
+    IReadOnlyList<string> ComputeProfileIds
+);
 
 /// <summary>
-/// Fences all resolved profiles inside the caller's MongoDB transaction.
+///     Fences all resolved profiles inside the caller's MongoDB transaction.
 /// </summary>
-public delegate Task<FenceResolvedComputeProfilesOutcome>
-    FenceResolvedComputeProfiles(
-        IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
-        IClientSessionHandle session,
-        CancellationToken cancellationToken = default);
+public delegate Task<FenceResolvedComputeProfilesOutcome> FenceResolvedComputeProfiles(
+    IReadOnlyList<ComputeProfileResolutionFenceRequest> requests,
+    IClientSessionHandle session,
+    CancellationToken cancellationToken = default);
 
-public union ResolveComputeProfileOutcome(
-    ResolvedComputeProfile,
-    ComputeProfileResolutionError);
+public union ResolveComputeProfileOutcome(ResolvedComputeProfile, ComputeProfileResolutionError);
 
-public union ResolveComputeProfilesOutcome(
-    IReadOnlyList<ResolvedComputeProfile>,
-    ComputeProfileResolutionError);
+public union ResolveComputeProfilesOutcome(IReadOnlyList<ResolvedComputeProfile>, ComputeProfileResolutionError);
 
 public sealed record ComputeProfilesFenced;
 
-public union FenceResolvedComputeProfilesOutcome(
-    ComputeProfilesFenced,
-    ComputeProfileResolutionFenceRejected);
+public union FenceResolvedComputeProfilesOutcome(ComputeProfilesFenced, ComputeProfileResolutionFenceRejected);

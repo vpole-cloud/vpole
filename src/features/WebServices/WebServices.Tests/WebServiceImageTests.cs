@@ -1,10 +1,10 @@
 using System.Collections.Immutable;
 using System.Text.Json;
-using Pole.Features.WebServices.Events;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
-using Pole.Features.WebServices.Domain;
 using Pole.Features.Shared.Models;
+using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Events;
 using Xunit;
 
 namespace Pole.Features.WebServices.Tests;
@@ -21,11 +21,14 @@ public sealed class WebServiceImageTests
     {
         var prepared = Service(new UnboundSourceBuildImage(), new PreparedWebServiceLifecycle());
         var configured = prepared.AcceptConfigurationAwaitingArtifact(
-            prepared.Spec with { Image = WebServiceImageFactory.Pending(ConfigurationId) }, [], prepared.Exposure);
+            prepared.Spec with { Image = WebServiceImageFactory.Pending(ConfigurationId) },
+            [],
+            prepared.Exposure);
         Assert.IsType<AwaitingFirstArtifactWebServiceLifecycle>(configured.Lifecycle);
         Assert.Null(configured.Spec.Image.ResolvedImage);
         Assert.Null(configured.Spec.Image.ResolvedImageReference);
-        Assert.Same(configured,
+        Assert.Same(
+            configured,
             configured.AcceptConfigurationAwaitingArtifact(configured.Spec, [], configured.Exposure));
 
         var artifact = DeliveredSourceBuildImage.Create(ConfigurationId, Direct, Digest, JobId, 1);
@@ -40,7 +43,8 @@ public sealed class WebServiceImageTests
     [Fact]
     public void Artifact_promotion_rejects_stale_generation_other_binding_and_mutable_reference()
     {
-        var configured = Service(WebServiceImageFactory.Pending(ConfigurationId),
+        var configured = Service(
+            WebServiceImageFactory.Pending(ConfigurationId),
             new AwaitingFirstArtifactWebServiceLifecycle());
         var artifact = DeliveredSourceBuildImage.Create(ConfigurationId, Direct, Digest, JobId, 2);
         var active = configured.PromoteArtifact(artifact);
@@ -50,17 +54,24 @@ public sealed class WebServiceImageTests
         Assert.Throws<InvalidOperationException>(() => configured.PromoteArtifact(
             artifact with { ConfigurationId = JobId }));
         Assert.Throws<ArgumentException>(() => DeliveredSourceBuildImage.Create(
-            ConfigurationId, Direct, "latest", JobId, 1));
+            ConfigurationId,
+            Direct,
+            "latest",
+            JobId,
+            1));
         Assert.Throws<InvalidOperationException>(() => active.UpdateDesiredState(
-            active.Spec with { Image = Direct }, []));
+            active.Spec with { Image = Direct },
+            []));
     }
 
     [Fact]
     public void Factory_rejects_invalid_image_lifecycle_combinations()
     {
         Assert.Throws<ArgumentException>(() => Service(
-            WebServiceImageFactory.Pending(ConfigurationId), new ActiveWebServiceLifecycle()));
-        Assert.Throws<ArgumentException>(() => Service(new UnboundSourceBuildImage(),
+            WebServiceImageFactory.Pending(ConfigurationId),
+            new ActiveWebServiceLifecycle()));
+        Assert.Throws<ArgumentException>(() => Service(
+            new UnboundSourceBuildImage(),
             new AwaitingFirstArtifactWebServiceLifecycle()));
         Assert.Throws<ArgumentException>(() => Service(Direct, new AwaitingFirstArtifactWebServiceLifecycle()));
         var prepared = Service(WebServiceImageFactory.Pending(ConfigurationId), new PreparedWebServiceLifecycle());
@@ -75,8 +86,9 @@ public sealed class WebServiceImageTests
             Service(Direct, new ActiveWebServiceLifecycle()),
             Service(new UnboundSourceBuildImage(), new PreparedWebServiceLifecycle()),
             Service(WebServiceImageFactory.Pending(ConfigurationId), new AwaitingFirstArtifactWebServiceLifecycle()),
-            Service(DeliveredSourceBuildImage.Create(ConfigurationId, Direct, Digest, JobId, 3),
-                new ActiveWebServiceLifecycle())
+            Service(
+                DeliveredSourceBuildImage.Create(ConfigurationId, Direct, Digest, JobId, 3),
+                new ActiveWebServiceLifecycle()),
         ];
         foreach (var service in services)
         {
@@ -94,11 +106,15 @@ public sealed class WebServiceImageTests
     {
         WebServiceImageSnapshot[] snapshots =
         [
-            new WebServiceImageInfoSnapshot("registry", "app", "v1", null),
+            new WebServiceImageInfoSnapshot("registry", "app", "v1"),
             new UnboundSourceBuildImageSnapshot(),
             new PendingSourceBuildImageSnapshot(ConfigurationId),
-            new DeliveredSourceBuildImageSnapshot(ConfigurationId,
-                new WebServiceImageInfoSnapshot("registry", "app", "v1", "pull-secret"), Digest, JobId, 1)
+            new DeliveredSourceBuildImageSnapshot(
+                ConfigurationId,
+                new WebServiceImageInfoSnapshot("registry", "app", "v1", "pull-secret"),
+                Digest,
+                JobId,
+                1),
         ];
         foreach (var snapshot in snapshots)
         {
@@ -106,7 +122,8 @@ public sealed class WebServiceImageTests
             Assert.Equal(snapshot, JsonSerializer.Deserialize<WebServiceImageSnapshot>(json));
         }
 
-        var awaiting = Service(WebServiceImageFactory.Pending(ConfigurationId),
+        var awaiting = Service(
+            WebServiceImageFactory.Pending(ConfigurationId),
             new AwaitingFirstArtifactWebServiceLifecycle());
         var updated = awaiting.AdvancePlacementDesiredState();
         Assert.IsType<AwaitingFirstArtifactWebServiceLifecycle>(updated.Lifecycle);
@@ -115,12 +132,19 @@ public sealed class WebServiceImageTests
     }
 
     private static WebService Service(WebServiceImage image, WebServiceLifecycle lifecycle) => WebServiceFactory.Create(
-        "application", "6b800088b213917a38c38013", "6b800088b213917a38c38014", "6b800088b213917a38c38015",
-        new WebServiceSpec(image, new WebServiceConfig
-        {
-            EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
-            PortMappings = ImmutableList<PortMapping>.Empty
-        }, null, new ProbeSpec(new ProbeConfig("/", "80"), new ProbeConfig("/", "80"), new ProbeConfig("/", "80"))),
+        "application",
+        "6b800088b213917a38c38013",
+        "6b800088b213917a38c38014",
+        "6b800088b213917a38c38015",
+        new WebServiceSpec(
+            image,
+            new WebServiceConfig
+            {
+                EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
+                PortMappings = ImmutableList<PortMapping>.Empty,
+            },
+            null,
+            new ProbeSpec(new ProbeConfig("/", "80"), new ProbeConfig("/", "80"), new ProbeConfig("/", "80"))),
         WebServiceExposure.Create(),
         WebServiceFactory.DefaultOptions with { Lifecycle = lifecycle });
 }

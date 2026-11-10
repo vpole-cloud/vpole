@@ -1,33 +1,35 @@
 using System.Collections.Immutable;
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using k8s;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using MongoDB.Driver;
+using Pole.ASP.Helpers;
+using Pole.Database;
+using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain.Observation;
-using Pole.Tests.Integration.Infrastructure;
 using Pole.Testing.Kubernetes;
+using Pole.Tests.Integration.Http;
+using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
-    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageObservation)
+public sealed class StorageObservationApiTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.StorageObservation)
 {
-    private readonly List<string> reads = [];
     private readonly List<IDisposable> clients = [];
+    private readonly List<string> reads = [];
     private long connectionVersion = 1;
     private bool enabled = true;
-    private bool rotateDuringRead;
     private bool ownerMetadata;
     private string provisioner = "driver.example";
+    private bool rotateDuringRead;
 
     protected override void ConfigureTestServices(IServiceCollection services)
     {
@@ -35,21 +37,27 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
         services.AddSingleton(new StorageObservationOptions { Enabled = true });
         services.RemoveAll<LookupDeploymentTarget>();
         services.AddSingleton<LookupDeploymentTarget>((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(
-            new DeploymentTargetLookupDto(id,
+            new DeploymentTargetLookupDto(
+                id,
                 "Target",
                 "cluster",
                 "InCluster",
                 connectionVersion,
-                new(1, null, new(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
+                new DeploymentTargetWorkloadConfigurationLookupDto(
+                    1,
+                    null,
+                    new DeploymentTargetNetworkSourcesDto(
+                        ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
                 1,
                 enabled,
                 false,
                 false,
                 "Healthy",
-        TechnicalName: "test-target",
-        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
+                TechnicalName: "test-target",
+                NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
         // Each target client receives a fresh owned handler; tests use the real Kubernetes SDK.
-        var handler = new NativeWatchTestHandler(Response,
+        var handler = new NativeWatchTestHandler(
+            Response,
             _ => throw new InvalidOperationException("HTTP discovery cannot open a watch."));
         var client = NativeWatchTestClient.Create(handler);
         clients.Add(client);
@@ -70,9 +78,9 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
         Assert.DoesNotContain("native-canary", payload);
         Assert.DoesNotContain("parameters", payload);
         Assert.DoesNotContain("metadata", payload);
-        var snapshot =
-            JsonSerializer.Deserialize<StorageObservationSnapshot>(payload,
-                Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
+        var snapshot = JsonSerializer.Deserialize<StorageObservationSnapshot>(
+            payload,
+            PoleHttpJson.CreateSerializerOptions())!;
         Assert.Equal(TestData.DefaultDeploymentTargetId, snapshot.DeploymentTargetId);
         Assert.Equal(1, snapshot.ConnectionVersion);
         Assert.Null(snapshot.ObservationVersion);
@@ -81,7 +89,8 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
         Assert.Single(snapshot.PersistentVolumes);
         Assert.Single(snapshot.PersistentVolumeClaims);
         Assert.Equal(3, reads.Count);
-        Assert.Equal(HttpStatusCode.BadRequest,
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
             (await Client.GetAsync("/api/v1/platform/storage/observation?deploymentTargetId=invalid")).StatusCode);
     }
 
@@ -93,9 +102,8 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
         enabled = rotate;
         rotateDuringRead = rotate;
-        var response =
-            await Client.GetAsync(
-                $"/api/v1/platform/storage/observation?deploymentTargetId={TestData.DefaultDeploymentTargetId}");
+        var response = await Client.GetAsync(
+            $"/api/v1/platform/storage/observation?deploymentTargetId={TestData.DefaultDeploymentTargetId}");
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.DoesNotContain("native-canary", await response.Content.ReadAsStringAsync());
         if (!rotate)
@@ -108,15 +116,14 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
         provisioner = StorageNativeApi.MaximumQualifiedProvisioner;
         Assert.Equal(317, provisioner.Length);
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
-        var response =
-            await Client.GetAsync(
-                $"/api/v1/platform/storage/observation?deploymentTargetId={TestData.DefaultDeploymentTargetId}");
+        var response = await Client.GetAsync(
+            $"/api/v1/platform/storage/observation?deploymentTargetId={TestData.DefaultDeploymentTargetId}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain("native-canary", payload);
-        var snapshot =
-            JsonSerializer.Deserialize<StorageObservationSnapshot>(payload,
-                Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
+        var snapshot = JsonSerializer.Deserialize<StorageObservationSnapshot>(
+            payload,
+            PoleHttpJson.CreateSerializerOptions())!;
         Assert.True(snapshot.Complete);
         Assert.Equal(provisioner, Assert.Single(snapshot.StorageClasses).Provisioner);
         Assert.Equal(3, reads.Count);
@@ -127,15 +134,14 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
     {
         ownerMetadata = true;
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
-        var response =
-            await Client.GetAsync(
-                $"/api/v1/platform/storage/observation?deploymentTargetId={TestData.DefaultDeploymentTargetId}");
+        var response = await Client.GetAsync(
+            $"/api/v1/platform/storage/observation?deploymentTargetId={TestData.DefaultDeploymentTargetId}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain("native-canary", payload);
-        var snapshot =
-            JsonSerializer.Deserialize<StorageObservationSnapshot>(payload,
-                Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!;
+        var snapshot = JsonSerializer.Deserialize<StorageObservationSnapshot>(
+            payload,
+            PoleHttpJson.CreateSerializerOptions())!;
         Assert.True(snapshot.Complete);
         var owner = Assert.Single(snapshot.PersistentVolumeClaims).Owner;
         Assert.Equal("Мій кластер", owner.ResourceName);
@@ -156,15 +162,19 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
                 MongoStorageObservationStore.DemandsCollection),
             Fixture.Database.GetCollection<StorageObservationSnapshotDocument>(
                 MongoStorageObservationStore.SnapshotsCollection),
-            new Pole.Database.MongoRunTransaction(Fixture.Client),
-            (request, session, ct) =>
-                new Pole.Features.DeploymentTargets.Application.Admission.
-                        MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets)
-                    .InvokeAsync(request, session, ct),
+            new MongoRunTransaction(Fixture.Client),
+            (
+                request, session,
+                ct) => new MongoFenceDeploymentTargetObservation(Fixture.DbContext.DeploymentTargets).InvokeAsync(
+                request,
+                session,
+                ct),
             Fixture.StoreOutboxWrites,
-            new());
+            new StorageObservationOptions());
         var context = new StorageObservationContext(id, 1);
-        await store.PutDemandAsync(new(new(id, "subscription", "connection", "session"),
+        await store.PutDemandAsync(
+            new StorageObservationDemand(
+                new StorageObservationDemandIdentity(id, "subscription", "connection", "session"),
                 DateTimeOffset.UtcNow.AddMinutes(10)),
             context);
         var owner = Assert.IsType<StorageObservationOwnership>(
@@ -172,14 +182,16 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
         var source = Assert.IsType<StorageObservationSourceState>(
             (await store.SetSourceStateAsync(owner.Lease, context, owner.SourceControlVersion, true, "source-a"))
             .Value);
-        var committed = Assert.IsType<StorageObservationSnapshot>((await store.TryCommitSnapshotAsync(owner.Lease,
-            context,
-            source.SourceControlVersion,
-            "source-a",
-            new([], [], [], true))).Value);
+        var committed = Assert.IsType<StorageObservationSnapshot>(
+            (await store.TryCommitSnapshotAsync(
+                owner.Lease,
+                context,
+                source.SourceControlVersion,
+                "source-a",
+                new StorageInventoryObservation([], [], [], true))).Value);
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
-        var response =
-            await Client.GetFromJsonAsync<StorageObservationSnapshot>(
+        var response
+            = await Client.GetFromJsonAsync<StorageObservationSnapshot>(
                 $"/api/v1/platform/storage/observation?deploymentTargetId={id}");
         Assert.Equal(committed.ObservationVersion, response!.ObservationVersion);
         Assert.Equal(committed.CheckedAtUtc, response.CheckedAtUtc);
@@ -195,20 +207,21 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
             connectionVersion = 2;
         if (path.EndsWith("storageclasses", StringComparison.Ordinal))
         {
-            var classes = JsonNode.Parse("""
-            {"apiVersion":"storage.k8s.io/v1","kind":"StorageClassList","metadata":{"resourceVersion":"classes-version"},"items":[{"metadata":{"name":"class-a","uid":"class-uid","labels":{"app.kubernetes.io/raw":"native-canary"},"annotations":{"pole.io/raw":"native-canary"}},"provisioner":"driver.example","parameters":{"raw":"native-canary"}}]}
-            """)!;
+            var classes = JsonNode.Parse(
+                """
+                {"apiVersion":"storage.k8s.io/v1","kind":"StorageClassList","metadata":{"resourceVersion":"classes-version"},"items":[{"metadata":{"name":"class-a","uid":"class-uid","labels":{"app.kubernetes.io/raw":"native-canary"},"annotations":{"pole.io/raw":"native-canary"}},"provisioner":"driver.example","parameters":{"raw":"native-canary"}}]}
+                """)!;
             classes["items"]![0]!["provisioner"] = provisioner;
             return classes.ToJsonString();
         }
 
         if (path.EndsWith("persistentvolumes", StringComparison.Ordinal))
             return """
-            {"apiVersion":"v1","kind":"PersistentVolumeList","metadata":{"resourceVersion":"volumes-version"},"items":[{"metadata":{"name":"volume-a","uid":"volume-uid"},"spec":{"storageClassName":"class-a","capacity":{"storage":"1Gi"},"csi":{"driver":"driver.example","volumeHandle":"native-canary"}},"status":{"phase":"Bound"}}]}
-            """;
+                   {"apiVersion":"v1","kind":"PersistentVolumeList","metadata":{"resourceVersion":"volumes-version"},"items":[{"metadata":{"name":"volume-a","uid":"volume-uid"},"spec":{"storageClassName":"class-a","capacity":{"storage":"1Gi"},"csi":{"driver":"driver.example","volumeHandle":"native-canary"}},"status":{"phase":"Bound"}}]}
+                   """;
         var claims = """
-            {"apiVersion":"v1","kind":"PersistentVolumeClaimList","metadata":{"resourceVersion":"claims-version"},"items":[{"metadata":{"name":"claim-a","namespace":"owned","uid":"claim-uid"},"spec":{"storageClassName":"class-a","resources":{"requests":{"storage":"1Gi"}}},"status":{"phase":"Bound"}}]}
-            """;
+                     {"apiVersion":"v1","kind":"PersistentVolumeClaimList","metadata":{"resourceVersion":"claims-version"},"items":[{"metadata":{"name":"claim-a","namespace":"owned","uid":"claim-uid"},"spec":{"storageClassName":"class-a","resources":{"requests":{"storage":"1Gi"}}},"status":{"phase":"Bound"}}]}
+                     """;
         if (!ownerMetadata)
             return claims;
         var json = JsonNode.Parse(claims)!;
@@ -218,7 +231,7 @@ public sealed class StorageObservationApiTests(MongoReplicaSetFixture fixture)
             [PoleStorageLabels.ResourceId] = "native-canary" + new string('x', 300),
             [PoleStorageLabels.TenantId] = "malformed\nidentity",
             [PoleStorageLabels.ResourceGroupId] = Data.TenantId.ToUpperInvariant(),
-            ["pole.io/arbitrary"] = "native-canary"
+            ["pole.io/arbitrary"] = "native-canary",
         };
         return json.ToJsonString();
     }

@@ -17,26 +17,25 @@ public sealed record PrivateAccessGateway(
     DateTime? LastContactAtUtc,
     string? Version,
     PrivateAccessGatewayState State,
-    IReadOnlyList<PrivateAccessGatewayRoute> Endpoints) : ITenantOwned
+    IReadOnlyList<PrivateAccessGatewayRoute> Endpoints
+) : ITenantOwned
 {
-    public PrivateAccessGateway Rotate(
-        string certificateSha256Pin,
-        DateTime certificateNotAfterUtc) => this with
-        {
-            CertificateSha256Pin = certificateSha256Pin,
-            CertificateNotAfterUtc = certificateNotAfterUtc,
-            Generation = checked(Generation + 1),
-            Revision = checked(Revision + 1),
-            LastContactAtUtc = null,
-            Version = null
-        };
+    public PrivateAccessGateway Rotate(string certificateSha256Pin, DateTime certificateNotAfterUtc) => this with
+    {
+        CertificateSha256Pin = certificateSha256Pin,
+        CertificateNotAfterUtc = certificateNotAfterUtc,
+        Generation = checked(Generation + 1),
+        Revision = checked(Revision + 1),
+        LastContactAtUtc = null,
+        Version = null,
+    };
 
     public PrivateAccessGateway Revoke(DateTime atUtc) => State is RevokedPrivateAccessGatewayState
         ? this
         : this with
         {
             State = new RevokedPrivateAccessGatewayState(atUtc),
-            Revision = checked(Revision + 1)
+            Revision = checked(Revision + 1),
         };
 }
 
@@ -47,7 +46,8 @@ public sealed record PrivateAccessGatewayRoute(
     string KubernetesNamespace,
     string ServiceName,
     int ServicePort,
-    int TargetPort);
+    int TargetPort
+);
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ActivePrivateAccessGatewayState), typeof(RevokedPrivateAccessGatewayState))]
@@ -58,7 +58,8 @@ public sealed record ActivePrivateAccessGatewayState : PrivateAccessGatewayState
 
 [BsonDiscriminator("Revoked")]
 public sealed record RevokedPrivateAccessGatewayState(
-    DateTime RevokedAtUtc) : PrivateAccessGatewayState;
+    DateTime RevokedAtUtc
+) : PrivateAccessGatewayState;
 
 public static class PrivateAccessGatewayFactory
 {
@@ -69,15 +70,15 @@ public static class PrivateAccessGatewayFactory
         string certificateSha256Pin,
         DateTime certificateNotAfterUtc,
         IReadOnlyList<PrivateAccessGatewayRoute> endpoints) => new(
-            id,
-            tenantId,
-            deploymentTargetId,
-            certificateSha256Pin,
-            certificateNotAfterUtc,
-            1,
-            1,
-            null,
-            null,
-            new ActivePrivateAccessGatewayState(),
-            endpoints);
+        id,
+        tenantId,
+        deploymentTargetId,
+        certificateSha256Pin,
+        certificateNotAfterUtc,
+        1,
+        1,
+        null,
+        null,
+        new ActivePrivateAccessGatewayState(),
+        endpoints);
 }

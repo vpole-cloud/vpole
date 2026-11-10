@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.GitProviders.Migrations;
 
@@ -14,80 +14,81 @@ public sealed class GitProviderConnectionsMigration : IMigration
     {
         var connections = context.GetCollection<BsonDocument>("GitProviderConnections");
         await connections.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("Provider")
-                    .Ascending("ExternalInstallationId"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "UX_GitProviderConnections_Provider_Installation"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("Provider")
-                    .Ascending("AccountLogin"),
-                new CreateIndexOptions { Name = "IX_GitProviderConnections_Tenant_Provider_Account" })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("Provider").Ascending("ExternalInstallationId"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Name = "UX_GitProviderConnections_Provider_Installation",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TenantId")
+                        .Ascending("Provider")
+                        .Ascending("AccountLogin"),
+                    new CreateIndexOptions { Name = "IX_GitProviderConnections_Tenant_Provider_Account" }),
+            ],
+            cancellationToken);
 
-        await connections.Indexes.CreateOneAsync(new CreateIndexModel<BsonDocument>(
-            Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("TechnicalName"),
-            new CreateIndexOptions { Unique = true, Name = "UX_GitProviderConnections_Tenant_TechnicalName" }),
+        await connections.Indexes.CreateOneAsync(
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("TechnicalName"),
+                new CreateIndexOptions { Unique = true, Name = "UX_GitProviderConnections_Tenant_TechnicalName" }),
             cancellationToken: cancellationToken);
 
         var sourceRepositories = context.GetCollection<BsonDocument>("SourceRepositories");
         await sourceRepositories.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("ConnectionId")
-                    .Ascending("ExternalRepositoryId")
-                    .Ascending("Branch"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "UX_SourceRepositories_Tenant_Repository_Branch"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("RepositoryFullName"),
-                new CreateIndexOptions { Name = "IX_SourceRepositories_Tenant_Name" })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TenantId")
+                        .Ascending("ConnectionId")
+                        .Ascending("ExternalRepositoryId")
+                        .Ascending("Branch"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Name = "UX_SourceRepositories_Tenant_Repository_Branch",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("RepositoryFullName"),
+                    new CreateIndexOptions { Name = "IX_SourceRepositories_Tenant_Name" }),
+            ],
+            cancellationToken);
 
-        await sourceRepositories.Indexes.CreateOneAsync(new CreateIndexModel<BsonDocument>(
-            Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("TechnicalName"),
-            new CreateIndexOptions { Unique = true, Name = "UX_SourceRepositories_Tenant_TechnicalName" }),
+        await sourceRepositories.Indexes.CreateOneAsync(
+            new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("TechnicalName"),
+                new CreateIndexOptions { Unique = true, Name = "UX_SourceRepositories_Tenant_TechnicalName" }),
             cancellationToken: cancellationToken);
 
         var setupAttempts = context.GetCollection<BsonDocument>("GitHubSetupAttempts");
         await setupAttempts.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("InstallStateHash"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "UX_GitHubSetupAttempts_InstallState"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("OAuthStateHash"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Sparse = true,
-                    Name = "UX_GitHubSetupAttempts_OAuthState"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("ExpiresAtUtc"),
-                new CreateIndexOptions
-                {
-                    ExpireAfter = TimeSpan.Zero,
-                    Name = "TTL_GitHubSetupAttempts_ExpiresAtUtc"
-                })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("InstallStateHash"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Name = "UX_GitHubSetupAttempts_InstallState",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("OAuthStateHash"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Sparse = true,
+                        Name = "UX_GitHubSetupAttempts_OAuthState",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("ExpiresAtUtc"),
+                    new CreateIndexOptions
+                    {
+                        ExpireAfter = TimeSpan.Zero,
+                        Name = "TTL_GitHubSetupAttempts_ExpiresAtUtc",
+                    }),
+            ],
+            cancellationToken);
     }
 }

@@ -11,16 +11,15 @@ public sealed class QuotaSettingsTests
     [Fact]
     public async Task InvalidQuotaSettingsPreventHostStartup()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["kubernetes:NamespaceNamePrefix"] = "test-pole",
-                ["Quotas:ActiveReservationMinutes"] = "0",
-                ["Quotas:FinalizedReservationHistoryDays"] = "-1"
-            })
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["kubernetes:NamespaceNamePrefix"] = "test-pole",
+                    ["Quotas:ActiveReservationMinutes"] = "0",
+                    ["Quotas:FinalizedReservationHistoryDays"] = "-1",
+                })
             .Build();
-        using var host = new HostBuilder()
-            .ConfigureServices(services => services.AddQuotasFeature(configuration))
+        using var host = new HostBuilder().ConfigureServices(services => services.AddQuotasFeature(configuration))
             .Build();
 
         await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());

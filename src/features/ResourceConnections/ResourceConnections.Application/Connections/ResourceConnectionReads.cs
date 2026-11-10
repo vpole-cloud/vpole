@@ -1,10 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceConnections.Application.Common;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Workloads;
 
@@ -17,7 +12,8 @@ public delegate Task<ResourceConnection?> LoadResourceConnection(
 
 public sealed record ResourceConnectionPage(
     IReadOnlyList<ResourceConnection> Items,
-    long TotalCount);
+    long TotalCount
+);
 
 public delegate Task<ResourceConnectionPage> LoadResourceConnectionsPage(
     string tenantId,
@@ -28,14 +24,15 @@ public delegate Task<ResourceConnectionPage> LoadResourceConnectionsPage(
     string? sourceId = null);
 
 internal sealed class MongoResourceConnectionReads(
-    IMongoCollection<ResourceConnection> connections)
+    IMongoCollection<ResourceConnection> connections
+)
 {
     public async Task<ResourceConnection?> LoadOneAsync(
         string tenantId,
         string connectionId,
-        CancellationToken cancellationToken = default) =>
-        await connections.Find(ResourceConnectionFilters.ByTenantAndId(tenantId, connectionId))
-            .FirstOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await connections
+        .Find(ResourceConnectionFilters.ByTenantAndId(tenantId, connectionId))
+        .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<ResourceConnectionPage> LoadPageAsync(
         string tenantId,
@@ -45,10 +42,10 @@ internal sealed class MongoResourceConnectionReads(
         ResourceTypeId? sourceType = null,
         string? sourceId = null)
     {
-        var filter = sourceType is null ? ResourceConnectionFilters.ByTenant(tenantId) : ResourceConnectionFilters.BySource(tenantId, sourceType.Value, sourceId!);
-        var count = await connections.CountDocumentsAsync(
-            filter,
-            cancellationToken: cancellationToken);
+        var filter = sourceType is null
+            ? ResourceConnectionFilters.ByTenant(tenantId)
+            : ResourceConnectionFilters.BySource(tenantId, sourceType.Value, sourceId!);
+        var count = await connections.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
         var items = await connections.Find(filter)
             .SortBy(item => item.Name)
             .ThenBy(item => item.Id)

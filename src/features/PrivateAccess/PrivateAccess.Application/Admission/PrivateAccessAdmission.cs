@@ -1,10 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
-using Pole.Features.PrivateAccess.Application.Grants;
 using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -29,7 +26,8 @@ internal sealed class PrivateAccessAdmission(
     LoadExactResourceDeploymentAccessPlacement loadPlacement,
     FenceDeploymentTargetPrivateAccess fenceTarget,
     PrivateAccessEndpointCatalog endpointCatalog,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<CheckPrivateAccessSessionOutcome> CheckAsync(
         PrivateAccessSession accessSession,
@@ -45,14 +43,11 @@ internal sealed class PrivateAccessAdmission(
             cancellationToken);
         if (grant is null || !grant.IsActive(now))
             return new PrivateAccessGrantUnavailable();
-        if (PrivateAccessGrantBinding.From(grant) !=
-            PrivateAccessGrantBinding.From(accessSession))
+        if (PrivateAccessGrantBinding.From(grant) != PrivateAccessGrantBinding.From(accessSession))
             return new PrivateAccessBindingChanged();
 
         var member = await loadTenantMember(
-            new LoadTenantMemberRequest(
-                TenantId: accessSession.TenantId,
-                UserId: accessSession.SubjectUserId),
+            new LoadTenantMemberRequest(TenantId: accessSession.TenantId, UserId: accessSession.SubjectUserId),
             session: transactionSession,
             cancellationToken: cancellationToken);
         if (member is not TenantMemberSnapshot)
@@ -76,22 +71,23 @@ internal sealed class PrivateAccessAdmission(
                 DeploymentId: accessSession.Grant.ResourceDeploymentId),
             session: transactionSession,
             cancellationToken: cancellationToken);
-        if (placement is null ||
-            placement.ResourceGroupId != registered.ResourceGroupId ||
+        if (placement is null || placement.ResourceGroupId != registered.ResourceGroupId ||
             placement.Status != ResourceDeploymentStatus.Applied ||
             placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
             return new PrivateAccessDeploymentUnavailable();
-        var target = await fenceTarget(
-            placement.DeploymentTargetId, transactionSession, cancellationToken);
+        var target = await fenceTarget(placement.DeploymentTargetId, transactionSession, cancellationToken);
         if (target is not PrivateAccessDeploymentTargetReady)
             return new PrivateAccessDeploymentUnavailable();
         var endpoint = await endpointCatalog.ResolveAsync(
-            accessSession.TenantId, resourceType, accessSession.Grant.ResourceId,
-            accessSession.Grant.EndpointId, transactionSession, cancellationToken);
+            accessSession.TenantId,
+            resourceType,
+            accessSession.Grant.ResourceId,
+            accessSession.Grant.EndpointId,
+            transactionSession,
+            cancellationToken);
         if (endpoint is null)
             return new PrivateAccessEndpointUnavailable();
-        if (PrivateAccessResolvedBinding.From(placement, endpoint) !=
-            PrivateAccessResolvedBinding.From(accessSession))
+        if (PrivateAccessResolvedBinding.From(placement, endpoint) != PrivateAccessResolvedBinding.From(accessSession))
             return new PrivateAccessBindingChanged();
 
         var authorizedAt = timeProvider.GetUtcNow().UtcDateTime;

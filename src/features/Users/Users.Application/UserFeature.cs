@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Features.Users.Application.Identity;
-using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Application.Registration;
 using Pole.Features.Users.Domain;
 
@@ -11,9 +10,7 @@ namespace Pole.Features.Users.Application;
 
 public static class UserFeature
 {
-    public static IServiceCollection AddUsersFeature(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddUsersFeature(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<PoleUser>("Users"));

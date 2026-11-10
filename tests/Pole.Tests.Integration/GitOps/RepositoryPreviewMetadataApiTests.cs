@@ -1,13 +1,15 @@
-using Pole.Tests.Integration.Infrastructure;
 using System.Net;
-using Pole.Tests.Integration.Http;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
+using Pole.Tests.Integration.Http;
+using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant1)]
-public sealed class RepositoryPreviewMetadataApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
+public sealed class RepositoryPreviewMetadataApiTests(
+    MongoReplicaSetFixture fixture
+) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Preview_summary_covers_warnings_beyond_the_requested_action_page()
@@ -15,7 +17,8 @@ public sealed class RepositoryPreviewMetadataApiTests(MongoReplicaSetFixture fix
         var source = await Create();
         await Run(source.Id);
         repository.Publish("repo", []);
-        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews",
+        using var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source.Id}/previews",
             new { intent = "ResourceChanges", expectedRevision = source.Revision });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var preview = (await response.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
@@ -47,7 +50,8 @@ public sealed class RepositoryPreviewMetadataApiTests(MongoReplicaSetFixture fix
     {
         var source = await Create(files: [GroupManifest("keep")]);
         await Run(source.Id);
-        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews",
+        using var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source.Id}/previews",
             new { intent = "Detach", expectedRevision = source.Revision });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var preview = (await response.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
@@ -66,23 +70,25 @@ public sealed class RepositoryPreviewMetadataApiTests(MongoReplicaSetFixture fix
         var source = await Create(files: [GroupManifest("keep")]);
         await Run(source.Id);
         repository.Publish("destination-repository", [GroupManifest("keep")]);
-        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews", new
-        {
-            intent = "Relocation",
-            expectedRevision = source.Revision,
-            destination = new
+        using var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source.Id}/previews",
+            new
             {
-                provider = "TestRepository",
-                connectionId = TestRepositorySnapshots.ConnectionId,
-                externalRepositoryId = "destination-repository",
-                branch = "release/next",
-                manifestDirectory = "apps"
-            }
-        });
+                intent = "Relocation",
+                expectedRevision = source.Revision,
+                destination = new
+                {
+                    provider = "TestRepository",
+                    connectionId = TestRepositorySnapshots.ConnectionId,
+                    externalRepositoryId = "destination-repository",
+                    branch = "release/next",
+                    manifestDirectory = "apps",
+                },
+            });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = (await response.Content.ReadFromJsonAsync<LifecyclePreviewView>())!;
-        var reopened = (await Client.GetFromJsonAsync<LifecyclePreviewView>(
-            $"{Root}/{source.Id}/previews/{created.Id}"))!;
+        var reopened
+            = (await Client.GetFromJsonAsync<LifecyclePreviewView>($"{Root}/{source.Id}/previews/{created.Id}"))!;
         var input = Assert.IsType<LifecycleRepositoryPreviewInputView>(reopened.Input);
         Assert.Equal("destination-repository", input.Repository.ExternalRepositoryId);
         Assert.Equal("release/next", input.Repository.Branch);

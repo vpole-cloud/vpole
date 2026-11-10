@@ -1,27 +1,28 @@
-using Pole.Architecture;
-using Pole.Migrations;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
+using Pole.Architecture;
+using Pole.Migrations;
 
 namespace Pole.Database;
 
 /// <summary>
-/// The MigrationRunner class is responsible for running database migrations
-/// in a MongoDB database. It takes a list of migrations and applies them to
-/// the database in order, ensuring that each migration is applied only once.
-/// The runner will keep track of which migrations have been applied in a
-/// special collection in the database, and will skip any migrations that have
-/// already been applied. This allows you to safely run the migrations multiple
-/// times without worrying about applying the same migration twice.
+///     The MigrationRunner class is responsible for running database migrations
+///     in a MongoDB database. It takes a list of migrations and applies them to
+///     the database in order, ensuring that each migration is applied only once.
+///     The runner will keep track of which migrations have been applied in a
+///     special collection in the database, and will skip any migrations that have
+///     already been applied. This allows you to safely run the migrations multiple
+///     times without worrying about applying the same migration twice.
 /// </summary>
 /// <param name="database"></param>
 /// <param name="migrations"></param>
 public class MigrationRunner(
     IMongoDatabase database,
     ILogger<MigrationRunner> logger,
-    IEnumerable<IMigration> migrations)
+    IEnumerable<IMigration> migrations
+)
 {
     private const string AppliedMigrationsCollectionName = "__migrations";
     private const string MigrationLocksCollectionName = "__migration_locks";
@@ -30,30 +31,13 @@ public class MigrationRunner(
     private static readonly TimeSpan LockAcquireTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan LockRetryDelay = TimeSpan.FromSeconds(2);
 
-    [ViolateArchitecture(ArchitectureRules.RawBson,
-        "Migration bookkeeping stores both ObjectId migration identities and feature-scoped string " +
-        "identities in the same _id field.")]
-    private sealed record AppliedMigration(
-        [property: BsonId]
-        BsonValue Id,
-        string Name,
-        string Description,
-        DateTime AppliedOnUtc
-    );
-
-    private sealed record MigrationLock(
-        [property: BsonId]
-        string Id,
-        string OwnerId,
-        DateTime ExpiresAtUtc
-    );
-
     /// <summary>
-    /// Runs all pending migrations in order, ensuring that each migration is
-    /// applied only once.
+    ///     Runs all pending migrations in order, ensuring that each migration is
+    ///     applied only once.
     /// </summary>
     /// <param name="cancellationToken"></param>
-    [ViolateArchitecture(ArchitectureRules.RawBson,
+    [ViolateArchitecture(
+        ArchitectureRules.RawBson,
         "Compare and store migration identities in their exact BSON representation; this shared " +
         "runner is not a migration-project exemption.")]
     public async Task RunMigrations(CancellationToken cancellationToken = default)
@@ -65,8 +49,7 @@ public class MigrationRunner(
 
         await using var migrationLock = await AcquireLockAsync(lockOwnerId, cancellationToken);
 
-        var appliedMigrationIds = await appliedMigrations
-            .Find(FilterDefinition<AppliedMigration>.Empty)
+        var appliedMigrationIds = await appliedMigrations.Find(FilterDefinition<AppliedMigration>.Empty)
             .Project(migration => migration.Id)
             .ToListAsync(cancellationToken);
 
@@ -75,8 +58,10 @@ public class MigrationRunner(
         if (duplicate is not null)
             throw new InvalidOperationException($"Duplicate migration identity: {duplicate.Key}.");
         var featureOrder = migrationArray.OfType<FeatureScopedMigration>()
-            .Select(migration => migration.FeatureId).Distinct()
-            .Select((id, index) => (id, index)).ToDictionary(item => item.id, item => item.index);
+            .Select(migration => migration.FeatureId)
+            .Distinct()
+            .Select((id, index) => (id, index))
+            .ToDictionary(item => item.id, item => item.index);
         var pendingMigrations = migrationArray
             .OrderBy(migration => migration is FeatureScopedMigration feature ? featureOrder[feature.FeatureId] + 1 : 0)
             .ThenBy(migration => migration.Id)
@@ -94,10 +79,7 @@ public class MigrationRunner(
         {
             await migrationLock.RefreshAsync(cancellationToken);
 
-            logger.LogInformation(
-                "Applying migration {MigrationId} - {MigrationName}",
-                migration.Id,
-                migration.Name);
+            logger.LogInformation("Applying migration {MigrationId} - {MigrationName}", migration.Id, migration.Name);
 
             await migration.Up(database, cancellationToken);
 
@@ -109,16 +91,14 @@ public class MigrationRunner(
                     AppliedOnUtc: DateTime.UtcNow),
                 cancellationToken: cancellationToken);
 
-            logger.LogInformation(
-                "Applied migration {MigrationId} - {MigrationName}",
-                migration.Id,
-                migration.Name);
+            logger.LogInformation("Applied migration {MigrationId} - {MigrationName}", migration.Id, migration.Name);
         }
 
         logger.LogInformation("Finished running migrations");
     }
 
-    [ViolateArchitecture(ArchitectureRules.RawBson,
+    [ViolateArchitecture(
+        ArchitectureRules.RawBson,
         "The migration ledger must retain ObjectId and feature-scoped string identifier representations.")]
     private static BsonValue DurableId(IMigration migration) =>
         migration is FeatureScopedMigration scoped ? scoped.DurableId : (BsonValue)migration.Id;
@@ -139,8 +119,7 @@ public class MigrationRunner(
                 Builders<MigrationLock>.Filter.Eq(lockDoc => lockDoc.Id, GlobalLockId),
                 Builders<MigrationLock>.Filter.Or(
                     Builders<MigrationLock>.Filter.Lte(lockDoc => lockDoc.ExpiresAtUtc, nowUtc),
-                    Builders<MigrationLock>.Filter.Eq(lockDoc => lockDoc.OwnerId, ownerId)
-                ));
+                    Builders<MigrationLock>.Filter.Eq(lockDoc => lockDoc.OwnerId, ownerId)));
 
             var update = Builders<MigrationLock>.Update
                 .SetOnInsert(lockDoc => lockDoc.Id, GlobalLockId)
@@ -156,7 +135,7 @@ public class MigrationRunner(
                     new FindOneAndUpdateOptions<MigrationLock>
                     {
                         IsUpsert = true,
-                        ReturnDocument = ReturnDocument.After
+                        ReturnDocument = ReturnDocument.After,
                     },
                     cancellationToken);
             }
@@ -176,28 +155,36 @@ public class MigrationRunner(
             }
 
             if (DateTime.UtcNow - startedAtUtc >= LockAcquireTimeout)
-            {
                 throw new TimeoutException("Timed out while waiting for the migration lock.");
-            }
 
             logger.LogInformation("Waiting for migration lock held by another instance");
             await Task.Delay(LockRetryDelay, cancellationToken);
         }
     }
 
+    [ViolateArchitecture(
+        ArchitectureRules.RawBson,
+        "Migration bookkeeping stores both ObjectId migration identities and feature-scoped string " +
+        "identities in the same _id field.")]
+    private sealed record AppliedMigration(
+        [property: BsonId] BsonValue Id,
+        string Name,
+        string Description,
+        DateTime AppliedOnUtc
+    );
+
+    private sealed record MigrationLock(
+        [property: BsonId] string Id,
+        string OwnerId,
+        DateTime ExpiresAtUtc
+    );
+
     private sealed class MigrationLockHandle(
         IMongoCollection<MigrationLock> locks,
         string ownerId,
-        ILogger logger) : IAsyncDisposable
+        ILogger logger
+    ) : IAsyncDisposable
     {
-        public async Task RefreshAsync(CancellationToken cancellationToken)
-        {
-            await locks.UpdateOneAsync(
-                lockDoc => lockDoc.Id == GlobalLockId && lockDoc.OwnerId == ownerId,
-                Builders<MigrationLock>.Update.Set(lockDoc => lockDoc.ExpiresAtUtc, DateTime.UtcNow.Add(LockLeaseDuration)),
-                cancellationToken: cancellationToken);
-        }
-
         public async ValueTask DisposeAsync()
         {
             try
@@ -209,6 +196,16 @@ public class MigrationRunner(
             {
                 logger.LogWarning(ex, "Failed to release migration lock for owner {OwnerId}", ownerId);
             }
+        }
+
+        public async Task RefreshAsync(CancellationToken cancellationToken)
+        {
+            await locks.UpdateOneAsync(
+                lockDoc => lockDoc.Id == GlobalLockId && lockDoc.OwnerId == ownerId,
+                Builders<MigrationLock>.Update.Set(
+                    lockDoc => lockDoc.ExpiresAtUtc,
+                    DateTime.UtcNow.Add(LockLeaseDuration)),
+                cancellationToken: cancellationToken);
         }
     }
 }

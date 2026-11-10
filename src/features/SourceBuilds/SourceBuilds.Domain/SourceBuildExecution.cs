@@ -6,9 +6,12 @@ namespace Pole.Features.SourceBuilds.Domain;
 [BsonKnownTypes(typeof(AvailableSourceBuildExecution), typeof(ClaimedSourceBuildExecution))]
 public closed record SourceBuildExecution;
 
-public sealed record AvailableSourceBuildExecution(long Attempt) : SourceBuildExecution;
+public sealed record AvailableSourceBuildExecution(
+    long Attempt
+) : SourceBuildExecution;
 
 public sealed record ClaimedSourceBuildExecution(
     string WorkerId,
     long Attempt,
-    DateTime ExpiresAtUtc) : SourceBuildExecution;
+    DateTime ExpiresAtUtc
+) : SourceBuildExecution;

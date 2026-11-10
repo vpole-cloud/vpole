@@ -11,7 +11,7 @@ public enum EndpointHttpMethod
     Post,
     Put,
     Delete,
-    Patch
+    Patch,
 }
 
 public static class EndpointRouteBuilderExtensions
@@ -22,13 +22,11 @@ public static class EndpointRouteBuilderExtensions
         string methodName,
         EndpointHttpMethod httpMethod)
     {
-        var handlerMethod = typeof(THandler).GetMethod(methodName, BindingFlags.Public | BindingFlags.Static)
-            ?? throw new InvalidOperationException($"Method '{methodName}' was not found on type '{typeof(THandler).FullName}'.");
+        var handlerMethod = typeof(THandler).GetMethod(methodName, BindingFlags.Public | BindingFlags.Static) ??
+            throw new InvalidOperationException(
+                $"Method '{methodName}' was not found on type '{typeof(THandler).FullName}'.");
 
-        var parameterTypes = handlerMethod
-            .GetParameters()
-            .Select(parameter => parameter.ParameterType)
-            .ToList();
+        var parameterTypes = handlerMethod.GetParameters().Select(parameter => parameter.ParameterType).ToList();
 
         parameterTypes.Add(handlerMethod.ReturnType);
 
@@ -42,7 +40,7 @@ public static class EndpointRouteBuilderExtensions
             EndpointHttpMethod.Put => endpoints.MapPut(pattern, handler),
             EndpointHttpMethod.Delete => endpoints.MapDelete(pattern, handler),
             EndpointHttpMethod.Patch => endpoints.MapPatch(pattern, handler),
-            _ => throw new ArgumentOutOfRangeException(nameof(httpMethod), httpMethod, "Unsupported HTTP method.")
+            _ => throw new ArgumentOutOfRangeException(nameof(httpMethod), httpMethod, "Unsupported HTTP method."),
         };
     }
 }

@@ -12,15 +12,16 @@ internal sealed record ReadManifestArchiveRequest(
     Stream Archive,
     string Commit,
     string Directory,
-    GitHubCommitTree Tree);
+    GitHubCommitTree Tree
+);
 
-internal sealed class RepositoryManifestArchiveReader(RepositoryArchiveOptions options)
+internal sealed class RepositoryManifestArchiveReader(
+    RepositoryArchiveOptions options
+)
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    public async Task<ReadRepositorySnapshotOutcome> ReadAsync(
-        ReadManifestArchiveRequest request,
-        CancellationToken ct)
+    public async Task<ReadRepositorySnapshotOutcome> ReadAsync(ReadManifestArchiveRequest request, CancellationToken ct)
     {
         if (request.Directory.Length > 0 && !RepositoryPaths.Safe(request.Directory))
             return Rejected(RepositorySnapshotRejection.InvalidPath);
@@ -33,10 +34,12 @@ internal sealed class RepositoryManifestArchiveReader(RepositoryArchiveOptions o
             request.Tree.Entries.Count)
             return Rejected(RepositorySnapshotRejection.UnsafeArchive);
 
-        var selected = request.Tree.Entries.Where(entry => RepositoryPaths.Selected(entry.Path, request.Directory))
+        var selected = request.Tree
+            .Entries
+            .Where(entry => RepositoryPaths.Selected(entry.Path, request.Directory))
             .ToArray();
         if (selected.Any(entry => entry.Type is not ("blob" or "tree") ||
-                entry.Type == "blob" && entry.Mode is not ("100644" or "100755")))
+                (entry.Type == "blob" && entry.Mode is not ("100644" or "100755"))))
             return Rejected(RepositorySnapshotRejection.UnsafeArchive);
 
         if (request.Directory.Length > 0 && !selected.Any(entry => entry.Path == request.Directory &&
@@ -44,7 +47,8 @@ internal sealed class RepositoryManifestArchiveReader(RepositoryArchiveOptions o
             return new RepositoryDirectoryNotFound(request.Directory);
 
         var expected = selected.Where(entry => entry.Type == "blob" && RepositoryPaths.Manifest(entry.Path))
-            .Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+            .Select(entry => entry.Path)
+            .ToHashSet(StringComparer.Ordinal);
         if (expected.Count > SnapshotInputLimits.MaximumFiles)
             return Rejected(RepositorySnapshotRejection.SizeLimit);
 
@@ -131,13 +135,14 @@ internal sealed class RepositoryManifestArchiveReader(RepositoryArchiveOptions o
             var separator = name.IndexOf('/');
             var entryRoot = separator < 0 ? name : name[..separator];
             root ??= entryRoot;
-            if (root != entryRoot || separator < 0 && entry.EntryType != TarEntryType.Directory)
+            if (root != entryRoot || (separator < 0 && entry.EntryType != TarEntryType.Directory))
                 return Rejected(RepositorySnapshotRejection.UnsafeArchive);
 
             var path = separator < 0 ? "" : name[(separator + 1)..];
             var selected = path.Length > 0 && RepositoryPaths.Selected(path, request.Directory);
-            if (selected && entry.EntryType is not
-                (TarEntryType.Directory or TarEntryType.RegularFile or TarEntryType.V7RegularFile))
+            if (selected &&
+                entry.EntryType is not (TarEntryType.Directory or TarEntryType.RegularFile
+                    or TarEntryType.V7RegularFile))
                 return Rejected(RepositorySnapshotRejection.UnsafeArchive);
 
             if (selected && entry.EntryType != TarEntryType.Directory && RepositoryPaths.Manifest(path))
@@ -174,16 +179,15 @@ internal sealed class RepositoryManifestArchiveReader(RepositoryArchiveOptions o
         var buffer = new byte[8192];
         int read;
         while ((read = await decoded.ReadAsync(buffer, ct)) > 0)
-        {
             if (buffer.AsSpan(0, read).ContainsAnyExcept((byte)0))
                 return Rejected(RepositorySnapshotRejection.UnsafeArchive);
-        }
 
         if (root is null || expected.Count != 0 || decoded.Transferred - endStart < 1024 ||
             decoded.Transferred % 512 != 0 || unchecked((uint)decoded.Transferred) != expectedSize)
             return Rejected(RepositorySnapshotRejection.UnsafeArchive);
 
-        return new RepositorySnapshotRead(request.Commit,
+        return new RepositorySnapshotRead(
+            request.Commit,
             files.OrderBy(file => file.Path, StringComparer.Ordinal).ToArray());
     }
 

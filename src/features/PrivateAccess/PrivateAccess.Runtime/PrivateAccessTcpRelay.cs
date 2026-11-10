@@ -1,14 +1,17 @@
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Threading.Channels;
 using Pole.Features.PrivateAccess.Primitives;
 
 namespace Pole.Features.PrivateAccess.Runtime;
 
 /// <summary>
-/// One gateway stream accepts one server-issued endpoint and one transport. It has no routing
-/// API, listener, cluster credentials, or fallback destination.
+///     One gateway stream accepts one server-issued endpoint and one transport. It has no routing
+///     API, listener, cluster credentials, or fallback destination.
 /// </summary>
-public sealed class PrivateAccessTcpRelay(TimeProvider time)
+public sealed class PrivateAccessTcpRelay(
+    TimeProvider time
+)
 {
     public async Task RunAsync(
         WebSocket broker,
@@ -36,9 +39,11 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
             await backend.ConnectAsync(serviceDns, servicePort, lifetime.Token);
             await writer.SendAsync(PrivateAccessFrameKind.Ready, ReadOnlyMemory<byte>.Empty, lifetime.Token);
             var stream = backend.GetStream();
-            var replies = System.Threading.Channels.Channel.CreateBounded<bool>(1);
+            var replies = Channel.CreateBounded<bool>(1);
             fromBackend = GuardAsync(() => ReadBackendAsync(stream, writer, lifetime.Token), lifetime);
-            fromBroker = GuardAsync(() => ReadBrokerAsync(broker, stream, backend, lease, replies.Writer, lifetime.Token), lifetime);
+            fromBroker = GuardAsync(
+                () => ReadBrokerAsync(broker, stream, backend, lease, replies.Writer, lifetime.Token),
+                lifetime);
             renewal = RenewAsync(writer, lease, replies.Reader, lifetime.Token);
             var data = Task.WhenAll(fromBackend, fromBroker);
             var first = await Task.WhenAny(data, renewal, watchdog);
@@ -58,9 +63,7 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
         }
     }
 
-    private async Task WatchLeaseAsync(
-        PrivateAccessLeaseClock lease,
-        CancellationTokenSource lifetime)
+    private async Task WatchLeaseAsync(PrivateAccessLeaseClock lease, CancellationTokenSource lifetime)
     {
         while (!lifetime.IsCancellationRequested)
         {
@@ -70,6 +73,7 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
                 await lifetime.CancelAsync();
                 return;
             }
+
             await Task.Delay(remaining, time, lifetime.Token);
         }
     }
@@ -77,7 +81,7 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
     private async Task RenewAsync(
         PrivateAccessFrameWriter writer,
         PrivateAccessLeaseClock lease,
-        System.Threading.Channels.ChannelReader<bool> replies,
+        ChannelReader<bool> replies,
         CancellationToken cancellationToken)
     {
         while (true)
@@ -99,10 +103,10 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
             var length = await backend.ReadAsync(buffer, cancellationToken);
             if (length == 0)
             {
-                await writer.SendAsync(PrivateAccessFrameKind.HalfClose, ReadOnlyMemory<byte>.Empty,
-                    cancellationToken);
+                await writer.SendAsync(PrivateAccessFrameKind.HalfClose, ReadOnlyMemory<byte>.Empty, cancellationToken);
                 return;
             }
+
             await writer.SendAsync(PrivateAccessFrameKind.Data, buffer.AsMemory(0, length), cancellationToken);
         }
     }
@@ -112,7 +116,7 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
         NetworkStream backend,
         TcpClient client,
         PrivateAccessLeaseClock lease,
-        System.Threading.Channels.ChannelWriter<bool> replies,
+        ChannelWriter<bool> replies,
         CancellationToken cancellationToken)
     {
         var writeClosed = false;
@@ -144,9 +148,12 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
     {
         if (task is null)
             return;
-        try { await task; }
-        catch (Exception exception) when (exception is OperationCanceledException or IOException or
-            WebSocketException or SocketException or InvalidDataException)
+        try
+        {
+            await task;
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or IOException or WebSocketException
+                                              or SocketException or InvalidDataException)
         {
             // The caller observes the operation that caused shutdown. Sibling pumps
             // are drained so neither transport nor lease tasks outlive their session.
@@ -155,7 +162,10 @@ public sealed class PrivateAccessTcpRelay(TimeProvider time)
 
     private static async Task GuardAsync(Func<Task> operation, CancellationTokenSource lifetime)
     {
-        try { await operation(); }
+        try
+        {
+            await operation();
+        }
         catch
         {
             await lifetime.CancelAsync();

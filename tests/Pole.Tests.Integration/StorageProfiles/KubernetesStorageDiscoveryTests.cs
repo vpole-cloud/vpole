@@ -10,9 +10,7 @@ public sealed class KubernetesStorageDiscoveryTests
     [Fact]
     public void PersistentVolumeClaimOwner_PrefersCanonicalResourceTypeAnnotation()
     {
-        var claim = CreateClaim(
-            resourceTypeLabel: "Widget",
-            resourceTypeAnnotation: "third-party/widget");
+        var claim = CreateClaim(resourceTypeLabel: "Widget", resourceTypeAnnotation: "third-party/widget");
 
         var mapped = KubernetesStorageDiscovery.MapPersistentVolumeClaim(claim);
 
@@ -23,24 +21,20 @@ public sealed class KubernetesStorageDiscoveryTests
     [Fact]
     public void PersistentVolumeClaimOwner_FallsBackToCompatibilityLabel()
     {
-        var claim = CreateClaim(
-            resourceTypeLabel: "Widget",
-            resourceTypeAnnotation: null);
+        var claim = CreateClaim(resourceTypeLabel: "Widget", resourceTypeAnnotation: null);
 
         var mapped = KubernetesStorageDiscovery.MapPersistentVolumeClaim(claim);
 
         Assert.Equal("Widget", mapped.Owner.ResourceType);
     }
 
-    private static V1PersistentVolumeClaim CreateClaim(
-        string resourceTypeLabel,
-        string? resourceTypeAnnotation)
+    private static V1PersistentVolumeClaim CreateClaim(string resourceTypeLabel, string? resourceTypeAnnotation)
     {
         var annotations = resourceTypeAnnotation is null
             ? null
             : new Dictionary<string, string>
             {
-                [PoleStorageLabels.ResourceType] = resourceTypeAnnotation
+                [PoleStorageLabels.ResourceType] = resourceTypeAnnotation,
             };
         return new V1PersistentVolumeClaim
         {
@@ -51,11 +45,11 @@ public sealed class KubernetesStorageDiscoveryTests
                 Labels = new Dictionary<string, string>
                 {
                     [PoleStorageLabels.ResourceType] = resourceTypeLabel,
-                    [PoleStorageLabels.ResourceId] = "resource-1"
+                    [PoleStorageLabels.ResourceId] = "resource-1",
                 },
-                Annotations = annotations
+                Annotations = annotations,
             },
-            Spec = new V1PersistentVolumeClaimSpec()
+            Spec = new V1PersistentVolumeClaimSpec(),
         };
     }
 }

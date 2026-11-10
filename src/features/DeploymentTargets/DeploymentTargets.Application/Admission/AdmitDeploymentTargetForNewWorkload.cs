@@ -1,13 +1,12 @@
-using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
 
 namespace Pole.Features.DeploymentTargets.Application.Admission;
 
 internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
     AdmitDeploymentTargetForWorkload admitDeploymentTargetForWorkload,
-    LoadEligibleDeploymentTargets loadEligibleDeploymentTargets)
+    LoadEligibleDeploymentTargets loadEligibleDeploymentTargets
+)
 {
     public async Task<AdmitDeploymentTargetForNewWorkloadOutcome> InvokeAsync(
         DeploymentTargetAdmissionRequest request,
@@ -19,9 +18,7 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
                 request.ExplicitDeploymentTargetId,
                 cancellationToken);
             if (resolved is DeploymentTargetWorkloadAdmissionError admissionError)
-            {
                 return new DeploymentTargetNewWorkloadAdmissionError(admissionError);
-            }
             var target = (DeploymentTargetLookupDto)resolved.Value;
 
             return DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
@@ -30,26 +27,22 @@ internal sealed class MongoAdmitDeploymentTargetForNewWorkload(
                 request.RequiredNetworkSource)
                 ? target
                 : new DeploymentTargetNewWorkloadAdmissionError(
-                        new DeploymentTargetRequiredCapabilitiesUnavailable(
-                            target.Id,
-                            request.RequiredCapabilities));
+                    new DeploymentTargetRequiredCapabilitiesUnavailable(target.Id, request.RequiredCapabilities));
         }
 
-        var eligible = (await loadEligibleDeploymentTargets(
-                request.RequiredCapabilities,
-                cancellationToken))
+        var eligible = (await loadEligibleDeploymentTargets(request.RequiredCapabilities, cancellationToken))
             .Select(target => target.ToLookupDto())
             .Where(target => DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
-                target, request.RequiredCapabilities, request.RequiredNetworkSource))
+                target,
+                request.RequiredCapabilities,
+                request.RequiredNetworkSource))
             .ToArray();
         return eligible.Length switch
         {
-            0 => new DeploymentTargetNewWorkloadAdmissionError(
-                    new NoDeploymentTargetAcceptsWorkloads()),
+            0 => new DeploymentTargetNewWorkloadAdmissionError(new NoDeploymentTargetAcceptsWorkloads()),
             > 1 => new DeploymentTargetNewWorkloadAdmissionError(
-                    new DeploymentTargetWorkloadSelectionRequired(
-                        eligible.Select(target => target.Id).ToArray())),
-            _ => eligible[0]
+                new DeploymentTargetWorkloadSelectionRequired(eligible.Select(target => target.Id).ToArray())),
+            _ => eligible[0],
         };
     }
 }

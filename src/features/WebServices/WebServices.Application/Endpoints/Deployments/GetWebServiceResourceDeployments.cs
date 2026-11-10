@@ -6,10 +6,8 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Queries;
 using Pole.Mediator;
-
 using static Pole.Features.WebServices.Application.Common.WebServiceHttpMappings;
 
 namespace Pole.Features.WebServices.Application.Endpoints.Deployments;
@@ -20,16 +18,16 @@ public static class GetWebServiceResourceDeployments
     {
         public IEndpointRouteBuilder MapGetWebServiceResourceDeploymentsEndpoint()
         {
-            app.MapGet("/{Id}/deployments", async (
-                    IMediator mediator,
-                    [AsParameters] GetWebServiceResourceDeploymentsRequest request,
-                    CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    outcome => outcome switch
-                    {
-                        IReadOnlyList<PlacementSummaryDto> value => Results.Ok(value),
-                        WebServiceNotFound error => MapError(error)
-                    }))
+            app.MapGet(
+                    "/{Id}/deployments",
+                    async (
+                            IMediator mediator, [AsParameters] GetWebServiceResourceDeploymentsRequest request,
+                            CancellationToken cancellationToken) =>
+                        (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                        {
+                            IReadOnlyList<PlacementSummaryDto> value => Results.Ok(value),
+                            WebServiceNotFound error => MapError(error),
+                        }))
                 .WithName("GetWebServiceResourceDeployments")
                 .Produces<IReadOnlyList<PlacementSummaryDto>>();
             return app;
@@ -37,21 +35,17 @@ public static class GetWebServiceResourceDeployments
     }
 }
 
-public union GetWebServiceResourceDeploymentsOutcome(
-    IReadOnlyList<PlacementSummaryDto>,
-    WebServiceNotFound);
+public union GetWebServiceResourceDeploymentsOutcome(IReadOnlyList<PlacementSummaryDto>, WebServiceNotFound);
 
 public sealed record GetWebServiceResourceDeploymentsRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetWebServiceResourceDeploymentsOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetWebServiceResourceDeploymentsOutcome>, ITenantReadOperation;
 
 public sealed class GetWebServiceResourceDeploymentsHandler(
     LoadWebServiceById loadWebServiceById,
-    LoadResourceDeploymentSet loadResourceDeploymentSet)
-    : IMediatorOutcomeHandler<
-        GetWebServiceResourceDeploymentsRequest,
-        GetWebServiceResourceDeploymentsOutcome>
+    LoadResourceDeploymentSet loadResourceDeploymentSet
+) : IMediatorOutcomeHandler<GetWebServiceResourceDeploymentsRequest, GetWebServiceResourceDeploymentsOutcome>
 {
     public async Task<GetWebServiceResourceDeploymentsOutcome> HandleAsync(
         GetWebServiceResourceDeploymentsRequest request,
@@ -61,11 +55,12 @@ public sealed class GetWebServiceResourceDeploymentsHandler(
         if (webService is null)
             return new WebServiceNotFound(request.Id);
 
-        return new GetWebServiceResourceDeploymentsOutcome(await loadResourceDeploymentSet(
-            new LoadResourceDeploymentSetRequest(
-                TenantId: request.TenantId,
-                ResourceType: WebServiceResourceDeployment.ResourceType,
-                ResourceId: request.Id),
-            cancellationToken: cancellationToken));
+        return new GetWebServiceResourceDeploymentsOutcome(
+            await loadResourceDeploymentSet(
+                new LoadResourceDeploymentSetRequest(
+                    TenantId: request.TenantId,
+                    ResourceType: WebServiceResourceDeployment.ResourceType,
+                    ResourceId: request.Id),
+                cancellationToken: cancellationToken));
     }
 }

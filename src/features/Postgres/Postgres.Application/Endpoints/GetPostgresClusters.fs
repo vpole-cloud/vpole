@@ -17,11 +17,11 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Request
 open Pole.Mediator
 
-type GetPostgresClustersOutcome =
-    | PostgresClusterPage of PaginatedResponse<PostgresClusterDto>
+type GetPostgresClustersOutcome = PostgresClusterPage of PaginatedResponse<PostgresClusterDto>
 
 type GetPostgresClustersRequest() =
     interface IMediatorRequest<GetPostgresClustersOutcome>
+
     interface ITenantReadOperation with
         member this.TenantId = this.TenantId
 
@@ -34,10 +34,8 @@ type GetPostgresClustersRequest() =
     [<FromQuery; DefaultValue(10); Description("The number of items per page.")>]
     member val PageSize = 10 with get, set
 
-type GetPostgresClustersHandler(
-    loadClusters : LoadPostgresClusterPage,
-    loadDeployments : LoadResourceDeployments,
-    git : IGitOpsMutations) =
+type GetPostgresClustersHandler
+    (loadClusters: LoadPostgresClusterPage, loadDeployments: LoadResourceDeployments, git: IGitOpsMutations) =
     interface IMediatorOutcomeHandler<GetPostgresClustersRequest, GetPostgresClustersOutcome> with
         member _.HandleAsync(request, cancellationToken) =
             task {
@@ -46,37 +44,36 @@ type GetPostgresClustersHandler(
                         { TenantId = request.TenantId
                           PageNumber = request.PageNumber
                           PageSize = request.PageSize },
-                        cancellationToken)
+                        cancellationToken
+                    )
 
-                let clusterIds =
-                    page.Items
-                    |> Seq.map _.Id
-                    |> Seq.toArray
+                let clusterIds = page.Items |> Seq.map _.Id |> Seq.toArray
+
                 let! placements =
                     loadDeployments.Invoke(
                         LoadResourceDeploymentsRequest(
                             request.TenantId,
                             PostgresResourceDeployment.ResourceType,
-                            clusterIds),
-                        cancellationToken)
+                            clusterIds
+                        ),
+                        cancellationToken
+                    )
 
                 let! statuses =
                     git.StatusesAsync(
                         LoadGitResourceStatusesRequest(request.TenantId, "PostgresCluster", clusterIds),
-                        cancellationToken)
+                        cancellationToken
+                    )
 
-                let toDto (cluster : PostgresCluster) =
+                let toDto (cluster: PostgresCluster) =
                     let status =
                         match statuses.TryGetValue(cluster.Id) with
                         | true, value -> value
                         | false, _ -> null
 
                     match placements.TryGetValue(cluster.Id) with
-                    | true, placement ->
-                        PostgresClusterDto.create cluster placement status
-                    | false, _ ->
-                        invalidOp
-                            $"PostgreSQL cluster '{cluster.Id}' has no resource deployment."
+                    | true, placement -> PostgresClusterDto.create cluster placement status
+                    | false, _ -> invalidOp $"PostgreSQL cluster '{cluster.Id}' has no resource deployment."
 
                 return
                     PaginatedResponse<PostgresClusterDto>(
@@ -90,6 +87,7 @@ type GetPostgresClustersHandler(
 
 type GetPostgresClustersRequestValidator() as this =
     inherit AbstractValidator<GetPostgresClustersRequest>()
+
     do
         this.RuleFor(_.PageNumber).GreaterThan(0) |> ignore
         this.RuleFor(_.PageSize).GreaterThan(0) |> ignore
@@ -98,17 +96,22 @@ type GetPostgresClustersRequestValidator() as this =
 type GetPostgresClusters =
     [<Extension>]
     static member MapGetPostgresClustersEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<GetPostgresClusters>("/", nameof GetPostgresClusters.Handle, EndpointHttpMethod.Get)
+        endpoints
+            .MapMethod<GetPostgresClusters>("/", nameof GetPostgresClusters.Handle, EndpointHttpMethod.Get)
             .WithName("GetPostgresClusters")
-            |> ignore
+        |> ignore
+
         endpoints
 
-    static member Handle(
-        [<AsParameters>] request: GetPostgresClustersRequest,
-        [<FromServices>] mediator: IMediator,
-        cancellationToken: System.Threading.CancellationToken) =
+    static member Handle
+        (
+            [<AsParameters>] request: GetPostgresClustersRequest,
+            [<FromServices>] mediator: IMediator,
+            cancellationToken: System.Threading.CancellationToken
+        ) =
         task {
             let! result = mediator.Send(request, cancellationToken)
+
             return
                 result.ToHttpResult(fun outcome ->
                     match outcome with

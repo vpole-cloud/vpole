@@ -8,7 +8,8 @@ namespace Pole.Features.ContainerRegistries.Application.Provisioning;
 internal sealed class ContainerRegistryBuildPushPreparer(
     EnsureTenantContainerRegistryProject ensureProject,
     ResolveRegistryCredential resolveCredential,
-    HarborOptions options)
+    HarborOptions options
+)
 {
     public async Task<PrepareRegistryBuildPushOutcome> InvokeAsync(
         PrepareRegistryBuildPushRequest request,

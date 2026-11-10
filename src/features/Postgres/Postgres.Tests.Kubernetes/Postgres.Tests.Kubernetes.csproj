@@ -1,26 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <AssemblyName>Pole.Features.Postgres.Tests.Kubernetes</AssemblyName>
-    <RootNamespace>Pole.Features.Postgres.Tests.Kubernetes</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="KubernetesClient" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="Npgsql" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Postgres.Application/Postgres.Application.fsproj" />
-    <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj" />
-    <ProjectReference Include="../../Secrets/Secrets.Application/Secrets.Application.csproj" />
-    <ProjectReference Include="../../Secrets/Secrets.Domain/Secrets.Domain.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>Pole.Features.Postgres.Tests.Kubernetes</AssemblyName>
+        <RootNamespace>Pole.Features.Postgres.Tests.Kubernetes</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="KubernetesClient"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="Npgsql"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Postgres.Application/Postgres.Application.fsproj"/>
+        <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj"/>
+        <ProjectReference Include="../../Secrets/Secrets.Application/Secrets.Application.csproj"/>
+        <ProjectReference Include="../../Secrets/Secrets.Domain/Secrets.Domain.csproj"/>
+    </ItemGroup>
 </Project>

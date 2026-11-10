@@ -5,11 +5,12 @@ namespace Pole.Observation;
 /// <summary>Coalesced local hints; persisted interests remain authoritative across replicas.</summary>
 public class ObservationWakeup
 {
-    private readonly Channel<bool> channel = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
-    {
-        FullMode = BoundedChannelFullMode.DropWrite,
-        SingleReader = true
-    });
+    private readonly Channel<bool> channel = Channel.CreateBounded<bool>(
+        new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite,
+            SingleReader = true,
+        });
 
     public void Notify() => channel.Writer.TryWrite(true);
 

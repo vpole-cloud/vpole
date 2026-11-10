@@ -1,6 +1,6 @@
-using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Architecture;
 using Pole.Database;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Mongo;
@@ -10,7 +10,8 @@ namespace Pole.Features.SourceBuilds.Application.Execution.Queueing;
 
 public sealed record ClaimSourceBuildJobRequest(
     string BuildJobId,
-    string WorkerId);
+    string WorkerId
+);
 
 public delegate Task<SourceBuildJob?> ClaimQueuedSourceBuildJob(
     ClaimSourceBuildJobRequest request,
@@ -18,21 +19,21 @@ public delegate Task<SourceBuildJob?> ClaimQueuedSourceBuildJob(
 
 internal sealed record SourceBuildJobNotClaimed;
 
-internal union ClaimSourceBuildJobOutcome(
-    SourceBuildJob,
-    SourceBuildJobNotClaimed);
+internal union ClaimSourceBuildJobOutcome(SourceBuildJob, SourceBuildJobNotClaimed);
 
 internal sealed class MongoClaimQueuedSourceBuildJob(
     IMongoCollection<SourceBuildJob> jobs,
     MongoRunTransaction transactions,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<SourceBuildJob?> InvokeAsync(
         ClaimSourceBuildJobRequest request,
         CancellationToken cancellationToken = default)
     {
         // The internal dispatcher supplies job IDs; the claimed document owns tenant context.
-        var outcome = await transactions.InvokeOutcomeAsync<ClaimSourceBuildJobOutcome>(async (transaction, ct) =>
+        var outcome = await transactions.InvokeOutcomeAsync<ClaimSourceBuildJobOutcome>(
+            async (transaction, ct) =>
             {
                 var claimed = await jobs.FindOneAndUpdateAsync(
                     transaction.Session,
@@ -54,43 +55,50 @@ internal sealed class MongoClaimQueuedSourceBuildJob(
         return outcome switch
         {
             SourceBuildJob claimed => claimed,
-            SourceBuildJobNotClaimed => null
+            SourceBuildJobNotClaimed => null,
         };
     }
 
-    [ViolateArchitecture(ArchitectureRules.RawBson,
+    [ViolateArchitecture(
+        ArchitectureRules.RawBson,
         "Atomic build claims replace the state discriminator, increment the attempt and set lease " +
         "timestamps from $$NOW.")]
     private static UpdateDefinition<SourceBuildJob> ClaimTransition(ClaimSourceBuildJobRequest request) =>
-        new PipelineUpdateDefinition<SourceBuildJob>(new[]
-        {
-            new BsonDocument("$unset", MongoFields.Field<SourceBuildJob, SourceBuildJobState>(job => job.State)),
-            new BsonDocument("$set", new BsonDocument
+        new PipelineUpdateDefinition<SourceBuildJob>(
+            new[]
             {
-                [MongoFields.Field<SourceBuildJob, SourceBuildExecution>(job => job.Execution)] = new BsonDocument
-                {
-                    ["_t"] = new BsonArray
+                new BsonDocument("$unset", MongoFields.Field<SourceBuildJob, SourceBuildJobState>(job => job.State)),
+                new BsonDocument(
+                    "$set",
+                    new BsonDocument
                     {
-                        nameof(SourceBuildExecution), nameof(ClaimedSourceBuildExecution)
-                    },
-                    [MongoFields.Field<ClaimedSourceBuildExecution, string>(lease => lease.WorkerId)] =
-                        new BsonDocument("$literal", request.WorkerId),
-                    [MongoFields.Field<ClaimedSourceBuildExecution, long>(lease => lease.Attempt)] =
-                        new BsonDocument("$add", new BsonArray
+                        [MongoFields.Field<SourceBuildJob, SourceBuildExecution>(job => job.Execution)]
+                            = new BsonDocument
+                            {
+                                ["_t"] = new BsonArray
+                                {
+                                    nameof(SourceBuildExecution), nameof(ClaimedSourceBuildExecution),
+                                },
+                                [MongoFields.Field<ClaimedSourceBuildExecution, string>(lease => lease.WorkerId)]
+                                    = new BsonDocument("$literal", request.WorkerId),
+                                [MongoFields.Field<ClaimedSourceBuildExecution, long>(lease => lease.Attempt)]
+                                    = new BsonDocument(
+                                        "$add",
+                                        new BsonArray
+                                        {
+                                            MongoFields.Reference<SourceBuildJob, long>(job =>
+                                                ((ClaimedSourceBuildExecution)job.Execution).Attempt),
+                                            1L,
+                                        }),
+                                [MongoFields.Field<ClaimedSourceBuildExecution, DateTime>(lease => lease.ExpiresAtUtc)]
+                                    = SourceBuildExecutionLease.Expiry,
+                            },
+                        [MongoFields.Field<SourceBuildJob, SourceBuildJobState>(job => job.State)] = new BsonDocument
                         {
-                            MongoFields.Reference<SourceBuildJob, long>(
-                                job => ((ClaimedSourceBuildExecution)job.Execution).Attempt),
-                            1L
-                        }),
-                    [MongoFields.Field<ClaimedSourceBuildExecution, DateTime>(lease => lease.ExpiresAtUtc)] =
-                        SourceBuildExecutionLease.Expiry
-                },
-                [MongoFields.Field<SourceBuildJob, SourceBuildJobState>(job => job.State)] = new BsonDocument
-                {
-                    ["_t"] = new BsonArray { nameof(SourceBuildJobState), nameof(CloningSourceBuild) },
-                    [MongoFields.Field<CloningSourceBuild, DateTime>(state => state.StartedAtUtc)] = "$$NOW"
-                },
-                [MongoFields.Field<SourceBuildJob, DateTime>(job => job.UpdatedAtUtc)] = "$$NOW"
-            })
-        });
+                            ["_t"] = new BsonArray { nameof(SourceBuildJobState), nameof(CloningSourceBuild) },
+                            [MongoFields.Field<CloningSourceBuild, DateTime>(state => state.StartedAtUtc)] = "$$NOW",
+                        },
+                        [MongoFields.Field<SourceBuildJob, DateTime>(job => job.UpdatedAtUtc)] = "$$NOW",
+                    }),
+            });
 }

@@ -7,6 +7,6 @@
         <RootNamespace>Pole.Features.StorageProfiles.Events</RootNamespace>
     </PropertyGroup>
     <ItemGroup>
-        <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
     </ItemGroup>
 </Project>

@@ -1,5 +1,4 @@
 using MongoDB.Bson;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Domain;
 using Xunit;
@@ -13,25 +12,26 @@ public sealed class DomainRequestValidatorTests
     {
         var validator = new CreateDomainZoneRequestValidator();
 
-        var missingBody = await validator.ValidateAsync(
-            new CreateDomainZoneRequest(null!, string.Empty));
+        var missingBody = await validator.ValidateAsync(new CreateDomainZoneRequest(null!, ""));
         Assert.Contains(missingBody.Errors, error => error.PropertyName == "Body");
         Assert.Contains(missingBody.Errors, error => error.PropertyName == "TenantId");
 
-        var reserved = await validator.ValidateAsync(new CreateDomainZoneRequest(
-            new CreateDomainZoneBody(
-                ObjectId.GenerateNewId().ToString(),
-            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678",
-            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId()),
-            ObjectId.GenerateNewId().ToString()));
+        var reserved = await validator.ValidateAsync(
+            new CreateDomainZoneRequest(
+                new CreateDomainZoneBody(
+                    ObjectId.GenerateNewId().ToString(),
+                    $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}acme-12345678",
+                    "zone-" + ObjectId.GenerateNewId()),
+                ObjectId.GenerateNewId().ToString()));
         Assert.Contains(reserved.Errors, error => error.PropertyName == "Body.Label");
 
-        var invalidLabel = await validator.ValidateAsync(new CreateDomainZoneRequest(
-            new CreateDomainZoneBody(
-                ObjectId.GenerateNewId().ToString(),
-            "invalid.label",
-            "zone-" + MongoDB.Bson.ObjectId.GenerateNewId()),
-            ObjectId.GenerateNewId().ToString()));
+        var invalidLabel = await validator.ValidateAsync(
+            new CreateDomainZoneRequest(
+                new CreateDomainZoneBody(
+                    ObjectId.GenerateNewId().ToString(),
+                    "invalid.label",
+                    "zone-" + ObjectId.GenerateNewId()),
+                ObjectId.GenerateNewId().ToString()));
         Assert.Contains(invalidLabel.Errors, error => error.PropertyName == "Body.Label");
     }
 

@@ -67,9 +67,7 @@ public static class FunctionRuntimeRegistration
         where TValidator : class, IValidateOptions<TOptions>
     {
         services.AddSingleton<IValidateOptions<TOptions>, TValidator>();
-        services.AddOptions<TOptions>()
-            .Bind(configuration.GetSection(sectionName))
-            .ValidateOnStart();
+        services.AddOptions<TOptions>().Bind(configuration.GetSection(sectionName)).ValidateOnStart();
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<TOptions>>().Value);
     }
 
@@ -78,7 +76,7 @@ public static class FunctionRuntimeRegistration
         IConfigurationSection functionAgentTokenSection)
     {
         var tokenOptions = functionAgentTokenSection.Get<FunctionAgentTokenOptions>() ??
-                           throw new InvalidOperationException("Function Agent token configuration is invalid.");
+            throw new InvalidOperationException("Function Agent token configuration is invalid.");
         tokenOptions.Validate();
         services.AddSingleton(tokenOptions);
         services.AddSingleton<IFunctionAgentSigningKeyProvider, FileFunctionAgentSigningKeyProvider>();
@@ -92,7 +90,7 @@ public static class FunctionRuntimeRegistration
             .ConfigurePrimaryHttpMessageHandler(static () => new SocketsHttpHandler
             {
                 AllowAutoRedirect = false,
-                ConnectTimeout = TimeSpan.FromSeconds(5)
+                ConnectTimeout = TimeSpan.FromSeconds(5),
             });
         services.AddScoped<IFunctionRevisionProvisioner, FunctionRevisionProvisioner>();
         services.TryAddSingleton<IFunctionEndpointSelector, FunctionEndpointSelector>();

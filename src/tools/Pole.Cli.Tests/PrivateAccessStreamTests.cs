@@ -1,9 +1,10 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Net.WebSockets;
+using System.Text;
 using Pole.Cli.Api;
 using Pole.Cli.Forwarding;
-using System.Net.WebSockets;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using Xunit;
 
 namespace Pole.Cli.Tests;
@@ -33,7 +34,7 @@ public sealed class PrivateAccessStreamTests
         var socket = new ScriptedWebSocket(
         [
             [1, .. Encoding.UTF8.GetBytes("response")],
-            [2]
+            [2],
         ]);
         await using var connection = new WebSocketPrivateAccessConnection(socket);
         var buffer = new byte[32];
@@ -45,7 +46,8 @@ public sealed class PrivateAccessStreamTests
         Assert.False(halfClose.RemoteClosed);
         await connection.WriteAsync(Encoding.UTF8.GetBytes("request-tail"), CancellationToken.None);
         await connection.CompleteWritesAsync(CancellationToken.None);
-        Assert.Collection(socket.SentMessages,
+        Assert.Collection(
+            socket.SentMessages,
             dataFrame => Assert.Equal((byte)1, dataFrame[0]),
             halfCloseFrame => Assert.Equal((byte)2, halfCloseFrame[0]));
 
@@ -66,7 +68,7 @@ public sealed class PrivateAccessStreamTests
         var socket = new ScriptedWebSocket([]);
         await using var connection = new WebSocketPrivateAccessConnection(socket);
         await Assert.ThrowsAsync<InvalidDataException>(async () =>
-            await connection.WriteAsync(new byte[(16 * 1024) + 1], CancellationToken.None));
+            await connection.WriteAsync(new byte[16 * 1024 + 1], CancellationToken.None));
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -98,8 +100,10 @@ public sealed class PrivateAccessStreamTests
 
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         using var http = new HttpClient(WebSocketPrivateAccessStreamTransport.CreateNoRedirectHandler());
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{sourcePort}/private-access/streams");
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "one-use-ticket");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"http://127.0.0.1:{sourcePort}/private-access/streams");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "one-use-ticket");
         var destinationRequest = destination.GetContextAsync();
         var responseTask = http.SendAsync(request, cancellation.Token);
         var context = await source.GetContextAsync().WaitAsync(cancellation.Token);
@@ -139,11 +143,13 @@ public sealed class PrivateAccessStreamTests
 
         await factory.TwoConnections.WaitAsync(TimeSpan.FromSeconds(3));
         Assert.Equal(2, factory.Opened.Count);
-        Assert.All(factory.Opened, item =>
-        {
-            Assert.Equal("tenant-from-cli", item.TenantId);
-            Assert.Equal("grant-from-cli", item.GrantId);
-        });
+        Assert.All(
+            factory.Opened,
+            item =>
+            {
+                Assert.Equal("tenant-from-cli", item.TenantId);
+                Assert.Equal("grant-from-cli", item.GrantId);
+            });
 
         cancellation.Cancel();
         await run;
@@ -211,10 +217,17 @@ public sealed class PrivateAccessStreamTests
     {
         public int Calls { get; private set; }
 
-        public Task<PrivateAccessSessionDto> CreateSessionAsync(string tenantId, string grantId, CancellationToken cancellationToken)
+        public Task<PrivateAccessSessionDto> CreateSessionAsync(
+            string tenantId,
+            string grantId,
+            CancellationToken cancellationToken)
         {
             Calls++;
-            return Task.FromResult(new PrivateAccessSessionDto($"session-{Calls}", $"ticket-{Calls}", DateTimeOffset.UtcNow.AddSeconds(30)));
+            return Task.FromResult(
+                new PrivateAccessSessionDto(
+                    $"session-{Calls}",
+                    $"ticket-{Calls}",
+                    DateTimeOffset.UtcNow.AddSeconds(30)));
         }
     }
 
@@ -222,7 +235,10 @@ public sealed class PrivateAccessStreamTests
     {
         public List<string> Tickets { get; } = [];
 
-        public Task<IPrivateAccessConnection> OpenAsync(Uri server, string ticket, CancellationToken cancellationToken)
+        public Task<IPrivateAccessConnection> OpenAsync(
+            Uri server,
+            string ticket,
+            CancellationToken cancellationToken)
         {
             Assert.Equal("https://pole.example", server.GetLeftPart(UriPartial.Authority));
             Tickets.Add(ticket);
@@ -236,7 +252,10 @@ public sealed class PrivateAccessStreamTests
         public List<(string TenantId, string GrantId)> Opened { get; } = [];
         public Task TwoConnections => completed.Task;
 
-        public Task<IPrivateAccessConnection> OpenAsync(string tenantId, string grantId, CancellationToken cancellationToken)
+        public Task<IPrivateAccessConnection> OpenAsync(
+            string tenantId,
+            string grantId,
+            CancellationToken cancellationToken)
         {
             Opened.Add((tenantId, grantId));
             if (Opened.Count == 2)
@@ -245,16 +264,23 @@ public sealed class PrivateAccessStreamTests
         }
     }
 
-    private sealed class SingleConnectionFactory(IPrivateAccessConnection connection) : IPrivateAccessConnectionFactory
+    private sealed class SingleConnectionFactory(
+        IPrivateAccessConnection connection
+    ) : IPrivateAccessConnectionFactory
     {
-        public Task<IPrivateAccessConnection> OpenAsync(string tenantId, string grantId, CancellationToken cancellationToken) =>
-            Task.FromResult(connection);
+        public Task<IPrivateAccessConnection> OpenAsync(
+            string tenantId,
+            string grantId,
+            CancellationToken cancellationToken) => Task.FromResult(connection);
     }
 
     private sealed class EchoAfterEofConnection : IPrivateAccessConnection
     {
         private readonly MemoryStream request = new();
-        private readonly TaskCompletionSource<byte[]> response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private readonly TaskCompletionSource<byte[]>
+            response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private bool responseSent;
         public byte[] RequestBytes => request.ToArray();
 
@@ -281,7 +307,9 @@ public sealed class PrivateAccessStreamTests
 
         public void Abort() => response.TrySetCanceled();
 
-        private async ValueTask<PrivateAccessReadResult> ReadResponseAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        private async ValueTask<PrivateAccessReadResult> ReadResponseAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken)
         {
             var payload = await response.Task.WaitAsync(cancellationToken);
             payload.AsMemory().CopyTo(buffer);
@@ -294,9 +322,16 @@ public sealed class PrivateAccessStreamTests
     {
         public ValueTask<PrivateAccessReadResult> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken) =>
             ValueTask.FromException<PrivateAccessReadResult>(new IOException("Synthetic transport read failure."));
-        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
         public ValueTask CompleteWritesAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
-        public void Abort() { }
+
+        public void Abort()
+        {
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
@@ -304,13 +339,22 @@ public sealed class PrivateAccessStreamTests
     {
         public ValueTask<PrivateAccessReadResult> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new PrivateAccessReadResult(0, true));
-        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
         public ValueTask CompleteWritesAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
-        public void Abort() { }
+
+        public void Abort()
+        {
+        }
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class ScriptedWebSocket(byte[][] received) : WebSocket
+    private sealed class ScriptedWebSocket(
+        byte[][] received
+    ) : WebSocket
     {
         private int nextMessage;
         private WebSocketState state = WebSocketState.Open;
@@ -322,18 +366,28 @@ public sealed class PrivateAccessStreamTests
 
         public override void Abort() => state = WebSocketState.Aborted;
         public override void Dispose() => state = WebSocketState.Closed;
-        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
+
+        public override Task CloseAsync(
+            WebSocketCloseStatus closeStatus,
+            string? statusDescription,
+            CancellationToken cancellationToken)
         {
             state = WebSocketState.Closed;
             return Task.CompletedTask;
         }
-        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
+
+        public override Task CloseOutputAsync(
+            WebSocketCloseStatus closeStatus,
+            string? statusDescription,
+            CancellationToken cancellationToken)
         {
             state = WebSocketState.CloseSent;
             return Task.CompletedTask;
         }
 
-        public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
+        public override Task<WebSocketReceiveResult> ReceiveAsync(
+            ArraySegment<byte> buffer,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (nextMessage == received.Length)
@@ -345,7 +399,11 @@ public sealed class PrivateAccessStreamTests
             return Task.FromResult(new WebSocketReceiveResult(payload.Length, WebSocketMessageType.Binary, true));
         }
 
-        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
+        public override Task SendAsync(
+            ArraySegment<byte> buffer,
+            WebSocketMessageType messageType,
+            bool endOfMessage,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(WebSocketMessageType.Binary, messageType);

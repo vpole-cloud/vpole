@@ -21,23 +21,23 @@ public sealed record RuntimeCell(
     long ObservedGeneration,
     RuntimeCellState State,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned
+    DateTime UpdatedAtUtc
+) : ITenantOwned
 {
     public RuntimeCell MarkReady(long expectedGeneration, DateTime readyAtUtc)
     {
         var provisioning = CurrentState<ProvisioningRuntimeCellState>(expectedGeneration);
-        var normalizedReadyAtUtc = ResourceGroupValueGuard.UpdatedUtc(
-            readyAtUtc,
-            UpdatedAtUtc,
-            nameof(readyAtUtc));
+        var normalizedReadyAtUtc = ResourceGroupValueGuard.UpdatedUtc(readyAtUtc, UpdatedAtUtc, nameof(readyAtUtc));
         if (normalizedReadyAtUtc < provisioning.RequestedAtUtc)
-            throw new ArgumentException("A runtime cell cannot become ready before provisioning was requested.", nameof(readyAtUtc));
+            throw new ArgumentException(
+                "A runtime cell cannot become ready before provisioning was requested.",
+                nameof(readyAtUtc));
 
         return this with
         {
             ObservedGeneration = expectedGeneration,
             State = new ReadyRuntimeCellState(expectedGeneration, normalizedReadyAtUtc),
-            UpdatedAtUtc = normalizedReadyAtUtc
+            UpdatedAtUtc = normalizedReadyAtUtc,
         };
     }
 
@@ -51,24 +51,18 @@ public sealed record RuntimeCell(
     {
         var activeState = CurrentState(expectedGeneration);
         if (!MatchesOperation(activeState, operation))
-        {
             throw new InvalidOperationException(
                 $"Cannot record a {operation} failure from runtime cell state '{activeState.GetType().Name}'.");
-        }
 
         var normalizedAttemptedAtUtc = ResourceGroupValueGuard.UpdatedUtc(
             attemptedAtUtc,
             UpdatedAtUtc,
             nameof(attemptedAtUtc));
-        var normalizedRetryNotBeforeUtc = ResourceGroupValueGuard.Utc(
-            retryNotBeforeUtc,
-            nameof(retryNotBeforeUtc));
+        var normalizedRetryNotBeforeUtc = ResourceGroupValueGuard.Utc(retryNotBeforeUtc, nameof(retryNotBeforeUtc));
         if (normalizedRetryNotBeforeUtc < normalizedAttemptedAtUtc)
-        {
             throw new ArgumentException(
                 "The retry time cannot be before the failed attempt.",
                 nameof(retryNotBeforeUtc));
-        }
 
         return this with
         {
@@ -85,17 +79,17 @@ public sealed record RuntimeCell(
                     ResourceGroupValueGuard.MaximumRuntimeCellFailureMessageLength),
                 normalizedAttemptedAtUtc,
                 normalizedRetryNotBeforeUtc),
-            UpdatedAtUtc = normalizedAttemptedAtUtc
+            UpdatedAtUtc = normalizedAttemptedAtUtc,
         };
     }
 
     public RuntimeCell RequestReconciliation(DateTime requestedAtUtc)
     {
-        if (State is DeletingRuntimeCellState or DeletedRuntimeCellState ||
-            State is FailedRuntimeCellState { Operation: RuntimeCellOperation.Deletion })
-        {
+        if (State is DeletingRuntimeCellState or DeletedRuntimeCellState || State is FailedRuntimeCellState
+            {
+                Operation: RuntimeCellOperation.Deletion,
+            })
             throw new InvalidOperationException("A runtime cell pending deletion cannot be reconciled.");
-        }
 
         var normalizedRequestedAtUtc = ResourceGroupValueGuard.UpdatedUtc(
             requestedAtUtc,
@@ -106,7 +100,7 @@ public sealed record RuntimeCell(
         {
             DesiredGeneration = nextGeneration,
             State = new ProvisioningRuntimeCellState(nextGeneration, normalizedRequestedAtUtc),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
@@ -124,7 +118,7 @@ public sealed record RuntimeCell(
         {
             DesiredGeneration = nextGeneration,
             State = new DeletingRuntimeCellState(nextGeneration, normalizedRequestedAtUtc, null, 0),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 
@@ -137,16 +131,18 @@ public sealed record RuntimeCell(
         var checkedAt = ResourceGroupValueGuard.UpdatedUtc(checkedAtUtc, UpdatedAtUtc, nameof(checkedAtUtc));
         var due = ResourceGroupValueGuard.Utc(nextCheckAtUtc, nameof(nextCheckAtUtc));
         if (due <= checkedAt)
-            throw new ArgumentException("A deletion check must be scheduled after the current check.", nameof(nextCheckAtUtc));
+            throw new ArgumentException(
+                "A deletion check must be scheduled after the current check.",
+                nameof(nextCheckAtUtc));
 
         return this with
         {
             State = deleting with
             {
                 NextCheckAtUtc = due,
-                CheckSequence = checked(deleting.CheckSequence + 1)
+                CheckSequence = checked(deleting.CheckSequence + 1),
             },
-            UpdatedAtUtc = checkedAt
+            UpdatedAtUtc = checkedAt,
         };
     }
 
@@ -158,13 +154,15 @@ public sealed record RuntimeCell(
             UpdatedAtUtc,
             nameof(deletedAtUtc));
         if (normalizedDeletedAtUtc < deleting.RequestedAtUtc)
-            throw new ArgumentException("A runtime cell cannot be deleted before deletion was requested.", nameof(deletedAtUtc));
+            throw new ArgumentException(
+                "A runtime cell cannot be deleted before deletion was requested.",
+                nameof(deletedAtUtc));
 
         return this with
         {
             ObservedGeneration = expectedGeneration,
             State = new DeletedRuntimeCellState(expectedGeneration, normalizedDeletedAtUtc),
-            UpdatedAtUtc = normalizedDeletedAtUtc
+            UpdatedAtUtc = normalizedDeletedAtUtc,
         };
     }
 
@@ -173,10 +171,8 @@ public sealed record RuntimeCell(
     {
         var state = CurrentState(expectedGeneration);
         if (state is not TState typedState)
-        {
             throw new InvalidOperationException(
                 $"Cannot apply the requested transition from runtime cell state '{state.GetType().Name}'.");
-        }
 
         return typedState;
     }
@@ -184,12 +180,11 @@ public sealed record RuntimeCell(
     private RuntimeCellState CurrentState(long expectedGeneration)
     {
         if (expectedGeneration < 1)
-            throw new ArgumentOutOfRangeException(nameof(expectedGeneration), "The expected generation must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(expectedGeneration),
+                "The expected generation must be positive.");
         if (DesiredGeneration != expectedGeneration || State.Generation != expectedGeneration)
-        {
-            throw new InvalidOperationException(
-                "The runtime cell changed while the operation was in progress.");
-        }
+            throw new InvalidOperationException("The runtime cell changed while the operation was in progress.");
 
         return State;
     }
@@ -199,14 +194,14 @@ public sealed record RuntimeCell(
         {
             (ProvisioningRuntimeCellState, RuntimeCellOperation.Reconciliation) => true,
             (DeletingRuntimeCellState, RuntimeCellOperation.Deletion) => true,
-            _ => false
+            _ => false,
         };
 }
 
 public enum RuntimeCellOperation
 {
     Reconciliation,
-    Deletion
+    Deletion,
 }
 
 [BsonDiscriminator(RootClass = true)]
@@ -216,19 +211,21 @@ public enum RuntimeCellOperation
     typeof(FailedRuntimeCellState),
     typeof(DeletingRuntimeCellState),
     typeof(DeletedRuntimeCellState))]
-public abstract record RuntimeCellState(long Generation);
+public abstract record RuntimeCellState(
+    long Generation
+);
 
 [BsonDiscriminator("provisioning")]
 public sealed record ProvisioningRuntimeCellState(
     long Generation,
-    DateTime RequestedAtUtc)
-    : RuntimeCellState(Generation);
+    DateTime RequestedAtUtc
+) : RuntimeCellState(Generation);
 
 [BsonDiscriminator("ready")]
 public sealed record ReadyRuntimeCellState(
     long Generation,
-    DateTime ReadyAtUtc)
-    : RuntimeCellState(Generation);
+    DateTime ReadyAtUtc
+) : RuntimeCellState(Generation);
 
 [BsonDiscriminator("failed")]
 public sealed record FailedRuntimeCellState(
@@ -237,31 +234,26 @@ public sealed record FailedRuntimeCellState(
     string FailureCode,
     string FailureMessage,
     DateTime AttemptedAtUtc,
-    DateTime RetryNotBeforeUtc)
-    : RuntimeCellState(Generation);
+    DateTime RetryNotBeforeUtc
+) : RuntimeCellState(Generation);
 
 [BsonDiscriminator("deleting")]
 public sealed record DeletingRuntimeCellState(
     long Generation,
     DateTime RequestedAtUtc,
     DateTime? NextCheckAtUtc,
-    long CheckSequence)
-    : RuntimeCellState(Generation);
+    long CheckSequence
+) : RuntimeCellState(Generation);
 
 [BsonDiscriminator("deleted")]
 public sealed record DeletedRuntimeCellState(
     long Generation,
-    DateTime DeletedAtUtc)
-    : RuntimeCellState(Generation);
+    DateTime DeletedAtUtc
+) : RuntimeCellState(Generation);
 
 public static class RuntimeCellFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
-
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
+    public static CreateOptions DefaultOptions => new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static RuntimeCell Create(
         string tenantId,
@@ -288,4 +280,9 @@ public static class RuntimeCellFactory
             createdAtUtc,
             createdAtUtc);
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }

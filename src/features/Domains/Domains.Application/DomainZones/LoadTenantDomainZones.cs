@@ -1,8 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
@@ -14,15 +11,16 @@ public delegate Task<IReadOnlyList<TenantDomainZoneSnapshot>> LoadTenantDomainZo
     string? deploymentTargetId = null,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadTenantDomainZones(IMongoCollection<TenantDomainZone> zones)
+internal sealed class MongoLoadTenantDomainZones(
+    IMongoCollection<TenantDomainZone> zones
+)
 {
     public async Task<IReadOnlyList<TenantDomainZoneSnapshot>> InvokeAsync(
         string tenantId,
         string? deploymentTargetId = null,
         CancellationToken cancellationToken = default)
     {
-        var snapshots = await zones.Find(
-                DomainFilters.ZonesForTenant(tenantId, deploymentTargetId))
+        var snapshots = await zones.Find(DomainFilters.ZonesForTenant(tenantId, deploymentTargetId))
             .SortBy(zone => zone.DeploymentTargetId)
             .ThenBy(zone => zone.Domain)
             .ThenBy(zone => zone.Id)

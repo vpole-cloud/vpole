@@ -1,16 +1,21 @@
 using MongoDB.Bson;
-using Pole.Migrations;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Database;
 
 /// <summary>A host-owned wrapper; scopes migration history to the owning feature.</summary>
-public sealed class FeatureScopedMigration(string featureId, IMigration migration) : IMigration
+public sealed class FeatureScopedMigration(
+    string featureId,
+    IMigration migration
+) : IMigration
 {
     public string FeatureId { get; } = featureId;
+    public string DurableId => $"{FeatureId}/{Id}";
     public ObjectId Id => migration.Id;
     public string Name => migration.Name;
     public string Description => migration.Description;
-    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) => migration.Up(context, cancellationToken);
-    public string DurableId => $"{FeatureId}/{Id}";
+
+    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) =>
+        migration.Up(context, cancellationToken);
 }

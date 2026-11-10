@@ -1,32 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <AssemblyName>Pole.Tests.Architecture</AssemblyName>
-    <RootNamespace>Pole.Tests.Architecture</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>Pole.Tests.Architecture</AssemblyName>
+        <RootNamespace>Pole.Tests.Architecture</RootNamespace>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Parse the same preview C# grammar as the pinned SDK, including unions. -->
-    <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll" />
-    <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
+    <ItemGroup>
+        <!-- Parse the same preview C# grammar as the pinned SDK, including unions. -->
+        <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll"/>
+        <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\shared\ArchitectureAnalyzers\Pole.ArchitectureAnalyzers.csproj" />
-    <ProjectReference Include="../Pole.Architecture.FSharp/Pole.Architecture.FSharp.fsproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\shared\ArchitectureAnalyzers\Pole.ArchitectureAnalyzers.csproj"/>
+        <ProjectReference Include="../Pole.Architecture.FSharp/Pole.Architecture.FSharp.fsproj"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../src/shared/Architecture/Architecture.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/shared/Architecture/Architecture.csproj"/>
+    </ItemGroup>
 </Project>

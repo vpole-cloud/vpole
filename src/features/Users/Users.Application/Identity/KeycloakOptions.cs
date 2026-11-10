@@ -9,4 +9,3 @@ public sealed class KeycloakOptions
     public string AdminClientId { get; init; } = "";
     public string AdminClientSecret { get; init; } = "";
 }
-

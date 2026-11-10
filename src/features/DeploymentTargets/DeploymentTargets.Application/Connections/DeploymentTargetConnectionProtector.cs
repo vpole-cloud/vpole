@@ -3,16 +3,13 @@ using Pole.Features.DeploymentTargets.Application.Common;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
-internal union ProtectDeploymentTargetCredentialOutcome(
-    EncryptedValue,
-    DeploymentTargetConnectionRejected);
+internal union ProtectDeploymentTargetCredentialOutcome(EncryptedValue, DeploymentTargetConnectionRejected);
 
-internal union UnprotectDeploymentTargetCredentialOutcome(
-    byte[],
-    StoredDeploymentTargetConnectionUnavailable);
+internal union UnprotectDeploymentTargetCredentialOutcome(byte[], StoredDeploymentTargetConnectionUnavailable);
 
 internal sealed class DeploymentTargetConnectionProtector(
-    IEnvelopeEncryptionService encryption)
+    IEnvelopeEncryptionService encryption
+)
 {
     private const string KubeconfigValueName = "kubeconfig";
     private const string ServiceAccountCredentialValueName = "service-account-credential";
@@ -24,11 +21,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         CancellationToken cancellationToken = default)
     {
         if (canonicalKubeconfig.IsEmpty || canonicalKubeconfig.Length > ConnectionPayloadLimits.MaximumKubeconfigBytes)
-        {
-            return ConnectionRejections.Validation(
-                    "kubeconfig",
-                    "The kubeconfig payload has an invalid size.");
-        }
+            return ConnectionRejections.Validation("kubeconfig", "The kubeconfig payload has an invalid size.");
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
             deploymentTargetId,
@@ -42,7 +35,7 @@ internal sealed class DeploymentTargetConnectionProtector(
             {
                 EncryptedValue success => success,
                 EnvelopeEncryptionFailed failure => throw new InvalidOperationException(
-                    $"The deployment-target connection-protection service rejected encryption: {failure.Message}")
+                    $"The deployment-target connection-protection service rejected encryption: {failure.Message}"),
             };
         }
         catch (OperationCanceledException)
@@ -51,9 +44,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be protected.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be protected.", exception);
         }
     }
 
@@ -64,9 +55,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         CancellationToken cancellationToken = default)
     {
         if (!HasBoundedCiphertext(encryptedKubeconfig, ConnectionPayloadLimits.MaximumKubeconfigBytes))
-        {
             return new StoredDeploymentTargetConnectionUnavailable();
-        }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
             deploymentTargetId,
@@ -79,7 +68,7 @@ internal sealed class DeploymentTargetConnectionProtector(
             return decrypted switch
             {
                 byte[] success => success,
-                EnvelopeDecryptionFailed => new StoredDeploymentTargetConnectionUnavailable()
+                EnvelopeDecryptionFailed => new StoredDeploymentTargetConnectionUnavailable(),
             };
         }
         catch (OperationCanceledException)
@@ -88,9 +77,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be decrypted.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be decrypted.", exception);
         }
     }
 
@@ -100,13 +87,11 @@ internal sealed class DeploymentTargetConnectionProtector(
         ReadOnlyMemory<byte> canonicalServiceAccountCredential,
         CancellationToken cancellationToken = default)
     {
-        if (canonicalServiceAccountCredential.IsEmpty ||
-            canonicalServiceAccountCredential.Length > ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes)
-        {
+        if (canonicalServiceAccountCredential.IsEmpty || canonicalServiceAccountCredential.Length >
+            ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes)
             return ConnectionRejections.Validation(
                 "serviceAccount",
                 "The service-account credential payload has an invalid size.");
-        }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
             deploymentTargetId,
@@ -123,7 +108,7 @@ internal sealed class DeploymentTargetConnectionProtector(
             {
                 EncryptedValue success => success,
                 EnvelopeEncryptionFailed failure => throw new InvalidOperationException(
-                    $"The deployment-target connection-protection service rejected encryption: {failure.Message}")
+                    $"The deployment-target connection-protection service rejected encryption: {failure.Message}"),
             };
         }
         catch (OperationCanceledException)
@@ -132,9 +117,7 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be protected.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be protected.", exception);
         }
     }
 
@@ -144,12 +127,8 @@ internal sealed class DeploymentTargetConnectionProtector(
         EncryptedValue encryptedCredential,
         CancellationToken cancellationToken = default)
     {
-        if (!HasBoundedCiphertext(
-                encryptedCredential,
-                ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes))
-        {
+        if (!HasBoundedCiphertext(encryptedCredential, ConnectionPayloadLimits.MaximumServiceAccountCredentialBytes))
             return new StoredDeploymentTargetConnectionUnavailable();
-        }
 
         var context = DeploymentTargetConnectionEncryptionContext.Create(
             deploymentTargetId,
@@ -162,7 +141,7 @@ internal sealed class DeploymentTargetConnectionProtector(
             return decrypted switch
             {
                 byte[] success => success,
-                EnvelopeDecryptionFailed => new StoredDeploymentTargetConnectionUnavailable()
+                EnvelopeDecryptionFailed => new StoredDeploymentTargetConnectionUnavailable(),
             };
         }
         catch (OperationCanceledException)
@@ -171,14 +150,12 @@ internal sealed class DeploymentTargetConnectionProtector(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be decrypted.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be decrypted.", exception);
         }
     }
 
-    private static bool HasBoundedCiphertext(EncryptedValue? encryptedValue, int maximumBytes) => encryptedValue?.Ciphertext is { Length: > 0 } ciphertext &&
-        ciphertext.Length <= maximumBytes;
+    private static bool HasBoundedCiphertext(EncryptedValue? encryptedValue, int maximumBytes) =>
+        encryptedValue?.Ciphertext is { Length: > 0 } ciphertext && ciphertext.Length <= maximumBytes;
 }
 
 internal static class DeploymentTargetConnectionEncryptionContext
@@ -196,11 +173,9 @@ internal static class DeploymentTargetConnectionEncryptionContext
         if (string.IsNullOrWhiteSpace(deploymentTargetId) ||
             deploymentTargetId.Length > ConnectionPayloadLimits.MaximumDeploymentTargetIdCharacters ||
             connectionVersion < 1)
-        {
             throw new ArgumentException(
                 "The deployment-target encryption context is invalid.",
                 nameof(deploymentTargetId));
-        }
 
         try
         {
@@ -220,17 +195,11 @@ internal static class DeploymentTargetConnectionEncryptionContext
         }
     }
 
-    public static EnvelopeEncryptionContext ForKubeconfig(
-        string deploymentTargetId,
-        long connectionVersion) => DeploymentTargetConnectionEncryptionContext.Create(
-            deploymentTargetId,
-            connectionVersion,
-            KubeconfigValueName);
+    public static EnvelopeEncryptionContext ForKubeconfig(string deploymentTargetId, long connectionVersion) => Create(
+        deploymentTargetId,
+        connectionVersion,
+        KubeconfigValueName);
 
-    public static EnvelopeEncryptionContext ForServiceAccount(
-        string deploymentTargetId,
-        long connectionVersion) => DeploymentTargetConnectionEncryptionContext.Create(
-            deploymentTargetId,
-            connectionVersion,
-            ServiceAccountValueName);
+    public static EnvelopeEncryptionContext ForServiceAccount(string deploymentTargetId, long connectionVersion) =>
+        Create(deploymentTargetId, connectionVersion, ServiceAccountValueName);
 }

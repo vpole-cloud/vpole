@@ -5,12 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.PrivateAccess.Application.Admission;
 using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
 using Pole.Features.PrivateAccess.Application.Grants;
-using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.Tenants.Contracts;
 using Pole.Mediator;
@@ -23,17 +19,19 @@ public sealed record ListPrivateAccessResourceGrantsRequest(
     [FromQuery] string Name,
     [FromQuery] string? DeploymentId,
     [FromQuery] string? EndpointId,
-    [FromClaim(Claims.UserId)] ClaimValue SubjectUserId)
-    : IMediatorRequest<ListPrivateAccessResourceGrantsOutcome>, ITenantReadOperation;
+    [FromClaim(Claims.UserId)] ClaimValue SubjectUserId
+) : IMediatorRequest<ListPrivateAccessResourceGrantsOutcome>, ITenantReadOperation;
 
 public sealed record PrivateAccessResourceGrantOption(
     string GrantId,
     string ResourceDeploymentId,
     string EndpointId,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc
+);
 
 public sealed record PrivateAccessResourceGrantOptions(
-    IReadOnlyList<PrivateAccessResourceGrantOption> Items);
+    IReadOnlyList<PrivateAccessResourceGrantOption> Items
+);
 
 public union ListPrivateAccessResourceGrantsOutcome(
     PrivateAccessResourceGrantOptions,
@@ -44,10 +42,8 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
     LoadOwnPrivateAccessResourceGrants loadGrants,
     PrivateAccessResourceNameCatalog resources,
     LoadPrivateAccessGrantRoutes routes,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<
-        ListPrivateAccessResourceGrantsRequest,
-        ListPrivateAccessResourceGrantsOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<ListPrivateAccessResourceGrantsRequest, ListPrivateAccessResourceGrantsOutcome>
 {
     public async Task<ListPrivateAccessResourceGrantsOutcome> HandleAsync(
         ListPrivateAccessResourceGrantsRequest request,
@@ -55,38 +51,40 @@ public sealed class ListPrivateAccessResourceGrantsHandler(
     {
         var subjectId = request.SubjectUserId.Value;
         if (await loadTenantMember(
-            new LoadTenantMemberRequest(
-                TenantId: request.TenantId,
-                UserId: subjectId),
-            cancellationToken: cancellationToken) is not TenantMemberSnapshot)
+                new LoadTenantMemberRequest(TenantId: request.TenantId, UserId: subjectId),
+                cancellationToken: cancellationToken) is not TenantMemberSnapshot)
             return new PrivateAccessSubjectMembershipRequired();
 
-        var resource = await resources.ResolveAsync(
-            request.TenantId, request.Kind, request.Name, cancellationToken);
+        var resource = await resources.ResolveAsync(request.TenantId, request.Kind, request.Name, cancellationToken);
         if (resource is null)
             return new PrivateAccessResourceGrantOptions([]);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var grants = await loadGrants(request.TenantId, subjectId,
-            resource.ResourceType.Value, resource.ResourceId, now, cancellationToken);
-        var candidates = grants
-            .Where(grant => (request.DeploymentId is null ||
-                    grant.ResourceDeploymentId == request.DeploymentId) &&
+        var grants = await loadGrants(
+            request.TenantId,
+            subjectId,
+            resource.ResourceType.Value,
+            resource.ResourceId,
+            now,
+            cancellationToken);
+        var candidates = grants.Where(grant =>
+                (request.DeploymentId is null || grant.ResourceDeploymentId == request.DeploymentId) &&
                 (request.EndpointId is null || grant.EndpointId == request.EndpointId))
             .ToArray();
-        var available = await routes(
-            request.TenantId, resource.ResourceType, candidates, cancellationToken);
+        var available = await routes(request.TenantId, resource.ResourceType, candidates, cancellationToken);
 
         var options = new List<PrivateAccessResourceGrantOption>();
         foreach (var grant in candidates)
         {
-            if (!available.ContainsKey((grant.ResourceId, grant.ResourceDeploymentId,
-                    grant.EndpointId)))
+            if (!available.ContainsKey((grant.ResourceId, grant.ResourceDeploymentId, grant.EndpointId)))
                 continue;
 
-            options.Add(new PrivateAccessResourceGrantOption(
-                grant.Id, grant.ResourceDeploymentId, grant.EndpointId,
-                grant.ExpiresAtUtc));
+            options.Add(
+                new PrivateAccessResourceGrantOption(
+                    grant.Id,
+                    grant.ResourceDeploymentId,
+                    grant.EndpointId,
+                    grant.ExpiresAtUtc));
         }
 
         return new PrivateAccessResourceGrantOptions(options);
@@ -105,19 +103,18 @@ public sealed class ListPrivateAccessResourceGrantsRequestValidator
 
 public static class ListPrivateAccessResourceGrantsEndpoint
 {
-    public static IEndpointRouteBuilder MapListPrivateAccessResourceGrantsEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapListPrivateAccessResourceGrantsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Kind}/grants", async (
-                IMediator mediator,
-                [AsParameters] ListPrivateAccessResourceGrantsRequest request,
-                CancellationToken cancellationToken) =>
-            (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
-            {
-                PrivateAccessResourceGrantOptions options => Results.Ok(options),
-                PrivateAccessSubjectMembershipRequired error =>
-                    PrivateAccessHttpProblemMappings.Map(error)
-            }))
+        app.MapGet(
+                "/{Kind}/grants",
+                async (
+                        IMediator mediator, [AsParameters] ListPrivateAccessResourceGrantsRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        PrivateAccessResourceGrantOptions options => Results.Ok(options),
+                        PrivateAccessSubjectMembershipRequired error => PrivateAccessHttpProblemMappings.Map(error),
+                    }))
             .WithName("ListPrivateAccessResourceGrants")
             .Produces<PrivateAccessResourceGrantOptions>();
         return app;

@@ -10,8 +10,10 @@ public sealed class RuntimeCellDeletionCheckMigration : IMigration
     public string Name => "Runtime cell deletion progress index";
     public string Description => "Indexes the persisted due time of deleting runtime cells for recovery.";
 
-    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) =>
-        context.GetCollection<BsonDocument>("RuntimeCells").Indexes.CreateOneAsync(
+    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) => context
+        .GetCollection<BsonDocument>("RuntimeCells")
+        .Indexes
+        .CreateOneAsync(
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys.Ascending("State._t").Ascending("State.NextCheckAtUtc"),
                 new CreateIndexOptions { Name = "IX_RuntimeCells_State_DeletionCheck" }),

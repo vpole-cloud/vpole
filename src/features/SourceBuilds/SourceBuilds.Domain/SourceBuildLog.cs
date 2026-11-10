@@ -11,7 +11,8 @@ public sealed record SourceBuildLogLimits(
     int MaxBytes,
     int MaxEntries,
     int MaxEntryBytes,
-    int RetentionDays)
+    int RetentionDays
+)
 {
     public void Validate()
     {
@@ -27,23 +28,46 @@ public sealed record SourceBuildLogEntry(
     long Sequence,
     SourceBuildLogStream Stream,
     string Text,
-    DateTime RecordedAtUtc)
+    DateTime RecordedAtUtc
+)
 {
     public override string ToString() => $"SourceBuildLogEntry(sequence={Sequence}, output=[REDACTED])";
 }
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(OpenSourceBuildLog), typeof(CompletedSourceBuildLog), typeof(InterruptedSourceBuildLog), typeof(ExpiredSourceBuildLog), typeof(UnavailableSourceBuildLog))]
+[BsonKnownTypes(
+    typeof(OpenSourceBuildLog),
+    typeof(CompletedSourceBuildLog),
+    typeof(InterruptedSourceBuildLog),
+    typeof(ExpiredSourceBuildLog),
+    typeof(UnavailableSourceBuildLog))]
 public closed record SourceBuildLogState;
-public sealed record OpenSourceBuildLog(DateTime LeaseExpiresAtUtc) : SourceBuildLogState;
-public sealed record CompletedSourceBuildLog(DateTime CompletedAtUtc) : SourceBuildLogState;
-public sealed record InterruptedSourceBuildLog(DateTime InterruptedAtUtc) : SourceBuildLogState;
-public sealed record ExpiredSourceBuildLog(DateTime ExpiredAtUtc) : SourceBuildLogState;
-public sealed record UnavailableSourceBuildLog(DateTime UnavailableAtUtc) : SourceBuildLogState;
+
+public sealed record OpenSourceBuildLog(
+    DateTime LeaseExpiresAtUtc
+) : SourceBuildLogState;
+
+public sealed record CompletedSourceBuildLog(
+    DateTime CompletedAtUtc
+) : SourceBuildLogState;
+
+public sealed record InterruptedSourceBuildLog(
+    DateTime InterruptedAtUtc
+) : SourceBuildLogState;
+
+public sealed record ExpiredSourceBuildLog(
+    DateTime ExpiredAtUtc
+) : SourceBuildLogState;
+
+public sealed record UnavailableSourceBuildLog(
+    DateTime UnavailableAtUtc
+) : SourceBuildLogState;
 
 /// <summary>A bounded, sanitized capture, independent of the build/deployment job state.</summary>
 public sealed record SourceBuildLog(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)] string Id,
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string Id,
     string TenantId,
     string WebServiceId,
     string WriterToken,
@@ -56,29 +80,40 @@ public sealed record SourceBuildLog(
     bool Truncated,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime ExpiresAtUtc) : ITenantOwned
+    DateTime ExpiresAtUtc
+) : ITenantOwned
 {
-    public SourceBuildLog Append(long sequence, SourceBuildLogStream stream, string text, DateTime now)
+    public SourceBuildLog Append(
+        long sequence,
+        SourceBuildLogStream stream,
+        string text,
+        DateTime now)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (!Enum.IsDefined(stream) || Encoding.UTF8.GetByteCount(text) > Limits.MaxEntryBytes)
             throw new ArgumentOutOfRangeException(nameof(text));
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{stream}:{text}")));
-        if (sequence == LastSequence && fingerprint == LastAppendFingerprint) return this;
+        if (sequence == LastSequence && fingerprint == LastAppendFingerprint)
+            return this;
         EnsureOpen(now);
-        if (sequence != LastSequence + 1) throw new InvalidOperationException("The log append sequence changed.");
-        if (Truncated || text.Length == 0) return this;
+        if (sequence != LastSequence + 1)
+            throw new InvalidOperationException("The log append sequence changed.");
+        if (Truncated || text.Length == 0)
+            return this;
         var prefix = Utf8Prefix(text, Limits.MaxBytes - CapturedBytes);
         var bytes = Encoding.UTF8.GetByteCount(prefix);
-        var entries = prefix.Length == 0 ? Entries : Entries.Add(new(sequence, stream, prefix, now));
+        var entries = prefix.Length == 0
+            ? Entries
+            : Entries.Add(new SourceBuildLogEntry(sequence, stream, prefix, now));
         return this with
         {
             Entries = entries,
             LastSequence = prefix.Length == 0 ? LastSequence : sequence,
             LastAppendFingerprint = fingerprint,
             CapturedBytes = CapturedBytes + bytes,
-            Truncated = prefix.Length != text.Length || CapturedBytes + bytes >= Limits.MaxBytes || entries.Count >= Limits.MaxEntries,
-            Revision = checked(Revision + 1)
+            Truncated = prefix.Length != text.Length || CapturedBytes + bytes >= Limits.MaxBytes ||
+            entries.Count >= Limits.MaxEntries,
+            Revision = checked(Revision + 1),
         };
     }
 
@@ -94,12 +129,17 @@ public sealed record SourceBuildLog(
         return this with
         {
             State = unavailable ? new UnavailableSourceBuildLog(now) : new CompletedSourceBuildLog(now),
-            Revision = checked(Revision + 1)
+            Revision = checked(Revision + 1),
         };
     }
 
     public SourceBuildLog Recover(DateTime now) => now >= ExpiresAtUtc && State is not ExpiredSourceBuildLog
-        ? this with { Entries = [], LastAppendFingerprint = null, State = new ExpiredSourceBuildLog(now), Revision = checked(Revision + 1) }
+        ?
+        this with
+        {
+            Entries = [], LastAppendFingerprint = null, State = new ExpiredSourceBuildLog(now),
+            Revision = checked(Revision + 1),
+        }
         : State is OpenSourceBuildLog open && now >= open.LeaseExpiresAtUtc
             ? this with { State = new InterruptedSourceBuildLog(now), Revision = checked(Revision + 1) }
             : this;
@@ -116,10 +156,12 @@ public sealed record SourceBuildLog(
         var bytes = 0;
         foreach (var rune in text.EnumerateRunes())
         {
-            if (bytes + rune.Utf8SequenceLength > maximumBytes) break;
+            if (bytes + rune.Utf8SequenceLength > maximumBytes)
+                break;
             bytes += rune.Utf8SequenceLength;
             characters += rune.Utf16SequenceLength;
         }
+
         return text[..characters];
     }
 
@@ -128,9 +170,29 @@ public sealed record SourceBuildLog(
 
 public static class SourceBuildLogFactory
 {
-    public static SourceBuildLog Create(string jobId, string tenantId, string webServiceId, string writerToken, SourceBuildLogLimits limits, DateTime now)
+    public static SourceBuildLog Create(
+        string jobId,
+        string tenantId,
+        string webServiceId,
+        string writerToken,
+        SourceBuildLogLimits limits,
+        DateTime now)
     {
         limits.Validate();
-        return new(jobId, tenantId, webServiceId, writerToken, limits, new OpenSourceBuildLog(now.AddMinutes(2)), [], 0, null, 0, false, 1, now, now.AddDays(limits.RetentionDays));
+        return new SourceBuildLog(
+            jobId,
+            tenantId,
+            webServiceId,
+            writerToken,
+            limits,
+            new OpenSourceBuildLog(now.AddMinutes(2)),
+            [],
+            0,
+            null,
+            0,
+            false,
+            1,
+            now,
+            now.AddDays(limits.RetentionDays));
     }
 }

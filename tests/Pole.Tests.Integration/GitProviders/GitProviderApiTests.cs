@@ -1,27 +1,25 @@
 using System.Collections.Immutable;
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.GitHub;
-using Pole.Features.GitProviders.Migrations;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.Tenants.Domain;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
-    : IsolatedApiIntegrationTestBase(fixture)
+public sealed class GitProviderApiTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task DerivedSetupStateMemberFilters_AreTranslatedAndMatchTheExpectedSubtype()
@@ -33,61 +31,53 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
             Data.UserId,
             "github-test",
             sharedStateHash,
-            new GitHubSetupAttemptFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now,
-                now.AddMinutes(10)));
+            new GitHubSetupAttemptFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now, now.AddMinutes(10)));
         var oauthAttempt = GitHubSetupAttemptFactory.Create(
-            Data.TenantId,
-            Data.UserId,
-            "github-test",
-            "superseded-install-state-hash",
-            new GitHubSetupAttemptFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now,
-                now.AddMinutes(10))) with
-        {
-            State = new AwaitingGitHubOAuth(
-                sharedStateHash,
-                "protected-code-verifier",
-                new GitHubInstallationMetadata(
-                    "42",
-                    "account-1",
-                    "lsbV",
-                    GitProviderAccountType.User,
-                    GitProviderRepositorySelection.Selected))
-        };
+                Data.TenantId,
+                Data.UserId,
+                "github-test",
+                "superseded-install-state-hash",
+                new GitHubSetupAttemptFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    now,
+                    now.AddMinutes(10))) with
+            {
+                State = new AwaitingGitHubOAuth(
+                    sharedStateHash,
+                    "protected-code-verifier",
+                    new GitHubInstallationMetadata(
+                        "42",
+                        "account-1",
+                        "lsbV",
+                        GitProviderAccountType.User,
+                        GitProviderRepositorySelection.Selected)),
+            };
         var otherOAuthAttempt = oauthAttempt with
         {
             Id = ObjectId.GenerateNewId().ToString(),
-            State = ((AwaitingGitHubOAuth)oauthAttempt.State) with
+            State = (AwaitingGitHubOAuth)oauthAttempt.State with
             {
-                OAuthStateHash = "other-state-hash"
-            }
+                OAuthStateHash = "other-state-hash",
+            },
         };
 
-        await Fixture.DbContext.GitHubSetupAttempts.InsertManyAsync(
-            [installAttempt, oauthAttempt, otherOAuthAttempt]);
+        await Fixture.DbContext.GitHubSetupAttempts.InsertManyAsync([installAttempt, oauthAttempt, otherOAuthAttempt]);
 
         var installFilter = Builders<GitHubSetupAttempt>.Filter.And(
             Builders<GitHubSetupAttempt>.Filter.Eq(
                 attempt => ((AwaitingGitHubInstallation)attempt.State).InstallStateHash,
                 sharedStateHash),
-            Builders<GitHubSetupAttempt>.Filter.OfType<GitHubSetupState, AwaitingGitHubInstallation>(
-                attempt => attempt.State));
+            Builders<GitHubSetupAttempt>.Filter.OfType<GitHubSetupState, AwaitingGitHubInstallation>(attempt =>
+                attempt.State));
         var oauthFilter = Builders<GitHubSetupAttempt>.Filter.And(
             Builders<GitHubSetupAttempt>.Filter.Eq(
                 attempt => ((AwaitingGitHubOAuth)attempt.State).OAuthStateHash,
                 sharedStateHash),
-            Builders<GitHubSetupAttempt>.Filter.OfType<GitHubSetupState, AwaitingGitHubOAuth>(
-                attempt => attempt.State));
+            Builders<GitHubSetupAttempt>.Filter
+                .OfType<GitHubSetupState, AwaitingGitHubOAuth>(attempt => attempt.State));
 
-        var matchingInstallAttempt = await Fixture.DbContext.GitHubSetupAttempts
-            .Find(installFilter)
-            .SingleAsync();
-        var matchingOAuthAttempt = await Fixture.DbContext.GitHubSetupAttempts
-            .Find(oauthFilter)
-            .SingleAsync();
+        var matchingInstallAttempt = await Fixture.DbContext.GitHubSetupAttempts.Find(installFilter).SingleAsync();
+        var matchingOAuthAttempt = await Fixture.DbContext.GitHubSetupAttempts.Find(oauthFilter).SingleAsync();
 
         Assert.Equal(installAttempt.Id, matchingInstallAttempt.Id);
         Assert.Equal(oauthAttempt.Id, matchingOAuthAttempt.Id);
@@ -96,13 +86,14 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Migration_CreatesGlobalInstallationUniqueSourceLinkAndSetupTtlIndexes()
     {
-
         var connectionIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("GitProviderConnections")
-            .Indexes.ListAsync();
+            .Indexes
+            .ListAsync();
         var connectionIndexDocuments = await connectionIndexes.ToListAsync();
-        var connectionIndex = connectionIndexDocuments
-            .Single(index => index["name"] == "UX_GitProviderConnections_Provider_Installation");
+        var connectionIndex
+            = connectionIndexDocuments.Single(index =>
+                index["name"] == "UX_GitProviderConnections_Provider_Installation");
         var nameIndex = connectionIndexDocuments.Single(index =>
             index["name"] == "UX_GitProviderConnections_Tenant_TechnicalName");
         Assert.True(nameIndex["unique"].AsBoolean);
@@ -111,24 +102,28 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
 
         var sourceIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("SourceRepositories")
-            .Indexes.ListAsync();
+            .Indexes
+            .ListAsync();
         var sourceIndexDocuments = await sourceIndexes.ToListAsync();
-        var sourceIndex = sourceIndexDocuments
-            .Single(index => index["name"] == "UX_SourceRepositories_Tenant_Repository_Branch");
+        var sourceIndex
+            = sourceIndexDocuments.Single(index => index["name"] == "UX_SourceRepositories_Tenant_Repository_Branch");
         Assert.True(sourceIndex["unique"].AsBoolean);
-        Assert.Equal(new[] { "TenantId", "ConnectionId", "ExternalRepositoryId", "Branch" },
+        Assert.Equal(
+            new[] { "TenantId", "ConnectionId", "ExternalRepositoryId", "Branch" },
             sourceIndex["key"].AsBsonDocument.Names);
-        var sourceNameIndex = sourceIndexDocuments
-            .Single(index => index["name"] == "UX_SourceRepositories_Tenant_TechnicalName");
+        var sourceNameIndex
+            = sourceIndexDocuments.Single(index => index["name"] == "UX_SourceRepositories_Tenant_TechnicalName");
         Assert.True(sourceNameIndex["unique"].AsBoolean);
         Assert.Equal(new[] { "TenantId", "TechnicalName" }, sourceNameIndex["key"].AsBsonDocument.Names);
         Assert.DoesNotContain(sourceIndexDocuments, index => index["key"].AsBsonDocument.Contains("CandidateKey"));
 
         var setupIndexes = await Fixture.Database
             .GetCollection<BsonDocument>("GitHubSetupAttempts")
-            .Indexes.ListAsync();
+            .Indexes
+            .ListAsync();
         var setupIndexDocuments = await setupIndexes.ToListAsync();
-        var installStateIndex = setupIndexDocuments.Single(index => index["name"] == "UX_GitHubSetupAttempts_InstallState");
+        var installStateIndex
+            = setupIndexDocuments.Single(index => index["name"] == "UX_GitHubSetupAttempts_InstallState");
         var oauthStateIndex = setupIndexDocuments.Single(index => index["name"] == "UX_GitHubSetupAttempts_OAuthState");
         var ttlIndex = setupIndexDocuments.Single(index => index["name"] == "TTL_GitHubSetupAttempts_ExpiresAtUtc");
         Assert.True(installStateIndex["unique"].AsBoolean);
@@ -191,9 +186,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         var install = await BeginInstallationAsync();
         await Fixture.DbContext.GitHubSetupAttempts.UpdateOneAsync(
             _ => true,
-            Builders<GitHubSetupAttempt>.Update.Set(
-                attempt => attempt.ExpiresAtUtc,
-                DateTime.UtcNow.AddMinutes(-1)));
+            Builders<GitHubSetupAttempt>.Update.Set(attempt => attempt.ExpiresAtUtc, DateTime.UtcNow.AddMinutes(-1)));
 
         var expired = await Client.GetAsync(SetupCallbackUrl(install.State));
         AssertRedirect(expired, "reason", "expired-or-invalid-state");
@@ -214,13 +207,15 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     {
         await SetCurrentUserRoleAsync(TenantRole.Viewer);
 
-        var forbidden = await Client.PostAsJsonAsync("/api/v1/git-provider-connections/github/install",
+        var forbidden = await Client.PostAsJsonAsync(
+            "/api/v1/git-provider-connections/github/install",
             new { TechnicalName = "github-test" });
 
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
 
         await SetCurrentUserRoleAsync(TenantRole.Member);
-        var allowed = await Client.PostAsJsonAsync("/api/v1/git-provider-connections/github/install",
+        var allowed = await Client.PostAsJsonAsync(
+            "/api/v1/git-provider-connections/github/install",
             new { TechnicalName = "github-test" });
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
     }
@@ -230,7 +225,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     {
         var existing = CreateConnection(Data.TenantId, "42", accountLogin: "old-login") with
         {
-            TechnicalName = "github-test"
+            TechnicalName = "github-test",
         };
         await Fixture.DbContext.GitProviderConnections.InsertOneAsync(existing);
         var setup = await BeginOAuthAsync();
@@ -254,10 +249,18 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         var callback = await Client.GetAsync(OAuthCallbackUrl(setup.OAuthState));
 
         AssertRedirect(callback, "reason", "installation-already-linked");
-        var retained = await Fixture.DbContext.GitProviderConnections.Find(item => item.ExternalInstallationId == "42").SingleAsync();
+        var retained = await Fixture.DbContext
+            .GitProviderConnections
+            .Find(item => item.ExternalInstallationId == "42")
+            .SingleAsync();
         Assert.Equal("507f1f77bcf86cd799439099", retained.TenantId);
-        Assert.Equal(1, await Fixture.DbContext.GitProviderConnections.CountDocumentsAsync(FilterDefinition<GitProviderConnection>.Empty));
-        Assert.Equal(0, await Fixture.DbContext.GitProviderConnections.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(
+            1,
+            await Fixture.DbContext.GitProviderConnections.CountDocumentsAsync(
+                FilterDefinition<GitProviderConnection>.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.GitProviderConnections.CountDocumentsAsync(item => item.TenantId == Data.TenantId));
     }
 
     [Fact]
@@ -302,9 +305,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
 
         var nextCommit = new string('b', 40);
         GitHubClient.Snapshot = GitHubClient.Snapshot with { CommitSha = nextCommit };
-        var reanalyzeResponse = await Client.PostAsync(
-            $"/api/v1/source-repositories/{linked.Id}/reanalyze",
-            null);
+        var reanalyzeResponse = await Client.PostAsync($"/api/v1/source-repositories/{linked.Id}/reanalyze", null);
         var reanalyzed = await reanalyzeResponse.Content.ReadFromJsonAsync<RepositoryAnalysisDto>();
         Assert.Equal(HttpStatusCode.OK, reanalyzeResponse.StatusCode);
         Assert.Equal(nextCommit, reanalyzed!.CommitSha);
@@ -312,8 +313,12 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         var listResponse = await Client.GetFromJsonAsync<SourceRepositoryDto[]>("/api/v1/source-repositories");
         Assert.Equal(linked.Id, Assert.Single(listResponse!).Id);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await Client.DeleteAsync($"/api/v1/source-repositories/{linked.Id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await Client.DeleteAsync($"/api/v1/git-provider-connections/{connection.Id}")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (await Client.DeleteAsync($"/api/v1/source-repositories/{linked.Id}")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (await Client.DeleteAsync($"/api/v1/git-provider-connections/{connection.Id}")).StatusCode);
     }
 
     [Fact]
@@ -344,8 +349,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task RepositoryConnectionId_IsValidatedBeforeLoadingPersistenceOrCallingProvider()
     {
-        var response = await Client.GetAsync(
-            "/api/v1/git-provider-connections/not-an-object-id/repositories");
+        var response = await Client.GetAsync("/api/v1/git-provider-connections/not-an-object-id/repositories");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, GitHubClient.RepositoryCalls);
@@ -378,8 +382,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
             "GitHub rate limit reached.",
             HttpStatusCode.TooManyRequests);
 
-        var response = await Client.GetAsync(
-            $"/api/v1/git-provider-connections/{connection.Id}/repositories");
+        var response = await Client.GetAsync($"/api/v1/git-provider-connections/{connection.Id}/repositories");
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
     }
@@ -413,8 +416,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
                 ObjectId.GenerateNewId().ToString(),
                 SourceBuildRecipe.Create("FROM mcr.microsoft.com/dotnet/aspnet:10.0"),
                 new ManualSourceBuildConfigurationOrigin(Data.UserId),
-                new SourceBuildConfigurationFactory.CreateOptions(
-                    ObjectId.GenerateNewId().ToString(), now)));
+                new SourceBuildConfigurationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)));
 
         var response = await Client.DeleteAsync($"/api/v1/source-repositories/{sourceRepository.Id}");
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -423,9 +425,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(
             "git-providers.source-repositories.has-build-configuration",
             problem.RootElement.GetProperty("code").GetString());
-        Assert.True(await Fixture.DbContext.SourceRepositories
-            .Find(item => item.Id == sourceRepository.Id)
-            .AnyAsync());
+        Assert.True(await Fixture.DbContext.SourceRepositories.Find(item => item.Id == sourceRepository.Id).AnyAsync());
     }
 
     [Theory]
@@ -434,7 +434,8 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     [InlineData("with/slash")]
     public async Task SetupRejectsInvalidTechnicalNameBeforeProviderAccess(string name)
     {
-        var response = await Client.PostAsJsonAsync("/api/v1/git-provider-connections/github/install",
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/git-provider-connections/github/install",
             new { TechnicalName = name });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, await Fixture.DbContext.GitHubSetupAttempts.CountDocumentsAsync(_ => true));
@@ -443,22 +444,31 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
     [Theory]
     [InlineData("42", "different-name", "connection-name-mismatch")]
     [InlineData("43", "github-test", "connection-name-conflict")]
-    public async Task SetupReportsNameConflictsWithoutMutation(string installation, string name, string reason)
+    public async Task SetupReportsNameConflictsWithoutMutation(
+        string installation,
+        string name,
+        string reason)
     {
         var existing = CreateConnection(Data.TenantId, installation) with { TechnicalName = name };
         await Fixture.DbContext.GitProviderConnections.InsertOneAsync(existing);
         var setup = await BeginOAuthAsync();
         var callback = await Client.GetAsync(OAuthCallbackUrl(setup.OAuthState));
         AssertRedirect(callback, "reason", reason);
-        Assert.Equal(name, (await Fixture.DbContext.GitProviderConnections.Find(item => item.Id == existing.Id)
-            .SingleAsync()).TechnicalName);
+        Assert.Equal(
+            name,
+            (await Fixture.DbContext.GitProviderConnections.Find(item => item.Id == existing.Id).SingleAsync())
+            .TechnicalName);
         Assert.Equal(1, await Fixture.DbContext.GitProviderConnections.CountDocumentsAsync(_ => true));
-        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.git-providers/v1/git-provider-connection-changed"));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.CountAllOutboxMessagesAsync(
+                "pole.git-providers/v1/git-provider-connection-changed"));
     }
 
     private async Task<InstallationStart> BeginInstallationAsync()
     {
-        var response = await Client.PostAsJsonAsync("/api/v1/git-provider-connections/github/install",
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/git-provider-connections/github/install",
             new { TechnicalName = "github-test" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<BeginGitHubInstallationResponse>();
@@ -472,10 +482,7 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         var response = await Client.GetAsync(SetupCallbackUrl(installation.State));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         var query = RedirectQuery(response);
-        return new OAuthStart(
-            installation.State,
-            QueryValue(query, "state"),
-            QueryValue(query, "code_challenge"));
+        return new OAuthStart(installation.State, QueryValue(query, "state"), QueryValue(query, "code_challenge"));
     }
 
     private static string SetupCallbackUrl(string state) =>
@@ -491,35 +498,36 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
         return Query(response.Headers.Location.ToString());
     }
 
-    private static Dictionary<string, StringValues> Query(string url) =>
-        QueryHelpers.ParseQuery(new Uri(url, UriKind.RelativeOrAbsolute).IsAbsoluteUri
+    private static Dictionary<string, StringValues> Query(string url) => QueryHelpers.ParseQuery(
+        new Uri(url, UriKind.RelativeOrAbsolute).IsAbsoluteUri
             ? new Uri(url).Query
             : new Uri(new Uri("https://pole.test"), url).Query);
 
-    private static void AssertRedirect(HttpResponseMessage response, string key, string expected) =>
-        Assert.Equal(expected, QueryValue(RedirectQuery(response), key));
+    private static void AssertRedirect(
+        HttpResponseMessage response,
+        string key,
+        string expected) => Assert.Equal(expected, QueryValue(RedirectQuery(response), key));
 
-    private static string QueryValue(Dictionary<string, StringValues> query, string key) =>
-        query[key].Single() ?? throw new InvalidOperationException($"Query value '{key}' is missing.");
+    private static string QueryValue(Dictionary<string, StringValues> query, string key) => query[key].Single() ??
+        throw new InvalidOperationException($"Query value '{key}' is missing.");
 
     private GitProviderConnection CreateConnection(
         string tenantId,
         string installationId,
-        string accountLogin = "lsbV") =>
-        GitProviderConnectionFactory.Create(
-            tenantId,
-            "github-" + installationId,
-            GitProviderKind.GitHub,
-            installationId,
-            "1001",
-            accountLogin,
-            GitProviderAccountType.User,
-            GitProviderRepositorySelection.Selected,
-            Data.UserId,
-            new GitProviderConnectionFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                DateTime.UtcNow,
-                DateTime.UtcNow));
+        string accountLogin = "lsbV") => GitProviderConnectionFactory.Create(
+        tenantId,
+        "github-" + installationId,
+        GitProviderKind.GitHub,
+        installationId,
+        "1001",
+        accountLogin,
+        GitProviderAccountType.User,
+        GitProviderRepositorySelection.Selected,
+        Data.UserId,
+        new GitProviderConnectionFactory.CreateOptions(
+            ObjectId.GenerateNewId().ToString(),
+            DateTime.UtcNow,
+            DateTime.UtcNow));
 
     private async Task SetCurrentUserRoleAsync(TenantRole role)
     {
@@ -530,13 +538,17 @@ public sealed class GitProviderApiTests(MongoReplicaSetFixture fixture)
             {
                 Members = tenant.Members
                     .Select(member => member.UserId == Data.UserId ? member with { Role = role } : member)
-                    .ToImmutableList()
+                    .ToImmutableList(),
             });
     }
 
-    private sealed record InstallationStart(string State);
+    private sealed record InstallationStart(
+        string State
+    );
+
     private sealed record OAuthStart(
         string InstallState,
         string OAuthState,
-        string CodeChallenge);
+        string CodeChallenge
+    );
 }

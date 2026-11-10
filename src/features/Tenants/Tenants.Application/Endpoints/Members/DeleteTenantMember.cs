@@ -22,8 +22,8 @@ public union DeleteTenantMemberOutcome(
     TenantLastOwner);
 
 public sealed class DeleteTenantMemberHandler(
-    PersistRemovedTenantMember persistRemovedTenantMember)
-    : IMediatorOutcomeHandler<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>
+    PersistRemovedTenantMember persistRemovedTenantMember
+) : IMediatorOutcomeHandler<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>
 {
     public async Task<DeleteTenantMemberOutcome> HandleAsync(
         DeleteTenantMemberRequest request,
@@ -37,7 +37,7 @@ public sealed class DeleteTenantMemberHandler(
             TenantMemberRemoved removed => removed,
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
-            TenantLastOwner error => error
+            TenantLastOwner error => error,
         };
     }
 }
@@ -46,20 +46,21 @@ public static class DeleteTenantMemberEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteTenantMemberEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{TenantId}/members/{MemberId}", async (
-                IMediator mediator,
-                [AsParameters] DeleteTenantMemberRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{TenantId}/members/{MemberId}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteTenantMemberRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    TenantMemberRemoved => Results.NoContent(),
-                    TenantNotFound error => MapTenantNotFound(error),
-                    TenantMemberNotFound error => MapMemberNotFound(error),
-                    TenantLastOwner error => MapLastOwner(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        TenantMemberRemoved => Results.NoContent(),
+                        TenantNotFound error => MapTenantNotFound(error),
+                        TenantMemberNotFound error => MapMemberNotFound(error),
+                        TenantLastOwner error => MapLastOwner(error),
+                    });
+                })
             .WithName("DeleteTenantMember")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

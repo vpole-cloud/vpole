@@ -1,23 +1,22 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
 [Collection(IntegrationTestCollection.Tenant3)]
-public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+public sealed class RuntimeCellApiTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task OperationalEndpoints_ListGetAndRetryFailedCell()
     {
-        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            Data.SeedResourceGroup());
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var initialTime = DateTime.UtcNow.AddMinutes(-2);
         var provisioning = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
@@ -25,9 +24,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
             resourceGroup.DefaultIsolationScopeId,
             "507f1f77bcf86cd799439071",
             "pole-runtime-api",
-            new RuntimeCellFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                initialTime));
+            new RuntimeCellFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), initialTime));
         var failed = provisioning.MarkFailed(
             provisioning.DesiredGeneration,
             RuntimeCellOperation.Reconciliation,
@@ -37,8 +34,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
             initialTime.AddMinutes(1).AddSeconds(30));
         await Fixture.DbContext.RuntimeCells.InsertOneAsync(failed);
 
-        using var listResponse = await Client.GetAsync(
-            $"/api/v1/resource-groups/{resourceGroup.Id}/runtime-cells");
+        using var listResponse = await Client.GetAsync($"/api/v1/resource-groups/{resourceGroup.Id}/runtime-cells");
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         var list = await listResponse.Content.ReadFromJsonAsync<List<RuntimeCellDto>>();
         var listed = Assert.Single(list!);
@@ -60,17 +56,18 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
         Assert.Null(retried.FailureCode);
         Assert.Null(retried.RetryNotBeforeUtc);
 
-        Assert.Equal(1L, await Fixture.DbContext.CountOutboxMessagesAsync(Data.TenantId,
-            "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
+        Assert.Equal(
+            1L,
+            await Fixture.DbContext.CountOutboxMessagesAsync(
+                Data.TenantId,
+                "pole.resource-groups/v1/runtime-cell-reconciliation-requested"));
     }
 
     [Fact]
     public async Task OperationalEndpoints_ValidateIds_AndEnforceResourceGroupOwnership()
     {
-        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            Data.SeedResourceGroup());
-        var otherResourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            Data.SeedResourceGroup("other"));
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var otherResourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("other"));
         var cell = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -80,8 +77,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
             RuntimeCellFactory.DefaultOptions);
         await Fixture.DbContext.RuntimeCells.InsertOneAsync(cell);
 
-        using var malformed = await Client.GetAsync(
-            "/api/v1/resource-groups/not-an-id/runtime-cells");
+        using var malformed = await Client.GetAsync("/api/v1/resource-groups/not-an-id/runtime-cells");
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
 
         using var crossGroup = await Client.GetAsync(
@@ -92,8 +88,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task DeleteResourceGroup_WithRuntimeCell_ReturnsAccepted()
     {
-        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            Data.SeedResourceGroup());
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var cell = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -103,8 +98,7 @@ public sealed class RuntimeCellApiTests(MongoReplicaSetFixture fixture)
             RuntimeCellFactory.DefaultOptions);
         await Fixture.DbContext.RuntimeCells.InsertOneAsync(cell);
 
-        using var response = await Client.DeleteAsync(
-            $"/api/v1/resource-groups/{resourceGroup.Id}");
+        using var response = await Client.DeleteAsync($"/api/v1/resource-groups/{resourceGroup.Id}");
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
     }

@@ -2,25 +2,38 @@ using MongoDB.Driver;
 
 namespace Pole.Features.ResourceGroups.Contracts;
 
-public sealed record ResourceGroupPlacementResourceGroupNotFound(string ResourceGroupId);
+public sealed record ResourceGroupPlacementResourceGroupNotFound(
+    string ResourceGroupId
+);
 
-public sealed record ResourceGroupPlacementResourceGroupDeleting(string ResourceGroupId);
+public sealed record ResourceGroupPlacementResourceGroupDeleting(
+    string ResourceGroupId
+);
 
-public sealed record ResourceGroupPlacementIsolationScopeNotFound(string IsolationScopeId);
+public sealed record ResourceGroupPlacementIsolationScopeNotFound(
+    string IsolationScopeId
+);
 
-public sealed record ResourceGroupPlacementIsolationScopeDeleting(string IsolationScopeId);
+public sealed record ResourceGroupPlacementIsolationScopeDeleting(
+    string IsolationScopeId
+);
 
 public sealed record ResourceGroupPlacementDeploymentTargetRejected(
-    string? DeploymentTargetId);
+    string? DeploymentTargetId
+);
 
 public sealed record ResourceGroupPlacementDeploymentTargetReferenceRejected(
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);
 
 public sealed record ResourceGroupPlacementTargetResolutionChanged(
     string RequestedDeploymentTargetId,
-    string ResolvedDeploymentTargetId);
+    string ResolvedDeploymentTargetId
+);
 
-public sealed record ResourceGroupPlacementChanged(string ResourceGroupId);
+public sealed record ResourceGroupPlacementChanged(
+    string ResourceGroupId
+);
 
 public union ResourceGroupPlacementError(
     ResourceGroupPlacementResourceGroupNotFound,
@@ -44,7 +57,8 @@ public sealed record ResourcePlacement(
     string DeploymentTargetId,
     string KubernetesNamespace,
     long RuntimeCellGeneration,
-    ResourcePlacementState State);
+    ResourcePlacementState State
+);
 
 public enum ResourcePlacementState
 {
@@ -52,27 +66,23 @@ public enum ResourcePlacementState
     Ready,
     Failed,
     Deleting,
-    Deleted
+    Deleted,
 }
 
-public union ResolveResourceGroupPlacementOutcome(
-    ResourcePlacement,
-    ResourceGroupPlacementError);
+public union ResolveResourceGroupPlacementOutcome(ResourcePlacement, ResourceGroupPlacementError);
 
-public sealed record ResourcePlacements(IReadOnlyList<ResourcePlacement> Items);
+public sealed record ResourcePlacements(
+    IReadOnlyList<ResourcePlacement> Items
+);
 
-public union ResolveResourceGroupPlacementsOutcome(
-    ResourcePlacements,
-    ResourceGroupPlacementError);
+public union ResolveResourceGroupPlacementsOutcome(ResourcePlacements, ResourceGroupPlacementError);
 
-public delegate Task<ResolveResourceGroupPlacementOutcome>
-    ResolveResourceGroupPlacement(
+public delegate Task<ResolveResourceGroupPlacementOutcome> ResolveResourceGroupPlacement(
     ResolveResourceGroupPlacementRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<ResolveResourceGroupPlacementsOutcome>
-    ResolveResourceGroupPlacements(
+public delegate Task<ResolveResourceGroupPlacementsOutcome> ResolveResourceGroupPlacements(
     ResolveResourceGroupPlacementsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
@@ -96,18 +106,22 @@ public sealed record ResolveResourceGroupPlacementRequest(
     string TenantId,
     string ResourceGroupId,
     string? IsolationScopeId,
-    string? DeploymentTargetId);
+    string? DeploymentTargetId
+);
 
 public sealed record ResolveResourceGroupPlacementsRequest(
     string TenantId,
     string ResourceGroupId,
     string? IsolationScopeId,
-    IReadOnlyList<string> DeploymentTargetIds);
+    IReadOnlyList<string> DeploymentTargetIds
+);
 
 public sealed record LoadResourcePlacementInTransactionRequest(
     string TenantId,
-    string RuntimeCellId);
+    string RuntimeCellId
+);
 
 public sealed record LoadResourcePlacementsInTransactionRequest(
     string TenantId,
-    IReadOnlyCollection<string> RuntimeCellIds);
+    IReadOnlyCollection<string> RuntimeCellIds
+);

@@ -4,17 +4,15 @@ using Pole.Features.ComputeProfiles.Domain;
 
 namespace Pole.Features.ComputeProfiles.Application.Catalog;
 
-public delegate Task<ComputeProfile?> LoadDefaultComputeProfile(
-    CancellationToken cancellationToken = default);
+public delegate Task<ComputeProfile?> LoadDefaultComputeProfile(CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadDefaultComputeProfile(
-    IMongoCollection<ComputeProfile> computeProfiles)
+    IMongoCollection<ComputeProfile> computeProfiles
+)
 {
-    public async Task<ComputeProfile?> InvokeAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<ComputeProfile?> InvokeAsync(CancellationToken cancellationToken = default)
     {
-        ComputeProfile? profile = await computeProfiles
-            .Find(ComputeProfileFilters.Default())
+        var profile = await computeProfiles.Find(ComputeProfileFilters.Default())
             .FirstOrDefaultAsync(cancellationToken);
         return profile;
     }

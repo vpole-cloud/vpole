@@ -18,7 +18,8 @@ public sealed class PostgresSettingsTests
     public void InvalidSettingsFailWhenResolved(string key, string value)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-            new Dictionary<string, string?> { [$"Postgres:{key}"] = value }).Build();
+                new Dictionary<string, string?> { [$"Postgres:{key}"] = value })
+            .Build();
         using var services = new ServiceCollection().AddPostgresFeature(configuration).BuildServiceProvider();
         Assert.Throws<OptionsValidationException>(() => services.GetRequiredService<PostgresSettings>());
     }

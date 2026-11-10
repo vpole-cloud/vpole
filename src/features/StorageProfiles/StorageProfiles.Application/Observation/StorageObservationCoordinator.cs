@@ -14,47 +14,53 @@ public sealed class StorageObservationCoordinator(
     StorageObservationWakeup wakeup,
     TimeProvider clock,
     ILogger<StorageObservationCoordinator> logger,
-    StorageObservationMetrics? metrics = null)
-    : ObservationCoordinator<string, StorageObservationContext, StorageObservationOwnership>(
-        scopes,
-        options.Enabled,
-        options.MaximumSources,
-        options.ScanBatchSize,
-        wakeup,
-        clock,
-        logger)
+    StorageObservationMetrics? metrics = null
+) : ObservationCoordinator<string, StorageObservationContext, StorageObservationOwnership>(
+    scopes,
+    options.Enabled,
+    options.MaximumSources,
+    options.ScanBatchSize,
+    wakeup,
+    clock,
+    logger)
 {
     protected override IObservationCoordination<string, StorageObservationContext, StorageObservationOwnership>
-        CreateAdapter(IServiceProvider provider) =>
-        new Adapter(provider, clock, metrics);
+        CreateAdapter(IServiceProvider provider) => new Adapter(provider, clock, metrics);
 
-    private sealed class Adapter(IServiceProvider provider, TimeProvider clock, StorageObservationMetrics? metrics)
-        : IObservationCoordination<string, StorageObservationContext, StorageObservationOwnership>
+    private sealed class Adapter(
+        IServiceProvider provider,
+        TimeProvider clock,
+        StorageObservationMetrics? metrics
+    ) : IObservationCoordination<string, StorageObservationContext, StorageObservationOwnership>
     {
-        private readonly IStorageObservationStore store = provider.GetRequiredService<IStorageObservationStore>();
+        private readonly StorageObservationContextLoader contexts
+            = provider.GetRequiredService<StorageObservationContextLoader>();
 
-        private readonly StorageObservationContextLoader contexts =
-            provider.GetRequiredService<StorageObservationContextLoader>();
+        private readonly IStorageObservationStore store = provider.GetRequiredService<IStorageObservationStore>();
 
         public Task ReapAsync(int limit, CancellationToken ct) => store.ReapExpiredDemandsAsync(limit, ct);
 
-        public async Task<ObservationPage<string>> ScanAsync(string? cursor, int limit, CancellationToken ct)
+        public async Task<ObservationPage<string>> ScanAsync(
+            string? cursor,
+            int limit,
+            CancellationToken ct)
         {
             var page = await store.ScanDemandsAsync(cursor, limit, ct);
-            return new(page.DeploymentTargetIds, page.NextCursor);
+            return new ObservationPage<string>(page.DeploymentTargetIds, page.NextCursor);
         }
 
-        public async Task<bool> IsCurrentAsync(string key,
+        public async Task<bool> IsCurrentAsync(
+            string key,
             StorageObservationContext context,
             StorageObservationOwnership owner,
-            CancellationToken ct) =>
-            (await store.LoadControlAsync(key, ct))?.Epoch == owner.Lease.Epoch &&
+            CancellationToken ct) => (await store.LoadControlAsync(key, ct))?.Epoch == owner.Lease.Epoch &&
             await contexts.LoadAsync(key, ct) == context;
 
         public Task<StorageObservationContext?> LoadAsync(string key, CancellationToken ct) =>
             contexts.LoadAsync(key, ct);
 
-        public async Task<StorageObservationOwnership?> ClaimAsync(StorageObservationContext context,
+        public async Task<StorageObservationOwnership?> ClaimAsync(
+            StorageObservationContext context,
             string instanceId,
             CancellationToken ct) =>
             (await store.ClaimLeaseAsync(context, instanceId, ct)).Value as StorageObservationOwnership;
@@ -62,14 +68,15 @@ public sealed class StorageObservationCoordinator(
         public async Task ReleaseAsync(StorageObservationOwnership owner, CancellationToken ct) =>
             await store.ReleaseLeaseAsync(owner.Lease, ct);
 
-        public Task RunAsync(StorageObservationContext context,
+        public Task RunAsync(
+            StorageObservationContext context,
             StorageObservationOwnership owner,
-            CancellationToken ct) =>
-            new StorageObservationOwner(store,
-                provider.GetRequiredService<IStorageObservationSource>(),
-                provider.GetRequiredService<StorageObservationNativeReader>(),
-                clock,
-                metrics).RunAsync(context, owner, ct);
+            CancellationToken ct) => new StorageObservationOwner(
+            store,
+            provider.GetRequiredService<IStorageObservationSource>(),
+            provider.GetRequiredService<StorageObservationNativeReader>(),
+            clock,
+            metrics).RunAsync(context, owner, ct);
     }
 }
 
@@ -78,13 +85,16 @@ internal sealed class StorageObservationOwner(
     IStorageObservationSource source,
     StorageObservationNativeReader native,
     TimeProvider clock,
-    StorageObservationMetrics? metrics = null)
+    StorageObservationMetrics? metrics = null
+)
 {
-    public Task RunAsync(StorageObservationContext context,
+    public Task RunAsync(
+        StorageObservationContext context,
         StorageObservationOwnership ownership,
         CancellationToken ct) =>
-        new ObservationOwner(new Session(store, source, native, context, ownership, metrics), clock)
-            .RunAsync(ownership.SourceControlVersion, ct);
+        new ObservationOwner(new Session(store, source, native, context, ownership, metrics), clock).RunAsync(
+            ownership.SourceControlVersion,
+            ct);
 
     private sealed class Session(
         IStorageObservationStore store,
@@ -92,7 +102,8 @@ internal sealed class StorageObservationOwner(
         StorageObservationNativeReader native,
         StorageObservationContext context,
         StorageObservationOwnership ownership,
-        StorageObservationMetrics? metrics) : IObservationSession
+        StorageObservationMetrics? metrics
+    ) : IObservationSession
     {
         public async IAsyncEnumerable<ObservationChange> WatchAsync([EnumeratorCancellation] CancellationToken ct)
         {
@@ -103,11 +114,14 @@ internal sealed class StorageObservationOwner(
                         new ObservationSourceReady(id),
                     { Kind: StorageObservationChangeKind.Changed, SourceId: { } id, Inventory.Complete: true } =>
                         new ObservationInvalidated(id),
-                    _ => new ObservationSourceLost()
+                    _ => new ObservationSourceLost(),
                 };
         }
 
-        public async Task<long?> SetSourceAsync(long version, string? sourceId, CancellationToken ct) =>
+        public async Task<long?> SetSourceAsync(
+            long version,
+            string? sourceId,
+            CancellationToken ct) =>
             (await store.SetSourceStateAsync(ownership.Lease, context, version, sourceId is not null, sourceId, ct))
             .Value is StorageObservationSourceState accepted
                 ? accepted.SourceControlVersion
@@ -119,20 +133,21 @@ internal sealed class StorageObservationOwner(
             var inventory = await native.ReadAsync(context, ct);
             if (inventory is null)
                 return ObservationSampleResult.Unavailable;
-            return (await store.TryCommitSnapshotAsync(ownership.Lease,
+            return await store.TryCommitSnapshotAsync(
+                    ownership.Lease,
                     context,
                     cut.SourceVersion,
                     cut.SourceId,
                     inventory,
-                    ct)) switch
-            {
-                StorageObservationSnapshot => ObservationSampleResult.Accepted,
-                StorageObservationRejected
+                    ct) switch
                 {
-                    Reason: StorageObservationRejection.SourceChanged
-                } => ObservationSampleResult.Superseded,
-                StorageObservationRejected => ObservationSampleResult.OwnerLost
-            };
+                    StorageObservationSnapshot => ObservationSampleResult.Accepted,
+                    StorageObservationRejected
+                    {
+                        Reason: StorageObservationRejection.SourceChanged,
+                    } => ObservationSampleResult.Superseded,
+                    StorageObservationRejected => ObservationSampleResult.OwnerLost,
+                };
         }
 
         public async Task<bool> RenewAsync(CancellationToken ct) =>
@@ -146,7 +161,7 @@ internal sealed class StorageObservationOwner(
                 ObservationSampleMetric.Accepted => StorageObservationSampleOutcome.Accepted,
                 ObservationSampleMetric.Rejected => StorageObservationSampleOutcome.Rejected,
                 ObservationSampleMetric.Cancelled => StorageObservationSampleOutcome.Cancelled,
-                _ => StorageObservationSampleOutcome.Failed
+                _ => StorageObservationSampleOutcome.Failed,
             },
             elapsed);
     }

@@ -20,15 +20,23 @@ public sealed record PrivateAccessLeaseSnapshot(
     NetworkPort TargetPort,
     long DeploymentRevision,
     DateTime ExpiresAtUtc,
-    DateTime SessionDeadlineUtc);
+    DateTime SessionDeadlineUtc
+);
 
 public sealed record PrivateAccessTicketInvalid;
+
 public sealed record PrivateAccessTicketUsed;
+
 public sealed record PrivateAccessSessionUnavailable;
+
 public sealed record PrivateAccessGrantUnavailable;
+
 public sealed record PrivateAccessSubjectMembershipRequired;
+
 public sealed record PrivateAccessDeploymentUnavailable;
+
 public sealed record PrivateAccessEndpointUnavailable;
+
 public sealed record PrivateAccessBindingChanged;
 
 public union RedeemPrivateAccessSessionOutcome(
@@ -56,7 +64,8 @@ public delegate Task<RedeemPrivateAccessSessionOutcome> RedeemPrivateAccessSessi
 
 public sealed record PrivateAccessTicketRoute(
     string TenantId,
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);
 
 public delegate Task<PrivateAccessTicketRoute?> LocatePrivateAccessTicket(
     string ticket,
@@ -73,19 +82,16 @@ public enum PrivateAccessSessionCloseReason
     BrokerFailure,
     GatewayFailure,
     LeaseDenied,
-    Cancelled
+    Cancelled,
 }
 
 public sealed record PrivateAccessSessionStarted;
+
 public sealed record PrivateAccessSessionClosed;
 
-public union MarkPrivateAccessSessionStartedOutcome(
-    PrivateAccessSessionStarted,
-    PrivateAccessSessionUnavailable);
+public union MarkPrivateAccessSessionStartedOutcome(PrivateAccessSessionStarted, PrivateAccessSessionUnavailable);
 
-public union ClosePrivateAccessSessionOutcome(
-    PrivateAccessSessionClosed,
-    PrivateAccessSessionUnavailable);
+public union ClosePrivateAccessSessionOutcome(PrivateAccessSessionClosed, PrivateAccessSessionUnavailable);
 
 public delegate Task<MarkPrivateAccessSessionStartedOutcome> MarkPrivateAccessSessionStarted(
     string sessionId,
@@ -107,17 +113,20 @@ public sealed record PrivateAccessSessionCleanupSnapshot(
     string KubernetesNamespace,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort);
+    NetworkPort TargetPort
+);
 
-/// <summary>Atomically claims eligible sessions into Cleaning before returning them.
-/// Repeated calls also return previously claimed Cleaning sessions for crash recovery.</summary>
-public delegate Task<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>
-    LoadExpiredPrivateAccessSessionCleanupPage(
-        DateTime nowUtc,
-        int limit,
-        CancellationToken cancellationToken = default);
+/// <summary>
+///     Atomically claims eligible sessions into Cleaning before returning them.
+///     Repeated calls also return previously claimed Cleaning sessions for crash recovery.
+/// </summary>
+public delegate Task<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>> LoadExpiredPrivateAccessSessionCleanupPage(
+    DateTime nowUtc,
+    int limit,
+    CancellationToken cancellationToken = default);
 
 public sealed record PrivateAccessSessionCleaned;
+
 public sealed record PrivateAccessSessionNotCleaning;
 
 public union MarkPrivateAccessSessionCleanedOutcome(

@@ -1,8 +1,6 @@
 using System.Linq.Expressions;
 using MongoDB.Driver;
 using Pole.Encryption;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Mongo;
@@ -13,7 +11,8 @@ namespace Pole.Features.DeploymentTargets.Application.Credentials;
 public sealed record DeploymentTargetCredentialRewrapSummary(
     long Examined,
     long Rewrapped,
-    long ConcurrentChanges);
+    long ConcurrentChanges
+);
 
 public union RewrapDeploymentTargetCredentialsPersistenceOutcome(
     DeploymentTargetCredentialRewrapSummary,
@@ -25,7 +24,8 @@ public delegate Task<RewrapDeploymentTargetCredentialsPersistenceOutcome> Rewrap
 
 internal sealed class MongoRewrapDeploymentTargetCredentials(
     IMongoCollection<DeploymentTarget> deploymentTargets,
-    IEnvelopeEncryptionService envelopeEncryption)
+    IEnvelopeEncryptionService envelopeEncryption
+)
 {
     private const int BatchSize = 100;
 
@@ -35,9 +35,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
     {
         ArgumentNullException.ThrowIfNull(expectedActiveKey);
         if (expectedActiveKey != envelopeEncryption.ActiveKey)
-        {
             return new DeploymentTargetCredentialRewrapConflict();
-        }
 
         long examined = 0;
         long rewrapped = 0;
@@ -46,8 +44,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
         while (true)
         {
             var filter = DeploymentTargetFilters.AfterId(cursor);
-            var batch = await deploymentTargets
-                .Find(filter)
+            var batch = await deploymentTargets.Find(filter)
                 .SortBy(target => target.Id)
                 .Limit(BatchSize)
                 .ToListAsync(cancellationToken);
@@ -80,9 +77,7 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                             continue;
                         rewrapResult = await envelopeEncryption.RewrapAsync(
                             currentEnvelope,
-                            DeploymentTargetConnectionEncryptionContext.ForKubeconfig(
-                                target.Id,
-                                kubeconfig.Version),
+                            DeploymentTargetConnectionEncryptionContext.ForKubeconfig(target.Id, kubeconfig.Version),
                             cancellationToken);
                         break;
                     case ServiceAccountDeploymentTargetConnection serviceAccount:
@@ -109,20 +104,14 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 }
 
                 if (rewrapResult is not EncryptedValue rewrappedEnvelope)
-                {
                     throw new InvalidOperationException(
                         "A deployment-target credential could not be rewrapped by the active encryption provider.");
-                }
                 if (!ReferencesKey(rewrappedEnvelope, expectedActiveKey))
-                {
                     return new DeploymentTargetCredentialRewrapConflict();
-                }
 
                 var update = await deploymentTargets.UpdateOneAsync(
                     casFilter,
-                    Builders<DeploymentTarget>.Update.Set(
-                        encryptedField,
-                        rewrappedEnvelope),
+                    Builders<DeploymentTarget>.Update.Set(encryptedField, rewrappedEnvelope),
                     cancellationToken: cancellationToken);
                 if (update.ModifiedCount == 1)
                     rewrapped++;
@@ -134,15 +123,11 @@ internal sealed class MongoRewrapDeploymentTargetCredentials(
                 break;
         }
 
-        return new DeploymentTargetCredentialRewrapSummary(
-                examined,
-                rewrapped,
-                concurrentChanges);
+        return new DeploymentTargetCredentialRewrapSummary(examined, rewrapped, concurrentChanges);
     }
 
-    private static bool ReferencesKey(
-        EncryptedValue envelope,
-        EnvelopeEncryptionKeyReference key) => string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
+    private static bool ReferencesKey(EncryptedValue envelope, EnvelopeEncryptionKeyReference key) =>
+        string.Equals(envelope.KeyProviderId, key.ProviderId, StringComparison.Ordinal) &&
         string.Equals(envelope.KeyEncryptionKeyId, key.KeyId, StringComparison.Ordinal) &&
         envelope.KeyEncryptionKeyVersion == key.KeyVersion &&
         string.Equals(envelope.KeyWrapAlgorithm, key.KeyWrapAlgorithm, StringComparison.Ordinal) &&

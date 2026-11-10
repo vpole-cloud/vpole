@@ -1,36 +1,34 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
 using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 
 namespace Pole.Features.Secrets.Application.References;
 
-internal sealed class SecretPlanningFence(IMongoCollection<Secret> secrets)
+internal sealed class SecretPlanningFence(
+    IMongoCollection<Secret> secrets
+)
 {
     public static DeclarationDocumentVersion[] Versions(Secret secret) =>
     [
         new(SecretVersionKeys.Revision(secret.Id), secret.Revision),
-        new(SecretVersionKeys.ReferenceFence(secret.Id), secret.ReferenceFence)
+        new(SecretVersionKeys.ReferenceFence(secret.Id), secret.ReferenceFence),
     ];
 
     public static bool Matches(Secret secret, DeclarationVersionToken expected) =>
         Versions(secret).All(expected.Documents.Contains);
 
-    public async Task<bool> FenceAsync(Secret secret, IClientSessionHandle session, CancellationToken ct)
+    public async Task<bool> FenceAsync(
+        Secret secret,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
-        var result = await secrets.UpdateOneAsync(session,
+        var result = await secrets.UpdateOneAsync(
+            session,
             SecretFilters.AtPlanningVersion(secret),
-            Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
+            Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1),
+            cancellationToken: ct);
         return result.ModifiedCount == 1;
     }
 }

@@ -15,7 +15,8 @@ public sealed record BuildKitBuildRequest(
     string RegistryUsername,
     string RegistrySecret,
     Func<SourceBuildLogStream, string, CancellationToken, Task>? Output = null,
-    Action? OutputUnavailable = null)
+    Action? OutputUnavailable = null
+)
 {
     public override string ToString() =>
         $"BuildKitBuildRequest(context={ContextPath}, target={Target.Reference}, credentials=[REDACTED])";
@@ -23,11 +24,15 @@ public sealed record BuildKitBuildRequest(
 
 public sealed record BuildKitNotConfigured;
 
-public sealed record BuildKitTimedOut(int TimeoutMinutes);
+public sealed record BuildKitTimedOut(
+    int TimeoutMinutes
+);
 
 public sealed record BuildKitUnavailable;
 
-public sealed record BuildKitBuildRejected(string Classification);
+public sealed record BuildKitBuildRejected(
+    string Classification
+);
 
 public union BuildContainerImageError(
     BuildKitNotConfigured,
@@ -35,28 +40,24 @@ public union BuildContainerImageError(
     BuildKitUnavailable,
     BuildKitBuildRejected);
 
-public union BuildContainerImageOutcome(
-    SourceBuildArtifact,
-    BuildContainerImageError);
+public union BuildContainerImageOutcome(SourceBuildArtifact, BuildContainerImageError);
 
-public delegate Task<BuildContainerImageOutcome>
-    BuildContainerImage(
-        BuildKitBuildRequest request,
-        CancellationToken cancellationToken = default);
+public delegate Task<BuildContainerImageOutcome> BuildContainerImage(
+    BuildKitBuildRequest request,
+    CancellationToken cancellationToken = default);
 
 public sealed class BuildKitClient(
     RunProcess runProcess,
     BuildKitOptions options,
-    ILogger<BuildKitClient> logger)
+    ILogger<BuildKitClient> logger
+)
 {
     public async Task<BuildContainerImageOutcome> InvokeAsync(
         BuildKitBuildRequest request,
         CancellationToken cancellationToken = default)
     {
         if (!options.IsConfigured)
-        {
             return new BuildContainerImageError(new BuildKitNotConfigured());
-        }
 
         var operationRoot = Path.Combine(
             Path.GetDirectoryName(Path.GetFullPath(request.ContextPath))!,
@@ -69,7 +70,13 @@ public sealed class BuildKitClient(
 
         try
         {
-            await using var output = request.Output is null ? null : new RedactingBuildOutput(request.Output, request.RegistryUsername, request.RegistrySecret, request.OutputUnavailable);
+            await using var output = request.Output is null
+                ? null
+                : new RedactingBuildOutput(
+                    request.Output,
+                    request.RegistryUsername,
+                    request.RegistrySecret,
+                    request.OutputUnavailable);
             await File.WriteAllTextAsync(
                 Path.Combine(definitionPath, "Dockerfile"),
                 request.Dockerfile,
@@ -93,13 +100,13 @@ public sealed class BuildKitClient(
                     "--local", $"dockerfile={definitionPath}",
                     "--opt", "filename=Dockerfile",
                     "--output", $"type=image,name={request.Target.Reference},push=true",
-                    "--metadata-file", metadataPath
+                    "--metadata-file", metadataPath,
                 ],
                 operationRoot,
                 new Dictionary<string, string>
                 {
                     ["DOCKER_CONFIG"] = dockerConfigPath,
-                    ["NO_COLOR"] = "1"
+                    ["NO_COLOR"] = "1",
                 },
                 Output: output is null ? null : output.WriteAsync);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -119,7 +126,8 @@ public sealed class BuildKitClient(
                 return new BuildContainerImageError(new BuildKitUnavailable());
             }
 
-            if (process.OutputCaptureFailed) request.OutputUnavailable?.Invoke();
+            if (process.OutputCaptureFailed)
+                request.OutputUnavailable?.Invoke();
             if (process.ExitCode != 0)
             {
                 var classification = ClassifyFailure(request, process);
@@ -132,10 +140,8 @@ public sealed class BuildKitClient(
 
             var digest = await ReadDigestAsync(metadataPath, cancellationToken);
             if (digest is null)
-            {
                 return new BuildContainerImageError(
                     new BuildKitBuildRejected("BuildKit did not return a valid image digest."));
-            }
 
             return SourceBuildArtifactFactory.Create(request.Target.Reference, digest);
         }
@@ -182,9 +188,7 @@ public sealed class BuildKitClient(
             File.SetUnixFileMode(configFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
-    private static async Task<string?> ReadDigestAsync(
-        string metadataPath,
-        CancellationToken cancellationToken)
+    private static async Task<string?> ReadDigestAsync(string metadataPath, CancellationToken cancellationToken)
     {
         if (!File.Exists(metadataPath))
             return null;
@@ -196,15 +200,19 @@ public sealed class BuildKitClient(
         return IsSha256Digest(digest) ? digest : null;
     }
 
-    private static bool IsSha256Digest(string? digest) =>
-        digest is { Length: 71 } &&
-        digest.StartsWith("sha256:", StringComparison.Ordinal) &&
-        digest[7..].All(Uri.IsHexDigit);
+    private static bool IsSha256Digest(string? digest) => digest is { Length: 71 } &&
+        digest.StartsWith("sha256:", StringComparison.Ordinal) && digest[7..].All(Uri.IsHexDigit);
 
     private string ClassifyFailure(BuildKitBuildRequest request, ProcessResult process)
     {
         var output = string.Concat(process.StandardError, "\n", process.StandardOutput);
-        if (ContainsAny(output, "unauthorized", "forbidden", "denied", "failed to authorize", "no basic auth credentials"))
+        if (ContainsAny(
+                output,
+                "unauthorized",
+                "forbidden",
+                "denied",
+                "failed to authorize",
+                "no basic auth credentials"))
             return "BuildKit could not authenticate to a container registry.";
         if (ContainsAny(output, "failed to resolve source metadata", "failed to pull", "pull access denied"))
             return "BuildKit could not pull a required base image.";
@@ -215,17 +223,32 @@ public sealed class BuildKitClient(
         var buildKitAuthority = Uri.TryCreate(options.Address, UriKind.Absolute, out var buildKitEndpoint)
             ? buildKitEndpoint.Authority
             : options.Address;
-        if (output.Contains(buildKitAuthority, StringComparison.OrdinalIgnoreCase) &&
-            ContainsAny(output, "connection refused", "no such host", "i/o timeout", "network is unreachable", "dial tcp", "x509"))
-        {
+        if (output.Contains(buildKitAuthority, StringComparison.OrdinalIgnoreCase) && ContainsAny(
+                output,
+                "connection refused",
+                "no such host",
+                "i/o timeout",
+                "network is unreachable",
+                "dial tcp",
+                "x509"))
             return "BuildKit could not reach its configured endpoint.";
-        }
-        if (output.Contains(request.Target.RegistryHost, StringComparison.OrdinalIgnoreCase) &&
-            ContainsAny(output, "connection refused", "no such host", "i/o timeout", "network is unreachable", "dial tcp", "x509"))
-        {
+        if (output.Contains(request.Target.RegistryHost, StringComparison.OrdinalIgnoreCase) && ContainsAny(
+                output,
+                "connection refused",
+                "no such host",
+                "i/o timeout",
+                "network is unreachable",
+                "dial tcp",
+                "x509"))
             return "BuildKit could not reach the configured target registry.";
-        }
-        if (ContainsAny(output, "connection refused", "no such host", "i/o timeout", "network is unreachable", "dial tcp", "x509"))
+        if (ContainsAny(
+                output,
+                "connection refused",
+                "no such host",
+                "i/o timeout",
+                "network is unreachable",
+                "dial tcp",
+                "x509"))
             return "BuildKit could not reach a required container registry.";
         return "BuildKit returned an unclassified build error.";
     }

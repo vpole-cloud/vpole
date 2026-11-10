@@ -27,9 +27,7 @@ public static class StorageProfileEndpoints
                 .MapGetKubernetesPersistentVolumesEndpoint()
                 .MapGetKubernetesPersistentVolumeClaimsEndpoint();
 
-            app.MapGroup(TenantRoute)
-                .WithTags("StorageProfiles")
-                .MapGetAvailableStorageProfilesEndpoint();
+            app.MapGroup(TenantRoute).WithTags("StorageProfiles").MapGetAvailableStorageProfilesEndpoint();
 
             return app;
         }

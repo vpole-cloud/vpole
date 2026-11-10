@@ -1,7 +1,6 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
-using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Execution.Workspace;
 using Xunit;
 
@@ -21,8 +20,7 @@ public sealed class RepositoryArchiveExtractorTests
         var result = await extractor.InvokeAsync(archive, destination.Path, 1024, 10);
 
         Assert.IsType<SourceBuildRepositoryArchiveExtracted>(result.Value);
-        Assert.Equal("<Project />", await File.ReadAllTextAsync(
-            System.IO.Path.Combine(destination.Path, "src", "App.csproj")));
+        Assert.Equal("<Project />", await File.ReadAllTextAsync(Path.Combine(destination.Path, "src", "App.csproj")));
     }
 
     [Theory]
@@ -42,8 +40,7 @@ public sealed class RepositoryArchiveExtractorTests
     [Fact]
     public async Task Extract_RejectsConfiguredSizeLimit()
     {
-        await using var archive = CreateArchive(
-            ("root/large.txt", new string('x', 100), TarEntryType.RegularFile));
+        await using var archive = CreateArchive(("root/large.txt", new string('x', 100), TarEntryType.RegularFile));
         using var destination = new TemporaryDirectory();
         var extractor = new RepositoryArchiveExtractor();
 
@@ -52,8 +49,7 @@ public sealed class RepositoryArchiveExtractorTests
         Assert.IsType<SourceBuildRepositoryArchiveInvalid>(result.Value);
     }
 
-    private static MemoryStream CreateArchive(
-        params (string Name, string Content, TarEntryType EntryType)[] entries)
+    private static MemoryStream CreateArchive(params (string Name, string Content, TarEntryType EntryType)[] entries)
     {
         var archive = new MemoryStream();
         using (var gzip = new GZipStream(archive, CompressionLevel.Fastest, leaveOpen: true))

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
-using Pole.Features.GitOps.Primitives;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Primitives;
 
 namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 
@@ -8,7 +8,7 @@ namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 public enum RepositoryRunStatus
 {
     Queued, Resolving, Fetching, Applying, WaitingRetry, PendingCleanup, ConfigurationApplied,
-    AlreadyCurrent, Blocked, Failed, Superseded, LifecycleCompleted, AwaitingConfirmation
+    AlreadyCurrent, Blocked, Failed, Superseded, LifecycleCompleted, AwaitingConfirmation,
 }
 
 public sealed record RepositoryLocationView(
@@ -17,7 +17,8 @@ public sealed record RepositoryLocationView(
     string ExternalRepositoryId,
     string Branch,
     string ManifestDirectory,
-    string DisplayUrl);
+    string DisplayUrl
+);
 
 public sealed record RepositorySynchronizationView(
     long RequestedGeneration,
@@ -26,12 +27,14 @@ public sealed record RepositorySynchronizationView(
     string? AttemptedCommit,
     string? FullyAppliedCommit,
     string? CurrentRunId,
-    string? LatestRunId);
+    string? LatestRunId
+);
 
 public sealed record RepositoryInventorySummary(
     long Owned,
     long PendingRemoval,
-    long Revision);
+    long Revision
+);
 
 public sealed record RepositorySourceView(
     string Id,
@@ -43,13 +46,15 @@ public sealed record RepositorySourceView(
     RepositoryInventorySummary Inventory,
     RepositoryRunView? LatestRun,
     GitSourceActivity Activity,
-    GitPrunePolicy Prune);
+    GitPrunePolicy Prune
+);
 
 public sealed record RepositoryRunDiagnosticView(
     string Code,
     string? File,
     int? Document,
-    string? Field);
+    string? Field
+);
 
 public sealed record RepositoryRunView(
     string Id,
@@ -64,7 +69,8 @@ public sealed record RepositoryRunView(
     DateTime CreatedAtUtc,
     IReadOnlyList<RepositoryRunDiagnosticView> Diagnostics,
     RepositoryOperationSummary? Operations,
-    RepositoryRunLifecycleView? Lifecycle);
+    RepositoryRunLifecycleView? Lifecycle
+);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RepositoryOperationStatus>))]
 public enum RepositoryOperationStatus { Pending, Succeeded, Blocked, PendingCleanup, AwaitingConfirmation }
@@ -78,13 +84,15 @@ public sealed record RepositoryOperationView(
     string? Blocker,
     bool Changed,
     RepositoryOperationPlanView? Plan,
-    RepositoryLifecycleOperationView? Lifecycle);
+    RepositoryLifecycleOperationView? Lifecycle
+);
 
 public sealed record RepositoryOperationPlanView(
     GitPlannedAction Action,
     long Revision,
     DateTime EvaluatedAtUtc,
-    IReadOnlyList<string> ChangedFields);
+    IReadOnlyList<string> ChangedFields
+);
 
 public sealed record RepositoryOperationSummary(
     int Create,
@@ -92,14 +100,16 @@ public sealed record RepositoryOperationSummary(
     int NoOp,
     int Blocked,
     int Pending,
-    RepositoryLifecycleOperationSummary? Lifecycle);
+    RepositoryLifecycleOperationSummary? Lifecycle
+);
 
 [JsonConverter(typeof(JsonStringEnumConverter<RepositoryLifecycleAuthorization>))]
 public enum RepositoryLifecycleAuthorization { AwaitingConfirmation, UserConfirmed, PrunePolicy }
 
 public sealed record RepositoryRunLifecycleView(
     string PreviewId,
-    RepositoryLifecycleAuthorization Authorization);
+    RepositoryLifecycleAuthorization Authorization
+);
 
 public sealed record RepositoryLifecycleOperationView(
     string ActionId,
@@ -107,7 +117,8 @@ public sealed record RepositoryLifecycleOperationView(
     string? LastCompletedStep,
     string? ReplacementResourceId,
     string? ReplacementName,
-    IReadOnlyList<string> ChangedFields);
+    IReadOnlyList<string> ChangedFields
+);
 
 public sealed record RepositoryLifecycleOperationSummary(
     int Adopt,
@@ -116,16 +127,19 @@ public sealed record RepositoryLifecycleOperationSummary(
     int Retain,
     int Detach,
     int PendingCleanup,
-    int AwaitingConfirmation);
+    int AwaitingConfirmation
+);
 
 public sealed record RepositoryRunPage(
     IReadOnlyList<RepositoryRunView> Items,
     int Page,
     int PageSize,
-    bool HasMore);
+    bool HasMore
+);
 
 public sealed record RepositoryOperationPage(
     IReadOnlyList<RepositoryOperationView> Items,
     int Page,
     int PageSize,
-    bool HasMore);
+    bool HasMore
+);

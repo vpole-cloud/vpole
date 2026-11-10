@@ -1,21 +1,16 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.WebServices.Application;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Events;
 
 namespace Pole.Features.WebServices.Application.Configuration;
 
 public sealed record WebServiceCreated;
+
 public sealed record WebServiceNameAlreadyExists;
-public union PersistCreatedWebServiceResult(
-    WebServiceCreated,
-    WebServiceNameAlreadyExists);
+
+public union PersistCreatedWebServiceResult(WebServiceCreated, WebServiceNameAlreadyExists);
 
 public delegate Task<PersistCreatedWebServiceResult> PersistCreatedWebService(
     IClientSessionHandle session,
@@ -25,7 +20,8 @@ public delegate Task<PersistCreatedWebServiceResult> PersistCreatedWebService(
 
 internal sealed class MongoPersistCreatedWebService(
     IMongoCollection<WebService> webServices,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<PersistCreatedWebServiceResult> InvokeAsync(
         IClientSessionHandle session,
@@ -39,11 +35,11 @@ internal sealed class MongoPersistCreatedWebService(
             await webServices.InsertOneAsync(session, webService, cancellationToken: cancellationToken);
         }
         catch (MongoWriteException ex) when (MongoDuplicateKey.IsForIndex(ex, WebServicesIndexes.TechnicalName))
-        { return new WebServiceNameAlreadyExists(); }
-        await storeOutboxWrites(
-            session,
-            [OutboxWrite.Create(createdEvent)],
-            cancellationToken);
+        {
+            return new WebServiceNameAlreadyExists();
+        }
+
+        await storeOutboxWrites(session, [OutboxWrite.Create(createdEvent)], cancellationToken);
         return new WebServiceCreated();
     }
 }

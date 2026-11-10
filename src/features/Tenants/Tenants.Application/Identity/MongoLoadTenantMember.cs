@@ -1,13 +1,14 @@
 using MongoDB.Driver;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Mongo;
-using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
 
 namespace Pole.Features.Tenants.Application.Identity;
 
-internal sealed class MongoLoadTenantMember(IMongoCollection<Tenant> tenants)
+internal sealed class MongoLoadTenantMember(
+    IMongoCollection<Tenant> tenants
+)
 {
     public async Task<LoadTenantMemberOutcome> InvokeAsync(
         LoadTenantMemberRequest request,
@@ -20,8 +21,7 @@ internal sealed class MongoLoadTenantMember(IMongoCollection<Tenant> tenants)
         Tenant? tenant;
         if (session is null)
         {
-            tenant = await tenants.Find(TenantFilters.ById(request.TenantId))
-                .FirstOrDefaultAsync(cancellationToken);
+            tenant = await tenants.Find(TenantFilters.ById(request.TenantId)).FirstOrDefaultAsync(cancellationToken);
         }
         else
         {
@@ -41,13 +41,16 @@ internal sealed class MongoLoadTenantMember(IMongoCollection<Tenant> tenants)
         var member = tenant?.Members.FirstOrDefault(item => item.UserId == request.UserId);
         return member is null
             ? new TenantMemberMissing(request.TenantId, request.UserId)
-            : new TenantMemberSnapshot(request.TenantId, request.UserId, member.Role switch
-            {
-                TenantRole.Viewer => TenantMembershipRole.Viewer,
-                TenantRole.Member => TenantMembershipRole.Member,
-                TenantRole.Admin => TenantMembershipRole.Admin,
-                TenantRole.Owner => TenantMembershipRole.Owner,
-                _ => throw new InvalidOperationException("Unexpected tenant membership role.")
-            });
+            : new TenantMemberSnapshot(
+                request.TenantId,
+                request.UserId,
+                member.Role switch
+                {
+                    TenantRole.Viewer => TenantMembershipRole.Viewer,
+                    TenantRole.Member => TenantMembershipRole.Member,
+                    TenantRole.Admin => TenantMembershipRole.Admin,
+                    TenantRole.Owner => TenantMembershipRole.Owner,
+                    _ => throw new InvalidOperationException("Unexpected tenant membership role."),
+                });
     }
 }

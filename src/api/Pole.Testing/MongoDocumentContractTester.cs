@@ -6,23 +6,19 @@ namespace Pole.Testing;
 
 public class MongoDocumentContractTester<TDocument>(
     IMongoDatabase database,
-    string collectionName)
+    string collectionName
+)
     where TDocument : notnull
 {
-    private readonly IMongoCollection<BsonDocument> _documents =
-        database.GetCollection<BsonDocument>(collectionName);
+    private readonly IMongoCollection<BsonDocument> _documents = database.GetCollection<BsonDocument>(collectionName);
 
     public async Task AssertAcceptsAsync(
         IReadOnlyCollection<TDocument> documents,
         CancellationToken cancellationToken = default)
     {
-        var serializedDocuments = documents
-            .Select(document => document.ToBsonDocument())
-            .ToList();
+        var serializedDocuments = documents.Select(document => document.ToBsonDocument()).ToList();
 
-        await _documents.InsertManyAsync(
-            serializedDocuments,
-            cancellationToken: cancellationToken);
+        await _documents.InsertManyAsync(serializedDocuments, cancellationToken: cancellationToken);
     }
 
     public async Task AssertRejectsAsync(
@@ -34,20 +30,17 @@ public class MongoDocumentContractTester<TDocument>(
         makeInvalid(serializedDocument);
 
         var exception = await Assert.ThrowsAsync<MongoWriteException>(() =>
-            _documents.InsertOneAsync(
-                serializedDocument,
-                cancellationToken: cancellationToken));
+            _documents.InsertOneAsync(serializedDocument, cancellationToken: cancellationToken));
 
         Assert.Equal(121, exception.WriteError.Code);
     }
 
-    public async Task AssertStrictErrorValidationAsync(
-        CancellationToken cancellationToken = default)
+    public async Task AssertStrictErrorValidationAsync(CancellationToken cancellationToken = default)
     {
         using var collections = await database.ListCollectionsAsync(
             new ListCollectionsOptions
             {
-                Filter = new BsonDocument("name", collectionName)
+                Filter = new BsonDocument("name", collectionName),
             },
             cancellationToken);
         var collection = Assert.Single(await collections.ToListAsync(cancellationToken));

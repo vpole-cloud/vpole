@@ -10,8 +10,8 @@ public sealed record UserCreatedEvent(
     string? FirstName,
     string? LastName,
     string DefaultTenantId,
-    string DefaultTenantName)
-    : IPoleEvent
+    string DefaultTenantName
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

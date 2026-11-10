@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Coordination;
 using Pole.Features.Functions.Runtime.Endpoints;
 using Pole.Features.Functions.Runtime.Kubernetes;
@@ -14,18 +13,17 @@ public interface IFunctionRevisionActivator
         bool forceScaleFence = false);
 }
 
-public union FunctionRevisionActivationOutcome(
-    FunctionEndpointSnapshot,
-    FunctionRevisionActivationError);
+public union FunctionRevisionActivationOutcome(FunctionEndpointSnapshot, FunctionRevisionActivationError);
 
 public sealed class FunctionRevisionActivator(
     IFunctionEndpointRegistry endpointRegistry,
     IFunctionActivationCoordinator coordinator,
     IFunctionRevisionKubernetesManager kubernetesManager,
-    TimeProvider timeProvider) : IFunctionRevisionActivator
+    TimeProvider timeProvider
+) : IFunctionRevisionActivator
 {
-    private readonly ConcurrentDictionary<string, Task<FunctionRevisionActivationOutcome>> activations =
-        new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Task<FunctionRevisionActivationOutcome>> activations
+        = new(StringComparer.Ordinal);
 
     public async Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
         FunctionRevisionInKubernetes subject,
@@ -52,8 +50,10 @@ public sealed class FunctionRevisionActivator(
         _ = activation.ContinueWith(
             (_, state) =>
             {
-                var (owner, key, expected) = ((FunctionRevisionActivator, string, Task<FunctionRevisionActivationOutcome>))state!;
-                owner.activations.TryRemove(new KeyValuePair<string, Task<FunctionRevisionActivationOutcome>>(key, expected));
+                var (owner, key, expected)
+                    = ((FunctionRevisionActivator, string, Task<FunctionRevisionActivationOutcome>))state!;
+                owner.activations.TryRemove(
+                    new KeyValuePair<string, Task<FunctionRevisionActivationOutcome>>(key, expected));
             },
             (this, activationKey, activation),
             CancellationToken.None,
@@ -90,21 +90,18 @@ public sealed class FunctionRevisionActivator(
                         timeoutCancellation.Token);
                     continue;
                 }
+
                 if (decision.Kind == FunctionActivationBeginDecisionKind.Rejected)
-                {
                     return new FunctionRevisionActivationError(
                         new FunctionActivationCoordinatorRejected(
                             "Function revision activation was rejected by the coordinator."));
-                }
 
                 if (decision.Kind == FunctionActivationBeginDecisionKind.Granted)
                 {
                     if (decision.Lease is not { } lease)
-                    {
                         return new FunctionRevisionActivationError(
                             new FunctionActivationCoordinatorUnavailable(
                                 "Function revision activation returned an invalid coordination lease."));
-                    }
 
                     var scaled = await kubernetesManager.ScaleAsync(
                         subject,
@@ -112,10 +109,7 @@ public sealed class FunctionRevisionActivator(
                         lease.Generation,
                         timeoutCancellation.Token);
                     if (scaled is FunctionRevisionKubernetesOperationError scaleFailure)
-                    {
-                        return new FunctionRevisionActivationError(
-                            new FunctionActivationScaleRejected(scaleFailure));
-                    }
+                        return new FunctionRevisionActivationError(new FunctionActivationScaleRejected(scaleFailure));
 
                     await coordinator.CompleteActivationAsync(
                         key,
@@ -136,8 +130,7 @@ public sealed class FunctionRevisionActivator(
         catch (Exception)
         {
             return new FunctionRevisionActivationError(
-                new FunctionActivationCoordinatorUnavailable(
-                    "Function revision coordination is unavailable."));
+                new FunctionActivationCoordinatorUnavailable("Function revision coordination is unavailable."));
         }
 
         var deadline = timeProvider.GetUtcNow() + timeout;
@@ -148,10 +141,7 @@ public sealed class FunctionRevisionActivator(
                 return snapshot;
             try
             {
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(100),
-                    timeProvider,
-                    timeoutCancellation.Token);
+                await Task.Delay(TimeSpan.FromMilliseconds(100), timeProvider, timeoutCancellation.Token);
             }
             catch (OperationCanceledException) when (timeoutCancellation.IsCancellationRequested)
             {

@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 using System.Net;
+using k8s.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Agent;
 using Pole.Features.Functions.Runtime.Coordination;
@@ -27,7 +27,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 4, 2, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+            replicaState: new FunctionReplicaState(0, 0, 0));
         harness.Coordinator.AdmissionRequests = pending;
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
@@ -40,10 +40,10 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0),
+            replicaState: new FunctionReplicaState(0, 0, 0),
             durableDemand: new Dictionary<string, int>(StringComparer.Ordinal)
             {
-                ["webhook"] = 3
+                ["webhook"] = 3,
             });
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
@@ -86,7 +86,7 @@ public sealed class FunctionScalerTests
         harness.Coordinator.AdmissionRequests = 1;
         harness.Coordinator.HandlerRequests = new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            ["webhook"] = 1
+            ["webhook"] = 1,
         };
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
@@ -105,7 +105,7 @@ public sealed class FunctionScalerTests
                 Endpoint("pod-1"),
                 Endpoint("pod-2"),
                 Endpoint("pod-3"),
-                Endpoint("pod-4")
+                Endpoint("pod-4"),
             ]);
         harness.Agent.StatusFactory = endpoint => ValidStatus(
             endpoint,
@@ -196,7 +196,7 @@ public sealed class FunctionScalerTests
             endpoints: [Endpoint("pod-1")]);
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
-        harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0, 0);
+        harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0);
         harness.Endpoints.Endpoints = [];
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
         harness.Kubernetes.ReplicaState = new FunctionReplicaState(1, 1, 1, 1);
@@ -250,7 +250,7 @@ public sealed class FunctionScalerTests
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
         Assert.True(harness.Coordinator.Quiescing);
-        harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0, 0);
+        harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0);
         harness.Endpoints.Endpoints = [];
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
@@ -276,7 +276,7 @@ public sealed class FunctionScalerTests
         Assert.Equal([0], harness.Kubernetes.ScaleRequests);
         Assert.Empty(harness.TargetSource.Retired);
 
-        harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0, 0);
+        harness.Kubernetes.ReplicaState = new FunctionReplicaState(0, 0, 0);
         harness.Endpoints.Endpoints = [];
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
@@ -289,7 +289,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(2, 5, 4, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+            replicaState: new FunctionReplicaState(0, 0, 0));
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
 
@@ -301,7 +301,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+            replicaState: new FunctionReplicaState(0, 0, 0));
         harness.Coordinator.AdmissionRequests = 3;
 
         await harness.Scaler.RunOnceAsync(CancellationToken.None);
@@ -339,7 +339,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 5, 2, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+            replicaState: new FunctionReplicaState(0, 0, 0));
         harness.Coordinator.AdmissionRequests = 4;
         harness.Coordinator.ThrowOnSnapshot = true;
 
@@ -391,9 +391,7 @@ public sealed class FunctionScalerTests
         Assert.Contains(
             harness.Coordinator.ScaleCompletions,
             completion => completion.Outcome == FunctionCoordinationCompletionOutcome.Failed);
-        Assert.Equal(
-            [FunctionQuiescingCompletionOutcome.Aborted],
-            harness.Coordinator.QuiescingCompletions);
+        Assert.Equal([FunctionQuiescingCompletionOutcome.Aborted], harness.Coordinator.QuiescingCompletions);
     }
 
     [Fact]
@@ -429,7 +427,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+            replicaState: new FunctionReplicaState(0, 0, 0));
         harness.Coordinator.AdmissionRequests = 1;
         harness.Kubernetes.ScaleResult = new FunctionRevisionKubernetesOperationError(
             new FunctionRevisionKubernetesUnavailable("Unable to scale."));
@@ -449,7 +447,7 @@ public sealed class FunctionScalerTests
     {
         var harness = CreateHarness(
             scaling: new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
-            replicaState: new FunctionReplicaState(0, 0, 0, 0));
+            replicaState: new FunctionReplicaState(0, 0, 0));
         harness.Coordinator.SeedPendingScale(desiredReplicas: 2);
         var pending = Assert.IsType<FunctionScaleIntent>(harness.Coordinator.PendingScaleIntent);
 
@@ -461,7 +459,7 @@ public sealed class FunctionScalerTests
         Assert.Contains(
             harness.Coordinator.ScaleCompletions,
             completion => completion.IntentId == pending.IntentId &&
-                          completion.Outcome == FunctionCoordinationCompletionOutcome.Applied);
+                completion.Outcome == FunctionCoordinationCompletionOutcome.Applied);
     }
 
     private static Harness CreateHarness(
@@ -477,13 +475,13 @@ public sealed class FunctionScalerTests
         var targetSource = new FakeTargetSource(target);
         var endpointRegistry = new FakeEndpointRegistry
         {
-            Endpoints = endpoints?.ToImmutableArray() ?? []
+            Endpoints = endpoints?.ToImmutableArray() ?? [],
         };
         var time = new MutableTimeProvider(Now);
         var agent = new FakeAgentClient();
         var coordinator = new FakeScalingCoordinator(time)
         {
-            DesiredReplicas = replicaState.Desired
+            DesiredReplicas = replicaState.Desired,
         };
         var kubernetes = new FakeKubernetesManager { ReplicaState = replicaState };
         var scaler = new FunctionScaler(
@@ -496,15 +494,7 @@ public sealed class FunctionScalerTests
             new FunctionScalerOptions { AgentStatusTimeoutSeconds = 1 },
             time,
             NullLogger<FunctionScaler>.Instance);
-        return new Harness(
-            target,
-            targetSource,
-            endpointRegistry,
-            agent,
-            coordinator,
-            kubernetes,
-            time,
-            scaler);
+        return new Harness(target, targetSource, endpointRegistry, agent, coordinator, kubernetes, time, scaler);
     }
 
     private static FunctionScaleTarget CreateTarget(
@@ -515,26 +505,18 @@ public sealed class FunctionScalerTests
         IReadOnlyDictionary<string, int>? durableDemand)
     {
         var spec = new FunctionRevisionSpecInput(
-            new FunctionImage("registry.example", "team/functions", "v1",
-                Digest: null,
-                PullSecretName: null),
+            new FunctionImage("registry.example", "team/functions", "v1", Digest: null, PullSecretName: null),
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
                 ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
+            new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
             scaling,
             [
                 new FunctionHandlerSpec(
                     "webhook",
                     handlerConcurrency,
-                    new HttpFunctionTriggerSpec(
-                        string.Empty,
-                        "orders",
-                        ["POST"],
-                        FunctionExposure.Public))
+                    new HttpFunctionTriggerSpec("", "orders", ["POST"], FunctionExposure.Public)),
             ]);
         var created = FunctionAppFactory.Create(
             "tenant-1",
@@ -552,14 +534,14 @@ public sealed class FunctionScalerTests
         {
             Id = "507f1f77bcf86cd799439012",
             FunctionAppId = "507f1f77bcf86cd799439011",
-            Status = status ?? new ActiveFunctionRevisionStatus(Now)
+            Status = status ?? new ActiveFunctionRevisionStatus(Now),
         };
         var app = created.FunctionApp with
         {
             Id = revision.FunctionAppId,
             ActiveRevisionId = isServing ? revision.Id : null,
             PendingRevisionId = null,
-            Status = FunctionAppStatus.Ready
+            Status = FunctionAppStatus.Ready,
         };
         return new FunctionScaleTarget(
             app,
@@ -568,31 +550,25 @@ public sealed class FunctionScalerTests
             durableDemand ?? new Dictionary<string, int>(StringComparer.Ordinal));
     }
 
-    private static FunctionEndpoint Endpoint(string podUid) =>
-        new($"10.0.0.{podUid[^1]}", 8080, podUid);
+    private static FunctionEndpoint Endpoint(string podUid) => new($"10.0.0.{podUid[^1]}", 8080, podUid);
 
     private static FunctionAgentStatusResponse ValidStatus(
         FunctionEndpoint endpoint,
         int appReserved = 0,
         int handlerReserved = 0,
-        int handlerLimit = 8) =>
-        new(
-            PoleFunctionProtocol.Version,
-            endpoint.TargetUid!,
-            FunctionAgentLifecycleState.Accepting,
-            new FunctionCapacityStatus(8, appReserved, 0, 8 - appReserved),
-            [
-                new FunctionHandlerCapacityStatus(
-                    "webhook",
-                    new FunctionCapacityStatus(
-                        handlerLimit,
-                        handlerReserved,
-                        0,
-                        handlerLimit - handlerReserved))
-            ],
-            [],
-            false,
-            Now);
+        int handlerLimit = 8) => new(
+        PoleFunctionProtocol.Version,
+        endpoint.TargetUid!,
+        FunctionAgentLifecycleState.Accepting,
+        new FunctionCapacityStatus(8, appReserved, 0, 8 - appReserved),
+        [
+            new FunctionHandlerCapacityStatus(
+                "webhook",
+                new FunctionCapacityStatus(handlerLimit, handlerReserved, 0, handlerLimit - handlerReserved)),
+        ],
+        [],
+        false,
+        Now);
 
     private sealed record Harness(
         FunctionScaleTarget Target,
@@ -602,9 +578,12 @@ public sealed class FunctionScalerTests
         FakeScalingCoordinator Coordinator,
         FakeKubernetesManager Kubernetes,
         MutableTimeProvider Time,
-        FunctionScaler Scaler);
+        FunctionScaler Scaler
+    );
 
-    private sealed class FakeTargetSource(FunctionScaleTarget target) : IFunctionScaleTargetSource
+    private sealed class FakeTargetSource(
+        FunctionScaleTarget target
+    ) : IFunctionScaleTargetSource
     {
         public List<FunctionScaleTarget> Retired { get; } = [];
 
@@ -616,8 +595,7 @@ public sealed class FunctionScalerTests
             CancellationToken cancellationToken)
         {
             Retired.Add(retired);
-            return Task.FromResult<FunctionRevisionLifecycleOutcome>(
-                new FunctionRevisionLifecycleCompleted());
+            return Task.FromResult<FunctionRevisionLifecycleOutcome>(new FunctionRevisionLifecycleCompleted());
         }
     }
 
@@ -625,15 +603,17 @@ public sealed class FunctionScalerTests
     {
         public ImmutableArray<FunctionEndpoint> Endpoints { get; set; } = [];
 
-        public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) =>
-            new(service, Endpoints, Now);
+        public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) => new(service, Endpoints, Now);
 
-        public void ReplaceTarget(string deploymentTargetId, IEnumerable<k8s.Models.V1EndpointSlice> slices) =>
+        public void ReplaceTarget(string deploymentTargetId, IEnumerable<V1EndpointSlice> slices) =>
             throw new NotSupportedException();
 
-        public void ApplySlice(string deploymentTargetId, k8s.Models.V1EndpointSlice slice) => throw new NotSupportedException();
+        public void ApplySlice(string deploymentTargetId, V1EndpointSlice slice) => throw new NotSupportedException();
 
-        public void DeleteSlice(string deploymentTargetId, string @namespace, string sliceName) => throw new NotSupportedException();
+        public void DeleteSlice(
+            string deploymentTargetId,
+            string @namespace,
+            string sliceName) => throw new NotSupportedException();
 
         public void RemoveTarget(string deploymentTargetId) => throw new NotSupportedException();
     }
@@ -643,28 +623,31 @@ public sealed class FunctionScalerTests
         public Task<FunctionResourcePlacementOutcome> ResolveAsync(
             FunctionApp app,
             bool requireReady = true,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<FunctionResourcePlacementOutcome>(
-                new FunctionResourcePlacement(
-                    app.Placement.ResourceDeploymentId,
-                    app.Placement.RuntimeCellId,
-                    app.Placement.DeploymentTargetId,
-                    "pole-tenant-rg",
-                    "507f1f77bcf86cd799439044"));
+            CancellationToken cancellationToken = default) => Task.FromResult<FunctionResourcePlacementOutcome>(
+            new FunctionResourcePlacement(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId,
+                "pole-tenant-rg",
+                "507f1f77bcf86cd799439044"));
     }
 
-    private sealed class FakeScalingCoordinator(MutableTimeProvider time) : IFunctionScalingCoordinator
+    private sealed class FakeScalingCoordinator(
+        MutableTimeProvider time
+    ) : IFunctionScalingCoordinator
     {
+        private int intentSequence;
         private FunctionScalerOwnershipToken? ownership;
         private int ownershipSequence;
-        private int intentSequence;
 
         public string Incarnation { get; set; } = "coordinator-1";
         public long Generation { get; set; } = 10;
         public int? DesiredReplicas { get; set; }
         public int AdmissionRequests { get; set; }
-        public IReadOnlyDictionary<string, int> HandlerRequests { get; set; } =
-            new Dictionary<string, int>(StringComparer.Ordinal);
+
+        public IReadOnlyDictionary<string, int> HandlerRequests { get; set; }
+            = new Dictionary<string, int>(StringComparer.Ordinal);
+
         public FunctionQuiescingIntent? QuiescingIntent { get; private set; }
         public FunctionScaleIntent? PendingScaleIntent { get; private set; }
         public bool Quiescing => QuiescingIntent is not null;
@@ -686,37 +669,29 @@ public sealed class FunctionScalerTests
         {
             OwnershipRequests.Add(request);
             if (RejectOwnership)
-                return Task.FromResult(new FunctionScalerOwnershipDecision(
-                    FunctionScalerOwnershipDecisionKind.Busy,
-                    null,
-                    1));
+                return Task.FromResult(
+                    new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Busy, null, 1));
 
-            if (ownership is not null &&
-                ownership.ExpiresAtUtc > time.GetUtcNow() &&
-                (!string.Equals(ownership.OperationId, request.OperationId, StringComparison.Ordinal) ||
-                 !string.Equals(ownership.OwnerId, request.OwnerId, StringComparison.Ordinal)))
-            {
-                return Task.FromResult(new FunctionScalerOwnershipDecision(
-                    FunctionScalerOwnershipDecisionKind.Busy,
-                    null,
-                    1));
-            }
-
-            ownership = ownership is not null &&
-                        ownership.ExpiresAtUtc > time.GetUtcNow() &&
-                        string.Equals(ownership.OperationId, request.OperationId, StringComparison.Ordinal) &&
-                        string.Equals(ownership.OwnerId, request.OwnerId, StringComparison.Ordinal)
-                ? ownership
-                : new FunctionScalerOwnershipToken(
-                    request.OperationId,
+            if (ownership is not null && ownership.ExpiresAtUtc > time.GetUtcNow() &&
+                (!string.Equals(ownership.OperationId, request.OperationId, StringComparison.Ordinal) || !string.Equals(
+                    ownership.OwnerId,
                     request.OwnerId,
-                    $"ownership-{++ownershipSequence}",
-                    Incarnation,
-                    time.GetUtcNow().AddSeconds(10));
-            return Task.FromResult(new FunctionScalerOwnershipDecision(
-                FunctionScalerOwnershipDecisionKind.Granted,
-                ownership,
-                0));
+                    StringComparison.Ordinal)))
+                return Task.FromResult(
+                    new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Busy, null, 1));
+
+            ownership = ownership is not null && ownership.ExpiresAtUtc > time.GetUtcNow() &&
+                string.Equals(ownership.OperationId, request.OperationId, StringComparison.Ordinal) &&
+                string.Equals(ownership.OwnerId, request.OwnerId, StringComparison.Ordinal)
+                    ? ownership
+                    : new FunctionScalerOwnershipToken(
+                        request.OperationId,
+                        request.OwnerId,
+                        $"ownership-{++ownershipSequence}",
+                        Incarnation,
+                        time.GetUtcNow().AddSeconds(10));
+            return Task.FromResult(
+                new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Granted, ownership, 0));
         }
 
         public Task<FunctionScalerOwnershipDecision> RenewOwnershipAsync(
@@ -726,18 +701,12 @@ public sealed class FunctionScalerTests
         {
             RenewalRequests.Add(token);
             if (RejectRenewal || !Owns(token))
-            {
-                return Task.FromResult(new FunctionScalerOwnershipDecision(
-                    FunctionScalerOwnershipDecisionKind.Rejected,
-                    null,
-                    0));
-            }
+                return Task.FromResult(
+                    new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Rejected, null, 0));
 
             ownership = ownership! with { ExpiresAtUtc = time.GetUtcNow().AddSeconds(10) };
-            return Task.FromResult(new FunctionScalerOwnershipDecision(
-                FunctionScalerOwnershipDecisionKind.Granted,
-                ownership,
-                0));
+            return Task.FromResult(
+                new FunctionScalerOwnershipDecision(FunctionScalerOwnershipDecisionKind.Granted, ownership, 0));
         }
 
         public Task<FunctionScalerOwnershipReleaseDecision> ReleaseOwnershipAsync(
@@ -758,27 +727,15 @@ public sealed class FunctionScalerTests
         {
             BeginningQuiescing?.Invoke();
             if (!Owns(request.ScalerToken))
-            {
-                return Task.FromResult(new FunctionQuiescingDecision(
-                    FunctionQuiescingDecisionKind.Stale,
-                    null,
-                    0));
-            }
+                return Task.FromResult(new FunctionQuiescingDecision(FunctionQuiescingDecisionKind.Stale, null, 0));
             if (AdmissionRequests != 0)
-            {
-                return Task.FromResult(new FunctionQuiescingDecision(
-                    FunctionQuiescingDecisionKind.ActiveAdmissions,
-                    null,
-                    1));
-            }
-            if (QuiescingIntent is not null &&
-                !string.Equals(QuiescingIntent.OperationId, request.OperationId, StringComparison.Ordinal))
-            {
-                return Task.FromResult(new FunctionQuiescingDecision(
-                    FunctionQuiescingDecisionKind.Busy,
-                    null,
-                    1));
-            }
+                return Task.FromResult(
+                    new FunctionQuiescingDecision(FunctionQuiescingDecisionKind.ActiveAdmissions, null, 1));
+            if (QuiescingIntent is not null && !string.Equals(
+                    QuiescingIntent.OperationId,
+                    request.OperationId,
+                    StringComparison.Ordinal))
+                return Task.FromResult(new FunctionQuiescingDecision(FunctionQuiescingDecisionKind.Busy, null, 1));
 
             QuiescingIntent ??= new FunctionQuiescingIntent(
                 request.OperationId,
@@ -786,14 +743,15 @@ public sealed class FunctionScalerTests
                 ++Generation,
                 time.GetUtcNow(),
                 time.GetUtcNow().AddMinutes(5));
-            return Task.FromResult(new FunctionQuiescingDecision(
-                FunctionQuiescingDecisionKind.Granted,
-                new FunctionQuiescingLease(
-                    QuiescingIntent.OperationId,
-                    QuiescingIntent.LeaseId,
-                    QuiescingIntent.Epoch,
-                    QuiescingIntent.ExpiresAtUtc),
-                0));
+            return Task.FromResult(
+                new FunctionQuiescingDecision(
+                    FunctionQuiescingDecisionKind.Granted,
+                    new FunctionQuiescingLease(
+                        QuiescingIntent.OperationId,
+                        QuiescingIntent.LeaseId,
+                        QuiescingIntent.Epoch,
+                        QuiescingIntent.ExpiresAtUtc),
+                    0));
         }
 
         public Task<FunctionQuiescingCompleteDecision> CompleteQuiescingAsync(
@@ -801,13 +759,9 @@ public sealed class FunctionScalerTests
             FunctionQuiescingCompleteRequest request,
             CancellationToken cancellationToken = default)
         {
-            if (!Owns(request.ScalerToken) ||
-                QuiescingIntent is null ||
-                QuiescingIntent.LeaseId != request.LeaseId ||
+            if (!Owns(request.ScalerToken) || QuiescingIntent is null || QuiescingIntent.LeaseId != request.LeaseId ||
                 QuiescingIntent.Epoch != request.Epoch)
-            {
                 return Task.FromResult(FunctionQuiescingCompleteDecision.Stale);
-            }
             if (PendingScaleIntent is not null)
                 return Task.FromResult(FunctionQuiescingCompleteDecision.Busy);
             if (AdmissionRequests != 0)
@@ -835,22 +789,18 @@ public sealed class FunctionScalerTests
                 if (!string.Equals(PendingScaleIntent.OperationId, request.OperationId, StringComparison.Ordinal) ||
                     PendingScaleIntent.DesiredReplicas != request.DesiredReplicas ||
                     PendingScaleIntent.QuiescingEpoch != request.QuiescingEpoch)
-                {
                     return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.Busy));
-                }
 
-                return Task.FromResult(new FunctionScaleBeginDecision(
-                    FunctionScaleBeginDecisionKind.Granted,
-                    ToLease(PendingScaleIntent),
-                    0));
+                return Task.FromResult(
+                    new FunctionScaleBeginDecision(
+                        FunctionScaleBeginDecisionKind.Granted,
+                        ToLease(PendingScaleIntent),
+                        0));
             }
 
             var isScaleDown = request.DesiredReplicas < Math.Max(DesiredReplicas ?? 0, request.ObservedReplicas);
-            if (isScaleDown &&
-                (request.QuiescingEpoch is null || QuiescingIntent?.Epoch != request.QuiescingEpoch))
-            {
+            if (isScaleDown && (request.QuiescingEpoch is null || QuiescingIntent?.Epoch != request.QuiescingEpoch))
                 return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.QuiescingRequired));
-            }
             if (!isScaleDown && request.QuiescingEpoch is not null)
                 return Task.FromResult(ScaleDecision(FunctionScaleBeginDecisionKind.Rejected));
 
@@ -865,10 +815,8 @@ public sealed class FunctionScalerTests
                 request.QuiescingEpoch,
                 time.GetUtcNow(),
                 time.GetUtcNow().AddMinutes(5));
-            return Task.FromResult(new FunctionScaleBeginDecision(
-                FunctionScaleBeginDecisionKind.Granted,
-                ToLease(PendingScaleIntent),
-                0));
+            return Task.FromResult(
+                new FunctionScaleBeginDecision(FunctionScaleBeginDecisionKind.Granted, ToLease(PendingScaleIntent), 0));
         }
 
         public Task<FunctionScaleCompleteDecision> CompleteScaleAsync(
@@ -877,13 +825,9 @@ public sealed class FunctionScalerTests
             CancellationToken cancellationToken = default)
         {
             ScaleCompletions.Add(request);
-            if (!Owns(request.ScalerToken) ||
-                PendingScaleIntent is null ||
-                PendingScaleIntent.IntentId != request.IntentId ||
-                PendingScaleIntent.Generation != request.Generation)
-            {
+            if (!Owns(request.ScalerToken) || PendingScaleIntent is null ||
+                PendingScaleIntent.IntentId != request.IntentId || PendingScaleIntent.Generation != request.Generation)
                 return Task.FromResult(FunctionScaleCompleteDecision.Stale);
-            }
 
             if (request.Outcome == FunctionCoordinationCompletionOutcome.Failed)
                 DesiredReplicas = PendingScaleIntent.PreviousDesiredReplicas;
@@ -897,20 +841,21 @@ public sealed class FunctionScalerTests
         {
             if (ThrowOnSnapshot)
                 throw new InvalidOperationException("Coordinator unavailable.");
-            return Task.FromResult(new FunctionRevisionCoordinatorSnapshot(
-                key,
-                Incarnation,
-                Generation,
-                DesiredReplicas,
-                DateTimeOffset.MinValue,
-                new FunctionAdmissionSnapshot(
-                    AdmissionRequests,
-                    0,
-                    new Dictionary<string, int>(HandlerRequests, StringComparer.Ordinal)),
-                null,
-                QuiescingIntent,
-                PendingScaleIntent,
-                ownership));
+            return Task.FromResult(
+                new FunctionRevisionCoordinatorSnapshot(
+                    key,
+                    Incarnation,
+                    Generation,
+                    DesiredReplicas,
+                    DateTimeOffset.MinValue,
+                    new FunctionAdmissionSnapshot(
+                        AdmissionRequests,
+                        0,
+                        new Dictionary<string, int>(HandlerRequests, StringComparer.Ordinal)),
+                    null,
+                    QuiescingIntent,
+                    PendingScaleIntent,
+                    ownership));
         }
 
         public void RestartIncarnation(string incarnation)
@@ -923,14 +868,12 @@ public sealed class FunctionScalerTests
         {
             var previous = DesiredReplicas;
             if (quiescingEpoch is not null && QuiescingIntent is null)
-            {
                 QuiescingIntent = new FunctionQuiescingIntent(
                     "recovered-quiescing",
                     "recovered-quiescing-lease",
                     quiescingEpoch.Value,
                     time.GetUtcNow(),
                     time.GetUtcNow().AddMinutes(5));
-            }
             DesiredReplicas = desiredReplicas;
             PendingScaleIntent = new FunctionScaleIntent(
                 "recovered-scale",
@@ -943,8 +886,7 @@ public sealed class FunctionScalerTests
                 time.GetUtcNow().AddMinutes(5));
         }
 
-        private bool Owns(FunctionScalerOwnershipToken token) =>
-            ownership is not null &&
+        private bool Owns(FunctionScalerOwnershipToken token) => ownership is not null &&
             ownership.ExpiresAtUtc > time.GetUtcNow() &&
             string.Equals(ownership.OperationId, token.OperationId, StringComparison.Ordinal) &&
             string.Equals(ownership.OwnerId, token.OwnerId, StringComparison.Ordinal) &&
@@ -955,22 +897,23 @@ public sealed class FunctionScalerTests
         private static FunctionScaleBeginDecision ScaleDecision(FunctionScaleBeginDecisionKind kind) =>
             new(kind, null, 0);
 
-        private static FunctionScaleLease ToLease(FunctionScaleIntent intent) =>
-            new(
-                intent.OperationId,
-                intent.IntentId,
-                intent.Generation,
-                intent.DesiredReplicas,
-                intent.ExpiresAtUtc);
+        private static FunctionScaleLease ToLease(FunctionScaleIntent intent) => new(
+            intent.OperationId,
+            intent.IntentId,
+            intent.Generation,
+            intent.DesiredReplicas,
+            intent.ExpiresAtUtc);
     }
 
     private sealed class FakeKubernetesManager : IFunctionRevisionKubernetesManager
     {
-        public FunctionReplicaState ReplicaState { get; set; } = new(0, 0, 0, 0);
+        public FunctionReplicaState ReplicaState { get; set; } = new(0, 0, 0);
         public List<int> ScaleRequests { get; } = [];
         public List<long> ScaleGenerations { get; } = [];
-        public FunctionRevisionKubernetesMutationOutcome ScaleResult { get; set; } =
-            new FunctionRevisionKubernetesMutationCompleted();
+
+        public FunctionRevisionKubernetesMutationOutcome ScaleResult { get; set; }
+            = new FunctionRevisionKubernetesMutationCompleted();
+
         public bool ApplyScaleBeforeFailure { get; set; }
 
         public Task<FunctionRevisionKubernetesMutationOutcome> ApplyAsync(
@@ -996,14 +939,12 @@ public sealed class FunctionScalerTests
             ScaleRequests.Add(replicas);
             ScaleGenerations.Add(coordinationGeneration);
             if (ScaleResult is FunctionRevisionKubernetesMutationCompleted || ApplyScaleBeforeFailure)
-            {
                 ReplicaState = ReplicaState with
                 {
                     Desired = replicas,
                     GenerationObserved = false,
-                    CoordinationGeneration = coordinationGeneration
+                    CoordinationGeneration = coordinationGeneration,
                 };
-            }
             return Task.FromResult(ScaleResult);
         }
 
@@ -1015,8 +956,8 @@ public sealed class FunctionScalerTests
 
     private sealed class FakeAgentClient : IFunctionAgentClient
     {
-        public Func<FunctionEndpoint, FunctionAgentStatusResponse?> StatusFactory { get; set; } =
-            endpoint => ValidStatus(endpoint);
+        public Func<FunctionEndpoint, FunctionAgentStatusResponse?> StatusFactory { get; set; }
+            = endpoint => ValidStatus(endpoint);
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
             FunctionEndpoint endpoint,
@@ -1025,15 +966,13 @@ public sealed class FunctionScalerTests
             CancellationToken cancellationToken)
         {
             var status = StatusFactory(endpoint);
-            return Task.FromResult(status is null
-                ? new FunctionAgentProtocolResponse<FunctionAgentStatusResponse>(
-                    HttpStatusCode.ServiceUnavailable,
-                    null,
-                    new FunctionProtocolError("unavailable", "Unavailable", true))
-                : new FunctionAgentProtocolResponse<FunctionAgentStatusResponse>(
-                    HttpStatusCode.OK,
-                    status,
-                    null));
+            return Task.FromResult(
+                status is null
+                    ? new FunctionAgentProtocolResponse<FunctionAgentStatusResponse>(
+                        HttpStatusCode.ServiceUnavailable,
+                        null,
+                        new FunctionProtocolError("unavailable", "Unavailable", true))
+                    : new FunctionAgentProtocolResponse<FunctionAgentStatusResponse>(HttpStatusCode.OK, status, null));
         }
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
@@ -1066,7 +1005,9 @@ public sealed class FunctionScalerTests
             CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
-    private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class MutableTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
         private DateTimeOffset utcNow = utcNow;
 

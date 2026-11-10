@@ -6,10 +6,8 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Declarations;
-using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.Request;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -24,19 +22,19 @@ public static class GetRedisServices
     {
         public IEndpointRouteBuilder MapGetRedisServicesEndpoint()
         {
-            app.MapGet("/", async (
-                    IMediator mediator,
-                    [AsParameters] GetRedisServicesRequest request,
-                    CancellationToken cancellationToken) =>
-                    (await mediator.Send(request, cancellationToken))
-                    .ToHttpResult(outcome => outcome switch
-                    {
-                        PaginatedResponse<RedisDto> page => Results.Ok(page)
-                    }))
-            .WithName("GetRedisServices")
-            .WithSummary("Retrieves all Redis services.")
-            .WithDescription("Fetches a list of all Redis services available in the system.")
-            .Produces<List<RedisDto>>();
+            app.MapGet(
+                    "/",
+                    async (
+                            IMediator mediator, [AsParameters] GetRedisServicesRequest request,
+                            CancellationToken cancellationToken) =>
+                        (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                        {
+                            PaginatedResponse<RedisDto> page => Results.Ok(page),
+                        }))
+                .WithName("GetRedisServices")
+                .WithSummary("Retrieves all Redis services.")
+                .WithDescription("Fetches a list of all Redis services available in the system.")
+                .Produces<List<RedisDto>>();
 
             return app;
         }
@@ -48,8 +46,8 @@ public union GetRedisServicesOutcome(PaginatedResponse<RedisDto>);
 public sealed class GetRedisServicesHandler(
     LoadRedisPage loadRedisPage,
     LoadResourceDeployments loadDeployments,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetRedisServicesRequest, GetRedisServicesOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetRedisServicesRequest, GetRedisServicesOutcome>
 {
     public async Task<GetRedisServicesOutcome> HandleAsync(
         GetRedisServicesRequest request,
@@ -70,35 +68,39 @@ public sealed class GetRedisServicesHandler(
                 ResourceIds: page.Items.Select(redis => redis.Id).ToArray()),
             cancellationToken: cancellationToken);
 
-        var statuses = await git.StatusesAsync(new(request.TenantId, DeclarativeRedisProvider.ResourceKind,
-            page.Items.Select(redis => redis.Id).ToArray()), cancellationToken);
-        return new GetRedisServicesOutcome(new PaginatedResponse<RedisDto>(
-            Items: page.Items.Select(redis => redis.ToDto(
-                placements.GetValueOrDefault(redis.Id)) with
-            { GitOps = statuses.GetValueOrDefault(redis.Id) }),
-            TotalCount: page.TotalCount,
-            PageNumber: request.PageNumber,
-            PageSize: request.PageSize));
+        var statuses = await git.StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                request.TenantId,
+                DeclarativeRedisProvider.ResourceKind,
+                page.Items.Select(redis => redis.Id).ToArray()),
+            cancellationToken);
+        return new GetRedisServicesOutcome(
+            new PaginatedResponse<RedisDto>(
+                Items: page.Items.Select(redis => redis.ToDto(placements.GetValueOrDefault(redis.Id)) with
+                {
+                    GitOps = statuses.GetValueOrDefault(redis.Id),
+                }),
+                TotalCount: page.TotalCount,
+                PageNumber: request.PageNumber,
+                PageSize: request.PageSize));
     }
 }
 
 public sealed record GetRedisServicesRequest : IMediatorRequest<GetRedisServicesOutcome>, ITenantReadOperation
 {
-    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
     [FromQuery] public string? Search { get; init; }
     [FromQuery] public string? ResourceGroupId { get; init; }
     [FromQuery] public int PageNumber { get; init; } = 1;
     [FromQuery] public int PageSize { get; init; } = 10;
+    [FromTenantHeader] public string TenantId { get; init; } = "";
 }
 
-public sealed class GetRedisServicesRequestValidator
-    : AbstractValidator<GetRedisServicesRequest>
+public sealed class GetRedisServicesRequestValidator : AbstractValidator<GetRedisServicesRequest>
 {
     public GetRedisServicesRequestValidator()
     {
         RuleFor(request => request.PageNumber).GreaterThan(0);
         RuleFor(request => request.PageSize).GreaterThan(0);
-        RuleFor(request => request.ResourceGroupId)
-            .OptionalMongoObjectId("Resource group ID");
+        RuleFor(request => request.ResourceGroupId).OptionalMongoObjectId("Resource group ID");
     }
 }

@@ -42,11 +42,19 @@ public sealed class DomainIdentityTests
     public void Generated_entities_have_system_identity_without_a_user_name()
     {
         var zone = TenantDomainZoneFactory.CreateGenerated(
-            Id(), Id(), "pole-generated-tenant", DnsName.Create("example.test"),
+            Id(),
+            Id(),
+            "pole-generated-tenant",
+            DnsName.Create("example.test"),
             new TenantDomainZoneFactory.CreateOptions(Id(), new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)));
         var binding = HostnameBindingFactory.CreateGenerated(
-            zone.TenantId, zone.Id, zone.DeploymentTargetId,
-            ResourceTypeId.Create("pole/web-service"), Id(), Id(), "app",
+            zone.TenantId,
+            zone.Id,
+            zone.DeploymentTargetId,
+            ResourceTypeId.Create("pole/web-service"),
+            Id(),
+            Id(),
+            "app",
             DnsName.Create(zone.Domain),
             new HostnameBindingFactory.CreateOptions(Id(), new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)));
 
@@ -66,10 +74,13 @@ public sealed class DomainIdentityTests
     public void Managed_identity_rejects_invalid_technical_names(string name) =>
         Assert.Throws<ArgumentException>(() => ManagedZone(name));
 
-    private static TenantDomainZone ManagedZone(string name) =>
-        TenantDomainZoneFactory.CreateManagedReservation(
-            Id(), Id(), "company", DnsName.Create("example.test"), name,
-            new TenantDomainZoneFactory.CreateOptions(Id(), new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)));
+    private static TenantDomainZone ManagedZone(string name) => TenantDomainZoneFactory.CreateManagedReservation(
+        Id(),
+        Id(),
+        "company",
+        DnsName.Create("example.test"),
+        name,
+        new TenantDomainZoneFactory.CreateOptions(Id(), new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)));
 
     private static string Id() => ObjectId.GenerateNewId().ToString();
 }

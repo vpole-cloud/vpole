@@ -14,7 +14,9 @@ public sealed class PrivateAccessCleanupTests
         var acknowledged = new List<string>();
         var snapshots = new[] { Snapshot("first"), Snapshot("unreachable"), Snapshot("last") };
         var cleanup = new PrivateAccessSessionCleanup(
-            (_, _, _) => Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>(snapshots),
+            (
+                _, _,
+                _) => Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>(snapshots),
             (id, _) =>
             {
                 if (id == "unreachable")

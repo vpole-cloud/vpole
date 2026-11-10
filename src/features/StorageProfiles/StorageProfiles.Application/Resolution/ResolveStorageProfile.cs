@@ -11,7 +11,8 @@ namespace Pole.Features.StorageProfiles.Application.Resolution;
 internal sealed class MongoResolveStorageProfile(
     IMongoCollection<StorageProfile> profiles,
     IMongoCollection<StorageProfileRevision> revisions,
-    DiscoverKubernetesStorageClassNames discover)
+    DiscoverKubernetesStorageClassNames discover
+)
 {
     public async Task<ResolveStorageProfileOutcome> InvokeAsync(
         StorageProfileResolutionRequest request,
@@ -84,20 +85,30 @@ internal static class StorageProfileResolution
             return new StorageProfileResolutionError(
                 new StorageProfileDiscoveryUnavailable(request.DeploymentTargetId));
         if (!((IReadOnlySet<string>)classes.Value).Contains(mapping.StorageClassName))
-            return new StorageProfileResolutionError(new StorageProfileStorageClassUnavailable(
-                selected.Id, request.DeploymentTargetId, mapping.StorageClassName));
+            return new StorageProfileResolutionError(
+                new StorageProfileStorageClassUnavailable(
+                    selected.Id,
+                    request.DeploymentTargetId,
+                    mapping.StorageClassName));
 
-        return new ResolvedStorageProfile(selected.Id, selected.Revision, request.DeploymentTargetId,
-            selected.DisplayName, mapping.StorageClassName, selected.MediaType, selected.PerformanceTier);
+        return new ResolvedStorageProfile(
+            selected.Id,
+            selected.Revision,
+            request.DeploymentTargetId,
+            selected.DisplayName,
+            mapping.StorageClassName,
+            selected.MediaType,
+            selected.PerformanceTier);
     }
 
     public static void EnsureValid(StorageProfileResolutionRequest request)
     {
         if (!ObjectId.TryParse(request.StorageProfileId, out _) ||
-            !ObjectId.TryParse(request.DeploymentTargetId, out _) ||
-            !ObjectId.TryParse(request.TenantId, out _) || string.IsNullOrWhiteSpace(request.ResourceType.Value))
+            !ObjectId.TryParse(request.DeploymentTargetId, out _) || !ObjectId.TryParse(request.TenantId, out _) ||
+            string.IsNullOrWhiteSpace(request.ResourceType.Value))
             throw new ArgumentException(
-                "Valid profile, tenant, target and resource type are required.", nameof(request));
+                "Valid profile, tenant, target and resource type are required.",
+                nameof(request));
         if (request.SizeGb <= 0 || request.Revision is <= 0)
             throw new ArgumentOutOfRangeException(nameof(request), "Size and explicit revision must be positive.");
     }

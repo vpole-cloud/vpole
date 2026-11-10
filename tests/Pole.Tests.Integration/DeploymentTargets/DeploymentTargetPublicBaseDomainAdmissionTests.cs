@@ -2,27 +2,25 @@ using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Outbox.Application.Writes;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override async Task InitializeAsync() => await base.InitializeAsync();
 
@@ -34,7 +32,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var persistence = new MongoPersistCreatedDeploymentTarget(
             Fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
             new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
 
         var results = await Task.WhenAll(
@@ -45,8 +43,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         Assert.Single(results, result => result is PersistCreatedDeploymentTargetError);
         Assert.Equal(
             1,
-            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
-                Builders<DeploymentTarget>.Filter.Empty));
+            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(Builders<DeploymentTarget>.Filter.Empty));
     }
 
     [Fact]
@@ -55,7 +52,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var persistence = new MongoPersistCreatedDeploymentTarget(
             Fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
             new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
         var first = await persistence.InvokeAsync(CreateTarget("example.test"));
         Assert.IsType<DeploymentTarget>(first.Value);
@@ -73,14 +70,12 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var persistence = new MongoPersistCreatedDeploymentTarget(
             Fixture.DbContext.DeploymentTargets,
             CreateNoOverlappingPublicBaseDomain(),
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistCreatedDeploymentTargetOutcome>,
+            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
             new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages")).InvokeAsync);
         var target = CreateTarget("apps.example.test");
         Assert.IsType<DeploymentTarget>((await persistence.InvokeAsync(target)).Value);
         var pending = target.RequestDeletion(target.UpdatedAtUtc.AddSeconds(1));
-        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
-            item => item.Id == target.Id,
-            pending);
+        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(item => item.Id == target.Id, pending);
 
         var overlap = await persistence.InvokeAsync(CreateTarget("apps.example.test"));
 
@@ -99,8 +94,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         {
             WorkloadConfiguration = sourceConfigured.WorkloadConfiguration with
             {
-                NetworkSources = DeploymentTargetNetworkSources.None
-            }
+                NetworkSources = DeploymentTargetNetworkSources.None,
+            },
         };
         await Fixture.DbContext.DeploymentTargets.InsertManyAsync([publicTarget, privateTarget, missingSource]);
         var admission = CreateWorkloadPlacementAdmission();
@@ -120,7 +115,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var privateAdmission = await admission(
             request with
             {
-                ExplicitDeploymentTargetId = privateTarget.Id
+                ExplicitDeploymentTargetId = privateTarget.Id,
             });
         Assert.True(
             Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(privateAdmission.Value).Value is
@@ -128,7 +123,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var missingSourceAdmission = await admission(
             request with
             {
-                ExplicitDeploymentTargetId = missingSource.Id
+                ExplicitDeploymentTargetId = missingSource.Id,
             });
         Assert.True(
             Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(missingSourceAdmission.Value).Value is
@@ -141,11 +136,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var inCluster = CreateTarget(publicBaseDomain: null, functionGateway: true);
         var remote = CreateTarget(publicBaseDomain: null) with
         {
-            Connection = new KubeconfigDeploymentTargetConnection(
-                1,
-                "remote",
-                "https://remote.example.test",
-                null!)
+            Connection = new KubeconfigDeploymentTargetConnection(1, "remote", "https://remote.example.test", null!),
         };
         var remoteServiceAccount = CreateTarget(publicBaseDomain: null, functionGateway: true) with
         {
@@ -153,10 +144,9 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 1,
                 "https://service-account.example.test",
                 "certificate-authority",
-                null!)
+                null!),
         };
-        await Fixture.DbContext.DeploymentTargets.InsertManyAsync(
-            [inCluster, remote, remoteServiceAccount]);
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([inCluster, remote, remoteServiceAccount]);
         var admission = CreateWorkloadPlacementAdmission();
         var request = new DeploymentTargetAdmissionRequest(
             ObjectId.GenerateNewId().ToString(),
@@ -169,10 +159,11 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var admitted = Assert.IsType<DeploymentTargetLookupDto>((await admission(request)).Value);
         Assert.Equal(inCluster.Id, admitted.Id);
 
-        var rejected = await admission(request with
-        {
-            ExplicitDeploymentTargetId = remote.Id
-        });
+        var rejected = await admission(
+            request with
+            {
+                ExplicitDeploymentTargetId = remote.Id,
+            });
         Assert.True(
             Assert.IsType<DeploymentTargetNewWorkloadAdmissionError>(rejected.Value).Value is
                 DeploymentTargetRequiredCapabilitiesUnavailable);
@@ -180,9 +171,10 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var serviceAccountAdmitted = await admission(
             request with
             {
-                ExplicitDeploymentTargetId = remoteServiceAccount.Id
+                ExplicitDeploymentTargetId = remoteServiceAccount.Id,
             });
-        Assert.Equal(remoteServiceAccount.Id,
+        Assert.Equal(
+            remoteServiceAccount.Id,
             Assert.IsType<DeploymentTargetLookupDto>(serviceAccountAdmitted.Value).Id);
     }
 
@@ -203,25 +195,26 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
             nameof(DeploymentTargetNetworkPolicyCapabilities.CanUpdate) => capabilities with { CanUpdate = false },
             nameof(DeploymentTargetNetworkPolicyCapabilities.CanPatch) => capabilities with { CanPatch = false },
             nameof(DeploymentTargetNetworkPolicyCapabilities.CanDelete) => capabilities with { CanDelete = false },
-            _ => throw new ArgumentOutOfRangeException(nameof(missingVerb))
+            _ => throw new ArgumentOutOfRangeException(nameof(missingVerb)),
         };
         target = target with
         {
             Capabilities = target.Capabilities with
             {
-                NetworkPolicyCapabilities = capabilities
-            }
+                NetworkPolicyCapabilities = capabilities,
+            },
         };
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
 
         Assert.Empty(await CreateEligibleLoader()(DeploymentTargetRequiredCapabilities.PublicIngress));
-        Assert.Equal(0,
+        Assert.Equal(
+            0,
             await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
                 DeploymentTargetFilters.FenceableWorkloadConfigurations(
                 [
                     new DeploymentTargetWorkloadConfigurationFenceRequest(
                         target.Id,
-                        target.WorkloadConfiguration.Revision)
+                        target.WorkloadConfiguration.Revision),
                 ])));
     }
 
@@ -243,8 +236,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var unavailable = result switch
         {
             DeploymentTargetPublicIngressUnavailable value => value,
-            _ => throw new Xunit.Sdk.XunitException(
-                $"Expected {nameof(DeploymentTargetPublicIngressUnavailable)}.")
+            _ => throw new XunitException($"Expected {nameof(DeploymentTargetPublicIngressUnavailable)}."),
         };
         Assert.Equal(privateTarget.Id, unavailable.DeploymentTargetId);
     }
@@ -256,9 +248,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var admission = CreateDomainReservationAdmission();
 
-        var result = await admission(
-            ObjectId.GenerateNewId().ToString(),
-            target.Id);
+        var result = await admission(ObjectId.GenerateNewId().ToString(), target.Id);
 
         var ingress = Assert.IsType<DeploymentTargetPublicIngressDto>(result.Value);
         Assert.Equal(target.Id, ingress.DeploymentTargetId);
@@ -272,16 +262,13 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         var admission = CreateDomainReservationAdmission();
 
-        var result = await admission(
-            ObjectId.GenerateNewId().ToString(),
-            target.Id);
+        var result = await admission(ObjectId.GenerateNewId().ToString(), target.Id);
 
         var error = Assert.IsType<DeploymentTargetDomainReservationAdmissionError>(result.Value).Value;
         var unavailable = error switch
         {
             DeploymentTargetPublicIngressUnavailable value => value,
-            _ => throw new Xunit.Sdk.XunitException(
-                $"Expected {nameof(DeploymentTargetPublicIngressUnavailable)}.")
+            _ => throw new XunitException($"Expected {nameof(DeploymentTargetPublicIngressUnavailable)}."),
         };
         Assert.Equal(target.Id, unavailable.DeploymentTargetId);
     }
@@ -291,7 +278,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
     {
         var target = CreateTarget("apps.example.test") with
         {
-            Enabled = false
+            Enabled = false,
         };
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         await Fixture.DbContext.DeploymentTargetSettings.InsertOneAsync(
@@ -302,8 +289,7 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         var disabled = Assert.IsType<DefaultDeploymentTargetWorkloadAdmissionError>(result.Value).Value switch
         {
             DeploymentTargetDisabled error => error,
-            _ => throw new Xunit.Sdk.XunitException(
-                "Expected the configured target's disabled admission error.")
+            _ => throw new XunitException("Expected the configured target's disabled admission error."),
         };
         Assert.Equal(target.Id, disabled.DeploymentTargetId);
     }
@@ -337,8 +323,8 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                 var result = await references.InvokeAsync(
                     new ApplyDeploymentTargetReferenceChangesRequest(
                         Owner: new DeploymentTargetReferenceOwner(
-                        DeploymentTargetReferenceOwnerTypes.DomainZone,
-                        ObjectId.GenerateNewId().ToString()),
+                            DeploymentTargetReferenceOwnerTypes.DomainZone,
+                            ObjectId.GenerateNewId().ToString()),
                         AddedDeploymentTargetIds: [target.Id],
                         RemovedDeploymentTargetIds: []),
                     session: transaction.Session,
@@ -348,19 +334,18 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
                     : transaction.Abort(result);
             });
         Assert.IsType<DeploymentTargetReferencesChanged>(registered.Value);
-        var current = await Fixture.DbContext.DeploymentTargets
-            .Find(item => item.Id == target.Id)
-            .SingleAsync();
+        var current = await Fixture.DbContext.DeploymentTargets.Find(item => item.Id == target.Id).SingleAsync();
         var handler = new UpdateDeploymentTargetHandler(
             LoadById,
             LoadDefaultId,
             new MongoPersistUpdatedDeploymentTarget(
-                Fixture.DbContext.DeploymentTargets,
-                CreateNoPublicBaseDomainReferences(),
-                CreateNoOverlappingPublicBaseDomain(),
-                new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistUpdatedDeploymentTargetOutcome>,
-                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
-                    "OutboxMessages")).InvokeAsync).InvokeAsync,
+                    Fixture.DbContext.DeploymentTargets,
+                    CreateNoPublicBaseDomainReferences(),
+                    CreateNoOverlappingPublicBaseDomain(),
+                    new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
+                    new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"))
+                        .InvokeAsync)
+                .InvokeAsync,
             new NoOpClientCache().Invalidate,
             TimeProvider.System);
 
@@ -382,38 +367,27 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         _ = result switch
         {
             DeploymentTargetPublicBaseDomainReferenced => true,
-            _ => throw new Xunit.Sdk.XunitException(
-                "Expected the public-base-domain reference rejection.")
+            _ => throw new XunitException("Expected the public-base-domain reference rejection."),
         };
     }
 
-    private LookupDeploymentTarget CreateLookup() =>
-        new MongoLookupDeploymentTarget(CreateLoadById()).InvokeAsync;
+    private LookupDeploymentTarget CreateLookup() => new MongoLookupDeploymentTarget(CreateLoadById()).InvokeAsync;
 
     private LookupDefaultDeploymentTarget CreateDefaultLookup() =>
-        new MongoLookupDefaultDeploymentTarget(
-            CreateLoadDefaultId(),
-            CreateLoadById()).InvokeAsync;
+        new MongoLookupDefaultDeploymentTarget(CreateLoadDefaultId(), CreateLoadById()).InvokeAsync;
 
     private AdmitDeploymentTargetForNewWorkload CreateWorkloadPlacementAdmission() =>
-        new MongoAdmitDeploymentTargetForNewWorkload(
-            CreateWorkloadAdmission(),
-            CreateEligibleLoader()).InvokeAsync;
+        new MongoAdmitDeploymentTargetForNewWorkload(CreateWorkloadAdmission(), CreateEligibleLoader()).InvokeAsync;
 
     private AdmitDeploymentTargetPublicIngressForNewWorkload CreatePublicIngressAdmission() =>
-        new MongoAdmitDeploymentTargetPublicIngressForNewWorkload(
-            CreateWorkloadAdmission(),
-            CreateEligibleLoader()).InvokeAsync;
+        new MongoAdmitDeploymentTargetPublicIngressForNewWorkload(CreateWorkloadAdmission(), CreateEligibleLoader())
+            .InvokeAsync;
 
-    private AdmitDeploymentTargetPublicIngressForDomainReservation
-        CreateDomainReservationAdmission() =>
-        new MongoAdmitDeploymentTargetPublicIngressForDomainReservation(
-            CreateWorkloadAdmission()).InvokeAsync;
+    private AdmitDeploymentTargetPublicIngressForDomainReservation CreateDomainReservationAdmission() =>
+        new MongoAdmitDeploymentTargetPublicIngressForDomainReservation(CreateWorkloadAdmission()).InvokeAsync;
 
     private AdmitDefaultDeploymentTargetForNewWorkload CreateDefaultAdmission() =>
-        new MongoAdmitDefaultDeploymentTargetForNewWorkload(
-            CreateLoadDefaultId(),
-            CreateLoadById()).InvokeAsync;
+        new MongoAdmitDefaultDeploymentTargetForNewWorkload(CreateLoadDefaultId(), CreateLoadById()).InvokeAsync;
 
     private AdmitDeploymentTargetForWorkload CreateWorkloadAdmission() =>
         new MongoAdmitDeploymentTargetForWorkload(CreateLoadById()).InvokeAsync;
@@ -425,74 +399,68 @@ public sealed class DeploymentTargetPublicBaseDomainAdmissionTests(MongoReplicaS
         new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync;
 
     private LoadDefaultDeploymentTargetId CreateLoadDefaultId() =>
-        new MongoLoadDefaultDeploymentTargetId(Fixture.DbContext.DeploymentTargetSettings)
-            .InvokeAsync;
+        new MongoLoadDefaultDeploymentTargetId(Fixture.DbContext.DeploymentTargetSettings).InvokeAsync;
 
-    private EnsureNoOverlappingDeploymentTargetPublicBaseDomain
-        CreateNoOverlappingPublicBaseDomain() =>
+    private EnsureNoOverlappingDeploymentTargetPublicBaseDomain CreateNoOverlappingPublicBaseDomain() =>
         new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
             Fixture.DbContext.DeploymentTargets,
             Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                 DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
 
-    private EnsureNoDeploymentTargetPublicBaseDomainReferences
-        CreateNoPublicBaseDomainReferences() =>
-        new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(
-            Fixture.DbContext.DeploymentTargetReferences).InvokeAsync;
+    private EnsureNoDeploymentTargetPublicBaseDomainReferences CreateNoPublicBaseDomainReferences() =>
+        new MongoEnsureNoDeploymentTargetPublicBaseDomainReferences(Fixture.DbContext.DeploymentTargetReferences)
+            .InvokeAsync;
 
-    private async Task<DeploymentTarget?> LoadById(
-        string id,
-        CancellationToken cancellationToken) =>
-        await Fixture.DbContext.DeploymentTargets
-            .Find(item => item.Id == id)
-            .FirstOrDefaultAsync(cancellationToken);
+    private async Task<DeploymentTarget?> LoadById(string id, CancellationToken cancellationToken) => await Fixture
+        .DbContext
+        .DeploymentTargets
+        .Find(item => item.Id == id)
+        .FirstOrDefaultAsync(cancellationToken);
 
-    private async Task<string?> LoadDefaultId(CancellationToken cancellationToken) =>
-        await Fixture.DbContext.DeploymentTargetSettings
-            .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
-            .Project(item => item.DefaultDeploymentTargetId)
-            .FirstOrDefaultAsync(cancellationToken);
+    private async Task<string?> LoadDefaultId(CancellationToken cancellationToken) => await Fixture.DbContext
+        .DeploymentTargetSettings
+        .Find(item => item.Id == DeploymentTargetSettings.SingletonId)
+        .Project(item => item.DefaultDeploymentTargetId)
+        .FirstOrDefaultAsync(cancellationToken);
 
-    private static DeploymentTarget CreateTarget(
-        string? publicBaseDomain,
-        bool functionGateway = false)
+    private static DeploymentTarget CreateTarget(string? publicBaseDomain, bool functionGateway = false)
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create("target-" + id,
-            "Target",
-            $"kubernetes:kube-system:{id}",
-            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
-            DeploymentTargetHealth.Healthy(connectionVersion, now),
-            DeploymentTargetCapabilities.Observed(
-                connectionVersion,
-                now,
-                "v1.30.0",
-                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
-                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
-            DeploymentTargetWorkloadConfiguration.Create(
-                DeploymentTargetIngressConfiguration.Create(
-                    "traefik",
-                    "letsencrypt-prod",
-                    publicBaseDomain),
-                new DeploymentTargetNetworkSources(
-                    (publicBaseDomain is null
-                        ? ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty
-                        : ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
-                            "public-ingress",
-                            DeploymentTargetPodNetworkSource.Create(
-                                "kube-system",
-                                new Dictionary<string, string> { ["app.kubernetes.io/name"] = "traefik" })))
-                    .AddRange(functionGateway
-                        ? new Dictionary<string, DeploymentTargetNetworkSource>
-                        {
-                            ["functions/gateway"] = DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32")
-                        }
-                        : []))),
-            enabled: true,
-            acceptsWorkloads: true,
-            new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();
+        return DeploymentTargetFactory.Create(
+                "target-" + id,
+                "Target",
+                $"kubernetes:kube-system:{id}",
+                DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
+                DeploymentTargetHealth.Healthy(connectionVersion, now),
+                DeploymentTargetCapabilities.Observed(
+                    connectionVersion,
+                    now,
+                    "v1.30.0",
+                    new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                    new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
+                DeploymentTargetWorkloadConfiguration.Create(
+                    DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt-prod", publicBaseDomain),
+                    new DeploymentTargetNetworkSources(
+                        (publicBaseDomain is null
+                            ? ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty
+                            : ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
+                                "public-ingress",
+                                DeploymentTargetPodNetworkSource.Create(
+                                    "kube-system",
+                                    new Dictionary<string, string> { ["app.kubernetes.io/name"] = "traefik" })))
+                        .AddRange(
+                            functionGateway
+                                ? new Dictionary<string, DeploymentTargetNetworkSource>
+                                {
+                                    ["functions/gateway"] = DeploymentTargetCidrNetworkSource.Create("192.0.2.9/32"),
+                                }
+                                : []))),
+                enabled: true,
+                acceptsWorkloads: true,
+                new DeploymentTargetFactory.CreateOptions(id, now))
+            .AttestForTests();
     }
 
     private sealed class NoOpClientCache

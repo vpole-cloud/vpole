@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Mongo;
 
 namespace Pole.Features.Outbox.Application.Delivery;
@@ -10,7 +9,8 @@ public delegate Task<bool> TryPersistOutboxMessageTransition(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoTryPersistOutboxMessageTransition(
-    IMongoCollection<OutboxMessage> messages)
+    IMongoCollection<OutboxMessage> messages
+)
 {
     public async Task<bool> InvokeAsync(
         OutboxMessage expectedPending,
@@ -20,18 +20,12 @@ internal sealed class MongoTryPersistOutboxMessageTransition(
         ArgumentNullException.ThrowIfNull(expectedPending);
         ArgumentNullException.ThrowIfNull(transition);
         if (expectedPending.Id != transition.Id)
-        {
-            throw new ArgumentException(
-                "An outbox transition must retain the message identifier.",
-                nameof(transition));
-        }
+            throw new ArgumentException("An outbox transition must retain the message identifier.", nameof(transition));
 
         if (expectedPending.State is not PendingOutboxMessageState)
-        {
             throw new ArgumentException(
                 "An outbox transition must be based on a pending message.",
                 nameof(expectedPending));
-        }
 
         var replacement = await messages.ReplaceOneAsync(
             OutboxMessageFilters.PendingAtAttempt(expectedPending),

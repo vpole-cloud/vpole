@@ -4,21 +4,20 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Outbox.Contracts;
-using Pole.Features.ResourceConnections.Application.Common;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceConnections.Events;
 
 namespace Pole.Features.ResourceConnections.Application.Connections;
 
-public sealed record ResourceConnectionDeletionConflict(string Id);
+public sealed record ResourceConnectionDeletionConflict(
+    string Id
+);
 
-public sealed record ResourceConnectionGitOwned(string Id);
+public sealed record ResourceConnectionGitOwned(
+    string Id
+);
 
 public union DeleteResourceConnectionPersistenceOutcome(
     ResourceConnection,
@@ -26,13 +25,16 @@ public union DeleteResourceConnectionPersistenceOutcome(
     ResourceConnectionDeletionConflict,
     ResourceConnectionGitOwned);
 
-public sealed record ResourceConnectionMissing(string Id);
+public sealed record ResourceConnectionMissing(
+    string Id
+);
 
 public sealed record BeginResourceConnectionDeletionRequest(
     string TenantId,
     string ConnectionId,
     ResourceConnectionPlanningVersion? Expected = null,
-    GitLifecycleAuthority? Lifecycle = null);
+    GitLifecycleAuthority? Lifecycle = null
+);
 
 public delegate Task<DeleteResourceConnectionPersistenceOutcome> BeginResourceConnectionDeletion(
     string tenantId,
@@ -44,19 +46,22 @@ internal sealed class MongoBeginResourceConnectionDeletion(
     RunMongoOutcomeTransaction<DeleteResourceConnectionPersistenceOutcome> transactions,
     StoreOutboxWrites storeOutboxWrites,
     IGitOpsMutations git,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public Task<DeleteResourceConnectionPersistenceOutcome> InvokeAsync(
         string tenantId,
         string connectionId,
-        CancellationToken cancellationToken = default) =>
-        transactions(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => transactions(
+        async (transaction, ct) =>
         {
-            var outcome = await ExecuteAsync(new(tenantId, connectionId), transaction.Session, ct);
-            return outcome is ResourceConnection
-                ? transaction.Commit(outcome)
-                : transaction.Abort(outcome);
-        }, cancellationToken);
+            var outcome = await ExecuteAsync(
+                new BeginResourceConnectionDeletionRequest(tenantId, connectionId),
+                transaction.Session,
+                ct);
+            return outcome is ResourceConnection ? transaction.Commit(outcome) : transaction.Abort(outcome);
+        },
+        cancellationToken);
 
     internal async Task<DeleteResourceConnectionPersistenceOutcome> ExecuteAsync(
         BeginResourceConnectionDeletionRequest request,
@@ -66,7 +71,8 @@ internal sealed class MongoBeginResourceConnectionDeletion(
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Connection deletion requires a caller-owned transaction.");
 
-        var current = await connections.Find(session,
+        var current = await connections.Find(
+                session,
                 ResourceConnectionFilters.ByTenantAndId(request.TenantId, request.ConnectionId))
             .FirstOrDefaultAsync(ct);
         if (current is null)
@@ -76,26 +82,41 @@ internal sealed class MongoBeginResourceConnectionDeletion(
                 expected.Revision != current.Revision || expected.ReferenceFence != current.ReferenceFence))
             return new ResourceConnectionDeletionConflict(request.ConnectionId);
 
-        if (!await git.AuthorizeAsync(new(request.TenantId, "ResourceConnection", request.ConnectionId,
-                Lifecycle: request.Lifecycle, LifecycleEffect: GitLifecycleMutationEffect.Remove), session, ct))
+        if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    request.TenantId,
+                    "ResourceConnection",
+                    request.ConnectionId,
+                    Lifecycle: request.Lifecycle,
+                    LifecycleEffect: GitLifecycleMutationEffect.Remove),
+                session,
+                ct))
             return new ResourceConnectionGitOwned(request.ConnectionId);
 
         if (current.Lifecycle is DeletingResourceConnection)
             return current;
 
         var deleting = current.BeginDeletion(timeProvider.GetUtcNow().UtcDateTime);
-        var replaced = await connections.ReplaceOneAsync(session,
-            ResourceConnectionFilters.AtPlanningVersion(request.TenantId,
-                new(current.Id, current.Revision, current.ReferenceFence)), deleting,
+        var replaced = await connections.ReplaceOneAsync(
+            session,
+            ResourceConnectionFilters.AtPlanningVersion(
+                request.TenantId,
+                new ResourceConnectionPlanningVersion(current.Id, current.Revision, current.ReferenceFence)),
+            deleting,
             cancellationToken: ct);
         if (replaced.ModifiedCount != 1)
             return new ResourceConnectionDeletionConflict(request.ConnectionId);
 
-        await storeOutboxWrites(session,
-            [OutboxWrite.Create(new ResourceConnectionDeletionRequestedEvent(current.Id, deleting.Generation)
-            {
-                EventCore = EventCore.Create(request.TenantId)
-            })], ct);
+        await storeOutboxWrites(
+            session,
+            [
+                OutboxWrite.Create(
+                    new ResourceConnectionDeletionRequestedEvent(current.Id, deleting.Generation)
+                    {
+                        EventCore = EventCore.Create(request.TenantId),
+                    }),
+            ],
+            ct);
         return deleting;
     }
 }

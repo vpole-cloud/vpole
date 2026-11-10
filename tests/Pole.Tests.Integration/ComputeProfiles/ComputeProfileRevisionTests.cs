@@ -31,9 +31,7 @@ public sealed class ComputeProfileRevisionTests
         var snapshot = ComputeProfileTestData.CreateProfile("507f1f77bcf86cd799439096");
 
         Assert.Throws<ArgumentNullException>(() => ComputeProfileRevisionFactory.Create(null!));
-        Assert.Throws<ArgumentException>(() =>
-            ComputeProfileRevisionFactory.Create(snapshot with { Id = "invalid" }));
-        Assert.Throws<ArgumentException>(() =>
-            ComputeProfileRevisionFactory.Create(snapshot with { Revision = 0 }));
+        Assert.Throws<ArgumentException>(() => ComputeProfileRevisionFactory.Create(snapshot with { Id = "invalid" }));
+        Assert.Throws<ArgumentException>(() => ComputeProfileRevisionFactory.Create(snapshot with { Revision = 0 }));
     }
 }

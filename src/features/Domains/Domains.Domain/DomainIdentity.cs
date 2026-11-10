@@ -8,7 +8,9 @@ public closed record DomainIdentity;
 
 public sealed record GeneratedDomainIdentity : DomainIdentity;
 
-public sealed record NamedDomainIdentity(string TechnicalName) : DomainIdentity;
+public sealed record NamedDomainIdentity(
+    string TechnicalName
+) : DomainIdentity;
 
 public static class DomainIdentityFactory
 {

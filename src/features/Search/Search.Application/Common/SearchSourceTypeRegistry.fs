@@ -5,7 +5,7 @@ open System.Collections.Generic
 open Pole.Features.Search.Contracts
 open Pole.Workloads
 
-type SearchSourceTypeRegistry(sourceTypes : IEnumerable<SearchSourceType>) =
+type SearchSourceTypeRegistry(sourceTypes: IEnumerable<SearchSourceType>) =
     let registered = sourceTypes |> Seq.toArray
 
     do
@@ -26,11 +26,9 @@ type SearchSourceTypeRegistry(sourceTypes : IEnumerable<SearchSourceType>) =
         |> Option.iter (fun (_, values) ->
             invalidArg (nameof sourceTypes) $"Search API type '{values[0].ApiName}' is registered more than once.")
 
-    member _.Resolve(resourceTypeId : ResourceTypeId) =
-        registered
-        |> Array.tryFind (fun value -> value.ResourceTypeId = resourceTypeId)
+    member _.Resolve(resourceTypeId: ResourceTypeId) =
+        registered |> Array.tryFind (fun value -> value.ResourceTypeId = resourceTypeId)
 
-    member _.ResolveApiName(apiName : string) =
+    member _.ResolveApiName(apiName: string) =
         registered
-        |> Array.tryFind (fun value ->
-            String.Equals(value.ApiName, apiName, StringComparison.OrdinalIgnoreCase))
+        |> Array.tryFind (fun value -> String.Equals(value.ApiName, apiName, StringComparison.OrdinalIgnoreCase))

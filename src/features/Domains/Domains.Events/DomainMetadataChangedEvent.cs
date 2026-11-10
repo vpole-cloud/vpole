@@ -7,7 +7,8 @@ namespace Pole.Features.Domains.Events;
 public sealed record DomainMetadataChangedEvent(
     string ZoneId,
     long ZoneRevision,
-    string? BindingId = null) : IPoleEvent
+    string? BindingId = null
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

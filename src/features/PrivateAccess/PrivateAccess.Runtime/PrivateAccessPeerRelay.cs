@@ -9,14 +9,15 @@ namespace Pole.Features.PrivateAccess.Runtime;
 public sealed class PrivateAccessPeerRelay(
     IOptions<PrivateAccessBrokerOptions> configured,
     PrivateAccessInternalIdentity identity,
-    PrivateAccessDrainState drain)
+    PrivateAccessDrainState drain
+)
 {
     public const string FingerprintHeader = "X-Pole-Gateway-Certificate-Sha256";
 
     public async Task<bool> IsAuthenticatedAsync(HttpContext context)
     {
-        if (context.Connection.LocalPort != configured.Value.InternalPort ||
-            !context.Request.IsHttps || !context.WebSockets.IsWebSocketRequest)
+        if (context.Connection.LocalPort != configured.Value.InternalPort || !context.Request.IsHttps ||
+            !context.WebSockets.IsWebSocketRequest)
             return false;
         var certificate = await context.Connection.GetClientCertificateAsync(context.RequestAborted);
         return identity.Matches(certificate);
@@ -29,8 +30,7 @@ public sealed class PrivateAccessPeerRelay(
         string? ticket = null,
         string? fingerprint = null)
     {
-        if (!configured.Value.InternalPeerOrigins.Contains(
-                owner.InternalOrigin, StringComparer.Ordinal))
+        if (!configured.Value.InternalPeerOrigins.Contains(owner.InternalOrigin, StringComparer.Ordinal))
         {
             context.Response.StatusCode = 503;
             return;
@@ -43,19 +43,18 @@ public sealed class PrivateAccessPeerRelay(
             upstream.Options.SetRequestHeader(FingerprintHeader, fingerprint);
         using var handler = new SocketsHttpHandler();
         handler.SslOptions.ClientCertificates = [identity.Certificate];
-        handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
-            identity.Matches(certificate);
+        handler.SslOptions.RemoteCertificateValidationCallback = (
+            _, certificate,
+            _, _) => identity.Matches(certificate);
         using var invoker = new HttpMessageInvoker(handler, disposeHandler: false);
         var uri = new UriBuilder(new Uri(new Uri(owner.InternalOrigin), path.TrimStart('/')))
         {
-            Scheme = Uri.UriSchemeWss
+            Scheme = Uri.UriSchemeWss,
         }.Uri;
 
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            context.RequestAborted, drain.Deadline);
-        lifetime.CancelAfter(path == "/_private-access/relay/streams"
-            ? TimeSpan.FromSeconds(35)
-            : TimeSpan.FromSeconds(10));
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, drain.Deadline);
+        lifetime.CancelAfter(
+            path == "/_private-access/relay/streams" ? TimeSpan.FromSeconds(35) : TimeSpan.FromSeconds(10));
         try
         {
             await upstream.ConnectAsync(uri, invoker, lifetime.Token);
@@ -70,8 +69,8 @@ public sealed class PrivateAccessPeerRelay(
             await ObserveAsync(forward);
             await ObserveAsync(backward);
         }
-        catch (Exception exception) when (exception is WebSocketException or HttpRequestException or
-            IOException or OperationCanceledException)
+        catch (Exception exception) when (exception is WebSocketException or HttpRequestException or IOException
+                                              or OperationCanceledException)
         {
             if (context.Response.HasStarted)
                 context.Abort();
@@ -80,7 +79,9 @@ public sealed class PrivateAccessPeerRelay(
         }
     }
 
-    private static async Task PumpAsync(WebSocket source, WebSocket destination,
+    private static async Task PumpAsync(
+        WebSocket source,
+        WebSocket destination,
         CancellationToken cancellationToken)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(16 * 1024);
@@ -93,13 +94,18 @@ public sealed class PrivateAccessPeerRelay(
                 {
                     await destination.CloseOutputAsync(
                         source.CloseStatus ?? WebSocketCloseStatus.NormalClosure,
-                        source.CloseStatusDescription, cancellationToken);
+                        source.CloseStatusDescription,
+                        cancellationToken);
                     return;
                 }
+
                 if (result.MessageType != WebSocketMessageType.Binary)
                     throw new InvalidDataException("Private Access relay requires binary frames.");
-                await destination.SendAsync(buffer.AsMemory(0, result.Count),
-                    WebSocketMessageType.Binary, result.EndOfMessage, cancellationToken);
+                await destination.SendAsync(
+                    buffer.AsMemory(0, result.Count),
+                    WebSocketMessageType.Binary,
+                    result.EndOfMessage,
+                    cancellationToken);
             }
         }
         finally
@@ -110,9 +116,13 @@ public sealed class PrivateAccessPeerRelay(
 
     private static async Task ObserveAsync(Task task)
     {
-        try { await task; }
-        catch (Exception exception) when (exception is WebSocketException or IOException or
-            OperationCanceledException or InvalidDataException)
-        { }
+        try
+        {
+            await task;
+        }
+        catch (Exception exception) when (exception is WebSocketException or IOException or OperationCanceledException
+                                              or InvalidDataException)
+        {
+        }
     }
 }

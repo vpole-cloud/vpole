@@ -1,11 +1,15 @@
 namespace Pole.Observation;
 
-public class ObservationReadBudget(TimeProvider clock)
-    : IObservationReadBudget, IDisposable
+public class ObservationReadBudget(
+    TimeProvider clock
+) : IObservationReadBudget, IDisposable
 {
     private readonly SemaphoreSlim _capacity = new(ObservationPolicy.ConcurrentReads);
 
-    public async Task<T> ReadAsync<T>(Func<CancellationToken, Task<T>> read,
+    public void Dispose() => _capacity.Dispose();
+
+    public async Task<T> ReadAsync<T>(
+        Func<CancellationToken, Task<T>> read,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(read);
@@ -29,6 +33,4 @@ public class ObservationReadBudget(TimeProvider clock)
             _capacity.Release();
         }
     }
-
-    public void Dispose() => _capacity.Dispose();
 }

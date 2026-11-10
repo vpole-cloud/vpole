@@ -2,17 +2,20 @@ namespace Pole.Encryption;
 
 public sealed record KeyEncryptionKeyIdentity(
     string Id,
-    int Version);
+    int Version
+);
 
 public sealed record KeyEncryptionKeyDescriptor(
     KeyEncryptionKeyIdentity Identity,
     string Algorithm,
-    int AlgorithmVersion);
+    int AlgorithmVersion
+);
 
 public sealed record WrappedDataEncryptionKey(
     byte[] Ciphertext,
     byte[] Nonce,
-    byte[] AuthenticationTag)
+    byte[] AuthenticationTag
+)
 {
     public override string ToString() => "WrappedDataEncryptionKey([REDACTED])";
 }

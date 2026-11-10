@@ -7,7 +7,9 @@ namespace Pole.Tests.E2E;
 public sealed class ApiProblemCodeTests
 {
     [Theory]
-    [InlineData("{\"code\":\"resource-deployments.changed\",\"detail\":\"private-canary\",\"token\":\"private-canary\"}", "resource-deployments.changed")]
+    [InlineData(
+        "{\"code\":\"resource-deployments.changed\",\"detail\":\"private-canary\",\"token\":\"private-canary\"}",
+        "resource-deployments.changed")]
     [InlineData("{\"code\":\"web-services.update.concurrent-change\"}", "web-services.update.concurrent-change")]
     [InlineData("{\"detail\":\"private-canary\"}", "unavailable")]
     [InlineData("{\"code\":42}", "unavailable")]

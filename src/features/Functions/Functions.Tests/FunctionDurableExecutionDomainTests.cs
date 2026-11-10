@@ -95,11 +95,7 @@ public sealed class FunctionDurableExecutionDomainTests
             Now.AddSeconds(5),
             Now.AddMinutes(1)));
 
-        var secondAttempt = retrying.AcquireDispatchLease(
-            "dispatcher-2",
-            "lease-2",
-            retryAt,
-            retryAt.AddMinutes(1));
+        var secondAttempt = retrying.AcquireDispatchLease("dispatcher-2", "lease-2", retryAt, retryAt.AddMinutes(1));
 
         Assert.Equal(2, secondAttempt.AttemptNumber);
         Assert.Equal(FunctionInvocationState.Dispatching, secondAttempt.State);
@@ -110,19 +106,12 @@ public sealed class FunctionDurableExecutionDomainTests
     public void Deferred_pre_start_dispatch_preserves_attempt_number_and_due_time()
     {
         var invocation = CreateInvocation();
-        var dispatching = invocation.AcquireDispatchLease(
-            "dispatcher-1",
-            "lease-1",
-            Now,
-            Now.AddMinutes(1));
+        var dispatching = invocation.AcquireDispatchLease("dispatcher-1", "lease-1", Now, Now.AddMinutes(1));
         var retryAt = Now.AddSeconds(10);
         var deferred = dispatching.DeferDispatch(
             "lease-1",
             retryAt,
-            FunctionInvocationError.Create(
-                "coordination_unavailable",
-                "Try dispatching again.",
-                retryable: true),
+            FunctionInvocationError.Create("coordination_unavailable", "Try dispatching again.", retryable: true),
             Now.AddSeconds(1));
 
         Assert.Equal(FunctionInvocationState.Pending, deferred.State);
@@ -135,11 +124,7 @@ public sealed class FunctionDurableExecutionDomainTests
             Now.AddSeconds(5),
             Now.AddMinutes(1)));
 
-        var redispatched = deferred.AcquireDispatchLease(
-            "dispatcher-2",
-            "lease-2",
-            retryAt,
-            retryAt.AddMinutes(1));
+        var redispatched = deferred.AcquireDispatchLease("dispatcher-2", "lease-2", retryAt, retryAt.AddMinutes(1));
 
         Assert.Equal(1, redispatched.AttemptNumber);
         Assert.Equal(FunctionInvocationState.Dispatching, redispatched.State);
@@ -148,26 +133,15 @@ public sealed class FunctionDurableExecutionDomainTests
     [Fact]
     public void Dispatch_lease_can_be_renewed_before_cold_activation_and_execution()
     {
-        var dispatching = CreateInvocation().AcquireDispatchLease(
-            "dispatcher-1",
-            "lease-1",
-            Now,
-            Now.AddSeconds(30));
+        var dispatching = CreateInvocation().AcquireDispatchLease("dispatcher-1", "lease-1", Now, Now.AddSeconds(30));
 
-        var renewed = dispatching.RenewDispatchLease(
-            "lease-1",
-            Now.AddSeconds(20),
-            Now.AddMinutes(2));
+        var renewed = dispatching.RenewDispatchLease("lease-1", Now.AddSeconds(20), Now.AddMinutes(2));
 
         Assert.Equal(Now.AddMinutes(2), renewed.Lease?.ExpiresAtUtc);
         Assert.Equal(Now.AddSeconds(20), renewed.UpdatedAtUtc);
         Assert.True(renewed.HasValidState());
-        Assert.Throws<InvalidOperationException>(() => dispatching.MarkRunning(
-            "lease-1",
-            Now.AddSeconds(40)));
-        Assert.Equal(
-            FunctionInvocationState.Running,
-            renewed.MarkRunning("lease-1", Now.AddSeconds(40)).State);
+        Assert.Throws<InvalidOperationException>(() => dispatching.MarkRunning("lease-1", Now.AddSeconds(40)));
+        Assert.Equal(FunctionInvocationState.Running, renewed.MarkRunning("lease-1", Now.AddSeconds(40)).State);
     }
 
     [Fact]
@@ -300,30 +274,28 @@ public sealed class FunctionDurableExecutionDomainTests
         Assert.Equal(Now.UtcDateTime, meter.OccurredAtUtcDateTime);
     }
 
-    private static FunctionTimerState CreateTimer() =>
-        FunctionTimerState.Create(
-            "tenant-1",
-            "app-1",
-            "revision-1",
-            "trigger-1",
-            "cleanup",
-            "*/5 * * * *",
-            3,
-            TimerConcurrencyPolicy.Forbid,
-            TimerMisfirePolicy.FireOnce,
-            new FunctionRetryPolicy(3, [5, 30]),
-            Now.AddMinutes(5),
-            Now);
+    private static FunctionTimerState CreateTimer() => FunctionTimerState.Create(
+        "tenant-1",
+        "app-1",
+        "revision-1",
+        "trigger-1",
+        "cleanup",
+        "*/5 * * * *",
+        3,
+        TimerConcurrencyPolicy.Forbid,
+        TimerMisfirePolicy.FireOnce,
+        new FunctionRetryPolicy(3, [5, 30]),
+        Now.AddMinutes(5),
+        Now);
 
-    private static FunctionInvocation CreateInvocation() =>
-        FunctionInvocation.CreateTimer(
-            "tenant-1",
-            "app-1",
-            "revision-1",
-            "trigger-1",
-            "cleanup",
-            3,
-            Now.AddMinutes(5),
-            new FunctionRetryPolicy(3, [5, 30]),
-            Now);
+    private static FunctionInvocation CreateInvocation() => FunctionInvocation.CreateTimer(
+        "tenant-1",
+        "app-1",
+        "revision-1",
+        "trigger-1",
+        "cleanup",
+        3,
+        Now.AddMinutes(5),
+        new FunctionRetryPolicy(3, [5, 30]),
+        Now);
 }

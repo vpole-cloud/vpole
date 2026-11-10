@@ -19,15 +19,17 @@ public sealed record PrivateAccessGrant(
     DateTime ExpiresAtUtc,
     long Revision,
     long ReferenceFence,
-    PrivateAccessGrantState State) : ITenantOwned
+    PrivateAccessGrantState State
+) : ITenantOwned
 {
     public bool IsActive(DateTime nowUtc) => State is ActivePrivateAccessGrant && ExpiresAtUtc > nowUtc;
 
-    public PrivateAccessGrant Revoke(string actorUserId, DateTime nowUtc) =>
-        State is RevokedPrivateAccessGrant ? this : this with
+    public PrivateAccessGrant Revoke(string actorUserId, DateTime nowUtc) => State is RevokedPrivateAccessGrant
+        ? this
+        : this with
         {
             State = new RevokedPrivateAccessGrant(nowUtc, actorUserId),
-            Revision = checked(Revision + 1)
+            Revision = checked(Revision + 1),
         };
 }
 
@@ -41,7 +43,8 @@ public sealed record ActivePrivateAccessGrant : PrivateAccessGrantState;
 [BsonDiscriminator("Revoked")]
 public sealed record RevokedPrivateAccessGrant(
     DateTime RevokedAtUtc,
-    string RevokedByUserId) : PrivateAccessGrantState;
+    string RevokedByUserId
+) : PrivateAccessGrantState;
 
 public static class PrivateAccessGrantFactory
 {

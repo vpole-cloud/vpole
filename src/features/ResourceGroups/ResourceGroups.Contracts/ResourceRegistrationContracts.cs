@@ -6,7 +6,8 @@ namespace Pole.Features.ResourceGroups.Contracts;
 public sealed record ResourceRegistrationDescriptor(
     ResourceTypeId ResourceTypeId,
     string ResourceId,
-    string DisplayName);
+    string DisplayName
+);
 
 public sealed record RegisteredResource(
     string RegistrationId,
@@ -17,19 +18,26 @@ public sealed record RegisteredResource(
     string DisplayName,
     string? OwningPluginId,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc
+);
 
-public sealed record ResourceRegistrationResourceGroupNotFound(string ResourceGroupId);
+public sealed record ResourceRegistrationResourceGroupNotFound(
+    string ResourceGroupId
+);
 
-public sealed record ResourceRegistrationResourceGroupDeleting(string ResourceGroupId);
+public sealed record ResourceRegistrationResourceGroupDeleting(
+    string ResourceGroupId
+);
 
 public sealed record ResourceRegistrationIdentityConflict(
     ResourceTypeId ResourceTypeId,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record ResourceRegistrationNotFound(
     ResourceTypeId ResourceTypeId,
-    string ResourceId);
+    string ResourceId
+);
 
 public union ResourceRegistrationMutationError(
     ResourceRegistrationResourceGroupNotFound,
@@ -37,15 +45,11 @@ public union ResourceRegistrationMutationError(
     ResourceRegistrationIdentityConflict,
     ResourceRegistrationNotFound);
 
-public union ResourceRegistrationOutcome(
-    RegisteredResource,
-    ResourceRegistrationMutationError);
+public union ResourceRegistrationOutcome(RegisteredResource, ResourceRegistrationMutationError);
 
 public sealed record ResourceUnregistered;
 
-public union ResourceUnregistrationOutcome(
-    ResourceUnregistered,
-    ResourceRegistrationMutationError);
+public union ResourceUnregistrationOutcome(ResourceUnregistered, ResourceRegistrationMutationError);
 
 public interface IResourceRegistrar
 {
@@ -80,32 +84,38 @@ public delegate Task<RegisteredResource?> LoadRegisteredResource(
 public sealed record RegisterResourceRequest(
     string TenantId,
     string ResourceGroupId,
-    ResourceRegistrationDescriptor Resource);
+    ResourceRegistrationDescriptor Resource
+);
 
 public sealed record UpdateRegisteredResourceRequest(
     string TenantId,
     string ResourceGroupId,
-    ResourceRegistrationDescriptor Resource);
+    ResourceRegistrationDescriptor Resource
+);
 
 public sealed record UnregisterResourceRequest(
     string TenantId,
     string ResourceGroupId,
     ResourceTypeId ResourceTypeId,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record FenceRegisteredResourceRequest(
     string TenantId,
     ResourceTypeId ResourceTypeId,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record LoadRegisteredResourceRequest(
     string TenantId,
     ResourceTypeId ResourceTypeId,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record ResourceRegistrationPlanningSnapshot(
     RegisteredResource Resource,
-    long ReferenceFence);
+    long ReferenceFence
+);
 
 public sealed record ResourceRegistrationSnapshotFenced;
 

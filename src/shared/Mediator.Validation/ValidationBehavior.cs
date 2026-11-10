@@ -6,8 +6,8 @@ namespace Pole.Mediator;
 
 public class ValidationBehavior<TRequest, TResponse>(
     ILogger<ValidationBehavior<TRequest, TResponse>> logger,
-    IEnumerable<IValidator<TRequest>> validators)
-    : IPipelineBehavior<TRequest, TResponse>
+    IEnumerable<IValidator<TRequest>> validators
+) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
@@ -29,19 +29,11 @@ public class ValidationBehavior<TRequest, TResponse>(
         if (failures.Length == 0)
             return await next();
 
-        var errorMap = failures
-            .GroupBy(f => f.PropertyName ?? string.Empty)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Select(f => f.ErrorMessage).Distinct().ToArray()
-            );
+        var errorMap = failures.GroupBy(f => f.PropertyName ?? "")
+            .ToDictionary(g => g.Key, g => g.Select(f => f.ErrorMessage).Distinct().ToArray());
 
-        logger.LogWarning(
-            "Validation failed for {RequestType}. Errors: {Errors}",
-            typeof(TRequest).Name,
-            errorMap);
+        logger.LogWarning("Validation failed for {RequestType}. Errors: {Errors}", typeof(TRequest).Name, errorMap);
 
-        return new PipelineRejected(
-            new RequestValidationRejected(errorMap));
+        return new PipelineRejected(new RequestValidationRejected(errorMap));
     }
 }

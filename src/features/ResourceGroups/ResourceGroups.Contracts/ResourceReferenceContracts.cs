@@ -5,16 +5,15 @@ namespace Pole.Features.ResourceGroups.Contracts;
 
 public sealed record ResourceScopeConsumerReference(
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 // Admission takes the group write fence shared by deletion and unregistration.
 public sealed record ResourceScopeReferenceUnavailable;
 
 public sealed record ResourceScopeReferenceAdmitted;
 
-public union AdmitResourceScopeReferenceOutcome(
-    ResourceScopeReferenceAdmitted,
-    ResourceScopeReferenceUnavailable);
+public union AdmitResourceScopeReferenceOutcome(ResourceScopeReferenceAdmitted, ResourceScopeReferenceUnavailable);
 
 public delegate Task<AdmitResourceScopeReferenceOutcome> AdmitResourceScopeReference(
     AdmitResourceScopeReferenceRequest request,
@@ -25,4 +24,5 @@ public sealed record AdmitResourceScopeReferenceRequest(
     string TenantId,
     string ResourceGroupId,
     string IsolationScopeId,
-    ResourceScopeConsumerReference? Consumer);
+    ResourceScopeConsumerReference? Consumer
+);

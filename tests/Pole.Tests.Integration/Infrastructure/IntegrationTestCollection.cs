@@ -21,18 +21,24 @@ public sealed class IntegrationTestCollection : ICollectionFixture<MongoReplicaS
 
 [CollectionDefinition(IntegrationTestCollection.Global2)]
 public sealed class GlobalTwoCollection : ICollectionFixture<MongoReplicaSetFixture>;
+
 [CollectionDefinition(IntegrationTestCollection.Global3)]
 public sealed class GlobalThreeCollection : ICollectionFixture<MongoReplicaSetFixture>;
+
 [CollectionDefinition(IntegrationTestCollection.Global4)]
 public sealed class GlobalFourCollection : ICollectionFixture<MongoReplicaSetFixture>;
+
 [CollectionDefinition(IntegrationTestCollection.Exclusive, DisableParallelization = true)]
 public sealed class ProcessStateCollection : ICollectionFixture<MongoReplicaSetFixture>;
 
 [CollectionDefinition(IntegrationTestCollection.Tenant1)]
 public sealed class TenantOneCollection : ICollectionFixture<MongoReplicaSetFixture>;
+
 [CollectionDefinition(IntegrationTestCollection.Tenant2)]
 public sealed class TenantTwoCollection : ICollectionFixture<MongoReplicaSetFixture>;
+
 [CollectionDefinition(IntegrationTestCollection.Tenant3)]
 public sealed class TenantThreeCollection : ICollectionFixture<MongoReplicaSetFixture>;
+
 [CollectionDefinition(IntegrationTestCollection.Tenant4)]
 public sealed class TenantFourCollection : ICollectionFixture<MongoReplicaSetFixture>;

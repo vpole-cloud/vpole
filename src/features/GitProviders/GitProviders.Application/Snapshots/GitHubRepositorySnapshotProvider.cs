@@ -13,19 +13,20 @@ internal sealed class GitHubRepositorySnapshotProvider(
     LoadGitProviderConnection loadConnection,
     IGitHubAppClient client,
     RepositoryManifestArchiveReader reader,
-    RepositoryArchiveOptions options) : IRepositorySnapshotProvider
+    RepositoryArchiveOptions options
+) : IRepositorySnapshotProvider
 {
     public string Provider => nameof(GitProviderKind.GitHub);
 
     public async Task<CheckRepositoryAccessOutcome> CheckAccessAsync(
         RepositorySourceReference reference,
         CancellationToken cancellationToken) => await LoadAccessAsync(reference, cancellationToken) switch
-        {
-            GitHubRepositoryAccess access => new RepositoryAccessGranted(access.Repository.HtmlUrl),
-            RepositoryAccessDenied denied => denied,
-            RepositoryNotFound missing => missing,
-            RepositoryTemporarilyUnavailable unavailable => unavailable
-        };
+    {
+        GitHubRepositoryAccess access => new RepositoryAccessGranted(access.Repository.HtmlUrl),
+        RepositoryAccessDenied denied => denied,
+        RepositoryNotFound missing => missing,
+        RepositoryTemporarilyUnavailable unavailable => unavailable,
+    };
 
     public async Task<ResolveRepositoryCommitOutcome> ResolveCommitAsync(
         ResolveRepositoryCommitRequest request,
@@ -38,12 +39,14 @@ internal sealed class GitHubRepositorySnapshotProvider(
                 RepositoryAccessDenied denied => denied,
                 RepositoryNotFound missing => missing,
                 RepositoryTemporarilyUnavailable temporary => temporary,
-                GitHubRepositoryAccess => throw new InvalidOperationException("Repository access was already handled.")
+                GitHubRepositoryAccess => throw new InvalidOperationException("Repository access was already handled."),
             };
 
         try
         {
-            var commit = await client.ResolveCommitAsync(new(repository, request.Branch), cancellationToken);
+            var commit = await client.ResolveCommitAsync(
+                new GitHubResolveCommitRequest(repository, request.Branch),
+                cancellationToken);
             return IsCommit(commit)
                 ? new RepositoryCommitResolved(commit.ToLowerInvariant())
                 : new RepositoryTemporarilyUnavailable();
@@ -79,12 +82,14 @@ internal sealed class GitHubRepositorySnapshotProvider(
                 RepositoryAccessDenied denied => denied,
                 RepositoryNotFound missing => missing,
                 RepositoryTemporarilyUnavailable temporary => temporary,
-                GitHubRepositoryAccess => throw new InvalidOperationException("Repository access was already handled.")
+                GitHubRepositoryAccess => throw new InvalidOperationException("Repository access was already handled."),
             };
 
         try
         {
-            var tree = await client.ReadCommitTreeAsync(new(repository, request.Commit), cancellationToken);
+            var tree = await client.ReadCommitTreeAsync(
+                new GitHubReadTreeRequest(repository, request.Commit),
+                cancellationToken);
             if (tree.Truncated || tree.Entries.Count > options.MaxEntries)
                 return new RepositorySnapshotRejected(RepositorySnapshotRejection.SizeLimit);
 
@@ -95,21 +100,23 @@ internal sealed class GitHubRepositorySnapshotProvider(
                 Mode = FileMode.CreateNew,
                 Access = FileAccess.ReadWrite,
                 Share = FileShare.None,
-                Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose
+                Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose,
             };
             if (!OperatingSystem.IsWindows())
                 fileOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
             await using var archive = new FileStream(path, fileOptions);
             using var limited = new ArchiveLimitStream(archive, options.MaxCompressedBytes);
-            await client.DownloadRepositoryArchiveAsync(repository.InstallationId,
+            await client.DownloadRepositoryArchiveAsync(
+                repository.InstallationId,
                 repository.Repository.Id,
                 request.Commit,
                 limited,
                 cancellationToken);
             await archive.FlushAsync(cancellationToken);
             archive.Position = 0;
-            return await reader.ReadAsync(new(archive, request.Commit, request.ManifestDirectory, tree),
+            return await reader.ReadAsync(
+                new ReadManifestArchiveRequest(archive, request.Commit, request.ManifestDirectory, tree),
                 cancellationToken);
         }
         catch (ArchiveSizeLimitException)
@@ -149,7 +156,8 @@ internal sealed class GitHubRepositorySnapshotProvider(
 
         try
         {
-            var repository = await client.GetRepositoryAsync(connection.ExternalInstallationId,
+            var repository = await client.GetRepositoryAsync(
+                connection.ExternalInstallationId,
                 reference.ExternalRepositoryId,
                 ct);
             return new GitHubRepositoryAccess(connection.ExternalInstallationId, repository);
@@ -171,16 +179,12 @@ internal sealed class GitHubRepositorySnapshotProvider(
     private static bool IsCommit(string commit) => commit is { Length: 40 } && commit.All(char.IsAsciiHexDigit);
 
     private static bool AccessDenied(GitHubApiException exception) => !exception.IsRateLimited &&
-                                                                      (exception.StatusCode is HttpStatusCode
-                                                                           .Unauthorized or HttpStatusCode.Forbidden ||
-                                                                       exception.StatusCode ==
-                                                                       HttpStatusCode.NotFound &&
-                                                                       exception.Target ==
-                                                                       GitHubRequestTarget.Installation);
+        (exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ||
+            (exception.StatusCode == HttpStatusCode.NotFound && exception.Target == GitHubRequestTarget.Installation));
 
     private static bool Temporary(Exception exception, CancellationToken ct) =>
         exception is GitHubApiException or HttpRequestException or JsonException ||
-        exception is OperationCanceledException && !ct.IsCancellationRequested;
+        (exception is OperationCanceledException && !ct.IsCancellationRequested);
 }
 
 internal union RepositoryAccessOutcome(

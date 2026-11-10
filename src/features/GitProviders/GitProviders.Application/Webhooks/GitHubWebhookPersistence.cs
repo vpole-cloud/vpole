@@ -13,7 +13,8 @@ public sealed class GitHubWebhookPersistence(
     IMongoCollection<GitHubDeliveryReceipt> gitHubDeliveryReceipt,
     IMongoCollection<GitProviderConnection> gitProviderConnections,
     MongoRunTransaction transactions,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox
+)
 {
     internal const string CollectionName = "GitHubDeliveryReceipts";
 
@@ -36,19 +37,23 @@ public sealed class GitHubWebhookPersistence(
 
                 if (push is not null)
                 {
-                    var connection = await gitProviderConnections
-                        .Find(tx.Session, GitProviderFilters.ConnectionByInstallation(push.InstallationId))
+                    var connection = await gitProviderConnections.Find(
+                            tx.Session,
+                            GitProviderFilters.ConnectionByInstallation(push.InstallationId))
                         .FirstOrDefaultAsync(token);
                     if (connection is not null)
-                        await outbox(tx.Session,
+                        await outbox(
+                            tx.Session,
                             [
-                                OutboxWrite.Create(new GitRepositoryPushReceived(receipt.Id,
-                                    connection.Provider.ToString(),
-                                    connection.Id,
-                                    push.RepositoryId,
-                                    push.Branch,
-                                    push.HeadCommitHint,
-                                    EventCore.Create(connection.TenantId)))
+                                OutboxWrite.Create(
+                                    new GitRepositoryPushReceived(
+                                        receipt.Id,
+                                        connection.Provider.ToString(),
+                                        connection.Id,
+                                        push.RepositoryId,
+                                        push.Branch,
+                                        push.HeadCommitHint,
+                                        EventCore.Create(connection.TenantId))),
                             ],
                             token);
                 }
@@ -62,7 +67,8 @@ public sealed class GitHubWebhookPersistence(
         {
             return await AttemptAsync();
         }
-        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIdIndex(exception,
+        catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIdIndex(
+                                                        exception,
                                                         receipts.CollectionNamespace.CollectionName))
         {
             return await AttemptAsync();

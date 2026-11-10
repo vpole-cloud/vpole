@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using k8s;
 using k8s.Models;
@@ -8,7 +9,8 @@ namespace Pole.Features.Functions.Runtime.Endpoints;
 public sealed record FunctionEndpointSlicePage(
     IList<V1EndpointSlice> Items,
     string? ResourceVersion,
-    string? ContinuationToken);
+    string? ContinuationToken
+);
 
 public interface IFunctionEndpointSliceSource
 {
@@ -23,8 +25,9 @@ public interface IFunctionEndpointSliceSource
         CancellationToken cancellationToken);
 }
 
-public sealed class KubernetesFunctionEndpointSliceSource(IKubernetesClientProvider kubernetesClientProvider)
-    : IFunctionEndpointSliceSource
+public sealed class KubernetesFunctionEndpointSliceSource(
+    IKubernetesClientProvider kubernetesClientProvider
+) : IFunctionEndpointSliceSource
 {
     private const string ServiceNameLabel = "kubernetes.io/service-name";
 
@@ -33,9 +36,7 @@ public sealed class KubernetesFunctionEndpointSliceSource(IKubernetesClientProvi
         string? continuationToken,
         CancellationToken cancellationToken)
     {
-        var kubernetes = await kubernetesClientProvider.GetAsync(
-            deploymentTargetId,
-            cancellationToken);
+        var kubernetes = await kubernetesClientProvider.GetAsync(deploymentTargetId, cancellationToken);
         var response = await kubernetes.DiscoveryV1.ListEndpointSliceForAllNamespacesAsync(
             allowWatchBookmarks: false,
             continueParameter: continuationToken,
@@ -51,11 +52,9 @@ public sealed class KubernetesFunctionEndpointSliceSource(IKubernetesClientProvi
     public async IAsyncEnumerable<(WatchEventType Type, V1EndpointSlice Slice)> WatchAsync(
         string deploymentTargetId,
         string resourceVersion,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var kubernetes = await kubernetesClientProvider.GetAsync(
-            deploymentTargetId,
-            cancellationToken);
+        var kubernetes = await kubernetesClientProvider.GetAsync(deploymentTargetId, cancellationToken);
         Exception? watchError = null;
         var events = kubernetes.DiscoveryV1.WatchListEndpointSliceForAllNamespacesAsync(
             allowWatchBookmarks: true,

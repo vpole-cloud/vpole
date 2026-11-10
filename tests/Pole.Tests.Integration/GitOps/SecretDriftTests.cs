@@ -1,9 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
@@ -12,22 +10,25 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class SecretDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class SecretDriftTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task SecretSameCommitRepairsMetadataAndRotationRemainsNoOpWithoutValueDisclosure()
     {
         var files = SecretSnapshot();
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
-        var secret = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Name == "drift-secret").SingleAsync();
-        await Secrets.UpdateOneAsync(item => item.Id == secret.Id,
+        var secret = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Name == "drift-secret")
+            .SingleAsync();
+        await Secrets.UpdateOneAsync(
+            item => item.Id == secret.Id,
             Builders<Secret>.Update.Set(item => item.Purpose, "manual purpose").Inc(item => item.Revision, 1));
         var repaired = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, repaired.Status);
         Assert.Equal(secret.Purpose, (await Secrets.Find(item => item.Id == secret.Id).SingleAsync()).Purpose);
         var queries = Services.GetRequiredService<GitRepositoryQueries>();
-        var operations = await queries.OperationsAsync(Data.TenantId, source, repaired.Context!.RunId, 1, 20,
-            default);
+        var operations = await queries.OperationsAsync(Data.TenantId, source, repaired.Context!.RunId, 1, 20, default);
         var plan = operations!.Items.Single(item => item.Kind == "Secret").Plan!;
         Assert.Equal(GitPlannedAction.Update, plan.Action);
         Assert.Equal<string>(["configuration.purpose"], plan.ChangedFields);

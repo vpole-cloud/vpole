@@ -1,12 +1,8 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Features.Core.Kubernetes;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain.Observation;
-using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Application.Observation;
 
@@ -15,7 +11,7 @@ internal static class ObservationValueMappings
     private static readonly HashSet<string> UnavailableReasons = new(StringComparer.Ordinal)
     {
         "Unsupported", "Timeout", "TargetUnavailable", "NotFound", "Forbidden", "ClusterUnavailable",
-        "Superseded", "OwnershipMismatch", "OwnershipNotVerified", "Unavailable", "BindingChanged"
+        "Superseded", "OwnershipMismatch", "OwnershipNotVerified", "Unavailable", "BindingChanged",
     };
 
     internal static ObservationContextPin Pin(ResourceDeploymentObservationContext context) => new(
@@ -34,10 +30,14 @@ internal static class ObservationValueMappings
 
     internal static StoredObservation Store(WorkloadObservation value) => value switch
     {
-        UnavailableWorkloadObservation unavailable => new("Unavailable", SafeUnavailable(unavailable.Reason), null),
-        ObservedWorkload observed => new("Observed",
+        UnavailableWorkloadObservation unavailable => new StoredObservation(
+            "Unavailable",
+            SafeUnavailable(unavailable.Reason),
+            null),
+        ObservedWorkload observed => new StoredObservation(
+            "Observed",
             null,
-            new(
+            new StoredObservedWorkload(
                 observed.Ready && !observed.PodsTruncated && observed.Pods.Count <= 100,
                 observed.RolloutCurrent && !observed.PodsTruncated && observed.Pods.Count <= 100,
                 observed.DesiredReplicas,
@@ -46,53 +46,78 @@ internal static class ObservationValueMappings
                 observed.ReadyReplicas,
                 observed.AvailableReplicas,
                 observed.PodsTruncated || observed.Pods.Count > 100,
-                observed.Pods.Take(100).Select(pod => new StoredPod(Name(pod.Name),
-                    Phase(pod.Phase),
-                    pod.Ready,
-                    pod.CurrentGeneration,
-                    pod.RestartCount,
-                    Reasons(pod.Reasons))).OrderBy(pod => pod.Name, StringComparer.Ordinal).ToArray(),
-                observed.Events.Take(32).Select(item => new StoredEvent(
-                    KubernetesWorkloadObservation.SafeReason(item.Reason),
-                    item.Count,
-                    Utc(item.LastSeenAtUtc))).ToArray(),
-                SafeOptionalUnavailable(observed.EventsUnavailableReason)))
+                observed.Pods
+                    .Take(100)
+                    .Select(pod => new StoredPod(
+                        Name(pod.Name),
+                        Phase(pod.Phase),
+                        pod.Ready,
+                        pod.CurrentGeneration,
+                        pod.RestartCount,
+                        Reasons(pod.Reasons)))
+                    .OrderBy(pod => pod.Name, StringComparer.Ordinal)
+                    .ToArray(),
+                observed.Events
+                    .Take(32)
+                    .Select(item => new StoredEvent(
+                        KubernetesWorkloadObservation.SafeReason(item.Reason),
+                        item.Count,
+                        Utc(item.LastSeenAtUtc)))
+                    .ToArray(),
+                SafeOptionalUnavailable(observed.EventsUnavailableReason))),
     };
 
     internal static StoredDiagnostics? Store(WorkloadDiagnostics? value) => value switch
     {
         null => null,
-        UnavailableWorkloadDiagnostics unavailable => new("Unavailable", SafeUnavailable(unavailable.Reason), null),
-        AvailableWorkloadDiagnostics available => new("Available",
+        UnavailableWorkloadDiagnostics unavailable => new StoredDiagnostics(
+            "Unavailable",
+            SafeUnavailable(unavailable.Reason),
+            null),
+        AvailableWorkloadDiagnostics available => new StoredDiagnostics(
+            "Available",
             null,
-            new(
-                available.Instances.Take(100).Select(instance => new StoredInstance(Identity(instance.Uid),
+            new StoredAvailableDiagnostics(
+                available.Instances
+                    .Take(100)
+                    .Select(instance => new StoredInstance(
+                        Identity(instance.Uid),
                         Name(instance.Name),
                         Phase(instance.Phase),
                         instance.Ready,
                         instance.CurrentGeneration,
                         instance.RestartCount,
                         Reasons(instance.Reasons),
-                        instance.Containers.Where(container => container.Kind is "Application" or "Init").Take(64)
-                            .Select(container =>
-                                new StoredContainer(Name(container.Name), container.Kind, container.PreviousAvailable))
+                        instance.Containers
+                            .Where(container => container.Kind is "Application" or "Init")
+                            .Take(64)
+                            .Select(container => new StoredContainer(
+                                Name(container.Name),
+                                container.Kind,
+                                container.PreviousAvailable))
                             .ToArray(),
                         instance.ContainersTruncated || instance.Containers.Count > 64))
-                    .OrderBy(instance => instance.Uid, StringComparer.Ordinal).ToArray(),
+                    .OrderBy(instance => instance.Uid, StringComparer.Ordinal)
+                    .ToArray(),
                 available.InstancesTruncated || available.Instances.Count > 100,
-                available.Events.Take(32).Select(item => new StoredDiagnosticEvent(ObjectKind(item.ObjectKind),
-                    Name(item.ObjectName),
-                    KubernetesWorkloadObservation.SafeReason(item.Reason),
-                    item.Count,
-                    Utc(item.LastSeenAtUtc))).ToArray(),
+                available.Events
+                    .Take(32)
+                    .Select(item => new StoredDiagnosticEvent(
+                        ObjectKind(item.ObjectKind),
+                        Name(item.ObjectName),
+                        KubernetesWorkloadObservation.SafeReason(item.Reason),
+                        item.Count,
+                        Utc(item.LastSeenAtUtc)))
+                    .ToArray(),
                 available.EventsTruncated || available.Events.Count > 32,
-                SafeOptionalUnavailable(available.EventsUnavailableReason)))
+                SafeOptionalUnavailable(available.EventsUnavailableReason))),
     };
 
     internal static WorkloadObservation Load(StoredObservation value) => value switch
     {
         { Kind: "Unavailable", Reason: { } reason, Observed: null } => new UnavailableWorkloadObservation(reason),
-        { Kind: "Observed", Reason: null, Observed: { } observed } => new ObservedWorkload(observed.Ready,
+        { Kind: "Observed", Reason: null, Observed: { } observed } => new ObservedWorkload(
+            observed.Ready,
             observed.RolloutCurrent,
             observed.DesiredReplicas,
             observed.CurrentReplicas,
@@ -100,16 +125,20 @@ internal static class ObservationValueMappings
             observed.ReadyReplicas,
             observed.AvailableReplicas,
             observed.PodsTruncated,
-            observed.Pods.Select(pod => new ObservedWorkloadPod(pod.Name,
-                pod.Phase,
-                pod.Ready,
-                pod.CurrentGeneration,
-                pod.RestartCount,
-                pod.Reasons)).ToArray(),
-            observed.Events.Select(item => new ObservedWorkloadEvent(item.Reason, item.Count, item.LastSeenAtUtc))
+            observed.Pods
+                .Select(pod => new ObservedWorkloadPod(
+                    pod.Name,
+                    pod.Phase,
+                    pod.Ready,
+                    pod.CurrentGeneration,
+                    pod.RestartCount,
+                    pod.Reasons))
+                .ToArray(),
+            observed.Events
+                .Select(item => new ObservedWorkloadEvent(item.Reason, item.Count, item.LastSeenAtUtc))
                 .ToArray(),
             observed.EventsUnavailableReason),
-        _ => throw new InvalidOperationException("Invalid stored observation kind.")
+        _ => throw new InvalidOperationException("Invalid stored observation kind."),
     };
 
     internal static WorkloadDiagnostics? Load(StoredDiagnostics? value) => value switch
@@ -117,30 +146,39 @@ internal static class ObservationValueMappings
         null => null,
         { Kind: "Unavailable", Reason: { } reason, Available: null } => new UnavailableWorkloadDiagnostics(reason),
         { Kind: "Available", Reason: null, Available: { } available } => new AvailableWorkloadDiagnostics(
-            available.Instances.Select(instance => new DiagnosticWorkloadInstance(instance.Uid,
-                instance.Name,
-                instance.Phase,
-                instance.Ready,
-                instance.CurrentGeneration,
-                instance.RestartCount,
-                instance.Reasons,
-                instance.Containers.Select(container =>
-                        new DiagnosticWorkloadContainer(container.Name, container.Kind, container.PreviousAvailable))
-                    .ToArray(),
-                instance.ContainersTruncated)).ToArray(),
+            available.Instances
+                .Select(instance => new DiagnosticWorkloadInstance(
+                    instance.Uid,
+                    instance.Name,
+                    instance.Phase,
+                    instance.Ready,
+                    instance.CurrentGeneration,
+                    instance.RestartCount,
+                    instance.Reasons,
+                    instance.Containers
+                        .Select(container => new DiagnosticWorkloadContainer(
+                            container.Name,
+                            container.Kind,
+                            container.PreviousAvailable))
+                        .ToArray(),
+                    instance.ContainersTruncated))
+                .ToArray(),
             available.InstancesTruncated,
-            available.Events.Select(item =>
-                new DiagnosticWorkloadEvent(item.ObjectKind,
+            available.Events
+                .Select(item => new DiagnosticWorkloadEvent(
+                    item.ObjectKind,
                     item.ObjectName,
                     item.Reason,
                     item.Count,
-                    item.LastSeenAtUtc)).ToArray(),
+                    item.LastSeenAtUtc))
+                .ToArray(),
             available.EventsTruncated,
             available.EventsUnavailableReason),
-        _ => throw new InvalidOperationException("Invalid stored diagnostics kind.")
+        _ => throw new InvalidOperationException("Invalid stored diagnostics kind."),
     };
 
-    internal static ResourceDeploymentSharedObservation Load(ObservationSnapshotDocument snapshot,
+    internal static ResourceDeploymentSharedObservation Load(
+        ObservationSnapshotDocument snapshot,
         ResourceDeploymentObservationContext context) => new(
         context,
         snapshot.BindingId,
@@ -151,16 +189,20 @@ internal static class ObservationValueMappings
         Load(snapshot.Diagnostics));
 
     internal static string Fingerprint(StoredObservation observation, StoredDiagnostics? diagnostics) =>
-        Convert.ToHexString(SHA256.HashData(
-            JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                Observation = observation,
-                Diagnostics = diagnostics
-            })));
+        Convert.ToHexString(
+            SHA256.HashData(
+                JsonSerializer.SerializeToUtf8Bytes(
+                    new
+                    {
+                        Observation = observation,
+                        Diagnostics = diagnostics,
+                    })));
 
     private static string[] Reasons(IReadOnlyList<string> reasons) => reasons
         .Select(KubernetesWorkloadObservation.SafeReason)
-        .Distinct(StringComparer.Ordinal).Take(8).ToArray();
+        .Distinct(StringComparer.Ordinal)
+        .Take(8)
+        .ToArray();
 
     private static string SafeUnavailable(string reason) =>
         UnavailableReasons.Contains(reason) ? reason : "Unavailable";
@@ -173,11 +215,9 @@ internal static class ObservationValueMappings
     private static string ObjectKind(string kind) =>
         kind is "Deployment" or "StatefulSet" or "ReplicaSet" or "Pod" or "Service" or "Ingress" ? kind : "Other";
 
-    private static DateTime? Utc(DateTime? value) => value is null
-        ? null
-        : value.Value.Kind == DateTimeKind.Local
-            ? value.Value.ToUniversalTime()
-            : DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+    private static DateTime? Utc(DateTime? value) => value is null ? null :
+        value.Value.Kind == DateTimeKind.Local ? value.Value.ToUniversalTime() :
+        DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
 
     private static string Name(string value)
     {

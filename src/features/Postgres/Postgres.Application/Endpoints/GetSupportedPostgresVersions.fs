@@ -10,17 +10,16 @@ open Pole.Features.Postgres.Application.Common
 open Pole.Mediator
 
 type GetSupportedPostgresVersionsResponse =
-    { From : int
-      ``To`` : int
-      DefaultDeploymentMode : string }
+    { From: int
+      ``To``: int
+      DefaultDeploymentMode: string }
 
-type GetSupportedPostgresVersionsOutcome =
-    | SupportedPostgresVersions of GetSupportedPostgresVersionsResponse
+type GetSupportedPostgresVersionsOutcome = SupportedPostgresVersions of GetSupportedPostgresVersionsResponse
 
 type GetSupportedPostgresVersionsRequest() =
     interface IMediatorRequest<GetSupportedPostgresVersionsOutcome>
 
-type GetSupportedPostgresVersionsHandler(settings : PostgresSettings) =
+type GetSupportedPostgresVersionsHandler(settings: PostgresSettings) =
     interface IMediatorOutcomeHandler<GetSupportedPostgresVersionsRequest, GetSupportedPostgresVersionsOutcome> with
         member _.HandleAsync(_, _) =
             task {
@@ -35,14 +34,21 @@ type GetSupportedPostgresVersionsHandler(settings : PostgresSettings) =
 type GetSupportedPostgresVersions =
     [<Extension>]
     static member MapGetSupportedPostgresVersionsEndpoint(endpoints: IEndpointRouteBuilder) =
-        endpoints.MapMethod<GetSupportedPostgresVersions>("/supported-versions", nameof GetSupportedPostgresVersions.Handle, EndpointHttpMethod.Get)
+        endpoints
+            .MapMethod<GetSupportedPostgresVersions>(
+                "/supported-versions",
+                nameof GetSupportedPostgresVersions.Handle,
+                EndpointHttpMethod.Get
+            )
             .WithName("GetSupportedPostgresVersions")
-            |> ignore
+        |> ignore
+
         endpoints
 
     static member Handle([<FromServices>] mediator: IMediator) =
         task {
             let! result = mediator.Send(GetSupportedPostgresVersionsRequest())
+
             return
                 result.ToHttpResult(fun outcome ->
                     match outcome with

@@ -19,10 +19,7 @@ public sealed class ResourceConnectionPolicyManifestTests
             "cache-svc",
             80,
             8080,
-            [new ConnectionSourcePlacement(
-                "source-deployment",
-                "source-cell",
-                "source-namespace")]);
+            [new ConnectionSourcePlacement("source-deployment", "source-cell", "source-namespace")]);
         var connection = ResourceConnectionFactory.Create(
             ObjectId.GenerateNewId().ToString(),
             "tenant-id",
@@ -38,35 +35,40 @@ public sealed class ResourceConnectionPolicyManifestTests
 
         Assert.Equal($"pole-connection-{connection.Id}", policy.Metadata.Name);
         Assert.Equal("destination-namespace", policy.Metadata.NamespaceProperty);
-        Assert.Equal("tenant-id", policy.Metadata.Labels[
-            ResourceConnectionPolicyManifestBuilder.TenantLabel]);
-        Assert.Equal("destination-cell", policy.Spec.PodSelector.MatchLabels[
-            ResourceConnectionPolicyManifestBuilder.RuntimeCellLabel]);
-        Assert.Equal("destination-deployment", policy.Spec.PodSelector.MatchLabels[
-            ResourceConnectionPolicyManifestBuilder.DeploymentLabel]);
+        Assert.Equal("tenant-id", policy.Metadata.Labels[ResourceConnectionPolicyManifestBuilder.TenantLabel]);
+        Assert.Equal(
+            "destination-cell",
+            policy.Spec.PodSelector.MatchLabels[ResourceConnectionPolicyManifestBuilder.RuntimeCellLabel]);
+        Assert.Equal(
+            "destination-deployment",
+            policy.Spec.PodSelector.MatchLabels[ResourceConnectionPolicyManifestBuilder.DeploymentLabel]);
         Assert.Equal(["Ingress"], policy.Spec.PolicyTypes);
         var ingress = Assert.Single(policy.Spec.Ingress);
         var port = Assert.Single(ingress.Ports);
         Assert.Equal("TCP", port.Protocol);
         Assert.Equal("8080", port.Port.Value);
         var peer = Assert.Single(ingress.FromProperty);
-        Assert.Equal("tenant-id", peer.NamespaceSelector.MatchLabels[
-            ResourceConnectionPolicyManifestBuilder.TenantLabel]);
-        Assert.Equal("source-cell", peer.NamespaceSelector.MatchLabels[
-            ResourceConnectionPolicyManifestBuilder.RuntimeCellLabel]);
-        Assert.Equal("tenant-id", peer.PodSelector.MatchLabels[
-            ResourceConnectionPolicyManifestBuilder.TenantLabel]);
-        Assert.Equal("source-deployment", peer.PodSelector.MatchLabels[
-            ResourceConnectionPolicyManifestBuilder.DeploymentLabel]);
-        Assert.True(ResourceConnectionPolicyManifestBuilder.IsOwned(
-            policy,
-            connection.TenantId,
-            connection.Id,
-            snapshot.PolicyLocation));
-        Assert.False(ResourceConnectionPolicyManifestBuilder.IsOwned(
-            policy,
-            "other-tenant",
-            connection.Id,
-            snapshot.PolicyLocation));
+        Assert.Equal(
+            "tenant-id",
+            peer.NamespaceSelector.MatchLabels[ResourceConnectionPolicyManifestBuilder.TenantLabel]);
+        Assert.Equal(
+            "source-cell",
+            peer.NamespaceSelector.MatchLabels[ResourceConnectionPolicyManifestBuilder.RuntimeCellLabel]);
+        Assert.Equal("tenant-id", peer.PodSelector.MatchLabels[ResourceConnectionPolicyManifestBuilder.TenantLabel]);
+        Assert.Equal(
+            "source-deployment",
+            peer.PodSelector.MatchLabels[ResourceConnectionPolicyManifestBuilder.DeploymentLabel]);
+        Assert.True(
+            ResourceConnectionPolicyManifestBuilder.IsOwned(
+                policy,
+                connection.TenantId,
+                connection.Id,
+                snapshot.PolicyLocation));
+        Assert.False(
+            ResourceConnectionPolicyManifestBuilder.IsOwned(
+                policy,
+                "other-tenant",
+                connection.Id,
+                snapshot.PolicyLocation));
     }
 }

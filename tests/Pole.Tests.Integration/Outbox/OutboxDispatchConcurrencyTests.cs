@@ -11,7 +11,6 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Migrations;
-using Pole.Features.Outbox.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -21,7 +20,8 @@ namespace Pole.Tests.Integration.Outbox;
 
 [Collection(IntegrationTestCollection.Global4)]
 public sealed class OutboxDispatchConcurrencyTests(
-    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override async Task InitializeAsync()
     {
@@ -39,7 +39,9 @@ public sealed class OutboxDispatchConcurrencyTests(
         var started = Signal();
         var release = Signal();
         var publishCount = 0;
-        var publisher = new DelegatePublisher(async (_, _, cancellationToken) =>
+        var publisher = new DelegatePublisher(async (
+            _, _,
+            cancellationToken) =>
         {
             if (Interlocked.Increment(ref publishCount) == 1)
             {
@@ -61,8 +63,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         try
         {
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await secondTrigger.TriggerAsync(CancellationToken.None)
-                .WaitAsync(TimeSpan.FromSeconds(2));
+            await secondTrigger.TriggerAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
             Assert.Equal(1, Volatile.Read(ref publishCount));
         }
         finally
@@ -74,8 +75,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         await AssertLockAvailableFromNewWorkerAsync(secondStorage);
         var secondMessage = CreateMessage();
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(secondMessage);
-        await secondTrigger.TriggerAsync(CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(5));
+        await secondTrigger.TriggerAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(2, publishCount);
         Assert.IsType<PublishedOutboxMessageState>((await LoadAsync(firstMessage.Id)).State);
@@ -89,8 +89,7 @@ public sealed class OutboxDispatchConcurrencyTests(
     {
         var cronStorage = CreateStorage();
         var directStorage = CreateStorage();
-        var method = typeof(OutboxProcessorJob).GetMethod(
-            nameof(OutboxProcessorJob.ProcessOutboxMessagesAsync))!;
+        var method = typeof(OutboxProcessorJob).GetMethod(nameof(OutboxProcessorJob.ProcessOutboxMessagesAsync))!;
         var filter = method.GetCustomAttribute<DisableConcurrentExecutionAttribute>()!;
         Assert.Equal(OutboxProcessingLock.Resource, filter.Resource);
         var locked = Signal();
@@ -105,7 +104,9 @@ public sealed class OutboxDispatchConcurrencyTests(
             release.Task.GetAwaiter().GetResult();
         });
         var publishCount = 0;
-        var publisher = new DelegatePublisher((_, _, _) =>
+        var publisher = new DelegatePublisher((
+            _, _,
+            _) =>
         {
             Interlocked.Increment(ref publishCount);
             return Task.CompletedTask;
@@ -118,8 +119,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         try
         {
             await locked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await trigger.TriggerAsync(CancellationToken.None)
-                .WaitAsync(TimeSpan.FromSeconds(2));
+            await trigger.TriggerAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
             Assert.Equal(0, publishCount);
             Assert.IsType<PendingOutboxMessageState>((await LoadAsync(message.Id)).State);
         }
@@ -140,7 +140,9 @@ public sealed class OutboxDispatchConcurrencyTests(
         var secondStorage = CreateStorage();
         var started = Signal();
         var count = 0;
-        var publisher = new DelegatePublisher(async (_, _, cancellationToken) =>
+        var publisher = new DelegatePublisher(async (
+            _, _,
+            cancellationToken) =>
         {
             if (Interlocked.Increment(ref count) == 1)
             {
@@ -153,8 +155,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         using var cancellation = new CancellationTokenSource();
         var message = CreateMessage();
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
-        var dispatch = firstServices.GetRequiredService<IOutboxProcessingTrigger>()
-            .TriggerAsync(cancellation.Token);
+        var dispatch = firstServices.GetRequiredService<IOutboxProcessingTrigger>().TriggerAsync(cancellation.Token);
 
         try
         {
@@ -179,13 +180,14 @@ public sealed class OutboxDispatchConcurrencyTests(
         Assert.Equal(0, pending.AttemptCount);
 
         await secondServices.GetRequiredService<IOutboxProcessingTrigger>()
-            .TriggerAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            .TriggerAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(2, count);
         Assert.IsType<PublishedOutboxMessageState>((await LoadAsync(message.Id)).State);
     }
 
-    private static Task AssertLockAvailableFromNewWorkerAsync(JobStorage storage) =>
-        Task.Factory.StartNew(
+    private static Task AssertLockAvailableFromNewWorkerAsync(JobStorage storage) => Task.Factory
+        .StartNew(
             () =>
             {
                 // Hangfire.Mongo tracks nested locks per thread. A dedicated worker
@@ -197,21 +199,22 @@ public sealed class OutboxDispatchConcurrencyTests(
             },
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).WaitAsync(TimeSpan.FromSeconds(5));
+            TaskScheduler.Default)
+        .WaitAsync(TimeSpan.FromSeconds(5));
 
-    private MongoStorage CreateStorage() =>
-        new(Fixture.Client,
-            Fixture.Database.DatabaseNamespace.DatabaseName,
-            new MongoStorageOptions
+    private MongoStorage CreateStorage() => new(
+        Fixture.Client,
+        Fixture.Database.DatabaseNamespace.DatabaseName,
+        new MongoStorageOptions
+        {
+            Prefix = "outbox-dispatch-tests",
+            CheckConnection = false,
+            MigrationOptions = new MongoMigrationOptions
             {
-                Prefix = "outbox-dispatch-tests",
-                CheckConnection = false,
-                MigrationOptions = new MongoMigrationOptions
-                {
-                    MigrationStrategy = new MigrateMongoMigrationStrategy(),
-                    BackupStrategy = new CollectionMongoBackupStrategy()
-                }
-            });
+                MigrationStrategy = new MigrateMongoMigrationStrategy(),
+                BackupStrategy = new CollectionMongoBackupStrategy(),
+            },
+        });
 
     private ServiceProvider CreateServices(JobStorage storage, IOutboxPublisher publisher)
     {
@@ -235,7 +238,7 @@ public sealed class OutboxDispatchConcurrencyTests(
         var now = DateTime.UtcNow.AddSeconds(-1);
         var @event = new RuntimeCellReconciliationRequestedEvent(ObjectId.GenerateNewId().ToString(), 1)
         {
-            EventCore = new EventCore { TenantId = Data.TenantId, OccurredOn = now }
+            EventCore = new EventCore { TenantId = Data.TenantId, OccurredOn = now },
         };
         return OutboxMessage.Create(
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested",
@@ -248,13 +251,15 @@ public sealed class OutboxDispatchConcurrencyTests(
             pendingKey: ObjectId.GenerateNewId().ToString());
     }
 
-    private static TaskCompletionSource Signal() =>
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private sealed class DelegatePublisher(
-        Func<object, Type, CancellationToken, Task> publish) : IOutboxPublisher
+        Func<object, Type, CancellationToken, Task> publish
+    ) : IOutboxPublisher
     {
-        public Task PublishAsync(object message, Type messageType, CancellationToken cancellationToken) =>
-            publish(message, messageType, cancellationToken);
+        public Task PublishAsync(
+            object message,
+            Type messageType,
+            CancellationToken cancellationToken) => publish(message, messageType, cancellationToken);
     }
 }

@@ -4,7 +4,8 @@ namespace Pole.Observability;
 
 public sealed record TraceContextSnapshot(
     string TraceId,
-    string CorrelationId);
+    string CorrelationId
+);
 
 public interface ITraceContextCarrier
 {
@@ -29,18 +30,16 @@ public static class TraceContext
 
     public static string CurrentCorrelationId => Current?.CorrelationId ?? CreateCorrelationId();
 
-    public static TraceContextSnapshot Create(string? traceId = null, string? correlationId = null)
-        => new(
-            NormalizeTraceId(traceId),
-            NormalizeCorrelationId(correlationId));
+    public static TraceContextSnapshot Create(string? traceId = null, string? correlationId = null) => new(
+        NormalizeTraceId(traceId),
+        NormalizeCorrelationId(correlationId));
 
-    public static TraceContextSnapshot FromCarrierOrCurrent(ITraceContextCarrier? carrier)
-        => Create(
-            carrier?.TraceId ?? Current?.TraceId,
-            carrier?.CorrelationId ?? Current?.CorrelationId);
+    public static TraceContextSnapshot FromCarrierOrCurrent(ITraceContextCarrier? carrier) => Create(
+        carrier?.TraceId ?? Current?.TraceId,
+        carrier?.CorrelationId ?? Current?.CorrelationId);
 
     /// <summary>
-    /// Stores the trace context for the current async operation and restores the previous value when disposed.
+    ///     Stores the trace context for the current async operation and restores the previous value when disposed.
     /// </summary>
     public static IDisposable Push(TraceContextSnapshot context)
     {
@@ -55,11 +54,9 @@ public static class TraceContext
         return IsSafeCorrelationId(trimmed) ? trimmed! : CreateCorrelationId();
     }
 
-    public static bool IsSafeCorrelationId(string? correlationId)
-        => !string.IsNullOrWhiteSpace(correlationId)
-           && correlationId.Length <= MaxCorrelationIdLength
-           && !correlationId.Contains('\r')
-           && !correlationId.Contains('\n');
+    public static bool IsSafeCorrelationId(string? correlationId) => !string.IsNullOrWhiteSpace(correlationId) &&
+        correlationId.Length <= MaxCorrelationIdLength && !correlationId.Contains('\r') &&
+        !correlationId.Contains('\n');
 
     private static string NormalizeTraceId(string? traceId)
     {
@@ -72,22 +69,16 @@ public static class TraceContext
     private static bool IsW3CTraceId(string? traceId)
     {
         if (traceId is not { Length: 32 })
-        {
             return false;
-        }
 
         var hasNonZero = false;
         foreach (var character in traceId)
         {
-            var isHex =
-                character is >= '0' and <= '9'
-                || character is >= 'a' and <= 'f'
-                || character is >= 'A' and <= 'F';
+            var isHex = character is >= '0' and <= '9' || character is >= 'a' and <= 'f' ||
+                character is >= 'A' and <= 'F';
 
             if (!isHex)
-            {
                 return false;
-            }
 
             hasNonZero |= character != '0';
         }
@@ -95,16 +86,16 @@ public static class TraceContext
         return hasNonZero;
     }
 
-    private sealed class RestoreScope(TraceContextSnapshot? previous) : IDisposable
+    private sealed class RestoreScope(
+        TraceContextSnapshot? previous
+    ) : IDisposable
     {
         private int _disposed;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1)
-            {
                 return;
-            }
 
             CurrentContext.Value = previous;
         }

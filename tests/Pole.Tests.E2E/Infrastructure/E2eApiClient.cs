@@ -7,11 +7,20 @@ namespace Pole.Tests.E2E.Infrastructure;
 
 public sealed class E2eApiClient(
     HttpClient client,
-    TimeProvider? timeProvider = null) : IDisposable
+    TimeProvider? timeProvider = null
+) : IDisposable
 {
     private static readonly TimeSpan RenewBeforeExpiry = TimeSpan.FromSeconds(30);
-    private readonly ConcurrentDictionary<string, RegisteredToken> _tokens = new(StringComparer.Ordinal);
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+    private readonly ConcurrentDictionary<string, RegisteredToken> _tokens = new(StringComparer.Ordinal);
+
+    public void Dispose()
+    {
+        client.Dispose();
+        foreach (var registration in _tokens.Values)
+            registration.Dispose();
+        _tokens.Clear();
+    }
 
     public void RegisterToken(string initialToken, Func<CancellationToken, Task<string>> renewToken)
     {
@@ -38,9 +47,9 @@ public sealed class E2eApiClient(
         CancellationToken ct = default)
     {
         var authorization = request.Headers.Authorization;
-        if (authorization is { Parameter: not null }
-            && string.Equals(authorization.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase)
-            && _tokens.TryGetValue(authorization.Parameter, out var registration))
+        if (authorization is { Parameter: not null } &&
+            string.Equals(authorization.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase) &&
+            _tokens.TryGetValue(authorization.Parameter, out var registration))
         {
             // Fixture users retain their original token as a stable lookup key. Renew before sending
             // after long suites or host suspension, without retrying API authorization failures.
@@ -57,7 +66,11 @@ public sealed class E2eApiClient(
         try
         {
             var response = await client.SendAsync(request, completion, ct);
-            PhaseRequestEvidence.Record(journal, TestPhase.ResponseReceived, request.RequestUri, requestId,
+            PhaseRequestEvidence.Record(
+                journal,
+                TestPhase.ResponseReceived,
+                request.RequestUri,
+                requestId,
                 (int)response.StatusCode);
             return response;
         }
@@ -71,14 +84,6 @@ public sealed class E2eApiClient(
             PhaseRequestEvidence.Record(journal, TestPhase.RequestFailed, request.RequestUri, requestId);
             throw;
         }
-    }
-
-    public void Dispose()
-    {
-        client.Dispose();
-        foreach (var registration in _tokens.Values)
-            registration.Dispose();
-        _tokens.Clear();
     }
 
     private sealed class RegisteredToken : IDisposable
@@ -98,6 +103,8 @@ public sealed class E2eApiClient(
             _renewToken = renewToken;
         }
 
+        public void Dispose() => _renewal.Dispose();
+
         public async Task<string> GetCurrentTokenAsync(TimeProvider time, CancellationToken ct)
         {
             await _renewal.WaitAsync(ct);
@@ -111,7 +118,8 @@ public sealed class E2eApiClient(
                 if (!string.Equals(claims.Subject, _subject, StringComparison.Ordinal))
                     throw new InvalidOperationException("E2E token renewal changed the authenticated user.");
                 if (claims.ExpiresAt <= time.GetUtcNow() + RenewBeforeExpiry)
-                    throw new InvalidOperationException("The renewed E2E token is already near expiry; check the Keycloak clock.");
+                    throw new InvalidOperationException(
+                        "The renewed E2E token is already near expiry; check the Keycloak clock.");
 
                 _currentToken = token;
                 _expiresAt = claims.ExpiresAt;
@@ -123,8 +131,6 @@ public sealed class E2eApiClient(
             }
         }
 
-        public void Dispose() => _renewal.Dispose();
-
         private static TokenClaims ReadClaims(string token)
         {
             try
@@ -133,24 +139,27 @@ public sealed class E2eApiClient(
                 if (parts.Length != 3)
                     throw new FormatException();
                 var payload = parts[1].Replace('-', '+').Replace('_', '/');
-                using var claims = JsonDocument.Parse(Convert.FromBase64String(
-                    payload.PadRight((payload.Length + 3) / 4 * 4, '=')));
+                using var claims = JsonDocument.Parse(
+                    Convert.FromBase64String(payload.PadRight((payload.Length + 3) / 4 * 4, '=')));
                 var subject = claims.RootElement.GetProperty("sub").GetString();
                 if (string.IsNullOrWhiteSpace(subject))
                     throw new FormatException();
-                return new TokenClaims(subject, DateTimeOffset.FromUnixTimeSeconds(
-                    claims.RootElement.GetProperty("exp").GetInt64()));
+                return new TokenClaims(
+                    subject,
+                    DateTimeOffset.FromUnixTimeSeconds(claims.RootElement.GetProperty("exp").GetInt64()));
             }
-            catch (Exception exception) when (exception is FormatException or JsonException
-                                             or InvalidOperationException or KeyNotFoundException or ArgumentOutOfRangeException)
+            catch (Exception exception) when (exception is FormatException or JsonException or InvalidOperationException
+                                                  or KeyNotFoundException or ArgumentOutOfRangeException)
             {
                 // Never include a raw token or decoded claims in test failure output.
-                throw new InvalidOperationException("The registered E2E bearer token has invalid subject or expiry claims.");
+                throw new InvalidOperationException(
+                    "The registered E2E bearer token has invalid subject or expiry claims.");
             }
         }
 
         private sealed record TokenClaims(
             string Subject,
-            DateTimeOffset ExpiresAt);
+            DateTimeOffset ExpiresAt
+        );
     }
 }

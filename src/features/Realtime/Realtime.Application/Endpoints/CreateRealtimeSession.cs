@@ -2,9 +2,9 @@ using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Mediator;
@@ -13,7 +13,9 @@ namespace Pole.Features.Realtime.Application.Endpoints;
 
 public sealed record CreateRealtimeSessionRequest : IMediatorRequest<CreateRealtimeSessionOutcome>;
 
-public sealed record RealtimeSessionCreated(DateTimeOffset ExpiresAtUtc);
+public sealed record RealtimeSessionCreated(
+    DateTimeOffset ExpiresAtUtc
+);
 
 public sealed record RealtimeSessionIdentityUnavailable;
 
@@ -27,21 +29,22 @@ public union CreateRealtimeSessionOutcome(
 public sealed class CreateRealtimeSessionHandler(
     IHttpContextAccessor contextAccessor,
     RealtimeOptions options,
-    TimeProvider clock) : IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>
+    TimeProvider clock
+) : IMediatorOutcomeHandler<CreateRealtimeSessionRequest, CreateRealtimeSessionOutcome>
 {
-    public async Task<CreateRealtimeSessionOutcome> HandleAsync(CreateRealtimeSessionRequest request,
+    public async Task<CreateRealtimeSessionOutcome> HandleAsync(
+        CreateRealtimeSessionRequest request,
         CancellationToken cancellationToken = default)
     {
         var context = contextAccessor.HttpContext!;
         var principal = context.User;
         var userId = principal.FindFirstValue(Claims.UserId);
         var issuer = principal.FindFirstValue("iss");
-        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(issuer) ||
-            !long.TryParse(principal.FindFirstValue("exp"),
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(issuer) || !long.TryParse(
+                principal.FindFirstValue("exp"),
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out var expiresSeconds) ||
-            expiresSeconds < 0 || expiresSeconds > 253402300799)
+                out var expiresSeconds) || expiresSeconds < 0 || expiresSeconds > 253402300799)
             return new RealtimeSessionIdentityUnavailable();
         var expires = DateTimeOffset.FromUnixTimeSeconds(expiresSeconds);
         if (expires <= clock.GetUtcNow())
@@ -55,25 +58,27 @@ public sealed class CreateRealtimeSessionHandler(
         if (expires <= clock.GetUtcNow())
             return new RealtimeSessionIdentityUnavailable();
         if (previous.Succeeded && (previous.Principal.FindFirstValue(Claims.UserId) != userId ||
-                                   previous.Principal.FindFirstValue("iss") != issuer))
+                previous.Principal.FindFirstValue("iss") != issuer))
             return new RealtimeSessionAccountMismatch();
         var sessionId = previous.Succeeded ? previous.Principal.FindFirstValue(RealtimeFeature.SessionClaim) : null;
         sessionId ??= Guid.NewGuid().ToString("N");
         // Deliberately allowlist identity claims. Never persist SaveTokens or the raw JWT.
-        var claims = principal.Claims.Where(claim => claim.Type is Claims.UserId or "iss" or "sid" or Claims.Roles)
+        var claims = principal.Claims
+            .Where(claim => claim.Type is Claims.UserId or "iss" or "sid" or Claims.Roles)
             .ToList();
         claims.Add(new Claim(RealtimeFeature.SessionClaim, sessionId));
         var cookiePrincipal = new ClaimsPrincipal(new ClaimsIdentity(claims, RealtimeFeature.CookieScheme));
         try
         {
-            await context.SignInAsync(RealtimeFeature.CookieScheme,
+            await context.SignInAsync(
+                RealtimeFeature.CookieScheme,
                 cookiePrincipal,
                 new AuthenticationProperties
                 {
                     ExpiresUtc = expires,
                     IssuedUtc = clock.GetUtcNow(),
                     IsPersistent = false,
-                    AllowRefresh = false
+                    AllowRefresh = false,
                 });
         }
         catch (RealtimeSessionUnavailableException)
@@ -99,24 +104,28 @@ public static class CreateRealtimeSessionEndpoint
     public static IEndpointRouteBuilder MapCreateRealtimeSession(this IEndpointRouteBuilder endpoints)
     {
         var enabled = endpoints.ServiceProvider.GetRequiredService<RealtimeOptions>().Enabled;
-        var endpoint = endpoints.MapPost("/session",
-            async (HttpContext context) =>
-            {
-                if (!enabled)
-                    return Results.NotFound();
-                var mediator = context.RequestServices.GetRequiredService<IMediator>();
-                var result = await mediator.Send(new CreateRealtimeSessionRequest(),
-                    cancellationToken: context.RequestAborted);
-                return result.ToHttpResult(outcome => outcome switch
+        var endpoint = endpoints.MapPost(
+                "/session",
+                async (HttpContext context) =>
                 {
-                    RealtimeSessionCreated created => Results.Ok(created),
-                    RealtimeSessionIdentityUnavailable => Results.Unauthorized(),
-                    RealtimeSessionAccountMismatch => Results.Conflict(new
+                    if (!enabled)
+                        return Results.NotFound();
+                    var mediator = context.RequestServices.GetRequiredService<IMediator>();
+                    var result = await mediator.Send(
+                        new CreateRealtimeSessionRequest(),
+                        cancellationToken: context.RequestAborted);
+                    return result.ToHttpResult(outcome => outcome switch
                     {
-                        code = "realtime.session.account-mismatch"
-                    })
-                });
-            }).WithoutTenantContext();
+                        RealtimeSessionCreated created => Results.Ok(created),
+                        RealtimeSessionIdentityUnavailable => Results.Unauthorized(),
+                        RealtimeSessionAccountMismatch => Results.Conflict(
+                            new
+                            {
+                                code = "realtime.session.account-mismatch",
+                            }),
+                    });
+                })
+            .WithoutTenantContext();
         if (enabled)
             endpoint.RequireAuthorization(policy =>
                 policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme).RequireAuthenticatedUser());

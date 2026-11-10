@@ -39,20 +39,15 @@ public static class FunctionHttpRouteMatcher
         return true;
     }
 
-    private static string[] Split(string path) =>
-        path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+    private static string[] Split(string path) => path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
 
     private static string[]? TrySplitRequest(string path)
     {
         try
         {
-            var segments = Split(path)
-                .Select(Uri.UnescapeDataString)
-                .ToArray();
+            var segments = Split(path).Select(Uri.UnescapeDataString).ToArray();
             return segments.Any(segment =>
-                segment is "." or ".." ||
-                segment.Contains('/') ||
-                segment.Contains('\\') ||
+                segment is "." or ".." || segment.Contains('/') || segment.Contains('\\') ||
                 segment.Any(char.IsControl))
                 ? null
                 : segments;
@@ -63,8 +58,7 @@ public static class FunctionHttpRouteMatcher
         }
     }
 
-    private static bool IsParameter(string segment) =>
-        segment.Length >= 3 && segment[0] == '{' && segment[^1] == '}';
+    private static bool IsParameter(string segment) => segment.Length >= 3 && segment[0] == '{' && segment[^1] == '}';
 
     private static string Specificity(string route) =>
         string.Concat(Split(route).Select(segment => IsParameter(segment) ? '1' : '0'));

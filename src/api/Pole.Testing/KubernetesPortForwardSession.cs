@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 namespace Pole.Testing;
 
@@ -8,8 +9,8 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
 {
     private readonly Process _process;
     private readonly CancellationTokenSource _readerLifetime;
-    private readonly Task<string> _standardOutput;
     private readonly Task<string> _standardError;
+    private readonly Task<string> _standardOutput;
     private int _disposed;
 
     private KubernetesPortForwardSession(
@@ -27,6 +28,22 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
     }
 
     public int LocalPort { get; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        try
+        {
+            await StopAsync();
+        }
+        finally
+        {
+            await _readerLifetime.CancelAsync();
+            _process.Dispose();
+            _readerLifetime.Dispose();
+        }
+    }
 
     public static async Task<KubernetesPortForwardSession> StartAsync(
         KubernetesLabTarget target,
@@ -49,7 +66,7 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
             FileName = target.KubectlPath,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false
+            UseShellExecute = false,
         };
         foreach (var argument in target.KubectlSelectionArguments)
             startInfo.ArgumentList.Add(argument);
@@ -67,8 +84,8 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
         int assignedPort,
         CancellationToken cancellationToken)
     {
-        var process = Process.Start(startInfo)
-                      ?? throw new InvalidOperationException("Failed to start kubectl port-forward process.");
+        var process = Process.Start(startInfo) ??
+            throw new InvalidOperationException("Failed to start kubectl port-forward process.");
         var lifetime = new CancellationTokenSource();
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var forwardingMessage = $"Forwarding from 127.0.0.1:{assignedPort} ->";
@@ -96,25 +113,13 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
             }
             catch (Exception cleanupFailure)
             {
-                throw new AggregateException("Port-forward startup and cleanup failed.", primaryFailure, cleanupFailure);
+                throw new AggregateException(
+                    "Port-forward startup and cleanup failed.",
+                    primaryFailure,
+                    cleanupFailure);
             }
-            throw;
-        }
-    }
 
-    public async ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-        try
-        {
-            await StopAsync();
-        }
-        finally
-        {
-            await _readerLifetime.CancelAsync();
-            _process.Dispose();
-            _readerLifetime.Dispose();
+            throw;
         }
     }
 
@@ -195,8 +200,7 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
 
     private static async Task<string> ReadBoundedOutputAsync(
         StreamReader reader,
-        CancellationToken cancellationToken) =>
-        await ReadBoundedOutputAsync(reader, null, cancellationToken);
+        CancellationToken cancellationToken) => await ReadBoundedOutputAsync(reader, null, cancellationToken);
 
     private static async Task<string> ReadBoundedOutputAsync(
         StreamReader reader,
@@ -204,7 +208,7 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         const int maximumCharacters = 4_096;
-        var retained = new System.Text.StringBuilder(maximumCharacters);
+        var retained = new StringBuilder(maximumCharacters);
         while (true)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
@@ -221,7 +225,6 @@ public sealed class KubernetesPortForwardSession : IAsyncDisposable
             }
         }
 
-        return retained.ToString() +
-               (retained.Length == maximumCharacters ? "<truncated>" : string.Empty);
+        return retained + (retained.Length == maximumCharacters ? "<truncated>" : "");
     }
 }

@@ -3,7 +3,6 @@ using System.IO.Compression;
 using System.Text;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.SourceBuilds.Application.Common;
-using Pole.Features.SourceBuilds.Application.Execution;
 using Pole.Features.SourceBuilds.Application.Execution.Workspace;
 using Xunit;
 
@@ -21,11 +20,7 @@ public sealed class SourceBuildWorkspaceServiceTests
             new RepositoryArchiveExtractor().InvokeAsync,
             new SourceBuildExecutionOptions { WorkspaceRoot = workspaceRoot.Path });
 
-        var result = await service.InvokeAsync(
-            "tenant",
-            "source",
-            "commit",
-            "build-job");
+        var result = await service.InvokeAsync("tenant", "source", "commit", "build-job");
 
         var workspace = Assert.IsType<SourceBuildWorkspace>(result.Value);
         Assert.Equal(("tenant", "source", "commit"), repositoryArchive.Request);
@@ -43,16 +38,19 @@ public sealed class SourceBuildWorkspaceServiceTests
         using (var tar = new TarWriter(gzip, leaveOpen: true))
         {
             using var content = new MemoryStream(Encoding.UTF8.GetBytes("<Project />"));
-            tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "sample/src/App.csproj")
-            {
-                DataStream = content
-            });
+            tar.WriteEntry(
+                new PaxTarEntry(TarEntryType.RegularFile, "sample/src/App.csproj")
+                {
+                    DataStream = content,
+                });
         }
 
         return archive.ToArray();
     }
 
-    private sealed class ArchiveRepositoryArchive(byte[] archive)
+    private sealed class ArchiveRepositoryArchive(
+        byte[] archive
+    )
     {
         public (string TenantId, string SourceRepositoryId, string CommitSha)? Request { get; private set; }
 

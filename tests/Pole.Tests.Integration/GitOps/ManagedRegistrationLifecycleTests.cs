@@ -7,35 +7,20 @@ using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Lifecycle;
-using Pole.Features.Postgres.Application.Mongo;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.ResourceGroups.Application.ResourceGroups;
-using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class ManagedRegistrationLifecycleTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("own")]
@@ -45,66 +30,108 @@ public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fix
     {
         await SeedPostgresPlanningCatalog();
         var postgres = await InitializePostgres();
-        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
-        var registrations = await DbContext.ResourceRegistrations.Find(item => item.ResourceGroupId == postgres.GroupId)
+        var credential = await Secrets
+            .Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret)
+            .SingleAsync();
+        var registrations = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceGroupId == postgres.GroupId)
             .ToListAsync();
         var credentialRegistration = registrations.Single(item => item.ResourceId == credential.Id);
         var ownerRegistration = registrations.Single(item => item.ResourceId == postgres.Id);
         var (owner, preview) = await PreviewManagedGroupRemovalAsync();
         Assert.DoesNotContain(preview.Operations, item => item.Resource.ResourceId == credential.Id);
-        var mapped = preview.DependencySets.Single(item => item.Owner == "ResourceGroups" &&
-            item.Target.ResourceId == postgres.GroupId).Dependencies.Where(item =>
-                item.Dependent.ResourceId == postgres.Id).ToArray();
+        var mapped = preview.DependencySets
+            .Single(item => item.Owner == "ResourceGroups" && item.Target.ResourceId == postgres.GroupId)
+            .Dependencies
+            .Where(item => item.Dependent.ResourceId == postgres.Id)
+            .ToArray();
         Assert.Equal(2, mapped.Length);
-        Assert.Contains(mapped, item => item.Versions.Any(version =>
-            version.DocumentId == $"ResourceRegistration/{credentialRegistration.Id}"));
-        Assert.Contains(mapped, item => item.Versions.Any(version =>
-            version.DocumentId == $"ResourceRegistration/{ownerRegistration.Id}"));
-        Assert.Contains(mapped.SelectMany(item => item.Versions), item =>
-            item.DocumentId == $"Secret/{credential.Id}/ReferenceFence");
-        var scheduled = Assert.IsType<GitLifecycleScheduled>((await Services.GetRequiredService<GitLifecyclePreviews>()
-            .ConfirmAsync(new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default))
-            .Value);
-        await Services.GetRequiredService<RepositorySourceJob>().ProcessAsync(new(owner.TenantId, owner.Id), default);
+        Assert.Contains(
+            mapped,
+            item => item.Versions.Any(version =>
+                version.DocumentId == $"ResourceRegistration/{credentialRegistration.Id}"));
+        Assert.Contains(
+            mapped,
+            item => item.Versions.Any(version => version.DocumentId == $"ResourceRegistration/{ownerRegistration.Id}"));
+        Assert.Contains(
+            mapped.SelectMany(item => item.Versions),
+            item => item.DocumentId == $"Secret/{credential.Id}/ReferenceFence");
+        var scheduled = Assert.IsType<GitLifecycleScheduled>(
+            (await Services.GetRequiredService<GitLifecyclePreviews>()
+                .ConfirmAsync(
+                    new ConfirmLifecyclePreview(
+                        new GitSourceIdentity(owner.TenantId, owner.Id),
+                        preview.Id,
+                        preview.Revision,
+                        Data.UserId),
+                    default)).Value);
+        await Services.GetRequiredService<RepositorySourceJob>()
+            .ProcessAsync(new GitSourceIdentity(owner.TenantId, owner.Id), default);
         var deployment = await DbContext.ResourceDeployments.Find(item => item.ResourceId == postgres.Id).SingleAsync();
         var now = deployment.UpdatedAtUtc.AddSeconds(1);
         var claim = Id();
-        var deleting = deployment.Start(deployment.DesiredGeneration, ResourceDeploymentOperation.Delete,
-            claim, now, now.AddMinutes(2));
-        await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == deployment.Id,
-            deleting.Complete(deployment.DesiredGeneration, ResourceDeploymentOperation.Delete, claim, [],
+        var deleting = deployment.Start(
+            deployment.DesiredGeneration,
+            ResourceDeploymentOperation.Delete,
+            claim,
+            now,
+            now.AddMinutes(2));
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == deployment.Id,
+            deleting.Complete(
+                deployment.DesiredGeneration,
+                ResourceDeploymentOperation.Delete,
+                claim,
+                [],
                 now.AddSeconds(1)));
         var before = await DbContext.ResourceGroups.Find(item => item.Id == postgres.GroupId).SingleAsync();
         if (scenario == "rollback")
         {
-            using var failing = TestServiceProviderFactory.Create(Fixture, services =>
-                services.AddScoped<StoreOutboxWrites>(_ => (_, _, _) => throw new ManagedRegistrationRollback()));
+            using var failing = TestServiceProviderFactory.Create(
+                Fixture,
+                services => services.AddScoped<StoreOutboxWrites>(_ => (
+                    _, _,
+                    _) => throw new ManagedRegistrationRollback()));
             using var scope = failing.CreateScope();
             await Assert.ThrowsAsync<ManagedRegistrationRollback>(() => scope.ServiceProvider
-                .GetRequiredService<FinalizePostgresClusterDeletion>().Invoke(postgres.TenantId, postgres.Id, default));
-            Assert.Equal(before.RegistrationFence, (await DbContext.ResourceGroups.Find(item =>
-                item.Id == postgres.GroupId).SingleAsync()).RegistrationFence);
+                .GetRequiredService<FinalizePostgresClusterDeletion>()
+                .Invoke(postgres.TenantId, postgres.Id, default));
+            Assert.Equal(
+                before.RegistrationFence,
+                (await DbContext.ResourceGroups.Find(item => item.Id == postgres.GroupId).SingleAsync())
+                .RegistrationFence);
             Assert.True(await Secrets.Find(item => item.Id == credential.Id).AnyAsync());
-            Assert.Equal(2, await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
-                item.Id == credentialRegistration.Id || item.Id == ownerRegistration.Id));
-            Assert.Equal(0, await Services.GetRequiredService<IMongoCollection<GitLifecycleCleanupProof>>()
-                .CountDocumentsAsync(item => item.RunId == scheduled.RunId && item.Subject.ResourceId == postgres.Id));
+            Assert.Equal(
+                2,
+                await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
+                    item.Id == credentialRegistration.Id || item.Id == ownerRegistration.Id));
+            Assert.Equal(
+                0,
+                await Services.GetRequiredService<IMongoCollection<GitLifecycleCleanupProof>>()
+                    .CountDocumentsAsync(item =>
+                        item.RunId == scheduled.RunId && item.Subject.ResourceId == postgres.Id));
         }
+
         if (scenario == "external")
-            await DbContext.ResourceGroups.UpdateOneAsync(item => item.Id == postgres.GroupId,
+            await DbContext.ResourceGroups.UpdateOneAsync(
+                item => item.Id == postgres.GroupId,
                 Builders<ResourceGroup>.Update.Inc(item => item.RegistrationFence, 1));
 
-        Assert.IsType<PostgresOutcome<Unit, PostgresClusterDeletionFinalizationError>.PostgresSuccess>((await Services
-            .GetRequiredService<FinalizePostgresClusterDeletion>().Invoke(postgres.TenantId, postgres.Id, default)));
+        Assert.IsType<PostgresOutcome<Unit, PostgresClusterDeletionFinalizationError>.PostgresSuccess>(
+            await Services.GetRequiredService<FinalizePostgresClusterDeletion>()
+                .Invoke(postgres.TenantId, postgres.Id, default));
         var proofs = await Services.GetRequiredService<IMongoCollection<GitLifecycleCleanupProof>>()
-            .Find(item => item.RunId == scheduled.RunId && item.Subject.ResourceId == postgres.Id).ToListAsync();
+            .Find(item => item.RunId == scheduled.RunId && item.Subject.ResourceId == postgres.Id)
+            .ToListAsync();
         Assert.Equal(2, proofs.Count);
-        var begin = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>().Find(item =>
-            item.RunId == scheduled.RunId && item.ResourceId == postgres.Id &&
-            item.Lifecycle!.Step == GitLifecycleStep.BeginRemoval).SingleAsync();
+        var begin = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
+            .Find(item => item.RunId == scheduled.RunId && item.ResourceId == postgres.Id &&
+                item.Lifecycle!.Step == GitLifecycleStep.BeginRemoval)
+            .SingleAsync();
         Assert.All(proofs, item => Assert.Equal(begin.Id, item.BeginReceiptId));
-        Assert.Contains(proofs, item => item.CleanupId ==
-            $"ResourceRegistration/{credentialRegistration.Id}/Unregistered");
+        Assert.Contains(
+            proofs,
+            item => item.CleanupId == $"ResourceRegistration/{credentialRegistration.Id}/Unregistered");
         Assert.Contains(proofs, item => item.CleanupId == $"ResourceRegistration/{ownerRegistration.Id}/Unregistered");
         var transitions = proofs.SelectMany(item => item.Transitions).OrderBy(item => item.Before).ToArray();
         Assert.Equal(2, transitions.Length);
@@ -130,8 +157,10 @@ public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fix
         Assert.Equal(GitRunCompletion.ConfigurationApplied, Assert.IsType<GitRunFinished>(complete.State).Completion);
         Assert.Equal(0, await Inventory.CountDocumentsAsync(item => item.SourceId == owner.Id));
         Assert.False(await DbContext.ResourceGroups.Find(item => item.Id == postgres.GroupId).AnyAsync());
-        Assert.Equal(0, await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
-            item.ResourceGroupId == postgres.GroupId));
+        Assert.Equal(
+            0,
+            await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
+                item.ResourceGroupId == postgres.GroupId));
     }
 
     [Theory]
@@ -147,49 +176,87 @@ public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fix
     {
         await SeedPostgresPlanningCatalog();
         var postgres = await InitializePostgres();
-        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
-        var registration = await DbContext.ResourceRegistrations.Find(item => item.ResourceId == postgres.Id)
+        var credential = await Secrets
+            .Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret)
+            .SingleAsync();
+        var registration = await DbContext.ResourceRegistrations
+            .Find(item => item.ResourceId == postgres.Id)
             .SingleAsync();
         if (scenario == "manual")
+        {
             await Inventory.DeleteOneAsync(item => item.ResourceId == postgres.Id);
+        }
         else if (scenario == "foreign")
-            await Inventory.UpdateOneAsync(item => item.ResourceId == postgres.Id,
+        {
+            await Inventory.UpdateOneAsync(
+                item => item.ResourceId == postgres.Id,
                 Builders<ManagedDeclaration>.Update.Set(item => item.SourceId, Id()));
+        }
         else if (scenario == "missing")
+        {
             await DbContext.ResourceRegistrations.DeleteOneAsync(item => item.Id == registration.Id);
+        }
         else if (scenario is "foreign-tenant" or "other-group")
-            await DbContext.ResourceRegistrations.ReplaceOneAsync(item => item.Id == registration.Id,
-                scenario == "foreign-tenant" ? registration with { TenantId = Id() } :
-                    registration with { ResourceGroupId = Id() });
+        {
+            await DbContext.ResourceRegistrations.ReplaceOneAsync(
+                item => item.Id == registration.Id,
+                scenario == "foreign-tenant"
+                    ? registration with { TenantId = Id() }
+                    : registration with { ResourceGroupId = Id() });
+        }
         else if (scenario == "extra-binding")
-            await Secrets.ReplaceOneAsync(item => item.Id == credential.Id, credential with
-            {
-                Bindings = credential.Bindings.Add(SecretBinding.Create(Id(), "pole/postgresql", Id(),
-                    new AllSecretDeployments(), [])),
-                Revision = credential.Revision + 1
-            });
+        {
+            await Secrets.ReplaceOneAsync(
+                item => item.Id == credential.Id,
+                credential with
+                {
+                    Bindings = credential.Bindings.Add(
+                        SecretBinding.Create(Id(), "pole/postgresql", Id(), new AllSecretDeployments(), [])),
+                    Revision = credential.Revision + 1,
+                });
+        }
         else if (scenario == "user-secret")
+        {
             await InsertUnreviewedUserSecretAsync(postgres.TenantId, postgres.GroupId, credential.IsolationScopeId);
+        }
         else
         {
             var owner = Assert.IsType<ProviderManagedSecret>(credential.Management);
-            await Secrets.ReplaceOneAsync(item => item.Id == credential.Id, credential with
-            {
-                Management = owner with { ResourceType = "plugin/unknown" },
-                Bindings = [credential.Bindings[0] with { Consumer = new("plugin/unknown", postgres.Id) }],
-                Revision = credential.Revision + 1
-            });
-            await DbContext.ResourceRegistrations.InsertOneAsync(ResourceRegistrationFactory.Create(postgres.TenantId,
-                postgres.GroupId, ResourceTypeId.Create("plugin/unknown"), postgres.Id, "unknown", "plugin",
-                new(Id(), DateTime.UtcNow)));
+            await Secrets.ReplaceOneAsync(
+                item => item.Id == credential.Id,
+                credential with
+                {
+                    Management = owner with { ResourceType = "plugin/unknown" },
+                    Bindings =
+                    [
+                        credential.Bindings[0] with
+                        {
+                            Consumer = new SecretConsumerIdentity("plugin/unknown", postgres.Id),
+                        },
+                    ],
+                    Revision = credential.Revision + 1,
+                });
+            await DbContext.ResourceRegistrations.InsertOneAsync(
+                ResourceRegistrationFactory.Create(
+                    postgres.TenantId,
+                    postgres.GroupId,
+                    ResourceTypeId.Create("plugin/unknown"),
+                    postgres.Id,
+                    "unknown",
+                    "plugin",
+                    new ResourceRegistrationFactory.CreateOptions(Id(), DateTime.UtcNow)));
         }
 
         var ownerSource = (await Services.GetRequiredService<GitRepositorySources>()
             .LoadAsync(Data.TenantId, source, default))!;
         repository.Publish(ownerSource.Repository.ExternalRepositoryId, [], "remove-managed-group");
-        var result = await Services.GetRequiredService<GitLifecyclePreviews>().CreateAsync(
-            new(new(ownerSource.TenantId, ownerSource.Id), ownerSource.Revision,
-                new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)), default);
+        var result = await Services.GetRequiredService<GitLifecyclePreviews>()
+            .CreateAsync(
+                new CreateLifecyclePreview(
+                    new GitSourceIdentity(ownerSource.TenantId, ownerSource.Id),
+                    ownerSource.Revision,
+                    new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove)),
+                default);
         var failure = Assert.IsType<GitPreviewRejected>(result.Value).Failure;
         Assert.True(failure is GitLifecycleDependencyRetained or GitLifecycleUnsupported, failure.GetType().Name);
         Assert.True(await PostgresResources.Find(item => item.Id == postgres.Id).AnyAsync());
@@ -205,19 +272,30 @@ public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fix
     {
         await SeedPostgresPlanningCatalog();
         var postgres = await InitializePostgres();
-        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
+        var credential = await Secrets
+            .Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret)
+            .SingleAsync();
         var (owner, preview) = await PreviewManagedGroupRemovalAsync();
         if (change == "metadata")
-            await Secrets.UpdateOneAsync(item => item.Id == credential.Id,
+            await Secrets.UpdateOneAsync(
+                item => item.Id == credential.Id,
                 Builders<Secret>.Update.Inc(item => item.ReferenceFence, 1));
         else if (change == "registration")
-            await DbContext.ResourceRegistrations.UpdateOneAsync(item => item.ResourceId == credential.Id,
+            await DbContext.ResourceRegistrations.UpdateOneAsync(
+                item => item.ResourceId == credential.Id,
                 Builders<ResourceRegistration>.Update.Inc(item => item.ReferenceFence, 1));
         else
             await InsertUnreviewedUserSecretAsync(postgres.TenantId, postgres.GroupId, credential.IsolationScopeId);
 
-        Assert.IsType<GitPreviewStale>((await Services.GetRequiredService<GitLifecyclePreviews>().ConfirmAsync(
-            new(new(owner.TenantId, owner.Id), preview.Id, preview.Revision, Data.UserId), default)).Value);
+        Assert.IsType<GitPreviewStale>(
+            (await Services.GetRequiredService<GitLifecyclePreviews>()
+                .ConfirmAsync(
+                    new ConfirmLifecyclePreview(
+                        new GitSourceIdentity(owner.TenantId, owner.Id),
+                        preview.Id,
+                        preview.Revision,
+                        Data.UserId),
+                    default)).Value);
     }
 
     [Fact]
@@ -225,21 +303,36 @@ public sealed class ManagedRegistrationLifecycleTests(MongoReplicaSetFixture fix
     {
         await SeedPostgresPlanningCatalog();
         await InitializePostgres();
-        var credential = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret).SingleAsync();
-        var provider = Assert.IsAssignableFrom<IDeclarativeRegistrationOwnershipProvider>(Services
-            .GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "Secret"));
+        var credential = await Secrets
+            .Find(item => item.TenantId == Data.TenantId && item.Management is ProviderManagedSecret)
+            .SingleAsync();
+        var provider = Assert.IsAssignableFrom<IDeclarativeRegistrationOwnershipProvider>(
+            Services.GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "Secret"));
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        Assert.IsType<DeclarationReadBlocked>((await provider.ReadRegistrationOwnershipAsync(
-            new(Id(), credential.Id), session, default)).Value);
-        var read = Assert.IsType<ManagedRegisteredResourceOwnership>((await provider.ReadRegistrationOwnershipAsync(
-            new(credential.TenantId, credential.Id), session, default)).Value);
-        Assert.IsType<DeclarationFenced>((await provider.FenceRegistrationOwnershipAsync(
-            new(credential.TenantId, credential.Id, read.Version), session, default)).Value);
-        Assert.IsType<DeclarationPreconditionsChanged>((await provider.FenceRegistrationOwnershipAsync(
-            new(credential.TenantId, credential.Id, read.Version), session, default)).Value);
+        Assert.IsType<DeclarationReadBlocked>(
+            (await provider.ReadRegistrationOwnershipAsync(
+                new ReadRegisteredResourceOwnershipRequest(Id(), credential.Id),
+                session,
+                default)).Value);
+        var read = Assert.IsType<ManagedRegisteredResourceOwnership>(
+            (await provider.ReadRegistrationOwnershipAsync(
+                new ReadRegisteredResourceOwnershipRequest(credential.TenantId, credential.Id),
+                session,
+                default)).Value);
+        Assert.IsType<DeclarationFenced>(
+            (await provider.FenceRegistrationOwnershipAsync(
+                new FenceRegisteredResourceOwnershipRequest(credential.TenantId, credential.Id, read.Version),
+                session,
+                default)).Value);
+        Assert.IsType<DeclarationPreconditionsChanged>(
+            (await provider.FenceRegistrationOwnershipAsync(
+                new FenceRegisteredResourceOwnershipRequest(credential.TenantId, credential.Id, read.Version),
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(credential.ReferenceFence, (await Secrets.Find(item => item.Id == credential.Id).SingleAsync())
-            .ReferenceFence);
+        Assert.Equal(
+            credential.ReferenceFence,
+            (await Secrets.Find(item => item.Id == credential.Id).SingleAsync()).ReferenceFence);
     }
 }

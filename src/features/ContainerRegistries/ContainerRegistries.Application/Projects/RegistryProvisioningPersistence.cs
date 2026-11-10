@@ -9,9 +9,7 @@ using Pole.Features.ContainerRegistries.Domain;
 
 namespace Pole.Features.ContainerRegistries.Application.Projects;
 
-public union ClaimRegistryProvisioningOutcome(
-    RegistryProject,
-    TenantContainerRegistryProvisioningConflict);
+public union ClaimRegistryProvisioningOutcome(RegistryProject, TenantContainerRegistryProvisioningConflict);
 
 public sealed record RemoteRegistryProvisioningRecorded;
 
@@ -19,29 +17,26 @@ public union RecordRemoteRegistryProvisioningOutcome(
     RemoteRegistryProvisioningRecorded,
     TenantContainerRegistryProvisioningConflict);
 
-public union PersistReadyRegistryProjectOutcome(
-    RegistryProject,
-    TenantContainerRegistryProvisioningConflict);
+public union PersistReadyRegistryProjectOutcome(RegistryProject, TenantContainerRegistryProvisioningConflict);
 
 /// <summary>
-/// Owns the durable state transitions of the Harbor-project provisioning state machine.
-/// Keeping these transitions together prevents orchestrators from bypassing its tenant and
-/// concurrency fences.
+///     Owns the durable state transitions of the Harbor-project provisioning state machine.
+///     Keeping these transitions together prevents orchestrators from bypassing its tenant and
+///     concurrency fences.
 /// </summary>
 public sealed class RegistryProvisioningPersistence(
     IMongoCollection<RegistryProject> projects,
     IMongoCollection<RegistryCredential> credentials,
     MongoRunTransaction transactions,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
-    internal async Task<ClaimRegistryProvisioningOutcome>
-        ClaimProvisioningAsync(
-            string tenantId,
-            string initiatedByUserId,
-            CancellationToken cancellationToken)
+    internal async Task<ClaimRegistryProvisioningOutcome> ClaimProvisioningAsync(
+        string tenantId,
+        string initiatedByUserId,
+        CancellationToken cancellationToken)
     {
-        var existing = await projects
-            .Find(ContainerRegistryFilters.HarborProjectByTenant(tenantId))
+        var existing = await projects.Find(ContainerRegistryFilters.HarborProjectByTenant(tenantId))
             .FirstOrDefaultAsync(cancellationToken);
         if (existing?.State is ReadyRegistryProject)
             return existing;
@@ -59,9 +54,7 @@ public sealed class RegistryProvisioningPersistence(
                     .Set(item => item.UpdatedAtUtc, now),
                 new FindOneAndUpdateOptions<RegistryProject> { ReturnDocument = ReturnDocument.After },
                 cancellationToken);
-            return claimed is null
-                ? Conflict(tenantId)
-                : claimed;
+            return claimed is null ? Conflict(tenantId) : claimed;
         }
 
         var project = RegistryProjectFactory.Create(
@@ -75,19 +68,17 @@ public sealed class RegistryProvisioningPersistence(
             await projects.InsertOneAsync(project, cancellationToken: cancellationToken);
             return project;
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
             return Conflict(tenantId);
         }
     }
 
-    internal async Task<RecordRemoteRegistryProvisioningOutcome>
-        RecordRemoteProvisioningAsync(
-            string projectId,
-            RemoteProvisionedRegistryProject remoteState,
-            string tenantId,
-            CancellationToken cancellationToken)
+    internal async Task<RecordRemoteRegistryProvisioningOutcome> RecordRemoteProvisioningAsync(
+        string projectId,
+        RemoteProvisionedRegistryProject remoteState,
+        string tenantId,
+        CancellationToken cancellationToken)
     {
         var update = await projects.UpdateOneAsync(
             ContainerRegistryFilters.ProvisioningAttempt(projectId, remoteState.AttemptId),
@@ -95,50 +86,42 @@ public sealed class RegistryProvisioningPersistence(
                 .Set(item => item.State, remoteState)
                 .Set(item => item.UpdatedAtUtc, remoteState.ProvisionedAtUtc),
             cancellationToken: cancellationToken);
-        return update.ModifiedCount == 1
-            ? new RemoteRegistryProvisioningRecorded()
-            : ConflictUnit(tenantId);
+        return update.ModifiedCount == 1 ? new RemoteRegistryProvisioningRecorded() : ConflictUnit(tenantId);
     }
 
-    internal Task<PersistReadyRegistryProjectOutcome>
-        PersistReadyAsync(
-            RegistryProject project,
-            RegistryProvisioningAttempt attempt,
-            ReadyRegistryProject ready,
-            RegistryCredential buildCredential,
-            RegistryCredential pullCredential,
-            CancellationToken cancellationToken) =>
-        transactions.InvokeOutcomeAsync<PersistReadyRegistryProjectOutcome>(
-            async (transaction, transactionCancellationToken) =>
+    internal Task<PersistReadyRegistryProjectOutcome> PersistReadyAsync(
+        RegistryProject project,
+        RegistryProvisioningAttempt attempt,
+        ReadyRegistryProject ready,
+        RegistryCredential buildCredential,
+        RegistryCredential pullCredential,
+        CancellationToken cancellationToken) => transactions.InvokeOutcomeAsync<PersistReadyRegistryProjectOutcome>(
+        async (transaction, transactionCancellationToken) =>
+        {
+            var update = await projects.UpdateOneAsync(
+                transaction.Session,
+                ContainerRegistryFilters.RemoteProvisioningAttempt(project.Id, attempt),
+                Builders<RegistryProject>.Update
+                    .Set(item => item.State, ready)
+                    .Set(item => item.UpdatedAtUtc, ready.ProvisionedAtUtc),
+                cancellationToken: transactionCancellationToken);
+            if (update.ModifiedCount != 1)
+                return transaction.Abort(new TenantContainerRegistryProvisioningConflict(project.TenantId));
+
+            await credentials.InsertManyAsync(
+                transaction.Session,
+                [buildCredential, pullCredential],
+                cancellationToken: transactionCancellationToken);
+            PersistReadyRegistryProjectOutcome outcome = project with
             {
-                var update = await projects.UpdateOneAsync(
-                    transaction.Session,
-                    ContainerRegistryFilters.RemoteProvisioningAttempt(project.Id, attempt),
-                    Builders<RegistryProject>.Update
-                        .Set(item => item.State, ready)
-                        .Set(item => item.UpdatedAtUtc, ready.ProvisionedAtUtc),
-                    cancellationToken: transactionCancellationToken);
-                if (update.ModifiedCount != 1)
-                {
-                    return transaction.Abort(new TenantContainerRegistryProvisioningConflict(project.TenantId));
-                }
+                State = ready, UpdatedAtUtc = ready.ProvisionedAtUtc,
+            };
+            return transaction.Commit(outcome);
+        },
+        cancellationToken);
 
-                await credentials.InsertManyAsync(
-                    transaction.Session,
-                    [buildCredential, pullCredential],
-                    cancellationToken: transactionCancellationToken);
-                PersistReadyRegistryProjectOutcome outcome =
-                    project with { State = ready, UpdatedAtUtc = ready.ProvisionedAtUtc };
-                return transaction.Commit(outcome);
-            },
-            cancellationToken);
-
-    internal async Task<RegistryProject?> LoadByIdAsync(
-        string projectId,
-        CancellationToken cancellationToken) =>
-        await projects
-            .Find(ContainerRegistryFilters.ProjectById(projectId))
-            .FirstOrDefaultAsync(cancellationToken);
+    internal async Task<RegistryProject?> LoadByIdAsync(string projectId, CancellationToken cancellationToken) =>
+        await projects.Find(ContainerRegistryFilters.ProjectById(projectId)).FirstOrDefaultAsync(cancellationToken);
 
     internal async Task<CleanupRequiredRegistryProjectProvisioning?> FindMatchingCleanupAsync(
         string projectId,
@@ -147,15 +130,13 @@ public sealed class RegistryProvisioningPersistence(
     {
         var project = await LoadByIdAsync(projectId, cancellationToken);
         return project?.State is CleanupRequiredRegistryProjectProvisioning cleanup &&
-               cleanup.AttemptId == attempt.AttemptId &&
-               cleanup.ProjectName == attempt.ProjectName &&
-               cleanup.ExternalProjectId == attempt.ExternalProjectId &&
-               cleanup.BuildRobotName == attempt.BuildRobotName &&
-               cleanup.PullRobotName == attempt.PullRobotName &&
-               cleanup.BuildExternalRobotId == attempt.BuildExternalRobotId &&
-               cleanup.PullExternalRobotId == attempt.PullExternalRobotId
-            ? cleanup
-            : null;
+            cleanup.AttemptId == attempt.AttemptId && cleanup.ProjectName == attempt.ProjectName &&
+            cleanup.ExternalProjectId == attempt.ExternalProjectId &&
+            cleanup.BuildRobotName == attempt.BuildRobotName && cleanup.PullRobotName == attempt.PullRobotName &&
+            cleanup.BuildExternalRobotId == attempt.BuildExternalRobotId &&
+            cleanup.PullExternalRobotId == attempt.PullExternalRobotId
+                ? cleanup
+                : null;
     }
 
     internal async Task<CleanupRequiredRegistryProjectProvisioning?> ClaimCleanupAsync(
@@ -166,22 +147,30 @@ public sealed class RegistryProvisioningPersistence(
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var cleanup = new CleanupRequiredRegistryProjectProvisioning(
-            attempt.AttemptId, attempt.ProjectName, attempt.ExternalProjectId,
-            attempt.BuildRobotName, attempt.PullRobotName,
-            attempt.BuildExternalRobotId, attempt.PullExternalRobotId,
-            originalFailure.Code, originalFailure.Message,
-            null, null, 0, now,
+            attempt.AttemptId,
+            attempt.ProjectName,
+            attempt.ExternalProjectId,
+            attempt.BuildRobotName,
+            attempt.PullRobotName,
+            attempt.BuildExternalRobotId,
+            attempt.PullExternalRobotId,
+            originalFailure.Code,
+            originalFailure.Message,
+            null,
+            null,
+            0,
+            now,
             attempt.NameVerificationNotBeforeUtc is null || attempt.NameVerificationNotBeforeUtc <= now
                 ? now
                 : now + RegistryProvisioningCleanupPolicy.RetryDelay,
             attempt.NameVerificationNotBeforeUtc ?? now,
-            null, null, null);
+            null,
+            null,
+            null);
 
         return await projects.FindOneAndUpdateAsync(
             ContainerRegistryFilters.CleanupClaimExpectedState(projectId, attempt),
-            Builders<RegistryProject>.Update
-                .Set(item => item.State, cleanup)
-                .Set(item => item.UpdatedAtUtc, now),
+            Builders<RegistryProject>.Update.Set(item => item.State, cleanup).Set(item => item.UpdatedAtUtc, now),
             new FindOneAndUpdateOptions<RegistryProject> { ReturnDocument = ReturnDocument.After },
             cancellationToken) is { State: CleanupRequiredRegistryProjectProvisioning claimed }
             ? claimed
@@ -200,14 +189,16 @@ public sealed class RegistryProvisioningPersistence(
             ContainerRegistryFilters.CleanupLeaseCandidate(projectId, observedCleanup, now),
             Builders<RegistryProject>.Update
                 .Set(item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseToken, leaseToken)
-                .Set(item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseExpiresAtUtc, leaseExpiresAt)
+                .Set(
+                    item => ((CleanupRequiredRegistryProjectProvisioning)item.State).CleanupLeaseExpiresAtUtc,
+                    leaseExpiresAt)
                 .Set(item => item.UpdatedAtUtc, now),
             new FindOneAndUpdateOptions<RegistryProject> { ReturnDocument = ReturnDocument.After },
             cancellationToken);
         return leasedProject?.State is CleanupRequiredRegistryProjectProvisioning leasedCleanup &&
-               leasedCleanup.CleanupLeaseToken == leaseToken
-            ? leasedCleanup
-            : null;
+            leasedCleanup.CleanupLeaseToken == leaseToken
+                ? leasedCleanup
+                : null;
     }
 
     internal Task RecordCleanupRetryAsync(
@@ -230,13 +221,11 @@ public sealed class RegistryProvisioningPersistence(
                 : cleanup.CleanupVerificationNotBeforeUtc,
             LastCleanupAttemptAtUtc = now,
             CleanupLeaseToken = null,
-            CleanupLeaseExpiresAtUtc = null
+            CleanupLeaseExpiresAtUtc = null,
         };
         return projects.UpdateOneAsync(
             ContainerRegistryFilters.CleanupLease(projectId, cleanup),
-            Builders<RegistryProject>.Update
-                .Set(item => item.State, state)
-                .Set(item => item.UpdatedAtUtc, now),
+            Builders<RegistryProject>.Update.Set(item => item.State, state).Set(item => item.UpdatedAtUtc, now),
             cancellationToken: cancellationToken);
     }
 
@@ -258,13 +247,11 @@ public sealed class RegistryProvisioningPersistence(
             CleanupVerificationNotBeforeUtc = verificationNotBefore,
             LastCleanupAttemptAtUtc = now,
             CleanupLeaseToken = null,
-            CleanupLeaseExpiresAtUtc = null
+            CleanupLeaseExpiresAtUtc = null,
         };
         return projects.UpdateOneAsync(
             ContainerRegistryFilters.CleanupLease(projectId, cleanup),
-            Builders<RegistryProject>.Update
-                .Set(item => item.State, state)
-                .Set(item => item.UpdatedAtUtc, now),
+            Builders<RegistryProject>.Update.Set(item => item.State, state).Set(item => item.UpdatedAtUtc, now),
             cancellationToken: cancellationToken);
     }
 
@@ -272,43 +259,40 @@ public sealed class RegistryProvisioningPersistence(
         string projectId,
         CleanupRequiredRegistryProjectProvisioning cleanup,
         DateTime now,
-        CancellationToken cancellationToken) =>
-        projects.UpdateOneAsync(
-            ContainerRegistryFilters.CleanupLease(projectId, cleanup),
-            Builders<RegistryProject>.Update
-                .Set(item => item.State, new FailedRegistryProjectProvisioning(
-                    cleanup.OriginalFailureCode,
-                    cleanup.OriginalFailureMessage,
-                    now))
-                .Set(item => item.UpdatedAtUtc, now),
-            cancellationToken: cancellationToken);
+        CancellationToken cancellationToken) => projects.UpdateOneAsync(
+        ContainerRegistryFilters.CleanupLease(projectId, cleanup),
+        Builders<RegistryProject>.Update
+            .Set(
+                item => item.State,
+                new FailedRegistryProjectProvisioning(cleanup.OriginalFailureCode, cleanup.OriginalFailureMessage, now))
+            .Set(item => item.UpdatedAtUtc, now),
+        cancellationToken: cancellationToken);
 
     internal async Task<IReadOnlyList<RegistryProject>> LoadPendingCleanupAsync(
         DateTime now,
         int limit,
-        CancellationToken cancellationToken) =>
-        await projects.Find(ContainerRegistryFilters.PendingCleanup(now))
-            .SortBy(item => item.UpdatedAtUtc)
-            .Limit(limit)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken) => await projects.Find(ContainerRegistryFilters.PendingCleanup(now))
+        .SortBy(item => item.UpdatedAtUtc)
+        .Limit(limit)
+        .ToListAsync(cancellationToken);
 
     internal async Task<IReadOnlyList<RegistryProject>> LoadAbandonedRemoteAsync(
         DateTime cutoff,
         int limit,
-        CancellationToken cancellationToken) =>
-        await projects.Find(ContainerRegistryFilters.AbandonedRemoteProvisioning(cutoff))
-            .SortBy(item => item.UpdatedAtUtc)
-            .Limit(limit)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken) => await projects
+        .Find(ContainerRegistryFilters.AbandonedRemoteProvisioning(cutoff))
+        .SortBy(item => item.UpdatedAtUtc)
+        .Limit(limit)
+        .ToListAsync(cancellationToken);
 
     internal async Task<IReadOnlyList<RegistryProject>> LoadAbandonedProvisioningAsync(
         DateTime cutoff,
         int limit,
-        CancellationToken cancellationToken) =>
-        await projects.Find(ContainerRegistryFilters.AbandonedProvisioning(cutoff))
-            .SortBy(item => item.UpdatedAtUtc)
-            .Limit(limit)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken) => await projects
+        .Find(ContainerRegistryFilters.AbandonedProvisioning(cutoff))
+        .SortBy(item => item.UpdatedAtUtc)
+        .Limit(limit)
+        .ToListAsync(cancellationToken);
 
     private static ClaimRegistryProvisioningOutcome Conflict(string tenantId) =>
         new TenantContainerRegistryProvisioningConflict(tenantId);

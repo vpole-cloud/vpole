@@ -9,7 +9,6 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
-using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
 
@@ -18,8 +17,8 @@ public union GetResourceDeploymentSetOutcome(PlacementSummaryDto[]);
 public sealed record GetResourceDeploymentSetRequest(
     [FromQuery] string ResourceType,
     [FromQuery] string ResourceId,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetResourceDeploymentSetOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetResourceDeploymentSetOutcome>, ITenantReadOperation;
 
 public sealed class GetResourceDeploymentSetValidator : AbstractValidator<GetResourceDeploymentSetRequest>
 {
@@ -30,29 +29,33 @@ public sealed class GetResourceDeploymentSetValidator : AbstractValidator<GetRes
     }
 }
 
-public sealed class GetResourceDeploymentSetHandler(LoadResourceDeploymentSet load)
-    : IMediatorOutcomeHandler<GetResourceDeploymentSetRequest, GetResourceDeploymentSetOutcome>
+public sealed class GetResourceDeploymentSetHandler(
+    LoadResourceDeploymentSet load
+) : IMediatorOutcomeHandler<GetResourceDeploymentSetRequest, GetResourceDeploymentSetOutcome>
 {
-    public async Task<GetResourceDeploymentSetOutcome> HandleAsync(GetResourceDeploymentSetRequest request,
-        CancellationToken cancellationToken = default) =>
-        (await load(
-            new LoadResourceDeploymentSetRequest(
-                TenantId: request.TenantId,
-                ResourceType: ResourceTypeId.Create(request.ResourceType),
-                ResourceId: ObjectId.Parse(request.ResourceId).ToString()),
-            cancellationToken: cancellationToken)).ToArray();
+    public async Task<GetResourceDeploymentSetOutcome> HandleAsync(
+        GetResourceDeploymentSetRequest request,
+        CancellationToken cancellationToken = default) => (await load(
+        new LoadResourceDeploymentSetRequest(
+            TenantId: request.TenantId,
+            ResourceType: ResourceTypeId.Create(request.ResourceType),
+            ResourceId: ObjectId.Parse(request.ResourceId).ToString()),
+        cancellationToken: cancellationToken)).ToArray();
 }
 
 public static class GetResourceDeploymentSetEndpoint
 {
     public static IEndpointRouteBuilder MapGetResourceDeploymentSetEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (IMediator mediator, [AsParameters] GetResourceDeploymentSetRequest request,
-                CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
-                {
-                    PlacementSummaryDto[] placements => Results.Ok(placements)
-                }))
+        app.MapGet(
+                "/",
+                async (
+                        IMediator mediator, [AsParameters] GetResourceDeploymentSetRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        PlacementSummaryDto[] placements => Results.Ok(placements),
+                    }))
             .WithName("GetResourceDeploymentSet");
         return app;
     }

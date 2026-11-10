@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.Mongo;
 
 namespace Pole.Features.Functions.Application.Common;
 

@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -11,11 +9,12 @@ public delegate Task<DeploymentTarget?> LoadDeploymentTargetById(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadDeploymentTargetById(
-    IMongoCollection<DeploymentTarget> deploymentTargets)
+    IMongoCollection<DeploymentTarget> deploymentTargets
+)
 {
     public async Task<DeploymentTarget?> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default) => await deploymentTargets
-            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
-            .FirstOrDefaultAsync(cancellationToken);
+        .Find(DeploymentTargetFilters.ById(deploymentTargetId))
+        .FirstOrDefaultAsync(cancellationToken);
 }

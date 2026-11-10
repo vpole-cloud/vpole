@@ -1,8 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Tests.Integration.Infrastructure;
@@ -11,8 +9,9 @@ using Xunit;
 namespace Pole.Tests.Integration.ResourceGroups;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class RuntimeCellVerificationTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed class RuntimeCellVerificationTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ReadyCellsWithoutWorkloads_AreRecheckedInBoundedBatches_WithAtomicOutbox()
@@ -27,7 +26,8 @@ public sealed class RuntimeCellVerificationTests(MongoReplicaSetFixture fixture)
             DbContext.RuntimeCells,
             Fixture.StoreOutboxWrites,
             (operation, cancellationToken) => DbContext.RunOutcomeInTransactionAsync(
-                operation, cancellationToken: cancellationToken));
+                operation,
+                cancellationToken: cancellationToken));
 
         var candidates = await persistence.LoadRecoveryCandidatesAsync(now.AddSeconds(-30), now, 1);
         Assert.Equal(oldest.Id, Assert.Single(candidates).Id);
@@ -38,22 +38,22 @@ public sealed class RuntimeCellVerificationTests(MongoReplicaSetFixture fixture)
         Assert.IsType<ProvisioningRuntimeCellState>(saved.State);
         Assert.Equal(oldest.DesiredGeneration + 1, saved.DesiredGeneration);
         Assert.Equal(oldest.KubernetesNamespace, saved.KubernetesNamespace);
-        Assert.Equal(1, await DbContext.OutboxMessages.CountDocumentsAsync(message =>
-            message.PendingKey == RuntimeCellPendingKey.Reconciliation(saved.Id, saved.DesiredGeneration)));
+        Assert.Equal(
+            1,
+            await DbContext.OutboxMessages.CountDocumentsAsync(message =>
+                message.PendingKey == RuntimeCellPendingKey.Reconciliation(saved.Id, saved.DesiredGeneration)));
         var remaining = await persistence.LoadRecoveryCandidatesAsync(now.AddSeconds(-30), now, 1);
         Assert.Equal(next.Id, Assert.Single(remaining).Id);
         await persistence.RecoverAsync(next.Id, now);
         Assert.Empty(await persistence.LoadRecoveryCandidatesAsync(now.AddSeconds(-30), now, 1));
     }
 
-    private static RuntimeCell CreateReady(DateTime readyAtUtc) =>
-        RuntimeCellFactory.Create(
-                ObjectId.GenerateNewId().ToString(),
-                ObjectId.GenerateNewId().ToString(),
-                ObjectId.GenerateNewId().ToString(),
-                ObjectId.GenerateNewId().ToString(),
-                "pole-verification-test",
-                new RuntimeCellFactory.CreateOptions(
-                    ObjectId.GenerateNewId().ToString(), readyAtUtc.AddMinutes(-1)))
-            .MarkReady(1, readyAtUtc);
+    private static RuntimeCell CreateReady(DateTime readyAtUtc) => RuntimeCellFactory.Create(
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            "pole-verification-test",
+            new RuntimeCellFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), readyAtUtc.AddMinutes(-1)))
+        .MarkReady(1, readyAtUtc);
 }

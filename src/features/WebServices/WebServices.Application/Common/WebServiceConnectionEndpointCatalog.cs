@@ -7,9 +7,7 @@ namespace Pole.Features.WebServices.Application.Common;
 
 internal static class WebServiceConnectionEndpointCatalog
 {
-    public static ImmutableList<ResourceConnectionEndpoint> FromConfig(
-        WebServiceConfig config,
-        string serviceName) =>
+    public static ImmutableList<ResourceConnectionEndpoint> FromConfig(WebServiceConfig config, string serviceName) =>
         config.PortMappings
             .Where(mapping => !string.IsNullOrWhiteSpace(mapping.Name))
             .GroupBy(mapping => mapping.Name.Trim().ToLowerInvariant(), StringComparer.Ordinal)
@@ -24,18 +22,15 @@ internal static class WebServiceConnectionEndpointCatalog
         string serviceName,
         PortMapping mapping)
     {
-        if (!NetworkPort.TryCreate(mapping.ServicePort, out var servicePort) ||
-            !WebServicePublicIngressPort.TryResolve(
+        if (!NetworkPort.TryCreate(mapping.ServicePort, out var servicePort) || !WebServicePublicIngressPort.TryResolve(
                 mapping.Protocol,
                 mapping.TargetPort,
                 out var targetPort))
-        {
             return null;
-        }
         return new ResourceConnectionEndpoint(id, serviceName, servicePort, targetPort)
         {
             DisplayName = mapping.Name.Trim(),
-            Protocol = "tcp"
+            Protocol = "tcp",
         };
     }
 }

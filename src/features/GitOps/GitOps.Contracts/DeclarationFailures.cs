@@ -2,7 +2,9 @@ namespace Pole.Features.GitOps.Contracts;
 
 // Open to provider-owned typed errors; adding a provider requires no platform error enum.
 public interface IDeclarationFailure;
+
 public sealed record StaleGitExecution : IDeclarationFailure;
+
 public sealed record GitDeclarationOwnershipConflict : IDeclarationFailure;
 
 public static class DeclarationFailureDiagnostics
@@ -34,6 +36,6 @@ public static class DeclarationFailureDiagnostics
         GitLifecycleApprovalStale => nameof(GitLifecycleApprovalStale),
         StaleGitExecution => "StaleExecution",
         GitDeclarationOwnershipConflict => "OwnershipConflict",
-        _ => null
+        _ => null,
     };
 }

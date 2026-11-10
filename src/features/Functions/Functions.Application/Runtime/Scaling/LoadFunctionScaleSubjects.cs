@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -9,7 +7,8 @@ namespace Pole.Features.Functions.Application.Runtime.Scaling;
 public sealed record FunctionScaleSubject(
     FunctionApp App,
     FunctionRevision Revision,
-    IReadOnlyDictionary<string, int> DurableDemandByHandler);
+    IReadOnlyDictionary<string, int> DurableDemandByHandler
+);
 
 public delegate Task<IReadOnlyList<FunctionScaleSubject>> LoadFunctionScaleSubjects(
     CancellationToken cancellationToken = default);
@@ -17,10 +16,10 @@ public delegate Task<IReadOnlyList<FunctionScaleSubject>> LoadFunctionScaleSubje
 public sealed class MongoLoadFunctionScaleSubjects(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRevision> functionRevisions,
-    IMongoCollection<FunctionInvocation> functionInvocations)
+    IMongoCollection<FunctionInvocation> functionInvocations
+)
 {
-    public async Task<IReadOnlyList<FunctionScaleSubject>> InvokeAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<FunctionScaleSubject>> InvokeAsync(CancellationToken cancellationToken = default)
     {
         var revisions = await functionRevisions.Find(FunctionScaleSubjectFilters.ScalableRevisions())
             .ToListAsync(cancellationToken);
@@ -28,26 +27,23 @@ public sealed class MongoLoadFunctionScaleSubjects(
             return [];
 
         var appIds = revisions.Select(revision => revision.FunctionAppId).Distinct().ToArray();
-        var apps = await functionApps.Find(FunctionScaleSubjectFilters.AppsById(appIds))
-            .ToListAsync(cancellationToken);
+        var apps = await functionApps.Find(FunctionScaleSubjectFilters.AppsById(appIds)).ToListAsync(cancellationToken);
         var appsByOwner = apps.ToDictionary(app => (app.TenantId, app.Id));
         var revisionIds = revisions.Select(revision => revision.Id).ToArray();
         var invocations = await functionInvocations.Find(
                 FunctionScaleSubjectFilters.DurableWorkForRevisions(revisionIds))
             .ToListAsync(cancellationToken);
         var durableDemand = invocations
-            .GroupBy(invocation =>
-                (invocation.TenantId, invocation.FunctionAppId, invocation.RevisionId, invocation.HandlerName))
+            .GroupBy(invocation => (invocation.TenantId, invocation.FunctionAppId, invocation.RevisionId,
+                invocation.HandlerName))
             .ToDictionary(group => group.Key, group => group.Count());
-        return revisions
-            .Where(revision => appsByOwner.ContainsKey((revision.TenantId, revision.FunctionAppId)))
+        return revisions.Where(revision => appsByOwner.ContainsKey((revision.TenantId, revision.FunctionAppId)))
             .Select(revision => new FunctionScaleSubject(
                 appsByOwner[(revision.TenantId, revision.FunctionAppId)],
                 revision,
                 durableDemand
                     .Where(entry => entry.Key.TenantId == revision.TenantId &&
-                                    entry.Key.FunctionAppId == revision.FunctionAppId &&
-                                    entry.Key.RevisionId == revision.Id)
+                        entry.Key.FunctionAppId == revision.FunctionAppId && entry.Key.RevisionId == revision.Id)
                     .ToDictionary(entry => entry.Key.HandlerName, entry => entry.Value, StringComparer.Ordinal)))
             .ToArray();
     }

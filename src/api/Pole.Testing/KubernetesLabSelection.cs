@@ -6,10 +6,7 @@ public static class KubernetesLabSelection
     public const string TargetEnvironmentVariable = "POLE_K8S_LAB_TARGET";
     public const string DefaultTarget = "default";
 
-    public static KubernetesLabTarget RequireSelected()
-    {
-        return RequireSelection().Target;
-    }
+    public static KubernetesLabTarget RequireSelected() => RequireSelection().Target;
 
     public static SelectedKubernetesLab RequireSelection()
     {
@@ -53,4 +50,5 @@ public static class KubernetesLabSelection
 
 public sealed record SelectedKubernetesLab(
     KubernetesLabState State,
-    KubernetesLabTarget Target);
+    KubernetesLabTarget Target
+);

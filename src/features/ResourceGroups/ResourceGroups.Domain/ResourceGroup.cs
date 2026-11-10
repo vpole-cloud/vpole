@@ -20,7 +20,8 @@ public sealed record ResourceGroup(
     long RegistrationFence,
     long Revision,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned
+    DateTime UpdatedAtUtc
+) : ITenantOwned
 {
     public ResourceGroup UpdateMetadata(
         string description,
@@ -41,9 +42,7 @@ public sealed record ResourceGroup(
             .ToImmutableHashSet(StringComparer.Ordinal);
         if (string.Equals(Description, normalizedDescription, StringComparison.Ordinal) &&
             Tags.SetEquals(normalizedTags))
-        {
             return this;
-        }
 
         var normalizedUpdatedAtUtc = ResourceGroupValueGuard.UpdatedUtc(
             updatedAtUtc,
@@ -54,7 +53,7 @@ public sealed record ResourceGroup(
             Description = normalizedDescription,
             Tags = normalizedTags,
             Revision = checked(Revision + 1),
-            UpdatedAtUtc = normalizedUpdatedAtUtc
+            UpdatedAtUtc = normalizedUpdatedAtUtc,
         };
     }
 
@@ -71,34 +70,28 @@ public sealed record ResourceGroup(
         {
             Lifecycle = new DeletingResourceGroupLifecycleState(normalizedRequestedAtUtc),
             Revision = checked(Revision + 1),
-            UpdatedAtUtc = normalizedRequestedAtUtc
+            UpdatedAtUtc = normalizedRequestedAtUtc,
         };
     }
 }
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(
-    typeof(ActiveResourceGroupLifecycleState),
-    typeof(DeletingResourceGroupLifecycleState))]
+[BsonKnownTypes(typeof(ActiveResourceGroupLifecycleState), typeof(DeletingResourceGroupLifecycleState))]
 public abstract record ResourceGroupLifecycleState;
 
 [BsonDiscriminator("active")]
 public sealed record ActiveResourceGroupLifecycleState : ResourceGroupLifecycleState;
 
 [BsonDiscriminator("deleting")]
-public sealed record DeletingResourceGroupLifecycleState(DateTime RequestedAtUtc)
-    : ResourceGroupLifecycleState;
+public sealed record DeletingResourceGroupLifecycleState(
+    DateTime RequestedAtUtc
+) : ResourceGroupLifecycleState;
 
 public static class ResourceGroupFactory
 {
     public const int MaximumNameLength = ResourceGroupValueGuard.MaximumResourceGroupNameLength;
     public const int MaximumDescriptionLength = ResourceGroupValueGuard.MaximumResourceGroupDescriptionLength;
     public const int MaximumTagLength = ResourceGroupValueGuard.MaximumResourceGroupTagLength;
-    public sealed record ResourceGroupCreateOptions(
-        string Id,
-        string DefaultIsolationScopeId,
-        ImmutableHashSet<string> Tags,
-        DateTime CreatedAtUtc);
 
     public static ResourceGroupCreateOptions DefaultCreateOptions =>
         new(
@@ -116,9 +109,7 @@ public static class ResourceGroupFactory
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.Tags);
 
-        var createdAtUtc = ResourceGroupValueGuard.Utc(
-            options.CreatedAtUtc,
-            nameof(options.CreatedAtUtc));
+        var createdAtUtc = ResourceGroupValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc));
         var tags = options.Tags
             .Select(tag => ResourceGroupValueGuard.Required(
                 tag,
@@ -137,9 +128,7 @@ public static class ResourceGroupFactory
                 description,
                 nameof(description),
                 ResourceGroupValueGuard.MaximumResourceGroupDescriptionLength),
-            ResourceGroupValueGuard.ObjectId(
-                options.DefaultIsolationScopeId,
-                nameof(options.DefaultIsolationScopeId)),
+            ResourceGroupValueGuard.ObjectId(options.DefaultIsolationScopeId, nameof(options.DefaultIsolationScopeId)),
             new ActiveResourceGroupLifecycleState(),
             tags,
             RegistrationFence: 0,
@@ -147,4 +136,11 @@ public static class ResourceGroupFactory
             createdAtUtc,
             createdAtUtc);
     }
+
+    public sealed record ResourceGroupCreateOptions(
+        string Id,
+        string DefaultIsolationScopeId,
+        ImmutableHashSet<string> Tags,
+        DateTime CreatedAtUtc
+    );
 }

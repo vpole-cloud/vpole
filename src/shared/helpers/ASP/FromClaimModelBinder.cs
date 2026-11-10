@@ -11,26 +11,20 @@ public class FromClaimBinder : IModelBinder
         // Get the container type and property
         var containerType = bindingContext.ModelMetadata.ContainerType;
         var propertyName = bindingContext.ModelMetadata.PropertyName;
-        
+
         if (containerType == null || string.IsNullOrEmpty(propertyName))
-        {
             return Task.CompletedTask;
-        }
-        
+
         var propertyInfo = containerType.GetProperty(propertyName);
         if (propertyInfo == null)
-        {
             return Task.CompletedTask;
-        }
 
         var attributes = propertyInfo.GetCustomAttributes(true);
-        var fromClaimAttribute = attributes
-            .FirstOrDefault(a => a.GetType() == typeof(FromClaimAttribute)) as FromClaimAttribute;
-            
+        var fromClaimAttribute
+            = attributes.FirstOrDefault(a => a.GetType() == typeof(FromClaimAttribute)) as FromClaimAttribute;
+
         if (fromClaimAttribute == null)
-        {
             return Task.CompletedTask;
-        }
 
         // Get the user claims
         var user = bindingContext.HttpContext.User;
@@ -41,8 +35,7 @@ public class FromClaimBinder : IModelBinder
         }
 
         // Find the specific claim value
-        var claimValue = user.Claims
-            .FirstOrDefault(c => c.Type == fromClaimAttribute.ClaimType)?.Value;
+        var claimValue = user.Claims.FirstOrDefault(c => c.Type == fromClaimAttribute.ClaimType)?.Value;
 
         if (string.IsNullOrEmpty(claimValue))
         {

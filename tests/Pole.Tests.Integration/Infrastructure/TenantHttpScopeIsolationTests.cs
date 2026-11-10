@@ -1,15 +1,16 @@
 using System.Net;
 using MongoDB.Driver;
-using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Testing;
-using Xunit;
 using Pole.Tests.Integration.Http;
+using Xunit;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
 [Collection(IntegrationTestCollection.Tenant3)]
-public sealed class TenantHttpScopeIsolationTests(MongoReplicaSetFixture fixture) : ApiIntegrationTestBase(fixture)
+public sealed class TenantHttpScopeIsolationTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task IndependentHttpIdentitiesCannotReadUpdateOrDeleteTheOtherTenant()
@@ -27,7 +28,8 @@ public sealed class TenantHttpScopeIsolationTests(MongoReplicaSetFixture fixture
         Assert.Equal(HttpStatusCode.OK, otherRead.StatusCode);
         using var hiddenRead = await Client.GetAsync("/api/v1/resource-groups/" + foreign.Id);
         using var hiddenDelete = await Client.DeleteAsync("/api/v1/resource-groups/" + foreign.Id);
-        using var hiddenUpdate = await Client.PutAsJsonAsync("/api/v1/resource-groups/" + foreign.Id,
+        using var hiddenUpdate = await Client.PutAsJsonAsync(
+            "/api/v1/resource-groups/" + foreign.Id,
             new { name = "changed", description = "", tags = Array.Empty<string>() });
         Assert.Equal(HttpStatusCode.NotFound, hiddenRead.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, hiddenDelete.StatusCode);
@@ -36,6 +38,9 @@ public sealed class TenantHttpScopeIsolationTests(MongoReplicaSetFixture fixture
         selection.Headers.Add(TenantHeaders.TenantId, other.TenantId);
         using var forbidden = await Client.SendAsync(selection);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
-        Assert.Equal(1, await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(group => group.Id == foreign.Id && group.TenantId == other.TenantId));
+        Assert.Equal(
+            1,
+            await Fixture.DbContext.ResourceGroups.CountDocumentsAsync(group =>
+                group.Id == foreign.Id && group.TenantId == other.TenantId));
     }
 }

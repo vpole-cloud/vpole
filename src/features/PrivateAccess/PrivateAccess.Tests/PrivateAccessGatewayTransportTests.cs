@@ -29,8 +29,7 @@ public sealed class PrivateAccessGatewayTransportTests
         using var gatewayCertificate = Certificate("gateway", false);
         using var peerFile = new CertificateFile(serverCertificate);
         var gatewayPin = Pin(gatewayCertificate);
-        var gatewayIdentity = new PrivateAccessGatewayIdentity(
-            "tenant-a", "target-a", "gateway-a", 1, 1);
+        var gatewayIdentity = new PrivateAccessGatewayIdentity("tenant-a", "target-a", "gateway-a", 1, 1);
         var ports = Enumerable.Range(0, 3)
             .Select(_ => (Gateway: FreePort(), Public: FreePort(), Internal: FreePort()))
             .ToArray();
@@ -44,8 +43,7 @@ public sealed class PrivateAccessGatewayTransportTests
             {
                 var replica = index;
                 var port = ports[replica];
-                var builder = WebApplication.CreateBuilder(
-                    new WebApplicationOptions { EnvironmentName = "Testing" });
+                var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
                 builder.Logging.ClearProviders();
                 var settings = new Dictionary<string, string?>
                 {
@@ -59,16 +57,15 @@ public sealed class PrivateAccessGatewayTransportTests
                     ["PrivateAccess:GatewayImage"] = "test/gateway:1",
                     ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{port.Gateway}",
                     ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
-                    ["Kestrel:Endpoints:PrivateAccessGateway:Url"] =
-                        $"https://127.0.0.1:{port.Gateway}",
+                    ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{port.Gateway}",
                     ["Kestrel:Endpoints:PrivateAccessInternal:Url"] = origins[replica],
-                    ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{port.Public}"
+                    ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{port.Public}",
                 };
                 for (var peer = 0; peer < origins.Length; peer++)
                     settings[$"PrivateAccess:InternalPeerOrigins:{peer}"] = origins[peer];
                 builder.Configuration.AddInMemoryCollection(settings);
-                builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(
-                    https => https.ServerCertificate = serverCertificate));
+                builder.WebHost.ConfigureKestrel(options =>
+                    options.ConfigureHttpsDefaults(https => https.ServerCertificate = serverCertificate));
                 builder.ConfigurePrivateAccessListener();
                 builder.Services.AddPrivateAccessRuntime(builder.Configuration);
                 builder.Services.AddSingleton<ClaimPrivateAccessBrokerOwner>(owners.ClaimAsync);
@@ -77,13 +74,11 @@ public sealed class PrivateAccessGatewayTransportTests
                 builder.Services.AddSingleton<LoadPrivateAccessBrokerOwner>(owners.LoadAsync);
                 builder.Services.AddSingleton<ResolvePrivateAccessGatewayIdentity>((pin, _) =>
                     Task.FromResult(pin == gatewayPin ? gatewayIdentity : null));
-                builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((_, _, _) =>
-                    Task.FromResult(true));
-                builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) =>
-                    Task.FromResult<PrivateAccessTicketRoute?>(
-                        ticket is "multi-1" or "multi-2"
-                            ? new PrivateAccessTicketRoute("tenant-a", "target-a")
-                            : null));
+                builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((
+                    _, _,
+                    _) => Task.FromResult(true));
+                builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) => Task.FromResult(
+                    ticket is "multi-1" or "multi-2" ? new PrivateAccessTicketRoute("tenant-a", "target-a") : null));
                 builder.Services.AddSingleton<RedeemPrivateAccessSession>((ticket, _) =>
                     Task.FromResult<RedeemPrivateAccessSessionOutcome>(
                         ticket is "multi-1" or "multi-2" && redeemed.TryAdd(ticket, 0)
@@ -92,16 +87,15 @@ public sealed class PrivateAccessGatewayTransportTests
                 builder.Services.AddSingleton<RenewPrivateAccessSession>((sessionId, _) =>
                     Task.FromResult<RenewPrivateAccessSessionOutcome>(Lease(sessionId)));
                 builder.Services.AddSingleton<MarkPrivateAccessSessionStarted>((_, _) =>
-                    Task.FromResult<MarkPrivateAccessSessionStartedOutcome>(
-                        new PrivateAccessSessionStarted()));
-                builder.Services.AddSingleton<ClosePrivateAccessSession>((_, _, _) =>
-                    Task.FromResult<ClosePrivateAccessSessionOutcome>(
-                        new PrivateAccessSessionClosed()));
-                builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((_, _, _) =>
-                    Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
+                    Task.FromResult<MarkPrivateAccessSessionStartedOutcome>(new PrivateAccessSessionStarted()));
+                builder.Services.AddSingleton<ClosePrivateAccessSession>((
+                    _, _,
+                    _) => Task.FromResult<ClosePrivateAccessSessionOutcome>(new PrivateAccessSessionClosed()));
+                builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((
+                    _, _,
+                    _) => Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
                 builder.Services.AddSingleton<MarkPrivateAccessSessionCleaned>((_, _) =>
-                    Task.FromResult<MarkPrivateAccessSessionCleanedOutcome>(
-                        new PrivateAccessSessionCleaned()));
+                    Task.FromResult<MarkPrivateAccessSessionCleanedOutcome>(new PrivateAccessSessionCleaned()));
                 var app = builder.Build();
                 app.UsePrivateAccessRuntime();
                 app.MapPrivateAccessGatewayControlEndpoint();
@@ -124,19 +118,22 @@ public sealed class PrivateAccessGatewayTransportTests
             }
         }
 
-        async Task ExerciseAsync(int controlReplica, int userReplica,
-            int streamReplica, string userTicket)
+        async Task ExerciseAsync(
+            int controlReplica,
+            int userReplica,
+            int streamReplica,
+            string userTicket)
         {
             using var control = Socket(serverCertificate, gatewayCertificate);
-            await control.ConnectAsync(new Uri(
-                $"wss://127.0.0.1:{ports[controlReplica].Gateway}/private-access/gateways"),
+            await control.ConnectAsync(
+                new Uri($"wss://127.0.0.1:{ports[controlReplica].Gateway}/private-access/gateways"),
                 timeout.Token);
             await ChallengeAsync(control, timeout.Token);
             Assert.Equal($"replica-{controlReplica}", owners.Current?.InstanceId);
 
             using var user = Socket(serverCertificate, bearer: userTicket);
-            var userConnect = user.ConnectAsync(new Uri(
-                $"wss://127.0.0.1:{ports[userReplica].Public}/private-access/streams"),
+            var userConnect = user.ConnectAsync(
+                new Uri($"wss://127.0.0.1:{ports[userReplica].Public}/private-access/streams"),
                 timeout.Token);
             var open = await PrivateAccessFrames.ReceiveAsync(control, timeout.Token);
             var gatewayTicket = PrivateAccessGatewayProtocol.ReadOpenStream(open);
@@ -147,42 +144,56 @@ public sealed class PrivateAccessGatewayTransportTests
                 await Task.Delay(TimeSpan.FromSeconds(6), timeout.Token);
                 await ChallengeAsync(control, timeout.Token);
             }
+
             using var stream = Socket(serverCertificate, gatewayCertificate, gatewayTicket);
-            await stream.ConnectAsync(new Uri(
-                $"wss://127.0.0.1:{ports[streamReplica].Gateway}/private-access/gateway-streams"),
+            await stream.ConnectAsync(
+                new Uri($"wss://127.0.0.1:{ports[streamReplica].Gateway}/private-access/gateway-streams"),
                 timeout.Token);
             var destination = PrivateAccessGatewayProtocol.ReadDestination(
                 await PrivateAccessFrames.ReceiveAsync(stream, timeout.Token));
             Assert.Equal("database.runtime-a.svc", destination.ServiceDns);
             await userConnect;
-            await PrivateAccessFrames.SendAsync(stream, PrivateAccessFrameKind.Ready,
-                ReadOnlyMemory<byte>.Empty, timeout.Token);
-            await PrivateAccessFrames.SendAsync(user, PrivateAccessFrameKind.Data,
-                Encoding.UTF8.GetBytes(userTicket), timeout.Token);
+            await PrivateAccessFrames.SendAsync(
+                stream,
+                PrivateAccessFrameKind.Ready,
+                ReadOnlyMemory<byte>.Empty,
+                timeout.Token);
+            await PrivateAccessFrames.SendAsync(
+                user,
+                PrivateAccessFrameKind.Data,
+                Encoding.UTF8.GetBytes(userTicket),
+                timeout.Token);
             var inbound = await PrivateAccessFrames.ReceiveAsync(stream, timeout.Token);
             Assert.Equal(userTicket, Encoding.UTF8.GetString(inbound.Payload.Span));
-            await PrivateAccessFrames.SendAsync(stream, PrivateAccessFrameKind.Data,
-                Encoding.UTF8.GetBytes("reply"), timeout.Token);
+            await PrivateAccessFrames.SendAsync(
+                stream,
+                PrivateAccessFrameKind.Data,
+                Encoding.UTF8.GetBytes("reply"),
+                timeout.Token);
             var outbound = await PrivateAccessFrames.ReceiveAsync(user, timeout.Token);
             Assert.Equal("reply", Encoding.UTF8.GetString(outbound.Payload.Span));
             using var replay = Socket(serverCertificate, gatewayCertificate, gatewayTicket);
-            await Assert.ThrowsAsync<WebSocketException>(() => replay.ConnectAsync(new Uri(
-                $"wss://127.0.0.1:{ports[streamReplica].Gateway}/private-access/gateway-streams"),
+            await Assert.ThrowsAsync<WebSocketException>(() => replay.ConnectAsync(
+                new Uri($"wss://127.0.0.1:{ports[streamReplica].Gateway}/private-access/gateway-streams"),
                 timeout.Token));
             if (userTicket == "multi-1")
             {
                 owners.Expire();
                 using var takeover = Socket(serverCertificate, gatewayCertificate);
-                await takeover.ConnectAsync(new Uri(
-                    $"wss://127.0.0.1:{ports[streamReplica].Gateway}/private-access/gateways"),
+                await takeover.ConnectAsync(
+                    new Uri($"wss://127.0.0.1:{ports[streamReplica].Gateway}/private-access/gateways"),
                     timeout.Token);
                 await ChallengeAsync(takeover, timeout.Token);
                 Assert.Equal($"replica-{streamReplica}", owners.Current?.InstanceId);
-                await SpinUntilAsync(() => apps[controlReplica].Services
-                    .GetRequiredService<PrivateAccessGatewayRegistry>()
-                    .Find("tenant-a", "target-a") is null, timeout.Token);
+                await SpinUntilAsync(
+                    () => apps[controlReplica]
+                        .Services
+                        .GetRequiredService<PrivateAccessGatewayRegistry>()
+                        .Find("tenant-a", "target-a") is null,
+                    timeout.Token);
                 takeover.Abort();
             }
+
             user.Abort();
             stream.Abort();
             control.Abort();
@@ -213,30 +224,31 @@ public sealed class PrivateAccessGatewayTransportTests
         var started = 0;
         var renewed = 0;
         var closeCount = 0;
-        var redeemed = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+        var redeemed = new ConcurrentDictionary<string, byte>();
         var reachedRenewal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowRenewal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var closed = new TaskCompletionSource<PrivateAccessSessionCloseReason>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["PrivateAccess:Enabled"] = "true",
-            ["PrivateAccess:GatewayPort"] = connectorPort.ToString(CultureInfo.InvariantCulture),
-            ["PrivateAccess:GatewayImage"] = "test/gateway:1",
-            ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{connectorPort}",
-            ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
-            ["PrivateAccess:InternalPort"] = internalPort.ToString(CultureInfo.InvariantCulture),
-            ["PrivateAccess:InstanceId"] = "test-instance",
-            ["PrivateAccess:InternalOrigin"] = internalOrigin,
-            ["PrivateAccess:InternalPeerOrigins:0"] = internalOrigin,
-            ["PrivateAccess:InternalCertificatePath"] = peerFile.Path,
-            ["PrivateAccess:InternalCertificateSha256Pin"] = Pin(serverCertificate),
-            ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{connectorPort}",
-            ["Kestrel:Endpoints:PrivateAccessInternal:Url"] = internalOrigin,
-            ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{publicPort}"
-        });
+        builder.Configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["PrivateAccess:Enabled"] = "true",
+                ["PrivateAccess:GatewayPort"] = connectorPort.ToString(CultureInfo.InvariantCulture),
+                ["PrivateAccess:GatewayImage"] = "test/gateway:1",
+                ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{connectorPort}",
+                ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
+                ["PrivateAccess:InternalPort"] = internalPort.ToString(CultureInfo.InvariantCulture),
+                ["PrivateAccess:InstanceId"] = "test-instance",
+                ["PrivateAccess:InternalOrigin"] = internalOrigin,
+                ["PrivateAccess:InternalPeerOrigins:0"] = internalOrigin,
+                ["PrivateAccess:InternalCertificatePath"] = peerFile.Path,
+                ["PrivateAccess:InternalCertificateSha256Pin"] = Pin(serverCertificate),
+                ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{connectorPort}",
+                ["Kestrel:Endpoints:PrivateAccessInternal:Url"] = internalOrigin,
+                ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{publicPort}",
+            });
         builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
             https.ServerCertificate = serverCertificate));
         builder.ConfigurePrivateAccessListener();
@@ -245,17 +257,15 @@ public sealed class PrivateAccessGatewayTransportTests
         builder.Services.AddSingleton<RenewPrivateAccessBrokerOwner>(owners.RenewAsync);
         builder.Services.AddSingleton<ReleasePrivateAccessBrokerOwner>(owners.ReleaseAsync);
         builder.Services.AddSingleton<LoadPrivateAccessBrokerOwner>(owners.LoadAsync);
-        builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) =>
-            Task.FromResult<PrivateAccessTicketRoute?>(
-                ticket is "user-ticket" or "user-ticket-2"
-                    ? new PrivateAccessTicketRoute("tenant-a", "target-a")
-                    : null));
-        builder.Services.AddSingleton<ResolvePrivateAccessGatewayIdentity>((pin, _) =>
-            Task.FromResult(pin == gatewayPin && !revoked ? gatewayIdentity :
-                pin == otherPin ? otherIdentity :
-                pin == otherTargetPin ? otherTargetIdentity : null));
-        builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((_, _, _) =>
-            Task.FromResult(true));
+        builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) => Task.FromResult(
+            ticket is "user-ticket" or "user-ticket-2" ? new PrivateAccessTicketRoute("tenant-a", "target-a") : null));
+        builder.Services.AddSingleton<ResolvePrivateAccessGatewayIdentity>((pin, _) => Task.FromResult(
+            pin == gatewayPin && !revoked ? gatewayIdentity :
+            pin == otherPin ? otherIdentity :
+            pin == otherTargetPin ? otherTargetIdentity : null));
+        builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((
+            _, _,
+            _) => Task.FromResult(true));
         builder.Services.AddSingleton<RedeemPrivateAccessSession>((ticket, _) =>
             Task.FromResult<RedeemPrivateAccessSessionOutcome>(
                 ticket is "user-ticket" or "user-ticket-2" && redeemed.TryAdd(ticket, 0)
@@ -273,14 +283,17 @@ public sealed class PrivateAccessGatewayTransportTests
             Interlocked.Increment(ref started);
             return Task.FromResult<MarkPrivateAccessSessionStartedOutcome>(new PrivateAccessSessionStarted());
         });
-        builder.Services.AddSingleton<ClosePrivateAccessSession>((_, reason, _) =>
+        builder.Services.AddSingleton<ClosePrivateAccessSession>((
+            _, reason,
+            _) =>
         {
             Interlocked.Increment(ref closeCount);
             closed.TrySetResult(reason);
             return Task.FromResult<ClosePrivateAccessSessionOutcome>(new PrivateAccessSessionClosed());
         });
-        builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((_, _, _) =>
-            Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
+        builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((
+            _, _,
+            _) => Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
         builder.Services.AddSingleton<MarkPrivateAccessSessionCleaned>((_, _) =>
             Task.FromResult<MarkPrivateAccessSessionCleanedOutcome>(new PrivateAccessSessionCleaned()));
         await using var app = builder.Build();
@@ -302,26 +315,21 @@ public sealed class PrivateAccessGatewayTransportTests
         using var otherTargetControl = Socket(serverCertificate, otherTargetCertificate);
         await otherTargetControl.ConnectAsync(controlUri, timeout.Token);
         await ChallengeAsync(otherTargetControl, timeout.Token);
-        Assert.NotNull(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>()
-            .Find("tenant-a", "target-a"));
-        Assert.NotNull(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>()
-            .Find("tenant-b", "target-a"));
+        Assert.NotNull(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>().Find("tenant-a", "target-a"));
+        Assert.NotNull(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>().Find("tenant-b", "target-a"));
 
         using var user = Socket(serverCertificate, bearer: "user-ticket");
         var connectingUser = user.ConnectAsync(userStreamUri, timeout.Token);
         var open = await PrivateAccessFrames.ReceiveAsync(control, timeout.Token);
         var ticket = PrivateAccessGatewayProtocol.ReadOpenStream(open);
         using var wrongTenant = Socket(serverCertificate, otherCertificate, ticket);
-        await Assert.ThrowsAsync<WebSocketException>(() =>
-            wrongTenant.ConnectAsync(gatewayStreamUri, timeout.Token));
+        await Assert.ThrowsAsync<WebSocketException>(() => wrongTenant.ConnectAsync(gatewayStreamUri, timeout.Token));
         using var wrongTarget = Socket(serverCertificate, otherTargetCertificate, ticket);
-        await Assert.ThrowsAsync<WebSocketException>(() =>
-            wrongTarget.ConnectAsync(gatewayStreamUri, timeout.Token));
+        await Assert.ThrowsAsync<WebSocketException>(() => wrongTarget.ConnectAsync(gatewayStreamUri, timeout.Token));
         using var gatewayStream = Socket(serverCertificate, gatewayCertificate, ticket);
         await gatewayStream.ConnectAsync(gatewayStreamUri, timeout.Token);
         using var replay = Socket(serverCertificate, gatewayCertificate, ticket);
-        await Assert.ThrowsAsync<WebSocketException>(() =>
-            replay.ConnectAsync(gatewayStreamUri, timeout.Token));
+        await Assert.ThrowsAsync<WebSocketException>(() => replay.ConnectAsync(gatewayStreamUri, timeout.Token));
         var destination = PrivateAccessGatewayProtocol.ReadDestination(
             await PrivateAccessFrames.ReceiveAsync(gatewayStream, timeout.Token));
         Assert.Equal("database.runtime-a.svc", destination.ServiceDns);
@@ -330,12 +338,18 @@ public sealed class PrivateAccessGatewayTransportTests
 
         using var backend = new TcpListener(IPAddress.Loopback, 0);
         backend.Start();
-        var gatewayRun = new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(gatewayStream,
-            "127.0.0.1", ((IPEndPoint)backend.LocalEndpoint).Port, timeout.Token);
+        var gatewayRun = new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(
+            gatewayStream,
+            "127.0.0.1",
+            ((IPEndPoint)backend.LocalEndpoint).Port,
+            timeout.Token);
         await reachedRenewal.Task.WaitAsync(timeout.Token);
         Assert.False(backend.Pending());
-        await PrivateAccessFrames.SendAsync(user, PrivateAccessFrameKind.Data,
-            Encoding.UTF8.GetBytes("request"), timeout.Token);
+        await PrivateAccessFrames.SendAsync(
+            user,
+            PrivateAccessFrameKind.Data,
+            Encoding.UTF8.GetBytes("request"),
+            timeout.Token);
         Assert.False(backend.Pending());
         allowRenewal.TrySetResult();
         using var backendConnection = await backend.AcceptTcpClientAsync(timeout.Token);
@@ -362,10 +376,15 @@ public sealed class PrivateAccessGatewayTransportTests
         using var secondBackend = new TcpListener(IPAddress.Loopback, 0);
         secondBackend.Start();
         var secondGatewayRun = new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(
-            secondGatewayStream, "127.0.0.1",
-            ((IPEndPoint)secondBackend.LocalEndpoint).Port, timeout.Token);
-        await PrivateAccessFrames.SendAsync(secondUser, PrivateAccessFrameKind.Data,
-            Encoding.UTF8.GetBytes("second"), timeout.Token);
+            secondGatewayStream,
+            "127.0.0.1",
+            ((IPEndPoint)secondBackend.LocalEndpoint).Port,
+            timeout.Token);
+        await PrivateAccessFrames.SendAsync(
+            secondUser,
+            PrivateAccessFrameKind.Data,
+            Encoding.UTF8.GetBytes("second"),
+            timeout.Token);
         using var secondConnection = await secondBackend.AcceptTcpClientAsync(timeout.Token);
         var secondRequest = new byte[6];
         await secondConnection.GetStream().ReadExactlyAsync(secondRequest, timeout.Token);
@@ -373,44 +392,59 @@ public sealed class PrivateAccessGatewayTransportTests
         Assert.Equal(2, started);
 
         revoked = true;
-        await PrivateAccessFrames.SendAsync(control, PrivateAccessFrameKind.LeaseChallenge,
-            RandomNumberGenerator.GetBytes(32), timeout.Token);
+        await PrivateAccessFrames.SendAsync(
+            control,
+            PrivateAccessFrameKind.LeaseChallenge,
+            RandomNumberGenerator.GetBytes(32),
+            timeout.Token);
         await closed.Task.WaitAsync(timeout.Token);
         await SpinUntilAsync(() => Volatile.Read(ref closeCount) == 2, timeout.Token);
-        Assert.Null(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>()
-            .Find("tenant-a", "target-a"));
-        var terminal = await Record.ExceptionAsync(async () =>
-            await gatewayRun.WaitAsync(timeout.Token));
-        Assert.True(terminal is null or OperationCanceledException or IOException or WebSocketException,
+        Assert.Null(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>().Find("tenant-a", "target-a"));
+        var terminal = await Record.ExceptionAsync(async () => await gatewayRun.WaitAsync(timeout.Token));
+        Assert.True(
+            terminal is null or OperationCanceledException or IOException or WebSocketException,
             terminal?.GetType().Name);
-        var secondTerminal = await Record.ExceptionAsync(async () =>
-            await secondGatewayRun.WaitAsync(timeout.Token));
-        Assert.True(secondTerminal is null or OperationCanceledException or IOException or WebSocketException,
+        var secondTerminal = await Record.ExceptionAsync(async () => await secondGatewayRun.WaitAsync(timeout.Token));
+        Assert.True(
+            secondTerminal is null or OperationCanceledException or IOException or WebSocketException,
             secondTerminal?.GetType().Name);
 
         revoked = false;
         using var recovered = Socket(serverCertificate, gatewayCertificate);
         await recovered.ConnectAsync(controlUri, timeout.Token);
         await ChallengeAsync(recovered, timeout.Token);
-        Assert.NotNull(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>()
-            .Find("tenant-a", "target-a"));
+        Assert.NotNull(app.Services.GetRequiredService<PrivateAccessGatewayRegistry>().Find("tenant-a", "target-a"));
         recovered.Abort();
-        await SpinUntilAsync(() => app.Services.GetRequiredService<PrivateAccessGatewayRegistry>()
-            .Find("tenant-a", "target-a") is null, timeout.Token);
+        await SpinUntilAsync(
+            () => app.Services.GetRequiredService<PrivateAccessGatewayRegistry>().Find("tenant-a", "target-a") is null,
+            timeout.Token);
         await app.StopAsync(timeout.Token);
     }
 
     private static PrivateAccessLeaseSnapshot Lease(string sessionId) => new(
-        "tenant-a", "user-a", "grant-a", sessionId, "postgresql", "resource-a",
-        "deployment-a", "endpoint-a", "target-a", "cell-a", "scope-a", "runtime-a",
-        "database", NetworkPort.Create(5432), NetworkPort.Create(5432), 1,
-        DateTime.UtcNow.AddMinutes(1), DateTime.UtcNow.AddMinutes(2));
+        "tenant-a",
+        "user-a",
+        "grant-a",
+        sessionId,
+        "postgresql",
+        "resource-a",
+        "deployment-a",
+        "endpoint-a",
+        "target-a",
+        "cell-a",
+        "scope-a",
+        "runtime-a",
+        "database",
+        NetworkPort.Create(5432),
+        NetworkPort.Create(5432),
+        1,
+        DateTime.UtcNow.AddMinutes(1),
+        DateTime.UtcNow.AddMinutes(2));
 
     private static async Task ChallengeAsync(WebSocket socket, CancellationToken cancellationToken)
     {
         var nonce = RandomNumberGenerator.GetBytes(32);
-        await PrivateAccessFrames.SendAsync(socket, PrivateAccessFrameKind.LeaseChallenge,
-            nonce, cancellationToken);
+        await PrivateAccessFrames.SendAsync(socket, PrivateAccessFrameKind.LeaseChallenge, nonce, cancellationToken);
         var accepted = await PrivateAccessFrames.ReceiveAsync(socket, cancellationToken);
         Assert.Equal(PrivateAccessFrameKind.LeaseAccepted, accepted.Kind);
         Assert.Equal(nonce, accepted.Payload.ToArray());
@@ -435,9 +469,11 @@ public sealed class PrivateAccessGatewayTransportTests
             socket.Options.ClientCertificates.Add(client);
         if (bearer is not null)
             socket.Options.SetRequestHeader("Authorization", $"Bearer {bearer}");
-        socket.Options.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
-            certificate is not null && CryptographicOperations.FixedTimeEquals(
-                SHA256.HashData(certificate.GetRawCertData()), SHA256.HashData(server.RawData));
+        socket.Options.RemoteCertificateValidationCallback = (
+            _, certificate,
+            _, _) => certificate is not null && CryptographicOperations.FixedTimeEquals(
+            SHA256.HashData(certificate.GetRawCertData()),
+            SHA256.HashData(server.RawData));
         return socket;
     }
 
@@ -447,15 +483,19 @@ public sealed class PrivateAccessGatewayTransportTests
         var request = new CertificateRequest($"CN={name}", key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
-        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-            new OidCollection { new(server ? "1.3.6.1.5.5.7.3.1" : "1.3.6.1.5.5.7.3.2") }, false));
+        request.CertificateExtensions.Add(
+            new X509EnhancedKeyUsageExtension(
+                new OidCollection { new Oid(server ? "1.3.6.1.5.5.7.3.1" : "1.3.6.1.5.5.7.3.2") },
+                false));
         if (server)
         {
             var names = new SubjectAlternativeNameBuilder();
             names.AddIpAddress(IPAddress.Loopback);
             request.CertificateExtensions.Add(names.Build());
         }
-        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
+
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-1),
             DateTimeOffset.UtcNow.AddHours(1));
         return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null);
     }
@@ -471,8 +511,7 @@ public sealed class PrivateAccessGatewayTransportTests
     {
         public CertificateFile(X509Certificate2 certificate)
         {
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-                $"pole-peer-{Guid.NewGuid():N}.pfx");
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"pole-peer-{Guid.NewGuid():N}.pfx");
             File.WriteAllBytes(Path, certificate.Export(X509ContentType.Pfx));
         }
 
@@ -480,10 +519,14 @@ public sealed class PrivateAccessGatewayTransportTests
         public void Dispose() => File.Delete(Path);
     }
 
-    private sealed class InMemoryOwners(string instanceId, string origin)
+    private sealed class InMemoryOwners(
+        string instanceId,
+        string origin
+    )
     {
-        private readonly ConcurrentDictionary<(string TenantId, string TargetId),
-            PrivateAccessBrokerOwnerLease> owners = new();
+        private readonly ConcurrentDictionary<(string TenantId, string TargetId), PrivateAccessBrokerOwnerLease> owners
+            = new();
+
         private long epoch;
 
         public Task<ClaimPrivateAccessBrokerOwnerOutcome> ClaimAsync(
@@ -493,17 +536,19 @@ public sealed class PrivateAccessGatewayTransportTests
             lock (owners)
             {
                 if (request.InstanceId != instanceId || request.InternalOrigin != origin)
-                    return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(
-                        new PrivateAccessBrokerOwnerBusy());
-                var lease = new PrivateAccessBrokerOwnerLease(request.Gateway, instanceId,
-                    origin, Interlocked.Increment(ref epoch), DateTime.UtcNow.AddSeconds(10));
+                    return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(new PrivateAccessBrokerOwnerBusy());
+                var lease = new PrivateAccessBrokerOwnerLease(
+                    request.Gateway,
+                    instanceId,
+                    origin,
+                    Interlocked.Increment(ref epoch),
+                    DateTime.UtcNow.AddSeconds(10));
                 owners[(request.Gateway.TenantId, request.Gateway.DeploymentTargetId)] = lease;
                 return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(lease);
             }
         }
 
-        public Task<bool> RenewAsync(PrivateAccessBrokerOwnerLease lease,
-            CancellationToken cancellationToken)
+        public Task<bool> RenewAsync(PrivateAccessBrokerOwnerLease lease, CancellationToken cancellationToken)
         {
             lock (owners)
             {
@@ -515,8 +560,7 @@ public sealed class PrivateAccessGatewayTransportTests
             }
         }
 
-        public Task ReleaseAsync(PrivateAccessBrokerOwnerLease lease,
-            CancellationToken cancellationToken)
+        public Task ReleaseAsync(PrivateAccessBrokerOwnerLease lease, CancellationToken cancellationToken)
         {
             lock (owners)
             {
@@ -527,24 +571,30 @@ public sealed class PrivateAccessGatewayTransportTests
             }
         }
 
-        public Task<PrivateAccessBrokerOwnerLease?> LoadAsync(string tenantId,
-            string targetId, CancellationToken cancellationToken)
+        public Task<PrivateAccessBrokerOwnerLease?> LoadAsync(
+            string tenantId,
+            string targetId,
+            CancellationToken cancellationToken)
         {
             owners.TryGetValue((tenantId, targetId), out var owner);
-            return Task.FromResult(owner is { } current && current.ExpiresAtUtc > DateTime.UtcNow
-                ? current
-                : null);
+            return Task.FromResult(owner is { } current && current.ExpiresAtUtc > DateTime.UtcNow ? current : null);
         }
     }
 
     private sealed class SharedOwners
     {
-        private PrivateAccessBrokerOwnerLease? owner;
         private long epoch;
+        private PrivateAccessBrokerOwnerLease? owner;
 
         public PrivateAccessBrokerOwnerLease? Current
         {
-            get { lock (this) return owner; }
+            get
+            {
+                lock (this)
+                {
+                    return owner;
+                }
+            }
         }
 
         public void Expire()
@@ -564,16 +614,18 @@ public sealed class PrivateAccessGatewayTransportTests
             {
                 if (owner is { } current && current.ExpiresAtUtc > DateTime.UtcNow &&
                     current.InstanceId != request.InstanceId)
-                    return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(
-                        new PrivateAccessBrokerOwnerBusy());
-                owner = new PrivateAccessBrokerOwnerLease(request.Gateway, request.InstanceId, request.InternalOrigin,
-                    ++epoch, DateTime.UtcNow.AddSeconds(10));
+                    return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(new PrivateAccessBrokerOwnerBusy());
+                owner = new PrivateAccessBrokerOwnerLease(
+                    request.Gateway,
+                    request.InstanceId,
+                    request.InternalOrigin,
+                    ++epoch,
+                    DateTime.UtcNow.AddSeconds(10));
                 return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(owner);
             }
         }
 
-        public Task<bool> RenewAsync(PrivateAccessBrokerOwnerLease lease,
-            CancellationToken cancellationToken)
+        public Task<bool> RenewAsync(PrivateAccessBrokerOwnerLease lease, CancellationToken cancellationToken)
         {
             lock (this)
             {
@@ -584,8 +636,7 @@ public sealed class PrivateAccessGatewayTransportTests
             }
         }
 
-        public Task ReleaseAsync(PrivateAccessBrokerOwnerLease lease,
-            CancellationToken cancellationToken)
+        public Task ReleaseAsync(PrivateAccessBrokerOwnerLease lease, CancellationToken cancellationToken)
         {
             lock (this)
             {
@@ -595,14 +646,19 @@ public sealed class PrivateAccessGatewayTransportTests
             }
         }
 
-        public Task<PrivateAccessBrokerOwnerLease?> LoadAsync(string tenantId,
-            string targetId, CancellationToken cancellationToken)
+        public Task<PrivateAccessBrokerOwnerLease?> LoadAsync(
+            string tenantId,
+            string targetId,
+            CancellationToken cancellationToken)
         {
             lock (this)
-                return Task.FromResult(owner is { } current &&
-                    current.Gateway.TenantId == tenantId &&
-                    current.Gateway.DeploymentTargetId == targetId &&
-                    current.ExpiresAtUtc > DateTime.UtcNow ? current : null);
+            {
+                return Task.FromResult(
+                    owner is { } current && current.Gateway.TenantId == tenantId &&
+                    current.Gateway.DeploymentTargetId == targetId && current.ExpiresAtUtc > DateTime.UtcNow
+                        ? current
+                        : null);
+            }
         }
     }
 }

@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <FrameworkReference Include="Microsoft.AspNetCore.App" />
-        <PackageReference Include="MassTransit.Abstractions" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <PackageReference Include="MassTransit.Abstractions"/>
     </ItemGroup>
 
 </Project>

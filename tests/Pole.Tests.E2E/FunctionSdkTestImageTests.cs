@@ -1,3 +1,4 @@
+using System.Text;
 using System.Xml.Linq;
 using Pole.Testing;
 using Xunit;
@@ -30,8 +31,8 @@ public sealed class FunctionSdkTestImageTests
     public async Task TruncatedBuildOutputCannotExposeAPartialCredential()
     {
         var password = "private-fixture-password-" + new string('z', 1_000);
-        using var bytes = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
-            password + new string('x', 8_180) + "\ncompile error"));
+        using var bytes
+            = new MemoryStream(Encoding.UTF8.GetBytes(password + new string('x', 8_180) + "\ncompile error"));
         using var reader = new StreamReader(bytes);
         var output = await FunctionSdkTestImage.CaptureBuildOutputAsync(reader, [password]);
         Assert.True(output.Length <= 8_192);

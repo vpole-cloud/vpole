@@ -19,8 +19,8 @@ public sealed record GetProviderRepositoriesRequest(
     [FromRoute] string ConnectionId,
     [FromTenantHeader] string TenantId,
     [FromQuery] int Page = 1,
-    [FromQuery] int PageSize = 50)
-    : IMediatorRequest<GetProviderRepositoriesOutcome>, ITenantReadOperation;
+    [FromQuery] int PageSize = 50
+) : IMediatorRequest<GetProviderRepositoriesOutcome>, ITenantReadOperation;
 
 public union GetProviderRepositoriesOutcome(
     ProviderPage<ProviderRepositoryDto>,
@@ -39,40 +39,35 @@ public sealed class GetProviderRepositoriesRequestValidator : AbstractValidator<
 
 public sealed class GetProviderRepositoriesHandler(
     LoadGitProviderConnection loadGitProviderConnection,
-    GetProviderRepositories getProviderRepositories)
-    : IMediatorOutcomeHandler<GetProviderRepositoriesRequest, GetProviderRepositoriesOutcome>
+    GetProviderRepositories getProviderRepositories
+) : IMediatorOutcomeHandler<GetProviderRepositoriesRequest, GetProviderRepositoriesOutcome>
 {
     public async Task<GetProviderRepositoriesOutcome> HandleAsync(
         GetProviderRepositoriesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var connection = await loadGitProviderConnection(
-            request.TenantId,
-            request.ConnectionId,
-            cancellationToken);
+        var connection = await loadGitProviderConnection(request.TenantId, request.ConnectionId, cancellationToken);
         if (connection is null)
             return new GitProviderConnectionNotFound(request.ConnectionId);
 
-        var pageResult = await getProviderRepositories(
-            connection,
-            request.Page,
-            request.PageSize,
-            cancellationToken);
+        var pageResult = await getProviderRepositories(connection, request.Page, request.PageSize, cancellationToken);
         return pageResult switch
         {
             ProviderPage<ProviderRepository> success => new ProviderPage<ProviderRepositoryDto>(
-                success.Items.Select(item => new ProviderRepositoryDto(
-                    item.Id,
-                    item.Name,
-                    item.FullName,
-                    item.HtmlUrl,
-                    item.IsPrivate,
-                    item.DefaultBranch,
-                    item.UpdatedAtUtc)).ToArray(),
+                success.Items
+                    .Select(item => new ProviderRepositoryDto(
+                        item.Id,
+                        item.Name,
+                        item.FullName,
+                        item.HtmlUrl,
+                        item.IsPrivate,
+                        item.DefaultBranch,
+                        item.UpdatedAtUtc))
+                    .ToArray(),
                 success.Page,
                 success.PageSize,
                 success.HasMore),
-            GitProviderRepositoryAccessError error => error
+            GitProviderRepositoryAccessError error => error,
         };
     }
 }
@@ -81,18 +76,20 @@ public static class GetProviderRepositoriesEndpoint
 {
     public static IEndpointRouteBuilder MapGetProviderRepositoriesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{ConnectionId}/repositories", async (IMediator mediator,
-                [AsParameters] GetProviderRepositoriesRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{ConnectionId}/repositories",
+                async (
+                    IMediator mediator, [AsParameters] GetProviderRepositoriesRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ProviderPage<ProviderRepositoryDto> page => Results.Ok(page),
-                    GitProviderConnectionNotFound error => MapConnectionNotFound(error),
-                    GitProviderRepositoryAccessError error => MapRepositoryAccessError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ProviderPage<ProviderRepositoryDto> page => Results.Ok(page),
+                        GitProviderConnectionNotFound error => MapConnectionNotFound(error),
+                        GitProviderRepositoryAccessError error => MapRepositoryAccessError(error),
+                    });
+                })
             .WithName("GetProviderRepositories")
             .Produces<ProviderPage<ProviderRepositoryDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound)

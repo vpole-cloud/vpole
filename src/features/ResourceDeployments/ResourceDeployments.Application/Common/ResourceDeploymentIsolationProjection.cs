@@ -5,7 +5,9 @@ using Pole.Features.ResourceDeployments.Domain;
 namespace Pole.Features.ResourceDeployments.Application.Common;
 
 /// <summary>Called only after tenant-scoped deployment reads. Never projects provider diagnostics.</summary>
-public sealed class ResourceDeploymentIsolationProjection(LookupDeploymentTarget lookupTarget)
+public sealed class ResourceDeploymentIsolationProjection(
+    LookupDeploymentTarget lookupTarget
+)
 {
     public async Task<PlacementSummaryDto> ProjectAsync(ResourceDeployment deployment, CancellationToken ct) =>
         deployment.ToPlacementSummaryDto(await LoadAsync(deployment.ResolvedPlacement.DeploymentTargetId, ct));
@@ -19,14 +21,17 @@ public sealed class ResourceDeploymentIsolationProjection(LookupDeploymentTarget
     {
         var policies = await LoadAsync(deployments.Select(item => item.ResolvedPlacement.DeploymentTargetId), ct);
         return deployments.Select(item =>
-            item.ToPlacementSummaryDto(policies[item.ResolvedPlacement.DeploymentTargetId])).ToArray();
+                item.ToPlacementSummaryDto(policies[item.ResolvedPlacement.DeploymentTargetId]))
+            .ToArray();
     }
 
     public async Task<ResourceDeploymentIsolationDto> LoadAsync(string targetId, CancellationToken ct)
     {
         var result = await lookupTarget(targetId, ct);
-        return FromPolicy(result is DeploymentTargetLookupDto target ? target.NetworkPolicy
-            : DeploymentTargetNetworkPolicyDto.Unknown);
+        return FromPolicy(
+            result is DeploymentTargetLookupDto target
+                ? target.NetworkPolicy
+                : DeploymentTargetNetworkPolicyDto.Unknown);
     }
 
     public async Task<IReadOnlyDictionary<string, ResourceDeploymentIsolationDto>> LoadAsync(
@@ -39,7 +44,9 @@ public sealed class ResourceDeploymentIsolationProjection(LookupDeploymentTarget
         return values;
     }
 
-    internal static ResourceDeploymentIsolationDto FromPolicy(DeploymentTargetNetworkPolicyDto policy) =>
-        new(policy.Enforcement.ToString(), policy.Readiness.ToString(), policy.Reason.ToString(),
-            policy.LastCheckedAtUtc);
+    internal static ResourceDeploymentIsolationDto FromPolicy(DeploymentTargetNetworkPolicyDto policy) => new(
+        policy.Enforcement.ToString(),
+        policy.Readiness.ToString(),
+        policy.Reason.ToString(),
+        policy.LastCheckedAtUtc);
 }

@@ -1,14 +1,10 @@
-using System.Collections.Immutable;
-using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Mongo;
-using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
@@ -30,7 +26,8 @@ internal sealed class RedisDeclarationPlanner(
     ResolveStorageProfilePlanningSnapshot loadStorage,
     FenceStorageProfilePlanningSnapshot fenceStorage,
     LoadResourceDeploymentPlanningSnapshot loadPlacements,
-    FenceResourceDeploymentPlanningSnapshot fencePlacements)
+    FenceResourceDeploymentPlanningSnapshot fencePlacements
+)
 {
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
         ReadCurrentDeclarationRequest request,
@@ -52,8 +49,10 @@ internal sealed class RedisDeclarationPlanner(
         if (current.Lifecycle is DeletingRedisLifecycle)
             return Blocked(RedisDeclarationError.ResourceDeleting);
 
-        var loaded = await loadPlacements(new(request.TenantId, RedisResourceDeployment.ResourceType, current.Id),
-            session, ct);
+        var loaded = await loadPlacements(
+            new ResourceDeploymentPlanningRequest(request.TenantId, RedisResourceDeployment.ResourceType, current.Id),
+            session,
+            ct);
         if (loaded is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } placements ||
             placements.Items[0].State == ResourceDeploymentPlanningState.Deleting ||
             placements.Items[0].ResourceGroupId != current.ResourceGroupId || placements.Items[0].Storage is null)
@@ -61,15 +60,32 @@ internal sealed class RedisDeclarationPlanner(
 
         var placement = placements.Items[0];
         var phase = request.Operation?.Phase ?? DeclarationPhase.Configure;
-        return new CurrentDeclaration(current.Id,
-            new([new(DeclarationVersionKeys.Resource(RedisDeclarations.Kind, current.Id), current.Revision),
-                new(DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, current.Id), current.PlanningFence),
-                new(ResourceDeploymentVersionKeys.Revision(placement.DeploymentId), placement.Revision)]),
-            Project(phase, new(current.ResourceGroupId, placement.IsolationScopeId,
-                placement.DeploymentTargetId, current.Spec.Storage.SizeGb, current.Spec.Storage.StorageProfileId,
-                placement.Storage!), placement.Compute, current.Tags),
+        return new CurrentDeclaration(
+            current.Id,
+            new DeclarationVersionToken(
+            [
+                new DeclarationDocumentVersion(DeclarationVersionKeys.Resource(Kind, current.Id), current.Revision),
+                new DeclarationDocumentVersion(
+                    DeclarationVersionKeys.PlanningFence(Kind, current.Id),
+                    current.PlanningFence),
+                new DeclarationDocumentVersion(
+                    ResourceDeploymentVersionKeys.Revision(placement.DeploymentId),
+                    placement.Revision),
+            ]),
+            Project(
+                phase,
+                new RedisManagedIdentity(
+                    current.ResourceGroupId,
+                    placement.IsolationScopeId,
+                    placement.DeploymentTargetId,
+                    current.Spec.Storage.SizeGb,
+                    current.Spec.Storage.StorageProfileId,
+                    placement.Storage!),
+                placement.Compute,
+                current.Tags),
             phase == DeclarationPhase.Prepare || current.Lifecycle is ActiveRedisLifecycle
-                ? DeclarationConfigurationState.Configured : DeclarationConfigurationState.Prepared);
+                ? DeclarationConfigurationState.Configured
+                : DeclarationConfigurationState.Prepared);
     }
 
     public async Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
@@ -86,14 +102,20 @@ internal sealed class RedisDeclarationPlanner(
 
         var dependencies = (RedisPlanningDependencies)loaded.Value;
         var spec = DeclarationJson.Read<RedisDeclaration>(request.Declaration.Spec);
-        return Project(request.Operation.Phase,
-            new(dependencies.Scope.ResourceGroupId, dependencies.Scope.IsolationScopeId,
-                dependencies.Target.Target.Id, spec.Storage.SizeGb, dependencies.Storage.Storage.ProfileId,
-                StorageConfiguration(dependencies.Storage.Storage)),
-            dependencies.Compute.Compute.ToResourceDeploymentConfiguration(), spec.Tags) with
-        {
-            Dependencies = new(DependencyVersions(dependencies))
-        };
+        return Project(
+                request.Operation.Phase,
+                new RedisManagedIdentity(
+                    dependencies.Scope.ResourceGroupId,
+                    dependencies.Scope.IsolationScopeId,
+                    dependencies.Target.Target.Id,
+                    spec.Storage.SizeGb,
+                    dependencies.Storage.Storage.ProfileId,
+                    StorageConfiguration(dependencies.Storage.Storage)),
+                dependencies.Compute.Compute.ToResourceDeploymentConfiguration(),
+                spec.Tags) with
+            {
+                Dependencies = new DeclarationVersionToken(DependencyVersions(dependencies)),
+            };
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(
@@ -110,17 +132,20 @@ internal sealed class RedisDeclarationPlanner(
             return new DeclarationPreconditionsChanged();
 
         var expectedRoot = request.Expected.Documents.SingleOrDefault(item =>
-            item.DocumentId == DeclarationVersionKeys.Resource(RedisDeclarations.Kind, request.Operation.ResourceId));
+            item.DocumentId == DeclarationVersionKeys.Resource(Kind, request.Operation.ResourceId));
         if (dependencies.Current is { } current)
         {
             if (expectedRoot?.Revision != current.Revision || !request.Expected.Documents.Contains(
-                    new(
-                        DeclarationVersionKeys.PlanningFence(RedisDeclarations.Kind, current.Id),
+                    new DeclarationDocumentVersion(
+                        DeclarationVersionKeys.PlanningFence(Kind, current.Id),
                         current.PlanningFence)))
                 return new DeclarationPreconditionsChanged();
 
-            var fenced = await resources.UpdateOneAsync(session, RedisFilters.AtPlanningVersion(current),
-                Builders<Redis>.Update.Inc(value => value.PlanningFence, 1), cancellationToken: ct);
+            var fenced = await resources.UpdateOneAsync(
+                session,
+                RedisFilters.AtPlanningVersion(current),
+                Builders<Redis>.Update.Inc(value => value.PlanningFence, 1),
+                cancellationToken: ct);
             if (fenced.ModifiedCount != 1)
                 return new DeclarationPreconditionsChanged();
         }
@@ -149,41 +174,85 @@ internal sealed class RedisDeclarationPlanner(
     {
         var spec = DeclarationJson.Read<RedisDeclaration>(operation.Declaration.Spec);
         var context = operation.Context;
-        var groupId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("ResourceGroup", spec.ResourceGroup)), session, ct);
+        var groupId = await git.ResolveAcceptedAsync(
+            new ResolveAcceptedGitReferenceRequest(
+                context,
+                operation.ResourceId,
+                new ResourceAddress("ResourceGroup", spec.ResourceGroup)),
+            session,
+            ct);
         if (groupId is null)
             return Blocked(RedisDeclarationError.ResourceGroupUnavailable);
 
         var scopeId = spec.Placement.IsolationScope is { } scopeName
-            ? await git.ResolveAcceptedAsync(new(context, operation.ResourceId, new("IsolationScope", scopeName)),
-                session, ct)
+            ? await git.ResolveAcceptedAsync(
+                new ResolveAcceptedGitReferenceRequest(
+                    context,
+                    operation.ResourceId,
+                    new ResourceAddress("IsolationScope", scopeName)),
+                session,
+                ct)
             : null;
         if (spec.Placement.IsolationScope is not null && scopeId is null)
             return Blocked(RedisDeclarationError.IsolationScopeUnavailable);
 
-        if (await loadScope(new(context.TenantId, groupId, scopeId), session, ct)
-            is not IsolationScopePlanningSnapshot scope)
+        if (await loadScope(new IsolationScopePlanningRequest(context.TenantId, groupId, scopeId), session, ct) is not
+            IsolationScopePlanningSnapshot scope)
             return Blocked(RedisDeclarationError.IsolationScopeUnavailable);
 
-        var targetId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("DeploymentTarget", spec.Placement.DeploymentTarget)), session, ct);
-        if (targetId is null || await loadTarget(new(context.TenantId, RedisResourceDeployment.ResourceType,
-                scope.IsolationScopeId, targetId, DeploymentTargetRequiredCapabilities.None), session, ct)
-            is not DeploymentTargetPlanningSnapshot target)
+        var targetId = await git.ResolveAcceptedAsync(
+            new ResolveAcceptedGitReferenceRequest(
+                context,
+                operation.ResourceId,
+                new ResourceAddress("DeploymentTarget", spec.Placement.DeploymentTarget)),
+            session,
+            ct);
+        if (targetId is null || await loadTarget(
+                new DeploymentTargetAdmissionRequest(
+                    context.TenantId,
+                    RedisResourceDeployment.ResourceType,
+                    scope.IsolationScopeId,
+                    targetId,
+                    DeploymentTargetRequiredCapabilities.None),
+                session,
+                ct) is not DeploymentTargetPlanningSnapshot target)
             return Blocked(RedisDeclarationError.DeploymentTargetUnavailable);
 
-        var computeId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("ComputeProfile", spec.Placement.ComputeProfile.Name)), session, ct);
-        if (computeId is null || await loadCompute(new(context.TenantId, RedisResourceDeployment.ResourceType,
-                computeId, targetId, spec.Placement.ComputeProfile.Revision), session, ct)
-            is not ComputeProfilePlanningSnapshot compute)
+        var computeId = await git.ResolveAcceptedAsync(
+            new ResolveAcceptedGitReferenceRequest(
+                context,
+                operation.ResourceId,
+                new ResourceAddress("ComputeProfile", spec.Placement.ComputeProfile.Name)),
+            session,
+            ct);
+        if (computeId is null || await loadCompute(
+                new ComputeProfilePlanningRequest(
+                    context.TenantId,
+                    RedisResourceDeployment.ResourceType,
+                    computeId,
+                    targetId,
+                    spec.Placement.ComputeProfile.Revision),
+                session,
+                ct) is not ComputeProfilePlanningSnapshot compute)
             return Blocked(RedisDeclarationError.ComputeProfileUnavailable);
 
-        var storageId = await git.ResolveAcceptedAsync(new(context, operation.ResourceId,
-            new("StorageProfile", spec.Storage.Profile.Name)), session, ct);
-        if (storageId is null || await loadStorage(new(context.TenantId, RedisResourceDeployment.ResourceType,
-                storageId, targetId, spec.Storage.SizeGb, spec.Storage.Profile.Revision), session, ct)
-            is not StorageProfilePlanningSnapshot storage)
+        var storageId = await git.ResolveAcceptedAsync(
+            new ResolveAcceptedGitReferenceRequest(
+                context,
+                operation.ResourceId,
+                new ResourceAddress("StorageProfile", spec.Storage.Profile.Name)),
+            session,
+            ct);
+        if (storageId is null || await loadStorage(
+                new StorageProfilePlanningRequest(
+                    context.TenantId,
+                    RedisResourceDeployment.ResourceType,
+                    storageId,
+                    targetId,
+                    spec.Storage.SizeGb,
+                    spec.Storage.Profile.Revision),
+                session,
+                ct) is not StorageProfilePlanningSnapshot storage)
             return Blocked(RedisDeclarationError.StorageProfileUnavailable);
 
         var current = await resources.Find(session, RedisFilters.ById(context.TenantId, operation.ResourceId))
@@ -194,8 +263,13 @@ internal sealed class RedisDeclarationPlanner(
         ResourceDeploymentPlanningSnapshot? placements = null;
         if (current is not null)
         {
-            if (await loadPlacements(new(context.TenantId, RedisResourceDeployment.ResourceType, current.Id),
-                    session, ct) is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } found ||
+            if (await loadPlacements(
+                    new ResourceDeploymentPlanningRequest(
+                        context.TenantId,
+                        RedisResourceDeployment.ResourceType,
+                        current.Id),
+                    session,
+                    ct) is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } found ||
                 found.Items[0].State == ResourceDeploymentPlanningState.Deleting || found.Items[0].Storage is null)
                 return Blocked(RedisDeclarationError.PlacementUnavailable);
 

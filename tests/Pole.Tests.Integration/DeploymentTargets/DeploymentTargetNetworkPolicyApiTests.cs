@@ -1,7 +1,5 @@
 using System.Net;
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Mongo;
@@ -15,8 +13,8 @@ namespace Pole.Tests.Integration.DeploymentTargets;
 
 [Collection(IntegrationTestCollection.Global3)]
 public sealed class DeploymentTargetNetworkPolicyApiTests(
-    MongoReplicaSetFixture fixture)
-    : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.DeploymentTargets)
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture, IntegrationSchemaProfile.DeploymentTargets)
 {
     [Fact]
     public async Task AttestationRequiresPlatformAdmin_AndUnknownTargetIsNotEligible()
@@ -33,14 +31,14 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
             $"/api/v1/platform/deployment-targets/{target.Id}/network-policy",
             body);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Empty(await Fixture.DbContext.DeploymentTargets
-            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
-            .ToListAsync());
+        Assert.Empty(
+            await Fixture.DbContext
+                .DeploymentTargets
+                .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+                .ToListAsync());
 
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
-        response = await Client.PutAsJsonAsync(
-            $"/api/v1/platform/deployment-targets/{target.Id}/network-policy",
-            body);
+        response = await Client.PutAsJsonAsync($"/api/v1/platform/deployment-targets/{target.Id}/network-policy", body);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var updated = (await response.Content.ReadFromJsonAsync<DeploymentTargetDto>())!;
         Assert.Equal(NetworkPolicyReadiness.EnforcementAttested, updated.NetworkPolicy.Readiness);
@@ -50,26 +48,29 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
         Assert.Contains("\"readiness\":\"EnforcementAttested\"", attestationJson);
         Assert.Equal(target.Revision + 1, updated.Revision);
         Assert.Equal(target.WorkloadConfiguration.Revision + 1, updated.WorkloadConfiguration.Revision);
-        Assert.Single(await Fixture.DbContext.DeploymentTargets
-            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
-            .ToListAsync());
+        Assert.Single(
+            await Fixture.DbContext
+                .DeploymentTargets
+                .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+                .ToListAsync());
         Assert.Equal(
             HttpStatusCode.Conflict,
-            (await Client.PutAsJsonAsync(
-                $"/api/v1/platform/deployment-targets/{target.Id}/network-policy",
-                body)).StatusCode);
+            (await Client.PutAsJsonAsync($"/api/v1/platform/deployment-targets/{target.Id}/network-policy", body))
+            .StatusCode);
 
         response = await Client.PutAsJsonAsync(
             $"/api/v1/platform/deployment-targets/{target.Id}/network-policy",
             body with
             {
                 Enforcement = NetworkPolicyEnforcement.Unsupported,
-                Revision = updated.Revision
+                Revision = updated.Revision,
             });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Empty(await Fixture.DbContext.DeploymentTargets
-            .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
-            .ToListAsync());
+        Assert.Empty(
+            await Fixture.DbContext
+                .DeploymentTargets
+                .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
+                .ToListAsync());
     }
 
     [Fact]
@@ -88,9 +89,9 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
             NetworkPolicyEnforcement.Unknown,
             true);
         var unknown = DeploymentTargetNetworkPolicyTests.Target();
-        await Fixture.DbContext.DeploymentTargets.InsertManyAsync(
-            [supported, unsupported, overridden, unknown]);
-        var eligible = await Fixture.DbContext.DeploymentTargets
+        await Fixture.DbContext.DeploymentTargets.InsertManyAsync([supported, unsupported, overridden, unknown]);
+        var eligible = await Fixture.DbContext
+            .DeploymentTargets
             .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .ToListAsync();
         Assert.Equal(new[] { supported.Id, overridden.Id }.Order(), eligible.Select(item => item.Id).Order());
@@ -99,7 +100,8 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
             Builders<DeploymentTarget>.Update.Set(
                 item => item.Connection,
                 DeploymentTargetConnectionFactory.CreateInCluster(2)));
-        eligible = await Fixture.DbContext.DeploymentTargets
+        eligible = await Fixture.DbContext
+            .DeploymentTargets
             .Find(DeploymentTargetFilters.AcceptingNewWorkloads())
             .ToListAsync();
         Assert.Equal(overridden.Id, Assert.Single(eligible).Id);
@@ -117,6 +119,7 @@ public sealed class DeploymentTargetNetworkPolicyApiTests(
         Assert.NotEqual(
             HttpStatusCode.OK,
             (await Client.GetAsync(
-                "/api/v1/deployment-targets/available?resourceType=pole/web-service&requiresPublicIngress=false")).StatusCode);
+                "/api/v1/deployment-targets/available?resourceType=pole/web-service&requiresPublicIngress=false"))
+            .StatusCode);
     }
 }

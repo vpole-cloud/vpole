@@ -10,13 +10,13 @@ public delegate Task<SourceBuildConfiguration?> LoadSourceBuildConfiguration(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadSourceBuildConfiguration(
-    IMongoCollection<SourceBuildConfiguration> configurations)
+    IMongoCollection<SourceBuildConfiguration> configurations
+)
 {
     public async Task<SourceBuildConfiguration?> InvokeAsync(
         string tenantId,
         string configurationId,
-        CancellationToken cancellationToken = default) =>
-        await configurations
-            .Find(SourceBuildConfigurationFilters.ById(tenantId, configurationId))
-            .FirstOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await configurations
+        .Find(SourceBuildConfigurationFilters.ById(tenantId, configurationId))
+        .FirstOrDefaultAsync(cancellationToken);
 }

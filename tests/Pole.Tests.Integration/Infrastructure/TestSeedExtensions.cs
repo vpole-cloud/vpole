@@ -1,16 +1,17 @@
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Features.ResourceGroups.Testing;
 using Pole.Features.WebServices.Domain;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
 public static class TestSeedExtensions
 {
-    public static async Task<ResourceGroup> InsertResourceGroupAsync(this MongoTestStore dbContext, ResourceGroup resourceGroup)
+    public static async Task<ResourceGroup> InsertResourceGroupAsync(
+        this MongoTestStore dbContext,
+        ResourceGroup resourceGroup)
     {
-        await new Pole.Features.ResourceGroups.Testing.ResourceGroupTestData(dbContext.Database)
-            .SeedAsync(resourceGroup);
+        await new ResourceGroupTestData(dbContext.Database).SeedAsync(resourceGroup);
 
         return resourceGroup;
     }
@@ -21,9 +22,13 @@ public static class TestSeedExtensions
         return webService;
     }
 
-    public static async Task<long> CountOutboxMessagesAsync(this MongoTestStore dbContext, string? tenantId, string eventType)
+    public static async Task<long> CountOutboxMessagesAsync(
+        this MongoTestStore dbContext,
+        string? tenantId,
+        string eventType)
     {
-        return await dbContext.OutboxMessages.CountDocumentsAsync(message => message.TenantId == tenantId && message.EventType == eventType);
+        return await dbContext.OutboxMessages.CountDocumentsAsync(message =>
+            message.TenantId == tenantId && message.EventType == eventType);
     }
 
     public static Task<long> CountAllOutboxMessagesAsync(this MongoTestStore dbContext, string eventType) =>

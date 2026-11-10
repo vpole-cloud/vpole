@@ -15,8 +15,8 @@ namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 public sealed record DeleteRepositorySourceRequest(
     [FromRoute] string Id,
     [FromQuery] long ExpectedRevision,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<DeleteRepositorySourceOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<DeleteRepositorySourceOutcome>, ITenantWriteOperation;
 
 public union DeleteRepositorySourceOutcome(
     GitSourceDeletionRecorded,
@@ -34,22 +34,27 @@ public sealed class DeleteRepositorySourceValidator : AbstractValidator<DeleteRe
     }
 }
 
-public sealed class DeleteRepositorySourceHandler(GitSourceLifecycleStore lifecycle)
-    : IMediatorOutcomeHandler<DeleteRepositorySourceRequest, DeleteRepositorySourceOutcome>
+public sealed class DeleteRepositorySourceHandler(
+    GitSourceLifecycleStore lifecycle
+) : IMediatorOutcomeHandler<DeleteRepositorySourceRequest, DeleteRepositorySourceOutcome>
 {
     public async Task<DeleteRepositorySourceOutcome> HandleAsync(
         DeleteRepositorySourceRequest request,
         CancellationToken cancellationToken = default)
     {
-        var outcome = await lifecycle.DeleteAsync(new(ObjectId.Parse(request.TenantId).ToString(),
-            ObjectId.Parse(request.Id).ToString(), request.ExpectedRevision), cancellationToken);
+        var outcome = await lifecycle.DeleteAsync(
+            new DeleteGitSource(
+                ObjectId.Parse(request.TenantId).ToString(),
+                ObjectId.Parse(request.Id).ToString(),
+                request.ExpectedRevision),
+            cancellationToken);
         return outcome switch
         {
             GitSourceDeletionRecorded deleted => deleted,
             GitSourceNotFound missing => missing,
             GitSourceRevisionConflict stale => stale,
             GitSourceDetachRequired owned => owned,
-            GitSourceBusy busy => busy
+            GitSourceBusy busy => busy,
         };
     }
 }
@@ -58,16 +63,19 @@ public static class DeleteRepositorySourceEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteRepositorySourceEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}",
-                async (IMediator mediator, [AsParameters] DeleteRepositorySourceRequest request,
+        app.MapDelete(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteRepositorySourceRequest request,
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-                    {
-                        GitSourceDeletionRecorded => Results.NoContent(),
-                        GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
-                        GitSourceRevisionConflict stale => RepositoryHttpMappings.Map(stale),
-                        GitSourceDetachRequired owned => RepositoryHttpMappings.Map(owned),
-                        GitSourceBusy busy => RepositoryHttpMappings.Map(busy)
-                    })).WithName("DeleteGitRepositorySource");
+                {
+                    GitSourceDeletionRecorded => Results.NoContent(),
+                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
+                    GitSourceRevisionConflict stale => RepositoryHttpMappings.Map(stale),
+                    GitSourceDetachRequired owned => RepositoryHttpMappings.Map(owned),
+                    GitSourceBusy busy => RepositoryHttpMappings.Map(busy),
+                }))
+            .WithName("DeleteGitRepositorySource");
         return app;
     }
 }

@@ -6,7 +6,8 @@ public sealed record PoleUser(
     string? FirstName,
     string? LastName,
     string DefaultTenantId,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc
+);
 
 public static class PoleUserFactory
 {
@@ -16,12 +17,11 @@ public static class PoleUserFactory
         string? firstName,
         string? lastName,
         string defaultTenantId,
-        DateTime createdAtUtc) =>
-        new(
-            Id: id,
-            Email: email,
-            FirstName: firstName,
-            LastName: lastName,
-            DefaultTenantId: defaultTenantId,
-            CreatedAtUtc: createdAtUtc);
+        DateTime createdAtUtc) => new(
+        Id: id,
+        Email: email,
+        FirstName: firstName,
+        LastName: lastName,
+        DefaultTenantId: defaultTenantId,
+        CreatedAtUtc: createdAtUtc);
 }

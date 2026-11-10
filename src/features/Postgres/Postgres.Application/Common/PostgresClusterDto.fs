@@ -5,28 +5,29 @@ open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 
 type PostgresClusterSpecDto =
-    { Instances : int
-      Storage : int
-      StorageProfileId : string
-      Version : int
-      DeploymentMode : string }
+    { Instances: int
+      Storage: int
+      StorageProfileId: string
+      Version: int
+      DeploymentMode: string }
 
 type PostgresClusterDto =
-    { Id : string
-      Name : string
-      GroupId : string
-      Revision : int64
-      Lifecycle : string
-      Spec : PostgresClusterSpecDto
-      Placement : PlacementSummaryDto
-      GitOps : GitResourceStatus }
+    { Id: string
+      Name: string
+      GroupId: string
+      Revision: int64
+      Lifecycle: string
+      Spec: PostgresClusterSpecDto
+      Placement: PlacementSummaryDto
+      GitOps: GitResourceStatus }
 
 [<RequireQualifiedAccess>]
 module PostgresClusterDto =
     let create
-        (cluster : PostgresCluster)
-        (placement : PlacementSummaryDto)
-        (gitOps : GitResourceStatus) : PostgresClusterDto =
+        (cluster: PostgresCluster)
+        (placement: PlacementSummaryDto)
+        (gitOps: GitResourceStatus)
+        : PostgresClusterDto =
         { Id = cluster.Id
           Name = cluster.Name
           GroupId = cluster.GroupId

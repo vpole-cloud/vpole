@@ -1,9 +1,10 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Reflection;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -13,10 +14,10 @@ using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
-using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Platform.Hosting;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Platform.Hosting;
 using Xunit;
 
 namespace Pole.Tests.Integration.Api;
@@ -28,18 +29,24 @@ public sealed class HttpEnumContractTests
     {
         await using var app = await StartApp();
         using var client = app.GetTestClient();
-        using var response = await client.PostAsync("/enums", Json("""
-            {"role":"Admin","phase":"Bind","deployment":"Applied","enforcement":"Supported"}
-            """));
+        using var response = await client.PostAsync(
+            "/enums",
+            Json(
+                """
+                {"role":"Admin","phase":"Bind","deployment":"Applied","enforcement":"Supported"}
+                """));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("Admin", body.RootElement.GetProperty("role").GetString());
         Assert.Equal("Bind", body.RootElement.GetProperty("phase").GetString());
         Assert.Equal("Applied", body.RootElement.GetProperty("deployment").GetString());
         Assert.Equal("Supported", body.RootElement.GetProperty("enforcement").GetString());
-        using var nullable = await client.PostAsync("/enums", Json("""
-            {"role":"Viewer","phase":null,"deployment":"Prepared","enforcement":"Unknown"}
-            """));
+        using var nullable = await client.PostAsync(
+            "/enums",
+            Json(
+                """
+                {"role":"Viewer","phase":null,"deployment":"Prepared","enforcement":"Unknown"}
+                """));
         Assert.Equal(HttpStatusCode.OK, nullable.StatusCode);
         using var nullableBody = JsonDocument.Parse(await nullable.Content.ReadAsStringAsync());
         Assert.Equal(JsonValueKind.Null, nullableBody.RootElement.GetProperty("phase").ValueKind);
@@ -64,7 +71,8 @@ public sealed class HttpEnumContractTests
     {
         await using var app = await StartApp();
         using var client = app.GetTestClient();
-        var body = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>("""
+        var body = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+            """
             {"role":"Admin","phase":"Bind","deployment":"Applied","enforcement":"Supported"}
             """)!;
         body[property] = JsonSerializer.Deserialize<JsonElement>(value);
@@ -81,8 +89,9 @@ public sealed class HttpEnumContractTests
     {
         await using var app = await StartApp();
         using var client = app.GetTestClient();
-        using var response = await client.PostAsync("/network-policy", Json(
-            $$"""{"enforcement":{{enforcement}},"allowIsolationNotEnforced":false,"revision":1}"""));
+        using var response = await client.PostAsync(
+            "/network-policy",
+            Json($$"""{"enforcement":{{enforcement}},"allowIsolationNotEnforced":false,"revision":1}"""));
         Assert.Equal(expected, response.StatusCode);
         if (expected == HttpStatusCode.OK)
         {
@@ -96,7 +105,10 @@ public sealed class HttpEnumContractTests
     [InlineData("/web-service", "creationMode", "Image")]
     [InlineData("/web-service", "exposure", "Private")]
     [InlineData("/resource-changes", "removal", "Remove")]
-    public async Task Endpoint_and_custom_property_converters_reject_numbers(string path, string property, string name)
+    public async Task Endpoint_and_custom_property_converters_reject_numbers(
+        string path,
+        string property,
+        string name)
     {
         await using var app = await StartApp();
         using var client = app.GetTestClient();
@@ -119,8 +131,8 @@ public sealed class HttpEnumContractTests
             .Where(type => type.Namespace?.Contains(".Endpoints", StringComparison.Ordinal) == true)
             .SelectMany(type => type.GetProperties())
             .Where(property => property.GetCustomAttribute<JsonConverterAttribute>()?.ConverterType is { } converter &&
-                (converter == typeof(JsonStringEnumConverter) || converter.IsGenericType &&
-                    converter.GetGenericTypeDefinition() == typeof(JsonStringEnumConverter<>)))
+                (converter == typeof(JsonStringEnumConverter) || (converter.IsGenericType &&
+                    converter.GetGenericTypeDefinition() == typeof(JsonStringEnumConverter<>))))
             .Select(property => $"{property.DeclaringType!.FullName}.{property.Name}");
         Assert.Empty(overrides);
     }
@@ -131,7 +143,7 @@ public sealed class HttpEnumContractTests
         var services = new ServiceCollection();
         services.AddPoleHttpJson().AddPoleHttpJson();
         using var provider = services.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>().Value;
+        var options = provider.GetRequiredService<IOptions<JsonOptions>>().Value;
         Assert.Single(options.SerializerOptions.Converters);
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<TenantRole>("1", options.SerializerOptions));
         Assert.Throws<JsonException>(() => JsonSerializer.Serialize((TenantRole)999, options.SerializerOptions));
@@ -165,5 +177,6 @@ public sealed class HttpEnumContractTests
         TenantRole Role,
         DeclarationPhase? Phase,
         ResourceDeploymentStatus Deployment,
-        NetworkPolicyEnforcementStatus Enforcement);
+        NetworkPolicyEnforcementStatus Enforcement
+    );
 }

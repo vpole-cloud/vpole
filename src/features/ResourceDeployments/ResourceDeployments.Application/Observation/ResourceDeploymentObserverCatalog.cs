@@ -11,18 +11,17 @@ public sealed class ResourceDeploymentObserverCatalog
     {
         var entries = descriptors.ToArray();
         if (entries.Any(descriptor => string.IsNullOrWhiteSpace(descriptor.ResourceType.Value) ||
-                                      !typeof(IResourceDeploymentObserver).IsAssignableFrom(descriptor.ObserverType) ||
-                                      descriptor.ObserverType.IsAbstract || descriptor.ObserverType.IsInterface ||
-                                      descriptor.DiagnosticsType is { } diagnostics &&
-                                      (!typeof(IResourceDeploymentDiagnosticsProvider).IsAssignableFrom(diagnostics) ||
-                                       diagnostics.IsAbstract || diagnostics.IsInterface) ||
-                                      (descriptor.ChangeSourceType is null) != (descriptor.BoundObserverType is null) ||
-                                      descriptor.ChangeSourceType is { } source &&
-                                      (!typeof(IResourceDeploymentObservationChangeSource).IsAssignableFrom(source) ||
-                                       source.IsAbstract || source.IsInterface) ||
-                                      descriptor.BoundObserverType is { } bound &&
-                                      (!typeof(IResourceDeploymentBoundObserver).IsAssignableFrom(bound) ||
-                                       bound.IsAbstract || bound.IsInterface)))
+                !typeof(IResourceDeploymentObserver).IsAssignableFrom(descriptor.ObserverType) ||
+                descriptor.ObserverType.IsAbstract || descriptor.ObserverType.IsInterface ||
+                (descriptor.DiagnosticsType is { } diagnostics &&
+                    (!typeof(IResourceDeploymentDiagnosticsProvider).IsAssignableFrom(diagnostics) ||
+                        diagnostics.IsAbstract || diagnostics.IsInterface)) ||
+                descriptor.ChangeSourceType is null != descriptor.BoundObserverType is null ||
+                (descriptor.ChangeSourceType is { } source &&
+                    (!typeof(IResourceDeploymentObservationChangeSource).IsAssignableFrom(source) ||
+                        source.IsAbstract || source.IsInterface)) || (descriptor.BoundObserverType is { } bound &&
+                    (!typeof(IResourceDeploymentBoundObserver).IsAssignableFrom(bound) || bound.IsAbstract ||
+                        bound.IsInterface))))
             throw new InvalidOperationException("Invalid resource deployment observer contribution.");
         if (entries.GroupBy(descriptor => descriptor.ResourceType.Value, StringComparer.Ordinal)
             .Any(group => group.Skip(1).Any()))

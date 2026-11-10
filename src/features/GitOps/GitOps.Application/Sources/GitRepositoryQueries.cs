@@ -11,19 +11,31 @@ public sealed class GitRepositoryQueries(
     IMongoCollection<GitSynchronizationState> states,
     IMongoCollection<GitReconciliationRun> runs,
     IMongoCollection<ManagedDeclaration> inventory,
-    GitOperationReportReader reports)
+    GitOperationReportReader reports
+)
 {
-    public async Task<RepositorySourceView?> SourceAsync(string tenant, string id, CancellationToken ct)
+    public async Task<RepositorySourceView?> SourceAsync(
+        string tenant,
+        string id,
+        CancellationToken ct)
     {
         var source = await sources.Find(GitRepositoryFilters.VisibleSource(tenant, id)).FirstOrDefaultAsync(ct);
         return source is null ? null : (await ViewsAsync(tenant, [source], ct)).Single();
     }
 
-    public async Task<RepositorySourcePage> ListAsync(string tenant, int page, int pageSize, CancellationToken ct)
+    public async Task<RepositorySourcePage> ListAsync(
+        string tenant,
+        int page,
+        int pageSize,
+        CancellationToken ct)
     {
-        var items = await sources.Find(GitRepositoryFilters.VisibleTenant(tenant)).SortBy(item => item.Id)
-            .Skip((page - 1) * pageSize).Limit(pageSize + 1).ToListAsync(ct);
-        return new(await ViewsAsync(tenant, items.Take(pageSize).ToArray(), ct),
+        var items = await sources.Find(GitRepositoryFilters.VisibleTenant(tenant))
+            .SortBy(item => item.Id)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize + 1)
+            .ToListAsync(ct);
+        return new RepositorySourcePage(
+            await ViewsAsync(tenant, items.Take(pageSize).ToArray(), ct),
             page,
             pageSize,
             items.Count > pageSize);
@@ -40,50 +52,58 @@ public sealed class GitRepositoryQueries(
         var ids = items.Select(item => item.Id).ToArray();
         var synchronization = await states.Find(GitRepositoryFilters.States(tenant, ids)).ToListAsync(ct);
         var latestIds = synchronization.Select(item => item.LatestRunId).OfType<string>().ToArray();
-        var latest = await runs.Find(GitRepositoryFilters.Runs(tenant, latestIds))
-            .ToListAsync(ct);
-        var counts = await inventory.Aggregate().Match(GitRepositoryFilters.Inventory(tenant, ids))
-            .Group(item => item.SourceId,
+        var latest = await runs.Find(GitRepositoryFilters.Runs(tenant, latestIds)).ToListAsync(ct);
+        var counts = await inventory.Aggregate()
+            .Match(GitRepositoryFilters.Inventory(tenant, ids))
+            .Group(
+                item => item.SourceId,
                 group => new
                 {
                     SourceId = group.Key,
                     Owned = group.LongCount(),
-                    Pending = group.Sum(item => item.PendingRemoval ? 1L : 0L)
-                }).ToListAsync(ct);
+                    Pending = group.Sum(item => item.PendingRemoval ? 1L : 0L),
+                })
+            .ToListAsync(ct);
         var operations = await reports.ReadAsync(tenant, latest, ct);
         var bySource = synchronization.ToDictionary(item => item.Source.SourceId);
         var byRun = latest.ToDictionary(item => item.Id);
         var byCount = counts.ToDictionary(item => item.SourceId);
         return items.Select(source =>
-        {
-            var state = bySource[source.Id];
-            var run = state.LatestRunId is { } runId ? byRun.GetValueOrDefault(runId) : null;
-            var count = byCount.GetValueOrDefault(source.Id);
-            return new RepositorySourceView(source.Id,
-                source.Revision,
-                new(source.Repository.Provider,
-                    source.Repository.ConnectionId,
-                    source.Repository.ExternalRepositoryId,
-                    source.Repository.Branch,
-                    source.Repository.ManifestDirectory,
-                    source.DisplayUrl),
-                (int)source.Sync.PollInterval.TotalSeconds,
-                state.CurrentRun is null && state.RequestedGeneration > state.CompletedGeneration
-                    ? RepositoryRunStatus.Queued
-                    : run is null
-                        ? RepositoryRunStatus.Queued
-                        : Status(run),
-                new(state.RequestedGeneration,
-                    state.CompletedGeneration,
-                    state.Commits.Observed,
-                    state.Commits.Attempted,
-                    state.Commits.FullyApplied,
-                    state.CurrentRun?.RunId,
-                    state.LatestRunId),
-                new(count?.Owned ?? 0, count?.Pending ?? 0, state.InventoryRevision),
-                run is null ? null : ToView(run, operations.GetValueOrDefault(run.Id)?.Summary),
-                source.Activity, source.Prune);
-        }).ToArray();
+            {
+                var state = bySource[source.Id];
+                var run = state.LatestRunId is { } runId ? byRun.GetValueOrDefault(runId) : null;
+                var count = byCount.GetValueOrDefault(source.Id);
+                return new RepositorySourceView(
+                    source.Id,
+                    source.Revision,
+                    new RepositoryLocationView(
+                        source.Repository.Provider,
+                        source.Repository.ConnectionId,
+                        source.Repository.ExternalRepositoryId,
+                        source.Repository.Branch,
+                        source.Repository.ManifestDirectory,
+                        source.DisplayUrl),
+                    (int)source.Sync.PollInterval.TotalSeconds,
+                    state.CurrentRun is null && state.RequestedGeneration > state.CompletedGeneration
+                        ?
+                        RepositoryRunStatus.Queued
+                        : run is null
+                            ? RepositoryRunStatus.Queued
+                            : Status(run),
+                    new RepositorySynchronizationView(
+                        state.RequestedGeneration,
+                        state.CompletedGeneration,
+                        state.Commits.Observed,
+                        state.Commits.Attempted,
+                        state.Commits.FullyApplied,
+                        state.CurrentRun?.RunId,
+                        state.LatestRunId),
+                    new RepositoryInventorySummary(count?.Owned ?? 0, count?.Pending ?? 0, state.InventoryRevision),
+                    run is null ? null : ToView(run, operations.GetValueOrDefault(run.Id)?.Summary),
+                    source.Activity,
+                    source.Prune);
+            })
+            .ToArray();
     }
 
     public async Task<RepositoryRunPage?> RunsAsync(
@@ -97,15 +117,25 @@ public sealed class GitRepositoryQueries(
             return null;
 
         var items = await runs.Find(GitRepositoryFilters.SourceRuns(tenant, source))
-            .SortByDescending(item => item.Stamp.Generation).ThenByDescending(item => item.Id)
-            .Skip((page - 1) * pageSize).Limit(pageSize + 1).ToListAsync(ct);
+            .SortByDescending(item => item.Stamp.Generation)
+            .ThenByDescending(item => item.Id)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize + 1)
+            .ToListAsync(ct);
         var selected = items.Take(pageSize).ToArray();
         var operations = await reports.ReadAsync(tenant, selected, ct);
-        return new(selected.Select(run => ToView(run, operations.GetValueOrDefault(run.Id)?.Summary)).ToArray(),
-            page, pageSize, items.Count > pageSize);
+        return new RepositoryRunPage(
+            selected.Select(run => ToView(run, operations.GetValueOrDefault(run.Id)?.Summary)).ToArray(),
+            page,
+            pageSize,
+            items.Count > pageSize);
     }
 
-    public async Task<RepositoryRunView?> RunAsync(string tenant, string source, string runId, CancellationToken ct)
+    public async Task<RepositoryRunView?> RunAsync(
+        string tenant,
+        string source,
+        string runId,
+        CancellationToken ct)
     {
         if (!await sources.Find(GitRepositoryFilters.VisibleSource(tenant, source)).AnyAsync(ct))
             return null;
@@ -132,11 +162,15 @@ public sealed class GitRepositoryQueries(
         if (run is null)
             return null;
         if (run.AcceptedSnapshot is null && run.Input is not GitInputLifecycle)
-            return new([], page, pageSize, false);
+            return new RepositoryOperationPage([], page, pageSize, false);
 
         var report = (await reports.ReadAsync(tenant, [run], ct))[run.Id];
         var operations = report.Items.Skip((page - 1) * pageSize).Take(pageSize + 1).ToArray();
-        return new(operations.Take(pageSize).ToArray(), page, pageSize, operations.Length > pageSize);
+        return new RepositoryOperationPage(
+            operations.Take(pageSize).ToArray(),
+            page,
+            pageSize,
+            operations.Length > pageSize);
     }
 
     private static RepositoryRunView ToView(GitReconciliationRun run, RepositoryOperationSummary? operations) => new(
@@ -150,20 +184,26 @@ public sealed class GitRepositoryQueries(
         run.Initiator.RequestedByUserId,
         Status(run),
         run.CreatedAtUtc,
-        run.Diagnostics.Select(item => new RepositoryRunDiagnosticView(item.Code, item.File, item.Document, item.Field))
-            .ToArray(), operations, run.Input switch
-            {
-                GitInputAwaitingApproval awaiting => new(awaiting.PreviewId,
-                    RepositoryLifecycleAuthorization.AwaitingConfirmation),
-                GitInputLifecycle lifecycle => new(lifecycle.Plan.PreviewId,
-                    lifecycle.Plan.Authorization is GitPreviewPolicyAuthorized
-                        ? RepositoryLifecycleAuthorization.PrunePolicy
-                        : RepositoryLifecycleAuthorization.UserConfirmed),
-                GitInputUnresolved or GitInputPinned or GitInputAccepted => null
-            });
+        run.Diagnostics
+            .Select(item => new RepositoryRunDiagnosticView(item.Code, item.File, item.Document, item.Field))
+            .ToArray(),
+        operations,
+        run.Input switch
+        {
+            GitInputAwaitingApproval awaiting => new RepositoryRunLifecycleView(
+                awaiting.PreviewId,
+                RepositoryLifecycleAuthorization.AwaitingConfirmation),
+            GitInputLifecycle lifecycle => new RepositoryRunLifecycleView(
+                lifecycle.Plan.PreviewId,
+                lifecycle.Plan.Authorization is GitPreviewPolicyAuthorized
+                    ? RepositoryLifecycleAuthorization.PrunePolicy
+                    : RepositoryLifecycleAuthorization.UserConfirmed),
+            GitInputUnresolved or GitInputPinned or GitInputAccepted => null,
+        });
 
     private static RepositoryRunStatus Status(GitReconciliationRun run) => run.Input is GitInputAwaitingApproval
-        ? RepositoryRunStatus.AwaitingConfirmation : run.State switch
+        ? RepositoryRunStatus.AwaitingConfirmation
+        : run.State switch
         {
             GitRunWaiting => RepositoryRunStatus.Queued,
             GitRunDelayed => RepositoryRunStatus.WaitingRetry,
@@ -174,7 +214,7 @@ public sealed class GitRepositoryQueries(
                 GitInputPinned => RepositoryRunStatus.Fetching,
                 GitInputAccepted => RepositoryRunStatus.Applying,
                 GitInputLifecycle => RepositoryRunStatus.Applying,
-                GitInputAwaitingApproval => RepositoryRunStatus.AwaitingConfirmation
+                GitInputAwaitingApproval => RepositoryRunStatus.AwaitingConfirmation,
             },
             GitRunFinished finished => finished.Completion switch
             {
@@ -184,7 +224,7 @@ public sealed class GitRepositoryQueries(
                 GitRunCompletion.Failed => RepositoryRunStatus.Failed,
                 GitRunCompletion.Superseded => RepositoryRunStatus.Superseded,
                 GitRunCompletion.LifecycleCompleted => RepositoryRunStatus.LifecycleCompleted,
-                _ => throw new ArgumentOutOfRangeException(nameof(run))
-            }
+                _ => throw new ArgumentOutOfRangeException(nameof(run)),
+            },
         };
 }

@@ -1,24 +1,33 @@
 using k8s;
 using Microsoft.FSharp.Core;
-using MongoDB.Bson;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application.Credentials;
 using Pole.Features.Postgres.Application.Kubernetes;
-using Pole.Features.Postgres.Application.Mongo;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Secrets.Contracts;
-using Pole.ResultType;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresResourceDeploymentAdapterTests
 {
+    private const string TenantId = "507f1f77bcf86cd799439011";
+    private const string ResourceId = "507f1f77bcf86cd799439012";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439013";
+    private const string IsolationScopeId = "507f1f77bcf86cd799439014";
+    private const string RuntimeCellId = "507f1f77bcf86cd799439015";
+    private const string TargetId = "507f1f77bcf86cd799439016";
+    private const string DeploymentId = "507f1f77bcf86cd799439017";
+    private const string StorageProfileId = "507f1f77bcf86cd799439018";
+    private const string ComputeProfileId = "507f1f77bcf86cd799439019";
+    private const string KubernetesNamespace = "postgres-target-namespace";
+    private const string StorageClassName = "postgres-fast-storage";
+
+    private static readonly DateTime NowUtc = new(2026, 8, 9, 14, 0, 0, DateTimeKind.Utc);
+
     [Fact]
     public async Task PreparedIdentityCannotTouchIngressCredentialsOrKubernetes()
     {
@@ -28,7 +37,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(reader.LoadAsync),
+            reader.LoadAsync,
             (_, _) => throw new InvalidOperationException("Prepared resources cannot read credentials."),
             (_, _) => throw new InvalidOperationException("Prepared resources cannot project credentials."),
             manager,
@@ -51,8 +60,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(reader.LoadAsync),
-            new ReadManagedSecretKey(credentials.ReadAsync),
+            reader.LoadAsync,
+            credentials.ReadAsync,
             ProjectionReady,
             manager,
             provider,
@@ -93,18 +102,15 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var projectionReady = false;
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(reader.LoadAsync),
-(request, ct) =>
+            reader.LoadAsync,
+            (request, ct) =>
             {
                 Assert.True(projectionReady);
                 return credentials.ReadAsync(
-                    new ReadManagedSecretKeyRequest(
-                        TenantId: request.TenantId,
-                        Owner: request.Owner,
-                        Key: request.Key),
+                    new ReadManagedSecretKeyRequest(TenantId: request.TenantId, Owner: request.Owner, Key: request.Key),
                     cancellationToken: ct);
             },
-(request, ct) =>
+            (request, ct) =>
             {
                 projectionReady = true;
                 return ProjectionReady(
@@ -113,12 +119,17 @@ public sealed class PostgresResourceDeploymentAdapterTests
                         Owner: request.Owner,
                         DeploymentId: request.DeploymentId),
                     ct: ct);
-            }, manager, new RecordingKubernetesClientProvider(kubernetes), AppliedIngress);
+            },
+            manager,
+            new RecordingKubernetesClientProvider(kubernetes),
+            AppliedIngress);
 
         Assert.IsType<ResourceDeploymentAdapterResult.Succeeded>(await subject.ApplyAsync(CreateContext()));
         Assert.Equal([(TenantId, ResourceId)], credentials.ResolveRequests);
         var applied = Assert.Single(manager.ApplyRequests);
-        Assert.Equal("postgres", Assert.IsType<PostgresProjectedCredentials.OperatorCredentials>(applied.Credentials).username);
+        Assert.Equal(
+            "postgres",
+            Assert.IsType<PostgresProjectedCredentials.OperatorCredentials>(applied.Credentials).username);
     }
 
     [Fact]
@@ -130,8 +141,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(reader.LoadAsync),
-            new ReadManagedSecretKey(credentials.ReadAsync),
+            reader.LoadAsync,
+            credentials.ReadAsync,
             ProjectionReady,
             manager,
             provider,
@@ -156,9 +167,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(reader.LoadAsync),
-            new ReadManagedSecretKey(
-                new RecordingCredentialService().ReadAsync),
+            reader.LoadAsync,
+            new RecordingCredentialService().ReadAsync,
             ProjectionReady,
             manager,
             provider,
@@ -186,9 +196,10 @@ public sealed class PostgresResourceDeploymentAdapterTests
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         var manager = new RecordingDeploymentManager();
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById((_, _, _) =>
-                Task.FromResult<FSharpOption<PostgresCluster>>(null!)),
-            new ReadManagedSecretKey(new RecordingCredentialService().ReadAsync),
+            (
+                _, _,
+                _) => Task.FromResult<FSharpOption<PostgresCluster>>(null!),
+            new RecordingCredentialService().ReadAsync,
             ProjectionReady,
             manager,
             provider,
@@ -202,12 +213,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
                         : new ResourceIngressPolicyApplied());
             });
 
-        var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(
-            await subject.DeleteAsync(CreateContext()));
+        var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.DeleteAsync(CreateContext()));
 
-        Assert.Equal(
-            ["postgres-replication", "postgres-operator"],
-            purposes);
+        Assert.Equal(["postgres-replication", "postgres-operator"], purposes);
         Assert.Equal(
             policyFailure ? "PostgresReplicationIngressCleanupUnavailable" : "PostgresClusterNotFound",
             result.FailureCode);
@@ -223,9 +231,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(reader.LoadAsync),
-            new ReadManagedSecretKey(
-                new RecordingCredentialService().ReadAsync),
+            reader.LoadAsync,
+            new RecordingCredentialService().ReadAsync,
             ProjectionReady,
             new RecordingDeploymentManager(),
             provider,
@@ -247,16 +254,18 @@ public sealed class PostgresResourceDeploymentAdapterTests
         using var kubernetes = CreateKubernetes();
         var provider = new RecordingKubernetesClientProvider(kubernetes);
         IResourceDeploymentAdapter subject = new PostgresResourceDeploymentAdapter(
-            new LoadPostgresClusterById(new RecordingReader(CreateCluster(PostgresDeploymentMode.StatefulSet)).LoadAsync),
-            new ReadManagedSecretKey(new RecordingCredentialService().ReadAsync),
-(request, ct) =>
+            new RecordingReader(CreateCluster(PostgresDeploymentMode.StatefulSet)).LoadAsync,
+            new RecordingCredentialService().ReadAsync,
+            (request, ct) =>
             {
                 Assert.Equal(TenantId, request.TenantId);
                 Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), request.Owner);
                 Assert.Equal(DeploymentId, request.DeploymentId);
-                return Task.FromResult<EnsureManagedSecretProjectionOutcome>(
-                    new ManagedSecretUnavailable());
-            }, manager, provider, AppliedIngress);
+                return Task.FromResult<EnsureManagedSecretProjectionOutcome>(new ManagedSecretUnavailable());
+            },
+            manager,
+            provider,
+            AppliedIngress);
         var result = Assert.IsType<ResourceDeploymentAdapterResult.Failed>(await subject.ApplyAsync(CreateContext()));
         Assert.True(result.Retryable);
         Assert.Equal("PostgresSecretProjectionUnavailable", result.FailureCode);
@@ -267,8 +276,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
     private static Task<ReconcileResourceIngressPolicyOutcome> AppliedIngress(
         ResourceIngressPolicyRequest request,
         CancellationToken cancellationToken) =>
-        Task.FromResult<ReconcileResourceIngressPolicyOutcome>(
-            new ResourceIngressPolicyApplied());
+        Task.FromResult<ReconcileResourceIngressPolicyOutcome>(new ResourceIngressPolicyApplied());
 
     private static Task<EnsureManagedSecretProjectionOutcome> ProjectionReady(
         EnsureManagedSecretProjectionRequest request,
@@ -327,26 +335,24 @@ public sealed class PostgresResourceDeploymentAdapterTests
                 placement));
     }
 
-    private static PostgresCluster CreateCluster(PostgresDeploymentMode mode) =>
-        PostgresCluster.Create(
-            TenantId,
-            "analytics",
-            ResourceGroupId,
-            17,
-            mode,
-            StorageProfileId,
-            new CreatePostgresClusterOptions(
-                FSharpOption<string>.Some(ResourceId),
-                1,
-                20));
+    private static PostgresCluster CreateCluster(PostgresDeploymentMode mode) => PostgresCluster.Create(
+        TenantId,
+        "analytics",
+        ResourceGroupId,
+        17,
+        mode,
+        StorageProfileId,
+        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ResourceId), 1, 20));
 
-    private static Kubernetes CreateKubernetes() =>
-        new(new KubernetesClientConfiguration
+    private static Kubernetes CreateKubernetes() => new(
+        new KubernetesClientConfiguration
         {
-            Host = "http://persisted-target.test"
+            Host = "http://persisted-target.test",
         });
 
-    private sealed class RecordingReader(PostgresCluster cluster)
+    private sealed class RecordingReader(
+        PostgresCluster cluster
+    )
     {
         public List<(string TenantId, string ClusterId)> Requests { get; } = [];
 
@@ -375,14 +381,13 @@ public sealed class PostgresResourceDeploymentAdapterTests
         }
     }
 
-    private sealed class RecordingKubernetesClientProvider(IKubernetes kubernetes)
-        : IKubernetesClientProvider
+    private sealed class RecordingKubernetesClientProvider(
+        IKubernetes kubernetes
+    ) : IKubernetesClientProvider
     {
         public List<string> RequestedTargetIds { get; } = [];
 
-        public Task<IKubernetes> GetAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default)
+        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default)
         {
             RequestedTargetIds.Add(deploymentTargetId);
             return Task.FromResult(kubernetes);
@@ -390,13 +395,10 @@ public sealed class PostgresResourceDeploymentAdapterTests
 
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
-        public Task<IKubernetes> GetDefaultAsync(
-            CancellationToken cancellationToken = default) =>
-            throw new Xunit.Sdk.XunitException(
-                "Placement-aware PostgreSQL must not request the default Kubernetes client.");
+        public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
+            throw new XunitException("Placement-aware PostgreSQL must not request the default Kubernetes client.");
     }
 
     private sealed class RecordingDeploymentManager : IPostgresClusterDeploymentManager
@@ -414,14 +416,8 @@ public sealed class PostgresResourceDeploymentAdapterTests
             PostgresResourceDeploymentMetadata metadata,
             CancellationToken cancellationToken)
         {
-            ApplyRequests.Add(new ApplyRequest(
-                kubernetes,
-                cluster,
-                credentials,
-                namespaceName,
-                storageClassName,
-                compute,
-                metadata));
+            ApplyRequests.Add(
+                new ApplyRequest(kubernetes, cluster, credentials, namespaceName, storageClassName, compute, metadata));
             return Task.CompletedTask;
         }
 
@@ -432,11 +428,7 @@ public sealed class PostgresResourceDeploymentAdapterTests
             PostgresDeploymentMode deploymentMode,
             CancellationToken cancellationToken)
         {
-            DeleteRequests.Add(new DeleteRequest(
-                kubernetes,
-                clusterId,
-                namespaceName,
-                deploymentMode));
+            DeleteRequests.Add(new DeleteRequest(kubernetes, clusterId, namespaceName, deploymentMode));
             return Task.CompletedTask;
         }
     }
@@ -448,25 +440,13 @@ public sealed class PostgresResourceDeploymentAdapterTests
         string NamespaceName,
         string StorageClassName,
         KubernetesComputeConfiguration Compute,
-        PostgresResourceDeploymentMetadata Metadata);
+        PostgresResourceDeploymentMetadata Metadata
+    );
 
     private sealed record DeleteRequest(
         IKubernetes Kubernetes,
         string ClusterId,
         string NamespaceName,
-        PostgresDeploymentMode DeploymentMode);
-
-    private const string TenantId = "507f1f77bcf86cd799439011";
-    private const string ResourceId = "507f1f77bcf86cd799439012";
-    private const string ResourceGroupId = "507f1f77bcf86cd799439013";
-    private const string IsolationScopeId = "507f1f77bcf86cd799439014";
-    private const string RuntimeCellId = "507f1f77bcf86cd799439015";
-    private const string TargetId = "507f1f77bcf86cd799439016";
-    private const string DeploymentId = "507f1f77bcf86cd799439017";
-    private const string StorageProfileId = "507f1f77bcf86cd799439018";
-    private const string ComputeProfileId = "507f1f77bcf86cd799439019";
-    private const string KubernetesNamespace = "postgres-target-namespace";
-    private const string StorageClassName = "postgres-fast-storage";
-    private static readonly DateTime NowUtc =
-        new(2026, 8, 9, 14, 0, 0, DateTimeKind.Utc);
+        PostgresDeploymentMode DeploymentMode
+    );
 }

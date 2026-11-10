@@ -7,7 +7,7 @@ public enum StorageObservationReadOutcome
 {
     Shared,
     Live,
-    Unavailable
+    Unavailable,
 }
 
 public enum StorageObservationReadKind
@@ -15,7 +15,7 @@ public enum StorageObservationReadKind
     Coherent,
     Classes,
     Volumes,
-    Claims
+    Claims,
 }
 
 public enum StorageObservationSampleOutcome
@@ -23,23 +23,23 @@ public enum StorageObservationSampleOutcome
     Accepted,
     Rejected,
     Cancelled,
-    Failed
+    Failed,
 }
 
 /// <summary>Aggregate storage observation outcomes with fixed labels and no target or native metadata.</summary>
 public sealed class StorageObservationMetrics : IDisposable
 {
     public const string MeterName = "Pole.StorageObservations";
+    private readonly Histogram<double> duration;
     private readonly Meter meter;
     private readonly bool ownsMeter;
     private readonly Counter<long> reads;
-    private readonly Counter<long> sources;
     private readonly Counter<long> samples;
-    private readonly Histogram<double> duration;
+    private readonly Counter<long> sources;
 
     public StorageObservationMetrics(Meter? instrumentMeter = null)
     {
-        meter = instrumentMeter ?? new(MeterName);
+        meter = instrumentMeter ?? new Meter(MeterName);
         ownsMeter = instrumentMeter is null;
         reads = meter.CreateCounter<long>("pole.storage.observation.reads");
         sources = meter.CreateCounter<long>("pole.storage.observation.sources.transitions");
@@ -47,8 +47,16 @@ public sealed class StorageObservationMetrics : IDisposable
         duration = meter.CreateHistogram<double>("pole.storage.observation.sample.duration", "s");
     }
 
-    public void RecordRead(StorageObservationReadOutcome outcome,
-        StorageObservationReadKind kind = StorageObservationReadKind.Coherent) => reads.Add(1,
+    public void Dispose()
+    {
+        if (ownsMeter)
+            meter.Dispose();
+    }
+
+    public void RecordRead(
+        StorageObservationReadOutcome outcome,
+        StorageObservationReadKind kind = StorageObservationReadKind.Coherent) => reads.Add(
+        1,
         new TagList
         {
             {
@@ -56,7 +64,7 @@ public sealed class StorageObservationMetrics : IDisposable
                 outcome switch
                 {
                     StorageObservationReadOutcome.Shared => "shared", StorageObservationReadOutcome.Live => "live",
-                    _ => "unavailable"
+                    _ => "unavailable",
                 }
             },
             {
@@ -65,9 +73,9 @@ public sealed class StorageObservationMetrics : IDisposable
                 {
                     StorageObservationReadKind.Classes => "classes",
                     StorageObservationReadKind.Volumes => "volumes", StorageObservationReadKind.Claims => "claims",
-                    _ => "coherent"
+                    _ => "coherent",
                 }
-            }
+            },
         });
 
     public void RecordSource(bool healthy) =>
@@ -83,17 +91,11 @@ public sealed class StorageObservationMetrics : IDisposable
                 {
                     StorageObservationSampleOutcome.Accepted => "accepted",
                     StorageObservationSampleOutcome.Rejected => "rejected",
-                    StorageObservationSampleOutcome.Cancelled => "cancelled", _ => "failed"
+                    StorageObservationSampleOutcome.Cancelled => "cancelled", _ => "failed",
                 }
-            }
+            },
         };
         samples.Add(1, tags);
         duration.Record(elapsed.TotalSeconds, tags);
-    }
-
-    public void Dispose()
-    {
-        if (ownsMeter)
-            meter.Dispose();
     }
 }

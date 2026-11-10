@@ -5,11 +5,12 @@ open Pole.Features.Events.Abstractions
 
 [<EntityName("pole.postgres/v1/postgres-cluster-deleted")>]
 type PostgresClusterDeletedEvent =
-    { EventCore : EventCore
-      ClusterId : string
-      Name : string
-      GroupId : string
-      ResourceRevision : int64
-      Spec : PostgresClusterSpecSnapshot }
+    { EventCore: EventCore
+      ClusterId: string
+      Name: string
+      GroupId: string
+      ResourceRevision: int64
+      Spec: PostgresClusterSpecSnapshot }
+
     interface IPoleEvent with
         member this.EventCore = this.EventCore

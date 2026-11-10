@@ -4,10 +4,10 @@ using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
-using Pole.Multitenancy.Primitives;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.Quotas.Domain;
 using Pole.Features.Search.Domain;
+using Pole.Multitenancy.Primitives;
 using Xunit;
 
 namespace Pole.Tests.Integration.Database;
@@ -58,17 +58,15 @@ public sealed class TenantMongoFilterTests
     [Fact]
     public void Null_context_and_builder_are_rejected()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            Builders<OrdinaryDocument>.Filter.ForTenant((TenantContext)null!));
-        Assert.Throws<ArgumentNullException>(() =>
-            MongoFilterExtensions.ForTenant<OrdinaryDocument>(null!, TenantId));
-        Assert.Throws<ArgumentNullException>(() =>
-            MongoFilterExtensions.ForTenant<OrdinaryDocument>(null!,
-                new TenantContext(TenantId, "tenant", TenantRole.Owner, false)));
+        Assert.Throws<ArgumentNullException>(() => Builders<OrdinaryDocument>.Filter.ForTenant((TenantContext)null!));
+        Assert.Throws<ArgumentNullException>(() => MongoFilterExtensions.ForTenant<OrdinaryDocument>(null!, TenantId));
+        Assert.Throws<ArgumentNullException>(() => MongoFilterExtensions.ForTenant<OrdinaryDocument>(
+            null!,
+            new TenantContext(TenantId, "tenant", TenantRole.Owner, false)));
     }
 
-    private static BsonDocument Render<TDocument>() where TDocument : ITenantOwned =>
-        Render(Builders<TDocument>.Filter.ForTenant(TenantId));
+    private static BsonDocument Render<TDocument>()
+        where TDocument : ITenantOwned => Render(Builders<TDocument>.Filter.ForTenant(TenantId));
 
     private static BsonDocument Render<TDocument>(FilterDefinition<TDocument> filter)
     {
@@ -76,11 +74,17 @@ public sealed class TenantMongoFilterTests
         return filter.Render(new RenderArgs<TDocument>(registry.GetSerializer<TDocument>(), registry));
     }
 
-    private sealed record OrdinaryDocument(string TenantId) : ITenantOwned;
+    private sealed record OrdinaryDocument(
+        string TenantId
+    ) : ITenantOwned;
 
     private sealed record AliasedDocument(
-        [property: BsonElement("owner")] string TenantId) : ITenantOwned;
+        [property: BsonElement("owner")] string TenantId
+    ) : ITenantOwned;
 
     private sealed record ObjectIdDocument(
-        [property: BsonElement("owner"), BsonRepresentation(BsonType.ObjectId)] string TenantId) : ITenantOwned;
+        [property: BsonElement("owner")]
+        [property: BsonRepresentation(BsonType.ObjectId)]
+        string TenantId
+    ) : ITenantOwned;
 }

@@ -9,12 +9,14 @@ public delegate Task<SourceBuildJob?> LoadSourceBuildJob(
     string buildJobId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadSourceBuildJob(IMongoCollection<SourceBuildJob> jobs)
+internal sealed class MongoLoadSourceBuildJob(
+    IMongoCollection<SourceBuildJob> jobs
+)
 {
     public async Task<SourceBuildJob?> InvokeAsync(
         string tenantId,
         string buildJobId,
-        CancellationToken cancellationToken = default) =>
-        await jobs.Find(SourceBuildJobFilters.ById(tenantId, buildJobId))
-            .FirstOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await jobs
+        .Find(SourceBuildJobFilters.ById(tenantId, buildJobId))
+        .FirstOrDefaultAsync(cancellationToken);
 }

@@ -1,38 +1,38 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.GitProviders.Application</AssemblyName>
-    <RootNamespace>Pole.Features.GitProviders.Application</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.GitProviders.Application</AssemblyName>
+        <RootNamespace>Pole.Features.GitProviders.Application</RootNamespace>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <InternalsVisibleTo Include="Pole.Tests.Integration" />
-    <InternalsVisibleTo Include="Pole.Features.GitProviders.Tests" />
-  </ItemGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <InternalsVisibleTo Include="Pole.Tests.Integration"/>
+        <InternalsVisibleTo Include="Pole.Features.GitProviders.Tests"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="FluentValidation" />
-    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\GitOps\GitOps.Contracts\GitOps.Contracts.csproj" />
-    <ProjectReference Include="..\..\Tenants\Tenants.Contracts\Tenants.Contracts.csproj" />
-    <ProjectReference Include="..\GitProviders.Contracts\GitProviders.Contracts.csproj" />
-    <ProjectReference Include="..\GitProviders.Domain\GitProviders.Domain.csproj" />
-    <ProjectReference Include="..\GitProviders.Events\GitProviders.Events.csproj" />
-    <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
-    <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
-    <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-    <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
-    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-    <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\GitOps\GitOps.Contracts\GitOps.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Tenants\Tenants.Contracts\Tenants.Contracts.csproj"/>
+        <ProjectReference Include="..\GitProviders.Contracts\GitProviders.Contracts.csproj"/>
+        <ProjectReference Include="..\GitProviders.Domain\GitProviders.Domain.csproj"/>
+        <ProjectReference Include="..\GitProviders.Events\GitProviders.Events.csproj"/>
+        <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj"/>
+        <ProjectReference Include="..\..\SourceBuilds\SourceBuilds.Contracts\SourceBuilds.Contracts.csproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj"/>
+    </ItemGroup>
 
 </Project>

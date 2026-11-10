@@ -1,4 +1,3 @@
-using Pole.Workloads;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -6,8 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Catalog;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Validation;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -28,22 +27,22 @@ public sealed record CreateComputeProfileRequestBody(
     ComputeProfileTenantAccessRequestBody TenantAccess,
     IReadOnlyCollection<ComputeProfileTargetMappingRequestBody> TargetMappings,
     bool IsEnabled,
-    bool IsDefault)
-    : ComputeProfileMutationRequestBody(
-        DisplayName,
-        Description,
-        Resources,
-        Architecture,
-        ExtendedResources,
-        AllowedResourceTypes,
-        TenantAccess,
-        TargetMappings,
-        IsEnabled,
-        IsDefault);
+    bool IsDefault
+) : ComputeProfileMutationRequestBody(
+    DisplayName,
+    Description,
+    Resources,
+    Architecture,
+    ExtendedResources,
+    AllowedResourceTypes,
+    TenantAccess,
+    TargetMappings,
+    IsEnabled,
+    IsDefault);
 
 public sealed record CreateComputeProfileRequest(
-    [FromBody] CreateComputeProfileRequestBody Body)
-    : IMediatorRequest<CreateComputeProfileOutcome>;
+    [FromBody] CreateComputeProfileRequestBody Body
+) : IMediatorRequest<CreateComputeProfileOutcome>;
 
 public union CreateComputeProfileOutcome(
     ComputeProfileDto,
@@ -57,8 +56,8 @@ public sealed class CreateComputeProfileHandler(
     ValidateComputeProfileTenantAccess validateTenantAccess,
     ValidateComputeProfileTargetMappings validateTargetMappings,
     PersistCreatedComputeProfile persistCreatedComputeProfile,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<CreateComputeProfileRequest, CreateComputeProfileOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<CreateComputeProfileRequest, CreateComputeProfileOutcome>
 {
     public async Task<CreateComputeProfileOutcome> HandleAsync(
         CreateComputeProfileRequest request,
@@ -69,18 +68,12 @@ public sealed class CreateComputeProfileHandler(
             new ComputeProfileFactory.CreateOptions(
                 ObjectId.GenerateNewId().ToString(),
                 timeProvider.GetUtcNow().UtcDateTime));
-        var tenantValidation = await validateTenantAccess(
-            profile.TenantAccess,
-            cancellationToken);
+        var tenantValidation = await validateTenantAccess(profile.TenantAccess, cancellationToken);
         if (tenantValidation is SelectedComputeProfileTenantsNotFound tenantError)
-        {
             return tenantError;
-        }
         var targetValidation = await validateTargetMappings(profile, cancellationToken);
         if (targetValidation is ComputeProfileTargetMappingsInvalid targetError)
-        {
             return targetError;
-        }
 
         var persisted = await persistCreatedComputeProfile(profile, cancellationToken);
         return persisted switch
@@ -88,18 +81,16 @@ public sealed class CreateComputeProfileHandler(
             ComputeProfile created => created.ToDto(),
             ComputeProfileTechnicalNameConflict conflict => conflict,
             ComputeProfileRevisionConflict conflict => conflict,
-            DeploymentTargetReferenceChangeRejected error => error
+            DeploymentTargetReferenceChangeRejected error => error,
         };
     }
 }
 
-public sealed class CreateComputeProfileRequestValidator
-    : AbstractValidator<CreateComputeProfileRequest>
+public sealed class CreateComputeProfileRequestValidator : AbstractValidator<CreateComputeProfileRequest>
 {
-    public CreateComputeProfileRequestValidator() =>
-        RuleFor(request => request.Body)
-            .NotNull()
-            .SetValidator(new CreateComputeProfileRequestBodyValidator());
+    public CreateComputeProfileRequestValidator() => RuleFor(request => request.Body)
+        .NotNull()
+        .SetValidator(new CreateComputeProfileRequestBodyValidator());
 }
 
 public sealed class CreateComputeProfileRequestBodyValidator
@@ -111,27 +102,27 @@ public sealed class CreateComputeProfileRequestBodyValidator
 
 public static class CreateComputeProfileEndpoint
 {
-    public static IEndpointRouteBuilder MapCreateComputeProfileEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapCreateComputeProfileEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (
-                IMediator mediator,
-                [AsParameters] CreateComputeProfileRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] CreateComputeProfileRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ComputeProfileDto profile => Results.Created(
-                        $"/api/v1/platform/compute-profiles/{profile.Id}",
-                        profile),
-                    SelectedComputeProfileTenantsNotFound error => MapSelectedTenantsNotFound(error),
-                    ComputeProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
-                    ComputeProfileRevisionConflict conflict => MapRevisionConflict(conflict),
-                    ComputeProfileTechnicalNameConflict conflict => MapNameConflict(conflict),
-                    DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ComputeProfileDto profile => Results.Created(
+                            $"/api/v1/platform/compute-profiles/{profile.Id}",
+                            profile),
+                        SelectedComputeProfileTenantsNotFound error => MapSelectedTenantsNotFound(error),
+                        ComputeProfileTargetMappingsInvalid error => MapTargetMappingsInvalid(error),
+                        ComputeProfileRevisionConflict conflict => MapRevisionConflict(conflict),
+                        ComputeProfileTechnicalNameConflict conflict => MapNameConflict(conflict),
+                        DeploymentTargetReferenceChangeRejected error => MapReferenceChangeRejected(error),
+                    });
+                })
             .WithName("CreateComputeProfile")
             .Produces<ComputeProfileDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status409Conflict)

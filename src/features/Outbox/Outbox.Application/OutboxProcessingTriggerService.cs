@@ -11,7 +11,8 @@ internal sealed class OutboxProcessingTriggerService(
     IOptions<OutboxSettings> options,
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
-    ILogger<OutboxProcessingTriggerService> logger) : BackgroundService
+    ILogger<OutboxProcessingTriggerService> logger
+) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -29,7 +30,6 @@ internal sealed class OutboxProcessingTriggerService(
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
-            {
                 try
                 {
                     await trigger.TriggerAsync(stoppingToken);
@@ -40,7 +40,6 @@ internal sealed class OutboxProcessingTriggerService(
                         exception,
                         "Could not dispatch pending outbox messages; the recurring schedule remains active");
                 }
-            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -61,7 +60,8 @@ internal static class OutboxProcessingLock
 
 internal sealed class DirectOutboxProcessingTrigger(
     JobStorage storage,
-    IServiceScopeFactory scopeFactory) : IOutboxProcessingTrigger
+    IServiceScopeFactory scopeFactory
+) : IOutboxProcessingTrigger
 {
     public Task TriggerAsync(CancellationToken cancellationToken) =>
         Task.Run(() => Dispatch(cancellationToken), cancellationToken);
@@ -73,9 +73,7 @@ internal sealed class DirectOutboxProcessingTrigger(
         IDisposable processingLock;
         try
         {
-            processingLock = connection.AcquireDistributedLock(
-                OutboxProcessingLock.Resource,
-                TimeSpan.Zero);
+            processingLock = connection.AcquireDistributedLock(OutboxProcessingLock.Resource, TimeSpan.Zero);
         }
         catch (DistributedLockTimeoutException)
         {
@@ -92,9 +90,11 @@ internal sealed class DirectOutboxProcessingTrigger(
                 // Hangfire.Mongo lock nesting and release are thread-affine. Keep
                 // acquisition and disposal on this worker, as Hangfire does, even
                 // when publishing resumes asynchronously on another thread.
-                scope.ServiceProvider.GetRequiredService<OutboxProcessorJob>()
+                scope.ServiceProvider
+                    .GetRequiredService<OutboxProcessorJob>()
                     .ProcessOutboxMessagesAsync(cancellationToken)
-                    .GetAwaiter().GetResult();
+                    .GetAwaiter()
+                    .GetResult();
             }
             finally
             {

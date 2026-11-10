@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -15,7 +16,8 @@ public sealed record GitHubWebhookRequest(
     string DeliveryId,
     string EventType,
     string Signature,
-    byte[] Body);
+    byte[] Body
+);
 
 public enum GitHubWebhookResult { Accepted, InvalidSignature, InvalidPayload, DeliveryConflict, NotConfigured }
 
@@ -23,13 +25,15 @@ internal sealed record GitHubBranchPush(
     string InstallationId,
     string RepositoryId,
     string Branch,
-    string HeadCommitHint);
+    string HeadCommitHint
+);
 
 public sealed class ReceiveGitHubWebhookHandler(
     GitHubAppOptions github,
     IOptions<GitHubWebhookOptions> options,
     GitHubWebhookPersistence persistence,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public async Task<GitHubWebhookResult> HandleAsync(GitHubWebhookRequest request, CancellationToken ct)
     {
@@ -45,7 +49,6 @@ public sealed class ReceiveGitHubWebhookHandler(
 
         GitHubBranchPush? push = null;
         if (request.EventType == "push")
-        {
             try
             {
                 using var document = JsonDocument.Parse(request.Body);
@@ -59,39 +62,48 @@ public sealed class ReceiveGitHubWebhookHandler(
                 {
                     if (gitRef.Length == "refs/heads/".Length || !TryId(root, "installation", out var installation) ||
                         !TryId(root, "repository", out var repository) ||
-                        !root.TryGetProperty("after", out var after) ||
-                        after.ValueKind != JsonValueKind.String || after.GetString() is not { Length: 40 } sha ||
-                        !sha.All(char.IsAsciiHexDigit))
+                        !root.TryGetProperty("after", out var after) || after.ValueKind != JsonValueKind.String ||
+                        after.GetString() is not { Length: 40 } sha || !sha.All(char.IsAsciiHexDigit))
                         return GitHubWebhookResult.InvalidPayload;
 
-                    push = new(installation, repository, gitRef["refs/heads/".Length..], sha.ToLowerInvariant());
+                    push = new GitHubBranchPush(
+                        installation,
+                        repository,
+                        gitRef["refs/heads/".Length..],
+                        sha.ToLowerInvariant());
                 }
             }
             catch (JsonException)
             {
                 return GitHubWebhookResult.InvalidPayload;
             }
-        }
 
-        var receipt = new GitHubDeliveryReceipt(delivery.ToString("D"),
+        var receipt = new GitHubDeliveryReceipt(
+            delivery.ToString("D"),
             Convert.ToHexStringLower(SHA256.HashData(request.Body)),
             request.EventType,
             clock.GetUtcNow().UtcDateTime);
         return await persistence.StoreAsync(receipt, push, ct);
     }
 
-    private static bool TryId(JsonElement root, string name, out string value)
+    private static bool TryId(
+        JsonElement root,
+        string name,
+        out string value)
     {
-        value = string.Empty;
+        value = "";
         if (!root.TryGetProperty(name, out var entity) || entity.ValueKind != JsonValueKind.Object ||
             !entity.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number ||
             !id.TryGetInt64(out var number) || number <= 0)
             return false;
-        value = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        value = number.ToString(CultureInfo.InvariantCulture);
         return true;
     }
 
-    private static bool VerifySignature(string secret, string signature, byte[] body)
+    private static bool VerifySignature(
+        string secret,
+        string signature,
+        byte[] body)
     {
         if (signature.Length != 71 || !signature.StartsWith("sha256=", StringComparison.Ordinal))
             return false;
@@ -112,9 +124,10 @@ public sealed class ReceiveGitHubWebhookHandler(
 
 internal static class ReceiveGitHubWebhook
 {
-    internal static void MapEndpoint(IEndpointRouteBuilder app) =>
-        app.MapPost("/api/v1/integrations/github/webhook", HandleAsync)
-            .AllowAnonymous().WithName("ReceiveGitHubWebhook");
+    internal static void MapEndpoint(IEndpointRouteBuilder app) => app
+        .MapPost("/api/v1/integrations/github/webhook", HandleAsync)
+        .AllowAnonymous()
+        .WithName("ReceiveGitHubWebhook");
 
     private static async Task<IResult> HandleAsync(
         HttpContext context,
@@ -135,7 +148,9 @@ internal static class ReceiveGitHubWebhook
         }
 
         var headers = context.Request.Headers;
-        var result = await handler.HandleAsync(new(headers["X-GitHub-Delivery"].ToString(),
+        var result = await handler.HandleAsync(
+            new GitHubWebhookRequest(
+                headers["X-GitHub-Delivery"].ToString(),
                 headers["X-GitHub-Event"].ToString(),
                 headers["X-Hub-Signature-256"].ToString(),
                 body.ToArray()),
@@ -147,7 +162,7 @@ internal static class ReceiveGitHubWebhook
             GitHubWebhookResult.InvalidPayload => Results.BadRequest(),
             GitHubWebhookResult.DeliveryConflict => Results.Conflict(),
             GitHubWebhookResult.NotConfigured => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
-            _ => throw new ArgumentOutOfRangeException(nameof(result))
+            _ => throw new ArgumentOutOfRangeException(nameof(result)),
         };
     }
 }

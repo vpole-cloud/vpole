@@ -11,8 +11,9 @@ using Xunit;
 namespace Pole.Tests.Integration.Domains;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class DomainReservationTargetPlanningTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class DomainReservationTargetPlanningTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
 
@@ -26,8 +27,11 @@ public sealed class DomainReservationTargetPlanningTests(MongoReplicaSetFixture 
         var provider = new MongoDomainReservationTargetPlanning(Fixture.DbContext.DeploymentTargets);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var snapshot = Assert.IsType<DomainReservationTargetPlanningSnapshot>((await provider.ReadAsync(
-            new(Data.TenantId, target.Id), session, default)).Value);
+        var snapshot = Assert.IsType<DomainReservationTargetPlanningSnapshot>(
+            (await provider.ReadAsync(
+                new DomainReservationTargetPlanningRequest(Data.TenantId, target.Id),
+                session,
+                default)).Value);
         Assert.IsType<DomainReservationTargetPlanningFenced>(
             (await provider.FenceAsync(snapshot, session, default)).Value);
         await session.CommitTransactionAsync();
@@ -36,13 +40,14 @@ public sealed class DomainReservationTargetPlanningTests(MongoReplicaSetFixture 
         Assert.Equal(target.WorkloadConfiguration.Revision, stored.WorkloadConfiguration.Revision);
         Assert.Equal(target.ReferenceFence + 1, stored.ReferenceFence);
 
-        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(item => item.Id == target.Id,
+        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
+            item => item.Id == target.Id,
             stored.SetEnabled(false, DateTime.UtcNow));
         session.StartTransaction();
         Assert.IsType<DomainReservationTargetPlanningChanged>(
             (await provider.FenceAsync(snapshot, session, default)).Value);
-        Assert.IsType<DomainReservationTargetPlanningUnavailable>((await provider.ReadAsync(
-            snapshot.Request, session, default)).Value);
+        Assert.IsType<DomainReservationTargetPlanningUnavailable>(
+            (await provider.ReadAsync(snapshot.Request, session, default)).Value);
         await session.AbortTransactionAsync();
     }
 
@@ -54,29 +59,35 @@ public sealed class DomainReservationTargetPlanningTests(MongoReplicaSetFixture 
         var provider = new MongoDomainReservationTargetPlanning(Fixture.DbContext.DeploymentTargets);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var snapshot = Assert.IsType<DomainReservationTargetPlanningSnapshot>((await provider.ReadAsync(
-            new(Data.TenantId, target.Id), session, default)).Value);
+        var snapshot = Assert.IsType<DomainReservationTargetPlanningSnapshot>(
+            (await provider.ReadAsync(
+                new DomainReservationTargetPlanningRequest(Data.TenantId, target.Id),
+                session,
+                default)).Value);
         await provider.FenceAsync(snapshot, session, default);
         await session.AbortTransactionAsync();
-        Assert.Equal(target.ReferenceFence,
+        Assert.Equal(
+            target.ReferenceFence,
             (await Fixture.DbContext.DeploymentTargets.Find(item => item.Id == target.Id).SingleAsync())
             .ReferenceFence);
-        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(item => item.Id == target.Id,
+        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
+            item => item.Id == target.Id,
             target with { WorkloadConfiguration = target.WorkloadConfiguration with { Ingress = null } });
         session.StartTransaction();
-        var unavailable = Assert.IsType<DomainReservationTargetPlanningUnavailable>((await provider.ReadAsync(
-            snapshot.Request, session, default)).Value);
+        var unavailable = Assert.IsType<DomainReservationTargetPlanningUnavailable>(
+            (await provider.ReadAsync(snapshot.Request, session, default)).Value);
         Assert.IsType<DeploymentTargetPublicIngressUnavailable>(unavailable.Error.Value);
         await session.AbortTransactionAsync();
     }
 
     private static DeploymentTarget PublicTarget() =>
-        (TestData.SeedDeploymentTarget(ObjectId.GenerateNewId().ToString())
-        with
+        (TestData.SeedDeploymentTarget(ObjectId.GenerateNewId().ToString()) with
         {
             WorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
                 DeploymentTargetIngressConfiguration.Create("traefik", "issuer", "apps.example.test"),
-                new(ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("public-ingress",
-                    DeploymentTargetCidrNetworkSource.Create("192.0.2.0/24"))))
+                new DeploymentTargetNetworkSources(
+                    ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
+                        "public-ingress",
+                        DeploymentTargetCidrNetworkSource.Create("192.0.2.0/24")))),
         }).AttestForTests();
 }

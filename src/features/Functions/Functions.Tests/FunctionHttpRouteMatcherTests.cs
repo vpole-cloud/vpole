@@ -26,7 +26,7 @@ public sealed class FunctionHttpRouteMatcherTests
             "internal",
             "orders/{id}",
             ImmutableHashSet.Create(StringComparer.OrdinalIgnoreCase, "GET"),
-            FunctionExposure.Internal)
+            FunctionExposure.Internal),
     ];
 
     [Theory]
@@ -55,8 +55,7 @@ public sealed class FunctionHttpRouteMatcherTests
     public void Match_rejects_non_matching_routes(
         string path,
         string method,
-        FunctionExposure exposure) =>
-        Assert.Null(FunctionHttpRouteMatcher.Match(Routes, path, method, exposure));
+        FunctionExposure exposure) => Assert.Null(FunctionHttpRouteMatcher.Match(Routes, path, method, exposure));
 
     [Fact]
     public void Earlier_literal_segment_wins_when_parameter_counts_are_equal()
@@ -74,7 +73,7 @@ public sealed class FunctionHttpRouteMatcherTests
                 "LiteralFirst",
                 "orders/{id}",
                 ImmutableHashSet.Create("GET"),
-                FunctionExposure.Public)
+                FunctionExposure.Public),
         };
 
         var match = FunctionHttpRouteMatcher.Match(routes, "orders/details", "GET", FunctionExposure.Public);

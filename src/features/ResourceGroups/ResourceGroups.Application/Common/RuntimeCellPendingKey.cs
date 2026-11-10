@@ -8,7 +8,10 @@ public static class RuntimeCellPendingKey
     public static string Deletion(string runtimeCellId, long generation) =>
         Create(runtimeCellId, generation, "deletion");
 
-    public static string DeletionCheck(string runtimeCellId, long generation, long sequence)
+    public static string DeletionCheck(
+        string runtimeCellId,
+        long generation,
+        long sequence)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(sequence, 0);
         return sequence == 0

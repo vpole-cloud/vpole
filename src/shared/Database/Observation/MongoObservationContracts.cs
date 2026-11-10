@@ -1,12 +1,13 @@
-using Pole.Observation;
 using System.Linq.Expressions;
 using MongoDB.Driver;
+using Pole.Observation;
 
 namespace Pole.Database.Observation;
 
 public sealed record MongoObservationScope(
     string Id,
-    string? TenantId)
+    string? TenantId
+)
 {
     public string DemandKey(string subscription) =>
         TenantId is null ? $"{Id}/{subscription}" : $"{TenantId}/{Id}/{subscription}";
@@ -16,21 +17,25 @@ public sealed record MongoObservationLease(
     MongoObservationScope Scope,
     string InstanceId,
     string Token,
-    long Epoch);
+    long Epoch
+);
 
 public sealed record MongoObservationDemandIdentity(
     MongoObservationScope Scope,
     string SubscriptionId,
     string ConnectionId,
-    string SessionId);
+    string SessionId
+);
 
 public sealed record MongoObservationDemand(
     MongoObservationDemandIdentity Identity,
-    DateTimeOffset ExpiresAtUtc);
+    DateTimeOffset ExpiresAtUtc
+);
 
 public sealed record MongoObservationPage(
     IReadOnlyList<MongoObservationScope> Items,
-    string? NextCursor);
+    string? NextCursor
+);
 
 public enum MongoObservationRejection
 {
@@ -39,18 +44,21 @@ public enum MongoObservationRejection
     LeaseLost,
     Superseded,
     SourceChanged,
-    TargetUnavailable
+    TargetUnavailable,
 }
 
-public sealed record MongoObservationRejected(MongoObservationRejection Reason);
+public sealed record MongoObservationRejected(
+    MongoObservationRejection Reason
+);
 
 public sealed record MongoObservationAccepted;
 
-public sealed record MongoObservationSuccess<T>(T Value) where T : notnull;
+public sealed record MongoObservationSuccess<T>(
+    T Value
+)
+    where T : notnull;
 
-public union MongoObservationOutcome<T>(
-    MongoObservationSuccess<T>,
-    MongoObservationRejected)
+public union MongoObservationOutcome<T>(MongoObservationSuccess<T>, MongoObservationRejected)
     where T : notnull;
 
 /// <summary>Feature-owned context fencing and event creation participate in the SAME Mongo transaction.</summary>
@@ -59,12 +67,12 @@ public interface IMongoObservationDefinition<TContext, TControl, TDemand, TSnaps
     where TDemand : IObservationDemand
     where TSnapshot : IObservationSnapshot
 {
-    MongoObservationScope Scope(TContext context);
-    MongoObservationScope ScopeOf(TControl control);
     Expression<Func<TDemand, string>> DemandSubject { get; }
     Expression<Func<TDemand, string>>? DemandTenant { get; }
     Expression<Func<TControl, string?>> Source { get; }
     Expression<Func<TSnapshot, string>> SnapshotSource { get; }
+    MongoObservationScope Scope(TContext context);
+    MongoObservationScope ScopeOf(TControl control);
     FilterDefinition<TControl> ControlScope(MongoObservationScope scope);
     FilterDefinition<TDemand> DemandScope(MongoObservationScope scope);
     FilterDefinition<TSnapshot> SnapshotScope(MongoObservationScope scope);
@@ -74,7 +82,16 @@ public interface IMongoObservationDefinition<TContext, TControl, TDemand, TSnaps
     bool HasPin(TControl control, TContext context);
     UpdateDefinition<TControl> PinUpdate(TContext context);
     FilterDefinition<TSnapshot> SnapshotPin(TContext context);
-    Task<MongoObservationRejected?> FenceAsync(TContext context, IClientSessionHandle session, CancellationToken ct);
-    Task PublishAsync(TControl control, IClientSessionHandle session, CancellationToken ct);
+
+    Task<MongoObservationRejected?> FenceAsync(
+        TContext context,
+        IClientSessionHandle session,
+        CancellationToken ct);
+
+    Task PublishAsync(
+        TControl control,
+        IClientSessionHandle session,
+        CancellationToken ct);
+
     bool AcceptSnapshot(TSnapshot document) => true;
 }
