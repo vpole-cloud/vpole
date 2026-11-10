@@ -1,5 +1,4 @@
 using k8s;
-using k8s.Models;
 using Pole.Testing;
 using Xunit;
 
@@ -10,7 +9,9 @@ namespace Pole.Tests.Kubernetes;
 [Trait(TestTraits.Concern, "Smoke")]
 [Trait(TestTraits.Scope, TestTraits.Scopes.SingleCluster)]
 [Trait(TestTraits.Feature, "KubernetesLab")]
-public sealed class KubernetesLabSmokeTests(KubernetesClusterFixture fixture)
+public sealed class KubernetesLabSmokeTests(
+    KubernetesClusterFixture fixture
+)
 {
     [KubernetesFact("api", "storage", "ingress", "registry", "dns")]
     public async Task Selected_target_exposes_the_baseline_lab_contract()
@@ -66,9 +67,7 @@ public sealed class KubernetesLabSmokeTests(KubernetesClusterFixture fixture)
     [KubernetesFact("buildkit")]
     public async Task Buildkit_overlay_uses_the_pinned_privileged_image()
     {
-        var deployment = await fixture.Client.AppsV1.ReadNamespacedDeploymentAsync(
-            "buildkit",
-            "pole-lab-build");
+        var deployment = await fixture.Client.AppsV1.ReadNamespacedDeploymentAsync("buildkit", "pole-lab-build");
 
         Assert.Equal("docker.io/moby/buildkit:v0.31.2", deployment.Spec.Template.Spec.Containers.Single().Image);
         Assert.Equal(1, deployment.Status.AvailableReplicas);

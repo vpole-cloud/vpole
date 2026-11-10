@@ -2,8 +2,7 @@ using Pole.Mediator;
 
 namespace Pole.Testing;
 
-public class FakeAuthBehaviour<TRequest, TResponse>
-    : IPipelineBehavior<TRequest, TResponse>
+public class FakeAuthBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
@@ -15,9 +14,7 @@ public class FakeAuthBehaviour<TRequest, TResponse>
         CancellationToken cancellationToken)
     {
         if (Mocks.TryGetValue(request, out var response))
-        {
             return Task.FromResult(response);
-        }
 
         return next();
     }

@@ -9,21 +9,21 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../Migrations/Migrations.csproj" />
-      <ProjectReference Include="../Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
-      <ProjectReference Include="../Observation/Observation.csproj" />
-      <ProjectReference Include="..\Multitenancy\Multitenancy.csproj" />
-      <ProjectReference Include="..\Events\Events.csproj" />
-      <ProjectReference Include="..\Observability\Observability.csproj" />
-      <ProjectReference Include="..\ResultType\ResultType.csproj" />
-      <ProjectReference Include="..\Models\Models.csproj" />
-      <ProjectReference Include="..\Request\Request.csproj" />
+        <ProjectReference Include="../Migrations/Migrations.csproj"/>
+        <ProjectReference Include="../Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
+        <ProjectReference Include="../Observation/Observation.csproj"/>
+        <ProjectReference Include="..\Multitenancy\Multitenancy.csproj"/>
+        <ProjectReference Include="..\Events\Events.csproj"/>
+        <ProjectReference Include="..\Observability\Observability.csproj"/>
+        <ProjectReference Include="..\ResultType\ResultType.csproj"/>
+        <ProjectReference Include="..\Models\Models.csproj"/>
+        <ProjectReference Include="..\Request\Request.csproj"/>
     </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../Observation.Primitives/Observation.Primitives.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../Architecture/Architecture.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Observation.Primitives/Observation.Primitives.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Architecture/Architecture.csproj"/>
+    </ItemGroup>
 </Project>

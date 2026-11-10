@@ -3,14 +3,9 @@ using k8s.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceConnections.Application;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
-using Pole.Features.ResourceConnections.Application.Mongo;
 using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Contracts;
@@ -28,12 +23,20 @@ namespace Pole.Tests.Kubernetes.ResourceConnections;
 [Trait("Feature", "ResourceConnections")]
 public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrationTestBase
 {
+    private const string TenantId = "507f1f77bcf86cd799439011";
+    private const string SourceCellId = "507f1f77bcf86cd799439018";
+    private const string SourceDeploymentId = "507f1f77bcf86cd799439019";
+    private const string ConnectionId = "507f1f77bcf86cd79943901a";
+    private const string ResourceId = "507f1f77bcf86cd799439012";
+    private const string GroupId = "507f1f77bcf86cd799439013";
+    private const string ScopeId = "507f1f77bcf86cd799439014";
+    private const string CellId = "507f1f77bcf86cd799439015";
+    private const string TargetId = "507f1f77bcf86cd799439016";
+    private const string DeploymentId = "507f1f77bcf86cd799439017";
     private readonly KubernetesClusterFixture clusterFixture;
 
-    public ResourceConnectionPolicyKubernetesTests(KubernetesClusterFixture fixture) : base(fixture)
-    {
+    public ResourceConnectionPolicyKubernetesTests(KubernetesClusterFixture fixture) : base(fixture) =>
         clusterFixture = fixture;
-    }
 
     [KubernetesFact]
     public async Task DirectedConnection_UsesPodTargetPortAndExactSourceIdentity_AndRevokesTraffic()
@@ -50,15 +53,18 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
         await CreatePodAsync("spoofed-source", sourceLabels, null, ct);
         var destinationAddress = await CreatePodAsync("destination", Labels(CellId, DeploymentId), 8080, ct);
         const string serviceName = "receiver-service";
-        await Kubernetes.CoreV1.CreateNamespacedServiceAsync(new V1Service
-        {
-            Metadata = new V1ObjectMeta { Name = serviceName },
-            Spec = new V1ServiceSpec
+        await Kubernetes.CoreV1.CreateNamespacedServiceAsync(
+            new V1Service
             {
-                Selector = Labels(CellId, DeploymentId),
-                Ports = [new V1ServicePort { Name = "http", Port = 80, TargetPort = 8080, Protocol = "TCP" }]
-            }
-        }, NamespaceName, cancellationToken: ct);
+                Metadata = new V1ObjectMeta { Name = serviceName },
+                Spec = new V1ServiceSpec
+                {
+                    Selector = Labels(CellId, DeploymentId),
+                    Ports = [new V1ServicePort { Name = "http", Port = 80, TargetPort = 8080, Protocol = "TCP" }],
+                },
+            },
+            NamespaceName,
+            cancellationToken: ct);
         var host = $"{serviceName}.{NamespaceName}.svc.cluster.local";
         await WaitForTrafficAsync("source", host, 80, true, ct, sourceNamespace.Name);
         await WaitForTrafficAsync("other-source", host, 80, true, ct, sourceNamespace.Name);
@@ -73,12 +79,24 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
         await WaitForTrafficAsync("source", host, 80, false, ct, sourceNamespace.Name);
 
         var snapshot = ConnectionTargetSnapshot.Create(
-            TargetId, DeploymentId, CellId, NamespaceName, serviceName, 80, 8080,
+            TargetId,
+            DeploymentId,
+            CellId,
+            NamespaceName,
+            serviceName,
+            80,
+            8080,
             [new ConnectionSourcePlacement(SourceDeploymentId, SourceCellId, sourceNamespace.Name)]);
         var current = ResourceConnectionFactory.Create(
-            ConnectionId, TenantId, "source-to-receiver",
-            ResourceTypeId.Create("pole/web-service"), SourceDeploymentId,
-            ResourceTypeId.Create("pole/web-service"), ResourceId, "http", [snapshot]);
+            ConnectionId,
+            TenantId,
+            "source-to-receiver",
+            ResourceTypeId.Create("pole/web-service"),
+            SourceDeploymentId,
+            ResourceTypeId.Create("pole/web-service"),
+            ResourceId,
+            "http",
+            [snapshot]);
         var registrations = new ServiceCollection();
         registrations.AddSingleton<IKubernetesClientProvider>(clients);
         registrations.AddSingleton<EnsureRuntimeCellIngressBaseline>(async (request, token) =>
@@ -86,13 +104,16 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
             Assert.IsType<Unit>((await baseline.EnsureCreatedAsync(destinationCell, token)).Value);
             return new RuntimeCellIngressBaselineReady();
         });
-        registrations.AddSingleton<LoadResourceConnection>((tenantId, connectionId, _) =>
-            Task.FromResult<ResourceConnection?>(
-                tenantId == current.TenantId && connectionId == current.Id ? current : null));
-        registrations.AddSingleton<LoadResourceConnectionTombstone>((tenantId, connectionId, _) =>
-            Task.FromResult<ResourceConnectionCleanupTombstone?>(null));
+        registrations.AddSingleton<LoadResourceConnection>((
+            tenantId, connectionId,
+            _) => Task.FromResult<ResourceConnection?>(
+            tenantId == current.TenantId && connectionId == current.Id ? current : null));
+        registrations.AddSingleton<LoadResourceConnectionTombstone>((
+            tenantId, connectionId,
+            _) => Task.FromResult<ResourceConnectionCleanupTombstone?>(null));
         registrations.AddResourceConnectionsFeature();
-        await using var services = registrations.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        await using var services
+            = registrations.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var scope = services.CreateScope();
         var writer = scope.ServiceProvider.GetRequiredService<IResourceConnectionPolicyTarget>();
 
@@ -109,10 +130,17 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
         await WaitForTrafficAsync("source", host, 80, false, ct, sourceNamespace.Name);
     }
 
-    private async Task<RuntimeCell> LabelCellAsync(string id, string namespaceName, CancellationToken ct)
+    private async Task<RuntimeCell> LabelCellAsync(
+        string id,
+        string namespaceName,
+        CancellationToken ct)
     {
         var cell = RuntimeCellFactory.Create(
-            TenantId, GroupId, ScopeId, TargetId, namespaceName,
+            TenantId,
+            GroupId,
+            ScopeId,
+            TargetId,
+            namespaceName,
             new RuntimeCellFactory.CreateOptions(id, DateTime.UtcNow));
         var existing = await Kubernetes.CoreV1.ReadNamespaceAsync(namespaceName, cancellationToken: ct);
         foreach (var label in RuntimeCellNamespaceManifestBuilder.Build(cell).Metadata.Labels)
@@ -125,7 +153,7 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
     {
         ["pole.io/tenant-id"] = TenantId,
         ["pole.io/runtime-cell-id"] = cellId,
-        ["pole.io/resource-deployment-id"] = deploymentId
+        ["pole.io/resource-deployment-id"] = deploymentId,
     };
 
     private async Task<string> CreatePodAsync(
@@ -139,31 +167,37 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
         var command = port is { } number
             ? $"mkdir -p /www; echo pole-network-test >/www/index.html; httpd -p 9090 -h /www; exec httpd -f -p {number} -h /www"
             : "exec sleep 600";
-        await Kubernetes.CoreV1.CreateNamespacedPodAsync(new V1Pod
-        {
-            Metadata = new V1ObjectMeta { Name = name, Labels = labels },
-            Spec = new V1PodSpec
+        await Kubernetes.CoreV1.CreateNamespacedPodAsync(
+            new V1Pod
             {
-                RestartPolicy = "Never",
-                Containers = [new V1Container
+                Metadata = new V1ObjectMeta { Name = name, Labels = labels },
+                Spec = new V1PodSpec
                 {
-                    Name = "probe",
-                    Image = "busybox:1.37.0",
-                    Command = ["sh", "-c", command],
-                    Resources = new V1ResourceRequirements
-                    {
-                        Requests = new Dictionary<string, ResourceQuantity>
+                    RestartPolicy = "Never",
+                    Containers =
+                    [
+                        new V1Container
                         {
-                            ["cpu"] = new("10m"), ["memory"] = new("8Mi")
+                            Name = "probe",
+                            Image = "busybox:1.37.0",
+                            Command = ["sh", "-c", command],
+                            Resources = new V1ResourceRequirements
+                            {
+                                Requests = new Dictionary<string, ResourceQuantity>
+                                {
+                                    ["cpu"] = new("10m"), ["memory"] = new("8Mi"),
+                                },
+                                Limits = new Dictionary<string, ResourceQuantity>
+                                {
+                                    ["cpu"] = new("100m"), ["memory"] = new("32Mi"),
+                                },
+                            },
                         },
-                        Limits = new Dictionary<string, ResourceQuantity>
-                        {
-                            ["cpu"] = new("100m"), ["memory"] = new("32Mi")
-                        }
-                    }
-                }]
-            }
-        }, podNamespace, cancellationToken: ct);
+                    ],
+                },
+            },
+            podNamespace,
+            cancellationToken: ct);
         var deadline = DateTime.UtcNow.AddMinutes(1);
         while (DateTime.UtcNow < deadline)
         {
@@ -173,6 +207,7 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
                 return ip;
             await Task.Delay(500, ct);
         }
+
         throw await CreateTimeoutExceptionAsync($"Pod {name} did not become ready.");
     }
 
@@ -190,52 +225,45 @@ public sealed class ResourceConnectionPolicyKubernetesTests : KubernetesIntegrat
         {
             // Exec transport failures propagate; only wget's exit status measures traffic.
             var exitCode = await Kubernetes.NamespacedPodExecAsync(
-                client, kubernetesNamespace ?? NamespaceName, "probe",
+                client,
+                kubernetesNamespace ?? NamespaceName,
+                "probe",
                 ["wget", "-q", "-T", "2", "-O", "/dev/null", $"http://{address}:{port}"],
                 false,
-                (_, stdout, stderr) => Task.WhenAll(
-                    stdout.CopyToAsync(Stream.Null, ct), stderr.CopyToAsync(Stream.Null, ct)),
+                (
+                    _, stdout,
+                    stderr) => Task.WhenAll(stdout.CopyToAsync(Stream.Null, ct), stderr.CopyToAsync(Stream.Null, ct)),
                 ct);
-            consecutive = (exitCode == 0) == allowed ? consecutive + 1 : 0;
+            consecutive = exitCode == 0 == allowed ? consecutive + 1 : 0;
             if (consecutive >= (allowed ? 1 : 3))
                 return;
             await Task.Delay(300, ct);
         }
-        throw await CreateTimeoutExceptionAsync(
-            $"Expected traffic {client} -> {address}:{port} allowed={allowed}.");
+
+        throw await CreateTimeoutExceptionAsync($"Expected traffic {client} -> {address}:{port} allowed={allowed}.");
     }
 
-    private sealed class PeerNamespace(KubernetesClusterFixture peerFixture)
-        : KubernetesIntegrationTestBase(peerFixture), IAsyncDisposable
+    private sealed class PeerNamespace(
+        KubernetesClusterFixture peerFixture
+    ) : KubernetesIntegrationTestBase(peerFixture), IAsyncDisposable
     {
         public string Name => NamespaceName;
 
         ValueTask IAsyncDisposable.DisposeAsync() => new(base.DisposeAsync());
     }
 
-    private sealed class FixedClientProvider(IKubernetes kubernetes) : IKubernetesClientProvider
+    private sealed class FixedClientProvider(
+        IKubernetes kubernetes
+    ) : IKubernetesClientProvider
     {
-        public Task<IKubernetes> GetAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) => Task.FromResult(kubernetes);
+        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(kubernetes);
 
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("A persisted target is required.");
     }
-
-    private const string TenantId = "507f1f77bcf86cd799439011";
-    private const string SourceCellId = "507f1f77bcf86cd799439018";
-    private const string SourceDeploymentId = "507f1f77bcf86cd799439019";
-    private const string ConnectionId = "507f1f77bcf86cd79943901a";
-    private const string ResourceId = "507f1f77bcf86cd799439012";
-    private const string GroupId = "507f1f77bcf86cd799439013";
-    private const string ScopeId = "507f1f77bcf86cd799439014";
-    private const string CellId = "507f1f77bcf86cd799439015";
-    private const string TargetId = "507f1f77bcf86cd799439016";
-    private const string DeploymentId = "507f1f77bcf86cd799439017";
 }

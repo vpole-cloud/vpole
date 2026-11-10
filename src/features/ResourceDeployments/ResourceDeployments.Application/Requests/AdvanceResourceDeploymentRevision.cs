@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -11,40 +9,29 @@ namespace Pole.Features.ResourceDeployments.Application.Requests;
 internal sealed class MongoAdvanceResourceDeploymentRevision(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     TimeProvider timeProvider,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<AdvanceResourceDeploymentRevisionOutcome> InvokeAsync(
         ResourceDeploymentResourceRevisionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment mutations");
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
         var current = await resourceDeployments
             .Find(
                 session,
-                ResourceDeploymentFilters.ForResource(
-                    request.TenantId,
-                    request.ResourceType,
-                    request.ResourceId))
+                ResourceDeploymentFilters.ForResource(request.TenantId, request.ResourceType, request.ResourceId))
             .SortBy(deployment => deployment.Id)
             .ToListAsync(cancellationToken);
         if (current.Count == 0)
-        {
-            return new AdvanceResourceDeploymentRevisionError(
-                new ResourceDeploymentsNotFound(request.ResourceId));
-        }
+            return new AdvanceResourceDeploymentRevisionError(new ResourceDeploymentsNotFound(request.ResourceId));
 
-        var active = current
-            .Where(deployment => deployment.State is not DeletedResourceDeploymentState)
-            .ToArray();
+        var active = current.Where(deployment => deployment.State is not DeletedResourceDeploymentState).ToArray();
         if (active.Length == 0)
-        {
             return new AdvanceResourceDeploymentRevisionError(
                 new ResourceDeploymentsHaveNoActivePlacement(request.ResourceId));
-        }
 
         var updatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
         var results = new List<PlacementSummaryDto>(active.Length);
@@ -59,10 +46,8 @@ internal sealed class MongoAdvanceResourceDeploymentRevision(
                     updated,
                     cancellationToken: cancellationToken);
                 if (replacement.ModifiedCount != 1)
-                {
                     return new AdvanceResourceDeploymentRevisionError(
                         new ResourceDeploymentRevisionConflict(request.ResourceId));
-                }
             }
 
             results.Add(await isolation.ProjectAsync(updated, cancellationToken));

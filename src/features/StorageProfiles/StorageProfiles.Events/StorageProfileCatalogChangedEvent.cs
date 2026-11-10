@@ -8,4 +8,5 @@ public sealed record StorageProfileCatalogChangedEvent(
     string StorageProfileId,
     long Revision,
     string TechnicalName,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;

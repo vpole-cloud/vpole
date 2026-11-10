@@ -9,83 +9,112 @@ public sealed record GitRunStamp(
     string RunId,
     long ConfigurationRevision,
     long Generation,
-    long Fence);
+    long Fence
+);
 
 public sealed record GitAcceptedOperation(
     string Kind,
     string Name,
     string ResourceId,
-    DeclarationPhase Phase);
+    DeclarationPhase Phase
+);
 
 public sealed record GitAcceptedSnapshot(
     string Commit,
     string DesiredHash,
     string ApiVersion,
     ImmutableArray<AcceptedDeclaration> Resources,
-    ImmutableArray<GitAcceptedOperation> Operations);
+    ImmutableArray<GitAcceptedOperation> Operations
+);
 
 public enum GitRunTrigger { Manual, Webhook, Poll, Dependency, Recovery }
 
 public sealed record GitRunInitiator(
     GitRunTrigger Trigger,
-    string? RequestedByUserId);
+    string? RequestedByUserId
+);
 
 public sealed record GitRunLease(
     string WorkerId,
     long Attempt,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc
+);
 
 public sealed record GitClaimIdentity(
     string WorkerId,
-    long Attempt);
+    long Attempt
+);
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(GitInputUnresolved), typeof(GitInputPinned), typeof(GitInputAccepted), typeof(GitInputLifecycle),
+[BsonKnownTypes(
+    typeof(GitInputUnresolved),
+    typeof(GitInputPinned),
+    typeof(GitInputAccepted),
+    typeof(GitInputLifecycle),
     typeof(GitInputAwaitingApproval))]
 public closed record GitRunInput;
 
 public sealed record GitInputUnresolved : GitRunInput;
 
-public sealed record GitInputPinned(string Commit) : GitRunInput;
+public sealed record GitInputPinned(
+    string Commit
+) : GitRunInput;
 
-public sealed record GitInputAccepted(GitAcceptedSnapshot Snapshot) : GitRunInput;
+public sealed record GitInputAccepted(
+    GitAcceptedSnapshot Snapshot
+) : GitRunInput;
 
-public sealed record GitInputLifecycle(GitLifecycleExecutionPlan Plan) : GitRunInput;
+public sealed record GitInputLifecycle(
+    GitLifecycleExecutionPlan Plan
+) : GitRunInput;
 
 public sealed record GitInputAwaitingApproval(
     GitAcceptedSnapshot Snapshot,
-    string PreviewId) : GitRunInput;
+    string PreviewId
+) : GitRunInput;
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(GitRunWaiting), typeof(GitRunClaimed), typeof(GitRunDelayed), typeof(GitRunWaitingCleanup),
+[BsonKnownTypes(
+    typeof(GitRunWaiting),
+    typeof(GitRunClaimed),
+    typeof(GitRunDelayed),
+    typeof(GitRunWaitingCleanup),
     typeof(GitRunFinished))]
 public closed record GitRunState;
 
-public sealed record GitRunWaiting(long LastAttempt) : GitRunState;
+public sealed record GitRunWaiting(
+    long LastAttempt
+) : GitRunState;
 
-public sealed record GitRunClaimed(GitRunLease Lease) : GitRunState;
+public sealed record GitRunClaimed(
+    GitRunLease Lease
+) : GitRunState;
 
 public sealed record GitRunDelayed(
     long LastAttempt,
-    DateTime NextAttemptAtUtc) : GitRunState;
+    DateTime NextAttemptAtUtc
+) : GitRunState;
 
 public sealed record GitRunWaitingCleanup(
     long LastAttempt,
-    DateTime NextAttemptAtUtc) : GitRunState;
+    DateTime NextAttemptAtUtc
+) : GitRunState;
 
 public sealed record GitRunFinished(
     GitRunCompletion Completion,
-    DateTime FinishedAtUtc) : GitRunState;
+    DateTime FinishedAtUtc
+) : GitRunState;
 
 public sealed record GitRunDiagnostic(
     string Code,
     string? File,
     int? Document,
-    string? Field);
+    string? Field
+);
 
 public enum GitRunCompletion
 {
-    ConfigurationApplied, AlreadyCurrent, LifecycleCompleted, Blocked, Failed, Superseded
+    ConfigurationApplied, AlreadyCurrent, LifecycleCompleted, Blocked, Failed, Superseded,
 }
 
 public sealed record GitReconciliationRun(
@@ -99,30 +128,33 @@ public sealed record GitReconciliationRun(
     long MutationVersion,
     int ConsecutiveFailures,
     ImmutableArray<GitRunDiagnostic> Diagnostics,
-    DateTime CreatedAtUtc)
+    DateTime CreatedAtUtc
+)
 {
     [BsonIgnore]
-    public string? Commit => Input switch
-    {
-        GitInputUnresolved => null,
-        GitInputPinned pinned => pinned.Commit,
-        GitInputAccepted accepted => accepted.Snapshot.Commit,
-        GitInputAwaitingApproval approval => approval.Snapshot.Commit,
-        GitInputLifecycle lifecycle => lifecycle.Plan.Source.Input switch
+    public string? Commit =>
+        Input switch
         {
-            GitPreviewInventoryInput => null,
-            GitPreviewRepositoryInput repository => repository.Snapshot.Commit
-        }
-    };
+            GitInputUnresolved => null,
+            GitInputPinned pinned => pinned.Commit,
+            GitInputAccepted accepted => accepted.Snapshot.Commit,
+            GitInputAwaitingApproval approval => approval.Snapshot.Commit,
+            GitInputLifecycle lifecycle => lifecycle.Plan.Source.Input switch
+            {
+                GitPreviewInventoryInput => null,
+                GitPreviewRepositoryInput repository => repository.Snapshot.Commit,
+            },
+        };
 
     [BsonIgnore]
-    public GitAcceptedSnapshot? AcceptedSnapshot => Input switch
-    {
-        GitInputAccepted accepted => accepted.Snapshot,
-        GitInputAwaitingApproval approval => approval.Snapshot,
-        GitInputLifecycle { Plan.Source.Input: GitPreviewRepositoryInput repository } => repository.Snapshot,
-        GitInputUnresolved or GitInputPinned or GitInputLifecycle => null
-    };
+    public GitAcceptedSnapshot? AcceptedSnapshot =>
+        Input switch
+        {
+            GitInputAccepted accepted => accepted.Snapshot,
+            GitInputAwaitingApproval approval => approval.Snapshot,
+            GitInputLifecycle { Plan.Source.Input: GitPreviewRepositoryInput repository } => repository.Snapshot,
+            GitInputUnresolved or GitInputPinned or GitInputLifecycle => null,
+        };
 
     public GitReconciliationRun Pin(string commit)
     {
@@ -136,8 +168,8 @@ public sealed record GitReconciliationRun(
 
     public GitReconciliationRun Accept(GitAcceptedSnapshot snapshot)
     {
-        if (Input is not GitInputPinned pinned || pinned.Commit != snapshot.Commit ||
-            snapshot.Resources.IsDefault || snapshot.Operations.IsDefault ||
+        if (Input is not GitInputPinned pinned || pinned.Commit != snapshot.Commit || snapshot.Resources.IsDefault ||
+            snapshot.Operations.IsDefault ||
             snapshot.Resources.Select(item => (item.Kind, item.Name)).Distinct().Count() != snapshot.Resources.Length)
             throw new InvalidOperationException(
                 "Acceptance requires the pinned commit and a complete unique snapshot.");
@@ -152,12 +184,11 @@ public sealed record GitReconciliationRun(
 
         if (snapshot.Operations.Select(item => (item.Kind, item.Name, item.Phase)).Distinct().Count() !=
             snapshot.Operations.Length ||
-            snapshot.Operations.Any(operation => !Enum.IsDefined(operation.Phase) ||
-                                                 !snapshot.Resources.Any(resource => resource.Kind == operation.Kind &&
-                                                     resource.Name == operation.Name &&
-                                                     resource.ResourceId == operation.ResourceId)) ||
-            snapshot.Resources.Any(resource => !snapshot.Operations.Any(operation =>
-                operation.Kind == resource.Kind && operation.Name == resource.Name)))
+            snapshot.Operations.Any(operation => !Enum.IsDefined(operation.Phase) || !snapshot.Resources.Any(resource =>
+                resource.Kind == operation.Kind && resource.Name == operation.Name &&
+                resource.ResourceId == operation.ResourceId)) || snapshot.Resources.Any(resource =>
+                !snapshot.Operations.Any(operation =>
+                    operation.Kind == resource.Kind && operation.Name == resource.Name)))
             throw new InvalidOperationException("Every operation must retain its accepted resource identity.");
 
         GitSourceGuards.Required(snapshot.DesiredHash, nameof(snapshot.DesiredHash));
@@ -182,10 +213,9 @@ public sealed record GitReconciliationRun(
 
     public GitReconciliationRun AuthorizePrune(GitOperationPreview preview)
     {
-        if (Input is not GitInputAccepted accepted ||
-            preview.State is not GitPreviewPolicyAuthorized policy || policy.RunId != Id ||
-            policy.ConfigurationRevision != Stamp.ConfigurationRevision || preview.Source.Source != Stamp.Source ||
-            preview.Source.Input is not GitPreviewRepositoryInput repository ||
+        if (Input is not GitInputAccepted accepted || preview.State is not GitPreviewPolicyAuthorized policy ||
+            policy.RunId != Id || policy.ConfigurationRevision != Stamp.ConfigurationRevision ||
+            preview.Source.Source != Stamp.Source || preview.Source.Input is not GitPreviewRepositoryInput repository ||
             accepted.Snapshot.Commit != repository.Snapshot.Commit ||
             accepted.Snapshot.DesiredHash != repository.Snapshot.DesiredHash)
             throw new InvalidOperationException("Policy execution must retain this run's exact accepted input.");
@@ -208,7 +238,7 @@ public sealed record GitReconciliationRun(
             GitRunWaitingCleanup waiting when waiting.NextAttemptAtUtc <= now => waiting.LastAttempt,
             GitRunClaimed claimed when claimed.Lease.ExpiresAtUtc <= now => claimed.Lease.Attempt,
             GitRunDelayed or GitRunWaitingCleanup or GitRunClaimed or GitRunFinished =>
-                throw new InvalidOperationException("The run is not available for a claim.")
+                throw new InvalidOperationException("The run is not available for a claim."),
         };
         if (lease.Attempt != checked(previous + 1))
             throw new InvalidOperationException("A claim must advance the attempt exactly once.");
@@ -216,7 +246,10 @@ public sealed record GitReconciliationRun(
         return this with { State = new GitRunClaimed(lease) };
     }
 
-    public GitReconciliationRun Complete(GitClaimIdentity claim, GitRunCompletion completion, DateTime now)
+    public GitReconciliationRun Complete(
+        GitClaimIdentity claim,
+        GitRunCompletion completion,
+        DateTime now)
     {
         RequireClaim(claim, now);
         if (completion is GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent &&
@@ -229,7 +262,11 @@ public sealed record GitReconciliationRun(
         return this with { State = new GitRunFinished(completion, now) };
     }
 
-    public GitReconciliationRun Delay(GitClaimIdentity claim, DateTime now, DateTime next, GitRunDiagnostic diagnostic)
+    public GitReconciliationRun Delay(
+        GitClaimIdentity claim,
+        DateTime now,
+        DateTime next,
+        GitRunDiagnostic diagnostic)
     {
         RequireClaim(claim, now);
         GitSourceGuards.Utc(next);
@@ -240,11 +277,14 @@ public sealed record GitReconciliationRun(
         {
             State = new GitRunDelayed(claim.Attempt, next),
             ConsecutiveFailures = checked(ConsecutiveFailures + 1),
-            Diagnostics = [diagnostic]
+            Diagnostics = [diagnostic],
         };
     }
 
-    public GitReconciliationRun WaitCleanup(GitClaimIdentity claim, DateTime now, DateTime next)
+    public GitReconciliationRun WaitCleanup(
+        GitClaimIdentity claim,
+        DateTime now,
+        DateTime next)
     {
         RequireClaim(claim, now);
         GitSourceGuards.Utc(next);
@@ -280,7 +320,8 @@ public static class GitReconciliationRunFactory
         if (initiator.Trigger == GitRunTrigger.Manual && string.IsNullOrWhiteSpace(initiator.RequestedByUserId))
             throw new ArgumentException("A manual request requires an audit user.", nameof(initiator));
 
-        return new(stamp.RunId,
+        return new GitReconciliationRun(
+            stamp.RunId,
             stamp,
             repository,
             input,

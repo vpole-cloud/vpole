@@ -11,7 +11,9 @@ using Xunit;
 namespace Pole.Features.WebServices.Tests.Integration;
 
 [Collection(nameof(WebServicesMongoCollection))]
-public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fixture) : IAsyncLifetime
+public sealed class WebServiceDeploymentConsumerTests(
+    WebServicesMongoFixture fixture
+) : IAsyncLifetime
 {
     private const string CompletionEventType = "pole.web-services/v1/web-service-deployment-completed";
 
@@ -27,9 +29,7 @@ public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fi
 
         await consumer.Handle(CreateDeploymentEvent(release));
 
-        var saved = await fixture.Releases
-            .Find(r => r.Id == release.Id)
-            .SingleAsync();
+        var saved = await fixture.Releases.Find(r => r.Id == release.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, saved.Outcome);
         Assert.NotNull(saved.CompletedAtUtc);
         Assert.Null(saved.FailureMessage);
@@ -42,14 +42,12 @@ public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fi
         var consumer = fixture.CreateDeploymentConsumer();
         var applied = CreateDeploymentEvent(release) with
         {
-            Generation = release.Deployments[0].DeploymentGeneration + 1
+            Generation = release.Deployments[0].DeploymentGeneration + 1,
         };
 
         await consumer.Handle(applied);
 
-        var saved = await fixture.Releases
-            .Find(r => r.Id == release.Id)
-            .SingleAsync();
+        var saved = await fixture.Releases.Find(r => r.Id == release.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Pending, saved.Outcome);
         Assert.Null(saved.CompletedAtUtc);
         Assert.Equal(
@@ -81,15 +79,10 @@ public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fi
 
         await consumer.Handle(CreateFailureEvent(release, retryable: false));
 
-        var saved = await fixture.Releases
-            .Find(item => item.Id == release.Id)
-            .SingleAsync();
+        var saved = await fixture.Releases.Find(item => item.Id == release.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Failed, saved.Outcome);
         Assert.NotNull(saved.CompletedAtUtc);
-        Assert.Contains(
-            "ManifestInvalid",
-            saved.FailureMessage,
-            StringComparison.Ordinal);
+        Assert.Contains("ManifestInvalid", saved.FailureMessage, StringComparison.Ordinal);
         Assert.Equal(
             1L,
             await fixture.OutboxMessages.CountDocumentsAsync(message => message.EventType == CompletionEventType));
@@ -103,9 +96,7 @@ public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fi
 
         await consumer.Handle(CreateFailureEvent(release, retryable: true));
 
-        var saved = await fixture.Releases
-            .Find(item => item.Id == release.Id)
-            .SingleAsync();
+        var saved = await fixture.Releases.Find(item => item.Id == release.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Pending, saved.Outcome);
         Assert.Null(saved.CompletedAtUtc);
         Assert.Equal(
@@ -120,8 +111,10 @@ public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fi
             new ImageInfo("docker.io", "nginx", "1.27", SecretName: null),
             new WebServiceConfig
             {
-                EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
-                PortMappings = [new PortMapping(80, "8080", "TCP", "http")]
+                EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add(
+                    "ASPNETCORE_ENVIRONMENT",
+                    "Development"),
+                PortMappings = [new PortMapping(80, "8080", "TCP", "http")],
             },
             Autoscaling: null,
             new ProbeSpec(probe, probe, probe));
@@ -133,53 +126,49 @@ public sealed class WebServiceDeploymentConsumerTests(WebServicesMongoFixture fi
             "test-user",
             "test-user@example.test",
             spec,
-            [new WebServiceReleaseDeployment(
-                "507f1f77bcf86cd799439051",
-                "507f1f77bcf86cd799439052",
-                ResourceRevision: 2,
-                DeploymentGeneration: 3,
-                WebServiceReleaseDeploymentOperation.Apply,
-                WebServiceReleaseDeploymentOutcome.Pending,
-                CompletedAtUtc: null,
-                FailureCode: null,
-                FailureMessage: null)],
+            [
+                new WebServiceReleaseDeployment(
+                    "507f1f77bcf86cd799439051",
+                    "507f1f77bcf86cd799439052",
+                    ResourceRevision: 2,
+                    DeploymentGeneration: 3,
+                    WebServiceReleaseDeploymentOperation.Apply,
+                    WebServiceReleaseDeploymentOutcome.Pending,
+                    CompletedAtUtc: null,
+                    FailureCode: null,
+                    FailureMessage: null),
+            ],
             "trace-1",
             "correlation-1",
-            new WebServiceReleaseFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                DateTime.UtcNow),
+            new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
             WebServiceExposure.Create(WebServiceExposureMode.Public));
 
         await fixture.Releases.InsertOneAsync(release);
         return release;
     }
 
-    private static ResourceDeploymentAppliedEvent CreateDeploymentEvent(WebServiceRelease release) =>
-        new(
-            release.Deployments[0].ResourceDeploymentId,
-            WebServiceResourceDeployment.ResourceType.Value,
-            release.WebServiceId,
-            "507f1f77bcf86cd799439052",
-            release.Deployments[0].DeploymentGeneration,
-            release.Deployments[0].ResourceRevision)
-        {
-            EventCore = EventCore.Create(release.TenantId)
-        };
+    private static ResourceDeploymentAppliedEvent CreateDeploymentEvent(WebServiceRelease release) => new(
+        release.Deployments[0].ResourceDeploymentId,
+        WebServiceResourceDeployment.ResourceType.Value,
+        release.WebServiceId,
+        "507f1f77bcf86cd799439052",
+        release.Deployments[0].DeploymentGeneration,
+        release.Deployments[0].ResourceRevision)
+    {
+        EventCore = EventCore.Create(release.TenantId),
+    };
 
-    private static ResourceDeploymentFailedEvent CreateFailureEvent(
-        WebServiceRelease release,
-        bool retryable) =>
-        new(
-            release.Deployments[0].ResourceDeploymentId,
-            WebServiceResourceDeployment.ResourceType.Value,
-            release.WebServiceId,
-            "507f1f77bcf86cd799439052",
-            release.Deployments[0].DeploymentGeneration,
-            "Apply",
-            "ManifestInvalid",
-            retryable,
-            release.Deployments[0].ResourceRevision)
-        {
-            EventCore = EventCore.Create(release.TenantId)
-        };
+    private static ResourceDeploymentFailedEvent CreateFailureEvent(WebServiceRelease release, bool retryable) => new(
+        release.Deployments[0].ResourceDeploymentId,
+        WebServiceResourceDeployment.ResourceType.Value,
+        release.WebServiceId,
+        "507f1f77bcf86cd799439052",
+        release.Deployments[0].DeploymentGeneration,
+        "Apply",
+        "ManifestInvalid",
+        retryable,
+        release.Deployments[0].ResourceRevision)
+    {
+        EventCore = EventCore.Create(release.TenantId),
+    };
 }

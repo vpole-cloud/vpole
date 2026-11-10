@@ -1,16 +1,10 @@
 using System.Collections.Immutable;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Compiler;
-using Pole.Features.GitOps.Domain;
-using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
-using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
@@ -24,14 +18,18 @@ public abstract partial class DeclarativePipelineTestBase
         {
             WorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
                 DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt-prod", Data.Hostname("apps")),
-                new(ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("public-ingress",
-                    DeploymentTargetCidrNetworkSource.Create("192.0.2.0/24")))),
-            Revision = target.Revision + 1
+                new DeploymentTargetNetworkSources(
+                    ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
+                        "public-ingress",
+                        DeploymentTargetCidrNetworkSource.Create("192.0.2.0/24")))),
+            Revision = target.Revision + 1,
         }).AttestForTests();
         await targets.ReplaceOneAsync(item => item.Id == target.Id, target);
     }
 
-    private protected static ManifestFile[] StageFiveWebSnapshot(Action<JsonNode> configure, bool withSecrets = false,
+    private protected static ManifestFile[] StageFiveWebSnapshot(
+        Action<JsonNode> configure,
+        bool withSecrets = false,
         string? scope = null)
     {
         var documents = Snapshot()[0].Content.Split("\n---\n").Select(item => JsonNode.Parse(item)!).ToList();
@@ -41,20 +39,26 @@ public abstract partial class DeclarativePipelineTestBase
             documents.RemoveAll(item => item["kind"]!.GetValue<string>() is "Secret" or "SecretBinding");
             service["secretEnvironment"] = new JsonObject();
         }
+
         if (scope is not null)
         {
             service["placement"]!["isolationScope"] = scope;
             foreach (var secret in documents.Where(item => item["kind"]!.GetValue<string>() == "Secret"))
                 secret["spec"]!["isolationScope"] = scope;
-            documents.Add(new JsonObject
-            {
-                ["apiVersion"] = "pole.io/v1alpha1",
-                ["kind"] = "IsolationScope",
-                ["metadata"] = new JsonObject { ["name"] = scope },
-                ["spec"] = new JsonObject { ["resourceGroup"] = "demo" }
-            });
+            documents.Add(
+                new JsonObject
+                {
+                    ["apiVersion"] = "pole.io/v1alpha1",
+                    ["kind"] = "IsolationScope",
+                    ["metadata"] = new JsonObject { ["name"] = scope },
+                    ["spec"] = new JsonObject { ["resourceGroup"] = "demo" },
+                });
         }
+
         configure(service);
-        return [new("stage-five.yaml", string.Join("\n---\n", documents.Select(item => item.ToJsonString())))];
+        return
+        [
+            new ManifestFile("stage-five.yaml", string.Join("\n---\n", documents.Select(item => item.ToJsonString()))),
+        ];
     }
 }

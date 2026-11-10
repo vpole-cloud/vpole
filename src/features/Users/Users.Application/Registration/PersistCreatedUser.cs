@@ -9,13 +9,12 @@ namespace Pole.Features.Users.Application.Registration;
 
 public sealed record PersistCreatedUserRequest(
     PoleUser User,
-    string DefaultTenantName);
+    string DefaultTenantName
+);
 
 public sealed record UserPersisted;
 
-public union PersistCreatedUserOutcome(
-    UserPersisted,
-    CreateUserPersistenceError);
+public union PersistCreatedUserOutcome(UserPersisted, CreateUserPersistenceError);
 
 public delegate Task<PersistCreatedUserOutcome> PersistCreatedUser(
     PersistCreatedUserRequest request,
@@ -24,7 +23,8 @@ public delegate Task<PersistCreatedUserOutcome> PersistCreatedUser(
 internal sealed class MongoPersistCreatedUser(
     IMongoCollection<PoleUser> _users,
     MongoRunTransaction transaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<PersistCreatedUserOutcome> InvokeAsync(
         PersistCreatedUserRequest request,
@@ -35,15 +35,11 @@ internal sealed class MongoPersistCreatedUser(
             return await transaction.InvokeOutcomeAsync<PersistCreatedUserOutcome>(
                 async (context, transactionCancellationToken) =>
                 {
-                    var emailExists = await _users
-                        .Find(UserFilters.ByEmail(request.User.Email))
+                    var emailExists = await _users.Find(UserFilters.ByEmail(request.User.Email))
                         .AnyAsync(transactionCancellationToken);
                     if (emailExists)
-                    {
                         return context.Abort(
-                            new CreateUserPersistenceError(
-                                new UserEmailAlreadyExists(request.User.Email)));
-                    }
+                            new CreateUserPersistenceError(new UserEmailAlreadyExists(request.User.Email)));
 
                     await _users.InsertOneAsync(
                         context.Session,
@@ -51,26 +47,27 @@ internal sealed class MongoPersistCreatedUser(
                         cancellationToken: transactionCancellationToken);
                     await storeOutboxWrites(
                         context.Session,
-                        [OutboxWrite.Create(new UserCreatedEvent(
-                            request.User.Id,
-                            request.User.Email,
-                            request.User.FirstName,
-                            request.User.LastName,
-                            request.User.DefaultTenantId,
-                            request.DefaultTenantName)
-                        {
-                            EventCore = EventCore.Create()
-                        })],
+                        [
+                            OutboxWrite.Create(
+                                new UserCreatedEvent(
+                                    request.User.Id,
+                                    request.User.Email,
+                                    request.User.FirstName,
+                                    request.User.LastName,
+                                    request.User.DefaultTenantId,
+                                    request.DefaultTenantName)
+                                {
+                                    EventCore = EventCore.Create(),
+                                }),
+                        ],
                         transactionCancellationToken);
                     return context.Commit(new UserPersisted());
                 },
                 cancellationToken);
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
-            return new CreateUserPersistenceError(
-                new UserIdentityAlreadyExists(request.User.Id));
+            return new CreateUserPersistenceError(new UserIdentityAlreadyExists(request.User.Id));
         }
     }
 }

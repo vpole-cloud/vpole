@@ -5,12 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.GitOps.Contracts;
 using Pole.Mediator;
@@ -23,34 +18,31 @@ public static class GetDomainZone
 {
     public static IEndpointRouteBuilder MapGetDomainZoneEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] GetDomainZoneRequest request,
-                CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    ToHttpResult))
+        app.MapGet(
+                "/{Id}",
+                async (
+                        IMediator mediator, [AsParameters] GetDomainZoneRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(ToHttpResult))
             .WithName("GetDomainZone")
             .Produces<DomainZoneDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
 
-    private static IResult ToHttpResult(
-        GetDomainZoneOutcome outcome) => outcome switch
-        {
-            DomainZoneDto zone => Results.Ok(zone),
-            DomainZoneNotFound notFound => MapDomainZoneNotFound(notFound)
-        };
+    private static IResult ToHttpResult(GetDomainZoneOutcome outcome) => outcome switch
+    {
+        DomainZoneDto zone => Results.Ok(zone),
+        DomainZoneNotFound notFound => MapDomainZoneNotFound(notFound),
+    };
 }
 
 public sealed record GetDomainZoneRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetDomainZoneOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetDomainZoneOutcome>, ITenantReadOperation;
 
-public union GetDomainZoneOutcome(
-    DomainZoneDto,
-    DomainZoneNotFound);
+public union GetDomainZoneOutcome(DomainZoneDto, DomainZoneNotFound);
 
 public sealed class GetDomainZoneRequestValidator : AbstractValidator<GetDomainZoneRequest>
 {
@@ -63,23 +55,23 @@ public sealed class GetDomainZoneRequestValidator : AbstractValidator<GetDomainZ
 
 public sealed class GetDomainZoneHandler(
     LoadTenantDomainZone loadTenantDomainZone,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetDomainZoneRequest, GetDomainZoneOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetDomainZoneRequest, GetDomainZoneOutcome>
 {
     public async Task<GetDomainZoneOutcome> HandleAsync(
         GetDomainZoneRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await loadTenantDomainZone(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
+        var result = await loadTenantDomainZone(request.TenantId, request.Id, cancellationToken);
 
         return result switch
         {
-            TenantDomainZoneSnapshot zone => DomainZoneDto.FromSnapshot(zone,
-                await git.StatusAsync(new(request.TenantId, "DomainZone", zone.Id), cancellationToken)),
-            DomainZoneNotFound error => error
+            TenantDomainZoneSnapshot zone => DomainZoneDto.FromSnapshot(
+                zone,
+                await git.StatusAsync(
+                    new LoadGitResourceStatusRequest(request.TenantId, "DomainZone", zone.Id),
+                    cancellationToken)),
+            DomainZoneNotFound error => error,
         };
     }
 }

@@ -1,16 +1,14 @@
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 
 namespace Pole.Features.Domains.Application.HostnameBindings;
 
-internal sealed class MongoLoadHostnameBindingsForResourceInTransaction(IMongoCollection<HostnameBinding> bindings)
+internal sealed class MongoLoadHostnameBindingsForResourceInTransaction(
+    IMongoCollection<HostnameBinding> bindings
+)
 {
     public async Task<IReadOnlyList<HostnameBindingSnapshot>> InvokeAsync(
         LoadHostnameBindingsForResourceInTransactionRequest request,
@@ -18,9 +16,13 @@ internal sealed class MongoLoadHostnameBindingsForResourceInTransaction(IMongoCo
         CancellationToken cancellationToken)
     {
         DomainTransactions.EnsureActive(session);
-        var current = await bindings.Find(session,
+        var current = await bindings
+            .Find(
+                session,
                 DomainFilters.BindingsForResource(request.TenantId, request.ResourceType, request.ResourceId))
-            .SortBy(item => item.Hostname).ThenBy(item => item.Id).ToListAsync(cancellationToken);
+            .SortBy(item => item.Hostname)
+            .ThenBy(item => item.Id)
+            .ToListAsync(cancellationToken);
         return current.Select(DomainContractMappings.ToSnapshot).ToArray();
     }
 }

@@ -3,20 +3,20 @@ using System.Collections.Immutable;
 namespace Pole.Features.Functions.Domain;
 
 /// <summary>
-/// A five-field cron schedule evaluated in UTC. The supported fields are minute,
-/// hour, day of month, month, and day of week.
+///     A five-field cron schedule evaluated in UTC. The supported fields are minute,
+///     hour, day of month, month, and day of week.
 /// </summary>
 public sealed class FunctionCronSchedule
 {
     // Gregorian dates and weekdays repeat after 400 years, so one full cycle is
     // sufficient to prove that a valid five-field schedule has no future match.
     private const int MaximumSearchYears = 400;
+    private readonly CronField _daysOfMonth;
+    private readonly CronField _daysOfWeek;
+    private readonly CronField _hours;
 
     private readonly CronField _minutes;
-    private readonly CronField _hours;
-    private readonly CronField _daysOfMonth;
     private readonly CronField _months;
-    private readonly CronField _daysOfWeek;
 
     private FunctionCronSchedule(
         string expression,
@@ -69,7 +69,7 @@ public sealed class FunctionCronSchedule
     }
 
     /// <summary>
-    /// Returns the first scheduled minute strictly after <paramref name="afterUtc"/>.
+    ///     Returns the first scheduled minute strictly after <paramref name="afterUtc" />.
     /// </summary>
     public DateTimeOffset GetNextOccurrence(DateTimeOffset afterUtc)
     {
@@ -82,23 +82,14 @@ public sealed class FunctionCronSchedule
         for (var date = firstDate; date <= lastDate;)
         {
             if (_months.Contains(date.Month) && MatchesDay(date))
-            {
                 foreach (var hour in _hours.Values)
                 foreach (var minute in _minutes.Values)
                 {
-                    var candidate = new DateTimeOffset(
-                        date.Year,
-                        date.Month,
-                        date.Day,
-                        hour,
-                        minute,
-                        0,
-                        TimeSpan.Zero);
+                    var candidate = new DateTimeOffset(date.Year, date.Month, date.Day, hour, minute, 0, TimeSpan.Zero);
 
                     if (candidate > afterUtc)
                         return candidate;
                 }
-            }
 
             if (date == lastDate)
                 break;
@@ -113,11 +104,9 @@ public sealed class FunctionCronSchedule
     {
         EnsureUtc(occurrenceUtc);
 
-        return occurrenceUtc.Ticks % TimeSpan.TicksPerMinute == 0 &&
-               _months.Contains(occurrenceUtc.Month) &&
-               _hours.Contains(occurrenceUtc.Hour) &&
-               _minutes.Contains(occurrenceUtc.Minute) &&
-               MatchesDay(occurrenceUtc.UtcDateTime);
+        return occurrenceUtc.Ticks % TimeSpan.TicksPerMinute == 0 && _months.Contains(occurrenceUtc.Month) &&
+            _hours.Contains(occurrenceUtc.Hour) && _minutes.Contains(occurrenceUtc.Minute) &&
+            MatchesDay(occurrenceUtc.UtcDateTime);
     }
 
     private bool MatchesDay(DateTime date)
@@ -166,16 +155,14 @@ public sealed class FunctionCronSchedule
                 throw Invalid(fieldName);
 
             var values = new SortedSet<int>();
-            var list = expression.Split(',', StringSplitOptions.None);
+            var list = expression.Split(',');
             if (list.Any(string.IsNullOrEmpty))
                 throw Invalid(fieldName);
 
             foreach (var item in list)
                 AddItem(item, minimum, maximum, fieldName, normalizeSunday, values);
 
-            var distinctValueCount = normalizeSunday
-                ? maximum - minimum
-                : maximum - minimum + 1;
+            var distinctValueCount = normalizeSunday ? maximum - minimum : maximum - minimum + 1;
 
             return new CronField(values.ToImmutableArray(), distinctValueCount);
         }
@@ -188,14 +175,12 @@ public sealed class FunctionCronSchedule
             bool normalizeSunday,
             SortedSet<int> values)
         {
-            var stepParts = item.Split('/', StringSplitOptions.None);
+            var stepParts = item.Split('/');
             if (stepParts.Length is < 1 or > 2 || stepParts.Any(string.IsNullOrEmpty))
                 throw Invalid(fieldName);
 
             var hasStep = stepParts.Length == 2;
-            var step = hasStep
-                ? ReadNumber(stepParts[1], 1, maximum - minimum + 1, fieldName)
-                : 1;
+            var step = hasStep ? ReadNumber(stepParts[1], 1, maximum - minimum + 1, fieldName) : 1;
 
             var rangeExpression = stepParts[0];
             int start;
@@ -208,7 +193,7 @@ public sealed class FunctionCronSchedule
             }
             else
             {
-                var rangeParts = rangeExpression.Split('-', StringSplitOptions.None);
+                var rangeParts = rangeExpression.Split('-');
                 if (rangeParts.Length == 1)
                 {
                     start = ReadNumber(rangeParts[0], minimum, maximum, fieldName);
@@ -231,7 +216,11 @@ public sealed class FunctionCronSchedule
                 values.Add(normalizeSunday && value == 7 ? 0 : value);
         }
 
-        private static int ReadNumber(string value, int minimum, int maximum, string fieldName)
+        private static int ReadNumber(
+            string value,
+            int minimum,
+            int maximum,
+            string fieldName)
         {
             if (value.Length == 0 || value.Any(character => character is < '0' or > '9') ||
                 !int.TryParse(value, out var parsed) || parsed < minimum || parsed > maximum)
@@ -240,7 +229,6 @@ public sealed class FunctionCronSchedule
             return parsed;
         }
 
-        private static FormatException Invalid(string fieldName) =>
-            new($"The cron {fieldName} field is invalid.");
+        private static FormatException Invalid(string fieldName) => new($"The cron {fieldName} field is invalid.");
     }
 }

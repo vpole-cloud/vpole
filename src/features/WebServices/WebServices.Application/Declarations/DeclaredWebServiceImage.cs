@@ -1,10 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Pole.Features.WebServices.Application;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
 
 namespace Pole.Features.WebServices.Application.Declarations;
 
@@ -14,13 +9,19 @@ public closed record DeclaredWebServiceImage;
 public sealed record DeclaredContainerImage(
     string Server,
     string Name,
-    string Tag) : DeclaredWebServiceImage;
+    string Tag
+) : DeclaredWebServiceImage;
 
-public sealed record DeclaredSourceBuildImage(string SourceBuildConfiguration) : DeclaredWebServiceImage;
+public sealed record DeclaredSourceBuildImage(
+    string SourceBuildConfiguration
+) : DeclaredWebServiceImage;
 
 internal sealed class DeclaredWebServiceImageConverter : JsonConverter<DeclaredWebServiceImage>
 {
-    public override DeclaredWebServiceImage Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+    public override DeclaredWebServiceImage Read(
+        ref Utf8JsonReader reader,
+        Type type,
+        JsonSerializerOptions options)
     {
         using var document = JsonDocument.ParseValue(ref reader);
         var value = document.RootElement;
@@ -34,10 +35,14 @@ internal sealed class DeclaredWebServiceImageConverter : JsonConverter<DeclaredW
         return new DeclaredContainerImage(String("server"), String("name"), String("tag"));
 
         string String(string name) => value.GetProperty(name).ValueKind == JsonValueKind.String
-            ? value.GetProperty(name).GetString()! : throw new JsonException("Image fields must be strings.");
+            ? value.GetProperty(name).GetString()!
+            : throw new JsonException("Image fields must be strings.");
     }
 
-    public override void Write(Utf8JsonWriter writer, DeclaredWebServiceImage value, JsonSerializerOptions options)
+    public override void Write(
+        Utf8JsonWriter writer,
+        DeclaredWebServiceImage value,
+        JsonSerializerOptions options)
     {
         writer.WriteStartObject();
         switch (value)
@@ -51,6 +56,7 @@ internal sealed class DeclaredWebServiceImageConverter : JsonConverter<DeclaredW
                 writer.WriteString("sourceBuildConfiguration", build.SourceBuildConfiguration);
                 break;
         }
+
         writer.WriteEndObject();
     }
 }

@@ -9,35 +9,35 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj" />
-      <InternalsVisibleTo Include="Pole.Tests.Integration" />
+        <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj"/>
+        <InternalsVisibleTo Include="Pole.Tests.Integration"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\ResourceGroups.Domain\ResourceGroups.Domain.csproj" />
-      <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
-      <ProjectReference Include="..\ResourceGroups.Events\ResourceGroups.Events.csproj" />
-      <ProjectReference Include="..\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
-      <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
-      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
-      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\..\..\shared\Request\Request.csproj" />
-      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
-      <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
+        <ProjectReference Include="..\ResourceGroups.Domain\ResourceGroups.Domain.csproj"/>
+        <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj"/>
+        <ProjectReference Include="..\ResourceGroups.Events\ResourceGroups.Events.csproj"/>
+        <ProjectReference Include="..\ResourceGroups.Contracts.HttpMapping\ResourceGroups.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Request\Request.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="FluentValidation" />
-      <PackageReference Include="Hangfire.Core" />
-      <PackageReference Include="KubernetesClient" />
-      <PackageReference Include="MassTransit" />
+        <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="Hangfire.Core"/>
+        <PackageReference Include="KubernetesClient"/>
+        <PackageReference Include="MassTransit"/>
     </ItemGroup>
 
 </Project>

@@ -10,23 +10,21 @@ public sealed record ProcessSpec(
     string WorkingDirectory,
     IReadOnlyDictionary<string, string> EnvironmentVariables,
     int MaxCapturedCharacters = 64 * 1024,
-    Func<SourceBuildLogStream, string, CancellationToken, Task>? Output = null);
+    Func<SourceBuildLogStream, string, CancellationToken, Task>? Output = null
+);
 
 public sealed record ProcessResult(
     int ExitCode,
     string StandardOutput,
     string StandardError,
-    bool OutputCaptureFailed = false);
+    bool OutputCaptureFailed = false
+);
 
-public delegate Task<ProcessResult> RunProcess(
-    ProcessSpec spec,
-    CancellationToken cancellationToken = default);
+public delegate Task<ProcessResult> RunProcess(ProcessSpec spec, CancellationToken cancellationToken = default);
 
 public sealed class ProcessRunner
 {
-    public async Task<ProcessResult> InvokeAsync(
-        ProcessSpec spec,
-        CancellationToken cancellationToken = default)
+    public async Task<ProcessResult> InvokeAsync(ProcessSpec spec, CancellationToken cancellationToken = default)
     {
         if (spec.MaxCapturedCharacters is < 0 or > 1024 * 1024)
             throw new ArgumentOutOfRangeException(nameof(spec.MaxCapturedCharacters));
@@ -37,7 +35,7 @@ public sealed class ProcessRunner
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
         };
         foreach (var argument in spec.Arguments)
             startInfo.ArgumentList.Add(argument);
@@ -46,8 +44,18 @@ public sealed class ProcessRunner
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
-        var stdout = ReadBoundedAsync(process.StandardOutput, spec.MaxCapturedCharacters, SourceBuildLogStream.StandardOutput, spec.Output, cancellationToken);
-        var stderr = ReadBoundedAsync(process.StandardError, spec.MaxCapturedCharacters, SourceBuildLogStream.StandardError, spec.Output, cancellationToken);
+        var stdout = ReadBoundedAsync(
+            process.StandardOutput,
+            spec.MaxCapturedCharacters,
+            SourceBuildLogStream.StandardOutput,
+            spec.Output,
+            cancellationToken);
+        var stderr = ReadBoundedAsync(
+            process.StandardError,
+            spec.MaxCapturedCharacters,
+            SourceBuildLogStream.StandardError,
+            spec.Output,
+            cancellationToken);
         try
         {
             await process.WaitForExitAsync(cancellationToken);
@@ -66,7 +74,12 @@ public sealed class ProcessRunner
         return new ProcessResult(process.ExitCode, output.Text, error.Text, output.Failed || error.Failed);
     }
 
-    private static async Task<(string Text, bool Failed)> ReadBoundedAsync(StreamReader reader, int maxCharacters, SourceBuildLogStream stream, Func<SourceBuildLogStream, string, CancellationToken, Task>? sink, CancellationToken cancellationToken)
+    private static async Task<(string Text, bool Failed)> ReadBoundedAsync(
+        StreamReader reader,
+        int maxCharacters,
+        SourceBuildLogStream stream,
+        Func<SourceBuildLogStream, string, CancellationToken, Task>? sink,
+        CancellationToken cancellationToken)
     {
         var output = new StringBuilder(Math.Min(maxCharacters, 4096));
         var buffer = new char[4096];
@@ -77,10 +90,14 @@ public sealed class ProcessRunner
             if (remaining > 0)
                 output.Append(buffer, 0, Math.Min(read, remaining));
             if (sink is not null && !failed)
-            {
-                try { await sink(stream, new string(buffer, 0, read), cancellationToken); }
-                catch (Exception) { failed = true; } // Keep draining pipes even when diagnostics storage fails.
-            }
+                try
+                {
+                    await sink(stream, new string(buffer, 0, read), cancellationToken);
+                }
+                catch (Exception)
+                {
+                    failed = true;
+                } // Keep draining pipes even when diagnostics storage fails.
         }
 
         return (output.ToString(), failed);

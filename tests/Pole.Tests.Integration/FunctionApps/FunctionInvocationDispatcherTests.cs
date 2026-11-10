@@ -5,7 +5,6 @@ using System.Text;
 using k8s.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Timers;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Activation;
@@ -21,8 +20,9 @@ using Xunit;
 namespace Pole.Tests.Integration.FunctionApps;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed class FunctionInvocationDispatcherTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-18T12:10:30Z");
     private static readonly FunctionEndpoint FirstEndpoint = new("10.42.0.11", 8080, "pod-1");
@@ -44,19 +44,20 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                     .SingleAsync();
                 var startedMeter = await DbContext.FunctionMeterEvents
                     .Find(candidate => candidate.InvocationId == invocation.Id &&
-                                       candidate.Phase == FunctionMeterEventPhase.Started)
+                        candidate.Phase == FunctionMeterEventPhase.Started)
                     .SingleAsync();
                 observedRunning = persisted.State == FunctionInvocationState.Running &&
-                                  startedMeter.Id == MeterId(invocation.Id, 1, FunctionMeterEventPhase.Started);
+                    startedMeter.Id == MeterId(invocation.Id, 1, FunctionMeterEventPhase.Started);
                 return SuccessfulCompletion(endpoint, attemptId);
-            }
+            },
         };
 
         var admission = new RecordingAdmissionCoordinator();
         await CreateDispatcher(agent, admission: admission).RunOnceAsync(CancellationToken.None);
 
         Assert.True(observedRunning);
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Succeeded, persisted.State);
         Assert.Equal(Now.AddSeconds(2), persisted.CompletedAtUtc);
@@ -111,24 +112,29 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         await InsertAsync(subject, invocation);
         var agent = new RecordingAgentClient
         {
-            ObserveHandler = (endpoint, attemptId) => Task.FromResult(new FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>(
-                HttpStatusCode.OK,
-                new FunctionAttemptStatusResponse(
-                    endpoint.TargetUid!,
-                    Now.AddSeconds(2),
-                    new CompletedFunctionAttemptStatus(
-                        attemptId,
-                        Now,
+            ObserveHandler = (endpoint, attemptId) => Task.FromResult(
+                new FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>(
+                    HttpStatusCode.OK,
+                    new FunctionAttemptStatusResponse(
+                        endpoint.TargetUid!,
                         Now.AddSeconds(2),
-                        FunctionAttemptOutcome.RetryableFailure,
-                        Result: null,
-                        Failure: new FunctionAttemptFailure("dependency_busy", "Try again.", FunctionFailureOrigin.User))),
-                Error: null))
+                        new CompletedFunctionAttemptStatus(
+                            attemptId,
+                            Now,
+                            Now.AddSeconds(2),
+                            FunctionAttemptOutcome.RetryableFailure,
+                            Result: null,
+                            Failure: new FunctionAttemptFailure(
+                                "dependency_busy",
+                                "Try again.",
+                                FunctionFailureOrigin.User))),
+                    Error: null)),
         };
 
         await CreateDispatcher(agent).RunOnceAsync(CancellationToken.None);
 
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.RetryScheduled, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -139,7 +145,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
         var completed = await DbContext.FunctionMeterEvents
             .Find(candidate => candidate.InvocationId == invocation.Id &&
-                               candidate.Phase == FunctionMeterEventPhase.Completed)
+                candidate.Phase == FunctionMeterEventPhase.Completed)
             .SingleAsync();
         Assert.Equal(FunctionMeterOutcome.RetryableFailure, completed.Outcome);
         Assert.Equal(2000, completed.ExecutionDurationMilliseconds);
@@ -164,7 +170,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
         await CreateDispatcher(agent).RunOnceAsync(CancellationToken.None);
 
-        var recovered = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var recovered = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Failed, recovered.State);
         Assert.Equal("attempt_lease_expired", recovered.Error?.Code);
@@ -173,7 +180,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         Assert.Null(recovered.Lease);
         Assert.Empty(agent.ReservedEndpoints);
         Assert.Empty(agent.ExecutedEndpoints);
-        var meters = await DbContext.FunctionMeterEvents.Find(candidate => candidate.InvocationId == invocation.Id)
+        var meters = await DbContext.FunctionMeterEvents
+            .Find(candidate => candidate.InvocationId == invocation.Id)
             .ToListAsync();
         if (state == FunctionInvocationState.Running)
         {
@@ -197,15 +205,16 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
 
         await CreateDispatcher(agent).RunOnceAsync(CancellationToken.None);
 
-        var failed = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
-            .SingleAsync();
+        var failed = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id).SingleAsync();
         Assert.Equal(FunctionInvocationState.Failed, failed.State);
         Assert.Equal("revision_unavailable", failed.Error?.Code);
         Assert.False(failed.Error?.Retryable is true);
         Assert.Empty(agent.ReservedEndpoints);
         Assert.Empty(agent.ExecutedEndpoints);
-        Assert.Equal(0, await DbContext.FunctionMeterEvents.CountDocumentsAsync(
-            candidate => candidate.InvocationId == invocation.Id));
+        Assert.Equal(
+            0,
+            await DbContext.FunctionMeterEvents.CountDocumentsAsync(candidate =>
+                candidate.InvocationId == invocation.Id));
     }
 
     [Fact]
@@ -216,23 +225,27 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         await InsertAsync(subject, invocation);
         var agent = new RecordingAgentClient
         {
-            ExecuteHandler = (_, _, _) => throw new HttpRequestException("Connection closed after upload."),
-            ObserveHandler = (_, _) => throw new HttpRequestException("Agent remains unreachable.")
+            ExecuteHandler = (
+                _, _,
+                _) => throw new HttpRequestException("Connection closed after upload."),
+            ObserveHandler = (_, _) => throw new HttpRequestException("Agent remains unreachable."),
         };
 
         var admission = new RecordingAdmissionCoordinator();
-        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint], admission)
-            .RunOnceAsync(CancellationToken.None);
+        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint], admission).RunOnceAsync(CancellationToken.None);
 
         Assert.Equal(new[] { FirstEndpoint }, agent.ReservedEndpoints);
         Assert.Equal(new[] { FirstEndpoint }, agent.ExecutedEndpoints);
         Assert.Equal(new[] { FirstEndpoint }, agent.ObservedEndpoints);
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Dispatching, persisted.State);
         Assert.NotNull(persisted.Lease);
-        Assert.Equal(0, await DbContext.FunctionMeterEvents.CountDocumentsAsync(
-            candidate => candidate.InvocationId == invocation.Id));
+        Assert.Equal(
+            0,
+            await DbContext.FunctionMeterEvents.CountDocumentsAsync(candidate =>
+                candidate.InvocationId == invocation.Id));
         Assert.Single(admission.ReleaseRequests);
     }
 
@@ -245,17 +258,19 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         var agent = new RecordingAgentClient();
         var admission = new RecordingAdmissionCoordinator
         {
-            AcquireHandler = (_, _) => Task.FromResult(new FunctionAdmissionDecision(
-                FunctionAdmissionDecisionKind.Rejected,
-                null,
-                FunctionAdmissionRejection.RevisionQuiescing,
-                1000,
-                false))
+            AcquireHandler = (_, _) => Task.FromResult(
+                new FunctionAdmissionDecision(
+                    FunctionAdmissionDecisionKind.Rejected,
+                    null,
+                    FunctionAdmissionRejection.RevisionQuiescing,
+                    1000,
+                    false)),
         };
 
         await CreateDispatcher(agent, admission: admission).RunOnceAsync(CancellationToken.None);
 
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Pending, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -272,7 +287,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                 timeProvider: new FixedTimeProvider(Now.AddSeconds(1)))
             .RunOnceAsync(CancellationToken.None);
 
-        var completed = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var completed = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Succeeded, completed.State);
         Assert.Equal(1, completed.AttemptNumber);
@@ -294,14 +310,14 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
                     Error: new FunctionProtocolError(
                         PoleFunctionProtocolErrors.CapacityExhausted,
                         "Agent capacity is exhausted.",
-                        Retryable: true)))
+                        Retryable: true))),
         };
         var admission = new RecordingAdmissionCoordinator();
 
-        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint], admission)
-            .RunOnceAsync(CancellationToken.None);
+        await CreateDispatcher(agent, [FirstEndpoint, SecondEndpoint], admission).RunOnceAsync(CancellationToken.None);
 
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Pending, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -321,14 +337,11 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         var agent = new RecordingAgentClient();
         var admission = new RecordingAdmissionCoordinator();
 
-        await CreateDispatcher(
-                agent,
-                endpoints: [],
-                admission: admission,
-                activator: new FailingActivator())
+        await CreateDispatcher(agent, endpoints: [], admission: admission, activator: new FailingActivator())
             .RunOnceAsync(CancellationToken.None);
 
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Pending, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -356,7 +369,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(agent.ReservationCancellationObserved);
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Pending, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -385,7 +399,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(agent.ExecutionCancellationObserved);
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Dispatching, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -403,7 +418,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         var agent = new RecordingAgentClient
         {
             BlockObservationUntilCancellation = true,
-            StartedAtUtc = DateTimeOffset.UtcNow
+            StartedAtUtc = DateTimeOffset.UtcNow,
         };
         var admission = new RecordingAdmissionCoordinator();
 
@@ -416,7 +431,8 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(agent.ObservationCancellationObserved);
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Running, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -433,21 +449,18 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         var agent = new RecordingAgentClient { BlockReservationUntilCancellation = true };
         var admission = new RecordingAdmissionCoordinator
         {
-            TokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(3)
+            TokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(3),
         };
         var options = DeadlineTestOptions();
         options.ExecutionTimeoutSeconds = 10;
 
-        await CreateDispatcher(
-                agent,
-                admission: admission,
-                options: options,
-                timeProvider: TimeProvider.System)
+        await CreateDispatcher(agent, admission: admission, options: options, timeProvider: TimeProvider.System)
             .RunOnceAsync(CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(agent.ReservationCancellationObserved);
-        var persisted = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == invocation.Id)
+        var persisted = await DbContext.FunctionInvocations
+            .Find(candidate => candidate.Id == invocation.Id)
             .SingleAsync();
         Assert.Equal(FunctionInvocationState.Pending, persisted.State);
         Assert.Equal(1, persisted.AttemptNumber);
@@ -460,7 +473,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     {
         BatchSize = 10,
         DispatchLeaseSeconds = 180,
-        ExecutionTimeoutSeconds = 1
+        ExecutionTimeoutSeconds = 1,
     };
 
     private FunctionInvocationDispatcher CreateDispatcher(
@@ -472,19 +485,15 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         IFunctionRevisionActivator? activator = null)
     {
         var snapshot = new FunctionEndpointSnapshot(
-            new FunctionServiceKey(
-                "507f1f77bcf86cd799439093",
-                "pole-tenant-rg",
-                "function-cleanup-agent"),
+            new FunctionServiceKey("507f1f77bcf86cd799439093", "pole-tenant-rg", "function-cleanup-agent"),
             (endpoints ?? [FirstEndpoint]).ToImmutableArray(),
             Now);
         var time = timeProvider ?? new FixedTimeProvider(Now);
         return new FunctionInvocationDispatcher(
             new MongoLoadExpiredFunctionInvocations(DbContext.FunctionInvocations).InvokeAsync,
             new MongoClaimNextFunctionInvocation(DbContext.FunctionInvocations, time).InvokeAsync,
-            new MongoLoadFunctionInvocationDispatchSubject(
-                DbContext.FunctionApps,
-                DbContext.FunctionRevisions).InvokeAsync,
+            new MongoLoadFunctionInvocationDispatchSubject(DbContext.FunctionApps, DbContext.FunctionRevisions)
+                .InvokeAsync,
             new MongoPersistFunctionInvocationTransition(
                 Fixture.Client,
                 DbContext.FunctionInvocations,
@@ -499,7 +508,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             {
                 BatchSize = 10,
                 DispatchLeaseSeconds = 180,
-                ExecutionTimeoutSeconds = 10
+                ExecutionTimeoutSeconds = 10,
             },
             time,
             NullLogger<FunctionInvocationDispatcher>.Instance);
@@ -515,46 +524,41 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
     private static FunctionInvocation CreateInvocation(
         FunctionSubject subject,
         FunctionRetryPolicy? retry = null,
-        string? tenantId = null) =>
-        FunctionInvocation.CreateTimer(
-            tenantId ?? subject.App.TenantId,
-            subject.App.Id,
-            subject.Revision.Id,
-            subject.Trigger.TriggerId,
-            "cleanup",
-            subject.Trigger.ScheduleVersion,
-            Now.AddMinutes(-1),
-            retry ?? subject.Trigger.Retry,
-            Now.AddMinutes(-1),
-            isPastDue: true,
-            missedOccurrenceCount: 1);
+        string? tenantId = null) => FunctionInvocation.CreateTimer(
+        tenantId ?? subject.App.TenantId,
+        subject.App.Id,
+        subject.Revision.Id,
+        subject.Trigger.TriggerId,
+        "cleanup",
+        subject.Trigger.ScheduleVersion,
+        Now.AddMinutes(-1),
+        retry ?? subject.Trigger.Retry,
+        Now.AddMinutes(-1),
+        isPastDue: true,
+        missedOccurrenceCount: 1);
 
     private FunctionSubject CreateSubject()
     {
         var spec = new FunctionRevisionSpecInput(
-            new FunctionImage("registry.example", "team/functions", "v1",
-                Digest: null,
-                PullSecretName: null),
+            new FunctionImage("registry.example", "team/functions", "v1", Digest: null, PullSecretName: null),
             PoleFunctionProtocol.Version,
             new FunctionConfiguration(
                 ImmutableDictionary<string, string>.Empty,
                 ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
+            new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
             new FunctionScalingPolicy(0, 5, 4, 8, 30, 30),
             [
                 new FunctionHandlerSpec(
                     "cleanup",
                     1,
                     new TimerFunctionTriggerSpec(
-                        string.Empty,
+                        "",
                         "* * * * *",
                         "UTC",
                         TimerConcurrencyPolicy.Forbid,
                         TimerMisfirePolicy.FireOnce,
                         ScheduleVersion: 1,
-                        Retry: new FunctionRetryPolicy(3, [5, 30])))
+                        Retry: new FunctionRetryPolicy(3, [5, 30]))),
             ]);
         var created = FunctionAppFactory.Create(
             Data.TenantId,
@@ -575,33 +579,33 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             Id = appId,
             ActiveRevisionId = revisionId,
             PendingRevisionId = null,
-            Status = FunctionAppStatus.Ready
+            Status = FunctionAppStatus.Ready,
         };
         var revision = (created.Revision with
-        {
-            Id = revisionId,
-            FunctionAppId = appId
-        }).MarkReady(Now.AddMinutes(-4)).Activate();
+            {
+                Id = revisionId,
+                FunctionAppId = appId,
+            }).MarkReady(Now.AddMinutes(-4))
+            .Activate();
         var trigger = Assert.IsType<TimerFunctionTriggerSpec>(revision.Spec.Handlers.Single().Trigger);
         return new FunctionSubject(app, revision, trigger);
     }
 
     private static FunctionAgentProtocolResponse<FunctionAttemptStatusResponse> SuccessfulCompletion(
         FunctionEndpoint endpoint,
-        string attemptId) =>
-        new(
-            HttpStatusCode.OK,
-            new FunctionAttemptStatusResponse(
-                endpoint.TargetUid!,
+        string attemptId) => new(
+        HttpStatusCode.OK,
+        new FunctionAttemptStatusResponse(
+            endpoint.TargetUid!,
+            Now.AddSeconds(2),
+            new CompletedFunctionAttemptStatus(
+                attemptId,
+                Now,
                 Now.AddSeconds(2),
-                new CompletedFunctionAttemptStatus(
-                    attemptId,
-                    Now,
-                    Now.AddSeconds(2),
-                    FunctionAttemptOutcome.Succeeded,
-                    new TimerFunctionInvocationResult(),
-                    Failure: null)),
-            Error: null);
+                FunctionAttemptOutcome.Succeeded,
+                new TimerFunctionInvocationResult(),
+                Failure: null)),
+        Error: null);
 
     private static string MeterId(
         string invocationId,
@@ -612,21 +616,32 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     }
 
-    private static string CreateAttemptId(string invocationId, int attemptNumber) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{invocationId}:{attemptNumber}")))
-            .ToLowerInvariant();
+    private static string CreateAttemptId(string invocationId, int attemptNumber) => Convert
+        .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{invocationId}:{attemptNumber}")))
+        .ToLowerInvariant();
 
     private sealed record FunctionSubject(
         FunctionApp App,
         FunctionRevision Revision,
-        TimerFunctionTriggerSpec Trigger);
+        TimerFunctionTriggerSpec Trigger
+    );
 
-    private sealed class StubEndpointRegistry(FunctionEndpointSnapshot snapshot) : IFunctionEndpointRegistry
+    private sealed class StubEndpointRegistry(
+        FunctionEndpointSnapshot snapshot
+    ) : IFunctionEndpointRegistry
     {
         public FunctionEndpointSnapshot GetSnapshot(FunctionServiceKey service) => snapshot;
-        public void ReplaceTarget(string deploymentTargetId, IEnumerable<V1EndpointSlice> slices) => throw new NotSupportedException();
+
+        public void ReplaceTarget(string deploymentTargetId, IEnumerable<V1EndpointSlice> slices) =>
+            throw new NotSupportedException();
+
         public void ApplySlice(string deploymentTargetId, V1EndpointSlice slice) => throw new NotSupportedException();
-        public void DeleteSlice(string deploymentTargetId, string @namespace, string sliceName) => throw new NotSupportedException();
+
+        public void DeleteSlice(
+            string deploymentTargetId,
+            string @namespace,
+            string sliceName) => throw new NotSupportedException();
+
         public void RemoveTarget(string deploymentTargetId) => throw new NotSupportedException();
     }
 
@@ -635,14 +650,13 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         public Task<FunctionResourcePlacementOutcome> ResolveAsync(
             FunctionApp app,
             bool requireReady = true,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<FunctionResourcePlacementOutcome>(
-                new FunctionResourcePlacement(
-                    app.Placement.ResourceDeploymentId,
-                    app.Placement.RuntimeCellId,
-                    app.Placement.DeploymentTargetId,
-                    "pole-tenant-rg",
-                    "507f1f77bcf86cd799439044"));
+            CancellationToken cancellationToken = default) => Task.FromResult<FunctionResourcePlacementOutcome>(
+            new FunctionResourcePlacement(
+                app.Placement.ResourceDeploymentId,
+                app.Placement.RuntimeCellId,
+                app.Placement.DeploymentTargetId,
+                "pole-tenant-rg",
+                "507f1f77bcf86cd799439044"));
     }
 
     private sealed class SnapshotOrderEndpointSelector : IFunctionEndpointSelector
@@ -664,24 +678,24 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         public Task<FunctionRevisionActivationOutcome> EnsureActiveAsync(
             FunctionRevisionInKubernetes subject,
             CancellationToken cancellationToken = default,
-            bool forceScaleFence = false) =>
-            Task.FromResult<FunctionRevisionActivationOutcome>(
-                new FunctionRevisionActivationError(
-                    new FunctionActivationCoordinatorUnavailable(
-                        "Function activation is temporarily unavailable.")));
+            bool forceScaleFence = false) => Task.FromResult<FunctionRevisionActivationOutcome>(
+            new FunctionRevisionActivationError(
+                new FunctionActivationCoordinatorUnavailable("Function activation is temporarily unavailable.")));
     }
 
     private sealed class RecordingAdmissionCoordinator : IFunctionAdmissionCoordinator
     {
-        public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionRequest Request,
-            FunctionAdmissionToken Token)> AcquireRequests
-        { get; } = [];
-        public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionReleaseRequest Request)> ReleaseRequests
-        { get; } = [];
+        public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionRequest Request, FunctionAdmissionToken Token
+            )> AcquireRequests { get; } = [];
 
-        public Func<FunctionRevisionCoordinationKey, FunctionAdmissionRequest,
-            Task<FunctionAdmissionDecision>>? AcquireHandler
-        { get; init; }
+        public List<(FunctionRevisionCoordinationKey Key, FunctionAdmissionReleaseRequest Request)> ReleaseRequests
+        {
+            get;
+        } = [];
+
+        public Func<FunctionRevisionCoordinationKey, FunctionAdmissionRequest, Task<FunctionAdmissionDecision>>?
+            AcquireHandler { get; init; }
+
         public DateTimeOffset TokenExpiresAtUtc { get; init; } = Now.AddYears(1);
 
         public async Task<FunctionAdmissionDecision> AcquireAsync(
@@ -740,14 +754,13 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         public DateTimeOffset StartedAtUtc { get; init; } = Now;
 
         public Func<FunctionEndpoint, ReserveFunctionAttemptRequest,
-            Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>>? ReserveHandler
-        { get; init; }
+            Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>>>? ReserveHandler { get; init; }
+
         public Func<FunctionEndpoint, string, ExecuteFunctionAttemptRequest,
-            Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>>>? ExecuteHandler
-        { get; init; }
-        public Func<FunctionEndpoint, string,
-            Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>>>? ObserveHandler
-        { get; init; }
+            Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>>>? ExecuteHandler { get; init; }
+
+        public Func<FunctionEndpoint, string, Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>>>?
+            ObserveHandler { get; init; }
 
         public Task<FunctionAgentProtocolResponse<FunctionAgentMetadataResponse>> GetMetadataAsync(
             FunctionEndpoint endpoint,
@@ -772,15 +785,16 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             ReserveRequests.Add(request);
             if (BlockReservationUntilCancellation)
                 return BlockReservationAsync(cancellationToken);
-            return ReserveHandler?.Invoke(endpoint, request) ?? Task.FromResult(new FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>(
-                HttpStatusCode.OK,
-                new ReserveFunctionAttemptResponse(
-                    request.Attempt.AttemptId,
-                    "reservation-token",
-                    Now,
-                    Now.AddSeconds(5),
-                    IsReplay: false),
-                Error: null));
+            return ReserveHandler?.Invoke(endpoint, request) ?? Task.FromResult(
+                new FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>(
+                    HttpStatusCode.OK,
+                    new ReserveFunctionAttemptResponse(
+                        request.Attempt.AttemptId,
+                        "reservation-token",
+                        Now,
+                        Now.AddSeconds(5),
+                        IsReplay: false),
+                    Error: null));
         }
 
         public Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>> ExecuteAsync(
@@ -795,14 +809,15 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             ExecuteRequests.Add(request);
             if (BlockExecutionUntilCancellation)
                 return BlockExecutionAsync(cancellationToken);
-            return ExecuteHandler?.Invoke(endpoint, attemptId, request) ?? Task.FromResult(new FunctionAgentProtocolResponse<StartFunctionAttemptResponse>(
-                HttpStatusCode.Accepted,
-                new StartFunctionAttemptResponse(
-                    attemptId,
-                    StartedAtUtc,
-                    IsReplay: false,
-                    StatusUrl: PoleFunctionProtocol.AttemptStatusPath(attemptId)),
-                Error: null));
+            return ExecuteHandler?.Invoke(endpoint, attemptId, request) ?? Task.FromResult(
+                new FunctionAgentProtocolResponse<StartFunctionAttemptResponse>(
+                    HttpStatusCode.Accepted,
+                    new StartFunctionAttemptResponse(
+                        attemptId,
+                        StartedAtUtc,
+                        IsReplay: false,
+                        StatusUrl: PoleFunctionProtocol.AttemptStatusPath(attemptId)),
+                    Error: null));
         }
 
         public Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>> ObserveAsync(
@@ -817,7 +832,7 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
             if (BlockObservationUntilCancellation)
                 return BlockObservationAsync(cancellationToken);
             return ObserveHandler?.Invoke(endpoint, attemptId) ??
-                   Task.FromResult(SuccessfulCompletion(endpoint, attemptId));
+                Task.FromResult(SuccessfulCompletion(endpoint, attemptId));
         }
 
         private async Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>> BlockReservationAsync(
@@ -866,7 +881,9 @@ public sealed class FunctionInvocationDispatcherTests(MongoReplicaSetFixture fix
         }
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset now
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
     }

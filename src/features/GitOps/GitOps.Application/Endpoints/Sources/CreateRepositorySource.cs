@@ -25,13 +25,14 @@ public sealed record CreateRepositorySourceBody(
     string Branch,
     string ManifestDirectory,
     int PollIntervalSeconds = 300,
-    GitPrunePolicy Prune = GitPrunePolicy.Retain);
+    GitPrunePolicy Prune = GitPrunePolicy.Retain
+);
 
 public sealed record CreateRepositorySourceRequest(
     [FromBody] CreateRepositorySourceBody Body,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
-    : IMediatorRequest<CreateRepositorySourceOutcome>, ITenantCreateOperation;
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
+) : IMediatorRequest<CreateRepositorySourceOutcome>, ITenantCreateOperation;
 
 public union CreateRepositorySourceOutcome(
     RepositorySourceView,
@@ -47,7 +48,8 @@ public sealed class CreateRepositorySourceValidator : AbstractValidator<CreateRe
     public CreateRepositorySourceValidator()
     {
         RuleFor(item => item.Body).NotNull();
-        When(item => item.Body is not null,
+        When(
+            item => item.Body is not null,
             () =>
             {
                 RuleFor(item => item.Body.IdempotencyKey).NotEmpty();
@@ -55,7 +57,8 @@ public sealed class CreateRepositorySourceValidator : AbstractValidator<CreateRe
                 RuleFor(item => item.Body.ConnectionId).MongoObjectId("Connection ID");
                 RuleFor(item => item.Body.ExternalRepositoryId).NotEmpty().MaximumLength(128);
                 RuleFor(item => item.Body.Branch).NotEmpty().MaximumLength(255);
-                RuleFor(item => item.Body.ManifestDirectory).Must(RepositoryManifestDirectory.IsValid)
+                RuleFor(item => item.Body.ManifestDirectory)
+                    .Must(RepositoryManifestDirectory.IsValid)
                     .MaximumLength(1024);
                 RuleFor(item => item.Body.PollIntervalSeconds).GreaterThanOrEqualTo(60).LessThanOrEqualTo(86400);
                 RuleFor(item => item.Body.Prune).IsInEnum();
@@ -67,7 +70,8 @@ public sealed class CreateRepositorySourceHandler(
     RepositoryProviderRegistry providers,
     GitRepositorySources sources,
     GitRepositoryQueries queries,
-    TimeProvider clock) : IMediatorOutcomeHandler<CreateRepositorySourceRequest, CreateRepositorySourceOutcome>
+    TimeProvider clock
+) : IMediatorOutcomeHandler<CreateRepositorySourceRequest, CreateRepositorySourceOutcome>
 {
     public async Task<CreateRepositorySourceOutcome> HandleAsync(
         CreateRepositorySourceRequest request,
@@ -80,9 +84,8 @@ public sealed class CreateRepositorySourceHandler(
         if (provider is null)
             return new RepositoryProviderUnsupported();
 
-        var access = await provider.CheckAccessAsync(new(tenantId,
-                body.ConnectionId,
-                body.ExternalRepositoryId),
+        var access = await provider.CheckAccessAsync(
+            new RepositorySourceReference(tenantId, body.ConnectionId, body.ExternalRepositoryId),
             cancellationToken);
         if (access is not RepositoryAccessGranted granted)
             return access switch
@@ -90,23 +93,32 @@ public sealed class CreateRepositorySourceHandler(
                 RepositoryAccessDenied denied => denied,
                 RepositoryNotFound missing => missing,
                 RepositoryTemporarilyUnavailable unavailable => unavailable,
-                RepositoryAccessGranted => throw new InvalidOperationException("Access was already handled.")
+                RepositoryAccessGranted => throw new InvalidOperationException("Access was already handled."),
             };
 
-        var outcome = await sources.CreateAsync(new(tenantId,
+        var outcome = await sources.CreateAsync(
+            new CreateGitRepositorySource(
+                tenantId,
                 body.IdempotencyKey.ToString("D"),
-                new(body.Provider, body.ConnectionId, body.ExternalRepositoryId, body.Branch, body.ManifestDirectory),
-                new(TimeSpan.FromSeconds(body.PollIntervalSeconds)),
-                new(request.CurrentUserId.Value,
-                    clock.GetUtcNow().UtcDateTime),
-                granted.DisplayUrl, body.Prune),
+                new GitRepositoryLocation(
+                    body.Provider,
+                    body.ConnectionId,
+                    body.ExternalRepositoryId,
+                    body.Branch,
+                    body.ManifestDirectory),
+                new GitSyncPolicy(TimeSpan.FromSeconds(body.PollIntervalSeconds)),
+                new GitSourceAudit(request.CurrentUserId.Value, clock.GetUtcNow().UtcDateTime),
+                granted.DisplayUrl,
+                body.Prune),
             cancellationToken);
         return outcome switch
         {
-            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken)
-                is { } current ? current : new GitSourceCreationDeleted(),
+            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken) is
+                { } current
+                ? current
+                : new GitSourceCreationDeleted(),
             GitSourceIdempotencyConflict conflict => conflict,
-            GitSourceCreationDeleted deleted => deleted
+            GitSourceCreationDeleted deleted => deleted,
         };
     }
 }
@@ -115,8 +127,10 @@ public static class CreateRepositorySourceEndpoint
 {
     public static IEndpointRouteBuilder MapCreateRepositorySourceEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/",
-                async (IMediator mediator, [AsParameters] CreateRepositorySourceRequest request,
+        app.MapPost(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] CreateRepositorySourceRequest request,
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     RepositorySourceView source => Results.Created($"/api/v1/gitops/sources/{source.Id}", source),
@@ -125,8 +139,9 @@ public static class CreateRepositorySourceEndpoint
                     RepositoryProviderUnsupported unsupported => RepositoryHttpMappings.Map(unsupported),
                     RepositoryAccessDenied denied => RepositoryHttpMappings.Map(denied),
                     RepositoryNotFound missing => RepositoryHttpMappings.Map(missing),
-                    RepositoryTemporarilyUnavailable unavailable => RepositoryHttpMappings.Map(unavailable)
-                })).WithName("CreateGitRepositorySource")
+                    RepositoryTemporarilyUnavailable unavailable => RepositoryHttpMappings.Map(unavailable),
+                }))
+            .WithName("CreateGitRepositorySource")
             .WithMetadata(new RequestSizeLimitAttribute(SnapshotHttpLimits.MaximumSourceRequestBytes));
         return app;
     }

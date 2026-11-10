@@ -7,20 +7,29 @@ namespace Pole.Features.ResourceConnections.Contracts;
 public sealed record ResourceConnectionValueReference(
     string ConnectionId,
     string ValueKind,
-    string? ConfigurationKey = null);
+    string? ConfigurationKey = null
+);
 
 public sealed record ResourceConnectionReferencesAdmitted;
+
 public sealed record ResourceConnectionReferencesUnavailable(
     string ConnectionId,
-    string ReasonCode);
+    string ReasonCode
+);
+
 public sealed record ResolvedResourceConnectionValue(
     ResourceConnectionValueReference Reference,
-    string Value);
-public sealed record ResolvedResourceConnectionValues(ImmutableArray<ResolvedResourceConnectionValue> Values);
+    string Value
+);
+
+public sealed record ResolvedResourceConnectionValues(
+    ImmutableArray<ResolvedResourceConnectionValue> Values
+);
 
 public union AdmitResourceConnectionReferencesOutcome(
     ResourceConnectionReferencesAdmitted,
     ResourceConnectionReferencesUnavailable);
+
 public union ResolveResourceConnectionReferencesOutcome(
     ResolvedResourceConnectionValues,
     ResourceConnectionReferencesUnavailable);
@@ -40,11 +49,13 @@ public sealed record AdmitResourceConnectionReferencesRequest(
     string TenantId,
     ResourceTypeId SourceType,
     string SourceId,
-    IReadOnlyCollection<ResourceConnectionValueReference> References);
+    IReadOnlyCollection<ResourceConnectionValueReference> References
+);
 
 public sealed record ResolveResourceConnectionReferencesRequest(
     string TenantId,
     ResourceTypeId SourceType,
     string SourceId,
     string DeploymentId,
-    IReadOnlyCollection<ResourceConnectionValueReference> References);
+    IReadOnlyCollection<ResourceConnectionValueReference> References
+);

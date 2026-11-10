@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.Functions.Migrations;
 
@@ -12,13 +12,14 @@ public sealed class FunctionRevisionStatusMigration : IMigration
 
     public ObjectId Id => new("69d50000b213917a38c379f3");
     public string Name => "Function revision status hierarchy";
-    public string Description => "Migrates revision enum states to polymorphic statuses and rebuilds lifecycle indexes.";
+
+    public string Description =>
+        "Migrates revision enum states to polymorphic statuses and rebuilds lifecycle indexes.";
 
     public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var revisions = context.GetCollection<BsonDocument>("FunctionRevisions");
-        var legacyRevisions = await revisions
-            .Find(Builders<BsonDocument>.Filter.Exists("State"))
+        var legacyRevisions = await revisions.Find(Builders<BsonDocument>.Filter.Exists("State"))
             .ToListAsync(cancellationToken);
 
         foreach (var revision in legacyRevisions)
@@ -28,46 +29,38 @@ public sealed class FunctionRevisionStatusMigration : IMigration
                 Builders<BsonDocument>.Filter.And(
                     Builders<BsonDocument>.Filter.Eq("_id", revision["_id"]),
                     Builders<BsonDocument>.Filter.Eq("State", revision["State"])),
-                Builders<BsonDocument>.Update
-                    .Set("Status", status)
-                    .Unset("State")
-                    .Unset("ReadyAtUtc")
-                    .Unset("Failure"),
+                Builders<BsonDocument>.Update.Set("Status", status).Unset("State").Unset("ReadyAtUtc").Unset("Failure"),
                 cancellationToken: cancellationToken);
             if (result.MatchedCount != 1)
-                throw new InvalidOperationException("A Function revision changed while migrating its lifecycle status.");
+                throw new InvalidOperationException(
+                    "A Function revision changed while migrating its lifecycle status.");
         }
 
         var indexDocuments = await (await revisions.Indexes.ListAsync(cancellationToken))
             .ToListAsync(cancellationToken);
-        var indexNames = indexDocuments
-            .Select(index => index["name"].AsString)
-            .ToHashSet(StringComparer.Ordinal);
+        var indexNames = indexDocuments.Select(index => index["name"].AsString).ToHashSet(StringComparer.Ordinal);
         foreach (var indexName in new[] { ActiveRevisionIndex, LegacyLifecycleIndex, LifecycleIndex })
-        {
             if (indexNames.Contains(indexName))
                 await revisions.Indexes.DropOneAsync(indexName, cancellationToken);
-        }
 
         await revisions.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("FunctionAppId"),
-                new CreateIndexOptions<BsonDocument>
-                {
-                    Name = ActiveRevisionIndex,
-                    Unique = true,
-                    PartialFilterExpression = Builders<BsonDocument>.Filter.Eq("Status._t", "active")
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("Status._t")
-                    .Ascending("TenantId")
-                    .Ascending("FunctionAppId"),
-                new CreateIndexOptions { Name = LifecycleIndex })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("FunctionAppId"),
+                    new CreateIndexOptions<BsonDocument>
+                    {
+                        Name = ActiveRevisionIndex,
+                        Unique = true,
+                        PartialFilterExpression = Builders<BsonDocument>.Filter.Eq("Status._t", "active"),
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("Status._t")
+                        .Ascending("TenantId")
+                        .Ascending("FunctionAppId"),
+                    new CreateIndexOptions { Name = LifecycleIndex }),
+            ],
+            cancellationToken);
     }
 
     private static BsonDocument ToStatus(BsonDocument revision)
@@ -75,7 +68,7 @@ public sealed class FunctionRevisionStatusMigration : IMigration
         var discriminator = StateName(revision["State"]);
         var status = new BsonDocument
         {
-            ["_t"] = new BsonArray { "FunctionRevisionStatus", discriminator }
+            ["_t"] = new BsonArray { "FunctionRevisionStatus", discriminator },
         };
 
         if (discriminator is "ready" or "active" or "draining" or "retired")
@@ -104,7 +97,7 @@ public sealed class FunctionRevisionStatusMigration : IMigration
             3 => "draining",
             4 => "failed",
             5 => "retired",
-            _ => throw UnknownState(state)
+            _ => throw UnknownState(state),
         },
         BsonType.String => state.AsString switch
         {
@@ -114,9 +107,9 @@ public sealed class FunctionRevisionStatusMigration : IMigration
             "Draining" => "draining",
             "Failed" => "failed",
             "Retired" => "retired",
-            _ => throw UnknownState(state)
+            _ => throw UnknownState(state),
         },
-        _ => throw UnknownState(state)
+        _ => throw UnknownState(state),
     };
 
     private static InvalidOperationException UnknownState(BsonValue state) =>

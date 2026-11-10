@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
     </ItemGroup>
 
 </Project>

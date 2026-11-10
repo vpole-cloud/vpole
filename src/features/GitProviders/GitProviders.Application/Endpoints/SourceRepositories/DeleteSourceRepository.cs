@@ -7,7 +7,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Repositories;
-using Pole.Features.SourceBuilds.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
 using static Pole.Features.GitProviders.Application.Common.GitProviderHttpMappings;
@@ -16,8 +15,8 @@ namespace Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
 
 public sealed record DeleteSourceRepositoryRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<DeleteSourceRepositoryOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<DeleteSourceRepositoryOutcome>, ITenantWriteOperation;
 
 public union DeleteSourceRepositoryOutcome(
     string,
@@ -25,16 +24,15 @@ public union DeleteSourceRepositoryOutcome(
     SourceRepositoryHasBuildConfiguration,
     SourceRepositoryGitOwned);
 
-public sealed class DeleteSourceRepositoryRequestValidator
-    : AbstractValidator<DeleteSourceRepositoryRequest>
+public sealed class DeleteSourceRepositoryRequestValidator : AbstractValidator<DeleteSourceRepositoryRequest>
 {
     public DeleteSourceRepositoryRequestValidator() =>
         RuleFor(request => request.Id).MongoObjectId("Source repository ID");
 }
 
 public sealed class DeleteSourceRepositoryHandler(
-    DeleteSourceRepository deleteSourceRepository)
-    : IMediatorOutcomeHandler<DeleteSourceRepositoryRequest, DeleteSourceRepositoryOutcome>
+    DeleteSourceRepository deleteSourceRepository
+) : IMediatorOutcomeHandler<DeleteSourceRepositoryRequest, DeleteSourceRepositoryOutcome>
 {
     public async Task<DeleteSourceRepositoryOutcome> HandleAsync(
         DeleteSourceRepositoryRequest request,
@@ -46,7 +44,7 @@ public sealed class DeleteSourceRepositoryHandler(
             SourceRepositoryDeleted => request.Id,
             SourceRepositoryNotFound error => error,
             SourceRepositoryHasBuildConfiguration conflict => conflict,
-            SourceRepositoryGitOwned conflict => conflict
+            SourceRepositoryGitOwned conflict => conflict,
         };
     }
 }
@@ -55,20 +53,21 @@ public static class DeleteSourceRepositoryEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteSourceRepositoryEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] DeleteSourceRepositoryRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteSourceRepositoryRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    string _ => Results.NoContent(),
-                    SourceRepositoryNotFound error => MapSourceRepositoryNotFound(error),
-                    SourceRepositoryHasBuildConfiguration error => MapSourceRepositoryHasBuildConfiguration(error),
-                    SourceRepositoryGitOwned error => MapSourceRepositoryGitOwned(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        string _ => Results.NoContent(),
+                        SourceRepositoryNotFound error => MapSourceRepositoryNotFound(error),
+                        SourceRepositoryHasBuildConfiguration error => MapSourceRepositoryHasBuildConfiguration(error),
+                        SourceRepositoryGitOwned error => MapSourceRepositoryGitOwned(error),
+                    });
+                })
             .WithName("DeleteSourceRepository")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

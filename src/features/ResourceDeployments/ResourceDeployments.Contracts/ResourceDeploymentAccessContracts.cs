@@ -17,7 +17,8 @@ public sealed record ResourceDeploymentAccessPlacement(
     long DeploymentRevision,
     long DesiredGeneration,
     ResourceDeploymentStatus Status,
-    ResourceDeploymentDesiredOperation DesiredOperation);
+    ResourceDeploymentDesiredOperation DesiredOperation
+);
 
 /// <summary>Reads and fences the deployment in the caller's Mongo transaction.</summary>
 public delegate Task<ResourceDeploymentAccessPlacement?> LoadExactResourceDeploymentAccessPlacement(
@@ -29,4 +30,5 @@ public sealed record LoadExactResourceDeploymentAccessPlacementRequest(
     string TenantId,
     ResourceTypeId ResourceType,
     string ResourceId,
-    string DeploymentId);
+    string DeploymentId
+);

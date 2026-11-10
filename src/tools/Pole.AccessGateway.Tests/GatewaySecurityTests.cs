@@ -1,5 +1,4 @@
 using System.Text;
-using Pole.AccessGateway;
 using Pole.Features.PrivateAccess.Primitives;
 using Pole.Features.PrivateAccess.Runtime;
 using Xunit;
@@ -22,9 +21,11 @@ public sealed class GatewaySecurityTests
     public void BrokerOriginDerivesFixedSecureGatewayPaths()
     {
         var origin = BrokerOrigin.Parse("https://broker.example:9444");
-        Assert.Equal("wss://broker.example:9444/private-access/gateways",
+        Assert.Equal(
+            "wss://broker.example:9444/private-access/gateways",
             origin.WebSocketPath("/private-access/gateways").AbsoluteUri);
-        Assert.Equal("wss://broker.example:9444/private-access/gateway-streams",
+        Assert.Equal(
+            "wss://broker.example:9444/private-access/gateway-streams",
             origin.WebSocketPath("/private-access/gateway-streams").AbsoluteUri);
     }
 
@@ -39,12 +40,10 @@ public sealed class GatewaySecurityTests
     [InlineData("../database\n5432", false)]
     public void GatewayAcceptsOnlyBoundedDestinationMessage(string message, bool valid)
     {
-        var frame = new PrivateAccessFrame(PrivateAccessFrameKind.Data,
-            Encoding.ASCII.GetBytes(message));
+        var frame = new PrivateAccessFrame(PrivateAccessFrameKind.Data, Encoding.ASCII.GetBytes(message));
         if (valid)
             Assert.Equal(5432, PrivateAccessGatewayProtocol.ReadDestination(frame).ServicePort);
         else
-            Assert.Throws<InvalidDataException>(() =>
-                PrivateAccessGatewayProtocol.ReadDestination(frame));
+            Assert.Throws<InvalidDataException>(() => PrivateAccessGatewayProtocol.ReadDestination(frame));
     }
 }

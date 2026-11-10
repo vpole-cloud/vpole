@@ -3,7 +3,6 @@ using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Orleans.Configuration;
-using Orleans.Hosting;
 using Orleans.Providers.MongoDB.Configuration;
 using Orleans.Providers.MongoDB.StorageProviders.Serializers;
 using Orleans.Providers.MongoDB.Utils;
@@ -20,10 +19,7 @@ public static class FunctionOrleansHosting
 
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<FunctionOrleansOptions>, FunctionOrleansOptionsValidator>());
-        builder.Services.AddOptions<FunctionOrleansOptions>()
-            .Bind(section)
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
+        builder.Services.AddOptions<FunctionOrleansOptions>().Bind(section).ValidateDataAnnotations().ValidateOnStart();
 
         // The Aspire resource already owns the MongoClient and its connection lifecycle.
         // The Orleans provider factory only adapts that same client to its named-client contract.
@@ -36,8 +32,7 @@ public static class FunctionOrleansHosting
             if (options.UseKubernetesHosting)
             {
                 siloBuilder.UseKubernetesHosting(optionsBuilder =>
-                    optionsBuilder.Configure(kubernetesOptions =>
-                        kubernetesOptions.DeleteDefunctSiloPods = false));
+                    optionsBuilder.Configure(kubernetesOptions => kubernetesOptions.DeleteDefunctSiloPods = false));
                 siloBuilder.Configure<EndpointOptions>(endpointOptions =>
                 {
                     endpointOptions.SiloPort = options.SiloPort;
@@ -74,7 +69,7 @@ public static class FunctionOrleansHosting
             });
             siloBuilder.AddMongoDBGrainStorage(
                 FunctionCoordinationStorage.ProviderName,
-                (MongoDBGrainStorageOptions mongoOptions) =>
+                mongoOptions =>
                 {
                     mongoOptions.DatabaseName = options.DatabaseName;
                     mongoOptions.CollectionPrefix = options.CollectionPrefix;
@@ -119,17 +114,13 @@ public sealed class FunctionOrleansOptions
 
     public bool UseKubernetesHosting { get; set; }
 
-    [Required]
-    public string AdvertisedAddress { get; set; } = IPAddress.Loopback.ToString();
+    [Required] public string AdvertisedAddress { get; set; } = IPAddress.Loopback.ToString();
 
-    [Range(1, 65_535)]
-    public int SiloPort { get; set; } = 11_111;
+    [Range(1, 65_535)] public int SiloPort { get; set; } = 11_111;
 
-    [Range(0, 65_535)]
-    public int GatewayPort { get; set; }
+    [Range(0, 65_535)] public int GatewayPort { get; set; }
 
-    [Range(1, 60)]
-    public int ResponseTimeoutSeconds { get; set; } = 10;
+    [Range(1, 60)] public int ResponseTimeoutSeconds { get; set; } = 10;
 }
 
 public sealed class FunctionOrleansOptionsValidator : IValidateOptions<FunctionOrleansOptions>
@@ -137,19 +128,12 @@ public sealed class FunctionOrleansOptionsValidator : IValidateOptions<FunctionO
     public ValidateOptionsResult Validate(string? name, FunctionOrleansOptions options)
     {
         var failures = new List<string>();
-        if (!options.UseKubernetesHosting &&
-            !IPAddress.TryParse(options.AdvertisedAddress, out _))
-        {
+        if (!options.UseKubernetesHosting && !IPAddress.TryParse(options.AdvertisedAddress, out _))
             failures.Add(
                 $"{nameof(options.AdvertisedAddress)} must be a valid IP address when Kubernetes hosting is disabled.");
-        }
         if (options.GatewayPort != 0 && options.GatewayPort == options.SiloPort)
-        {
             failures.Add($"{nameof(options.GatewayPort)} and {nameof(options.SiloPort)} must be distinct.");
-        }
 
-        return failures.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(failures);
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 }

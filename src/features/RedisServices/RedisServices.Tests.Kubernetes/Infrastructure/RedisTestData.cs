@@ -1,5 +1,3 @@
-using Pole.Testing;
-
 namespace Pole.Features.RedisServices.Tests.Kubernetes.Infrastructure;
 
 internal static class RedisTestData

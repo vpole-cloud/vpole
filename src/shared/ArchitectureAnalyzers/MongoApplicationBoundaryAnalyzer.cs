@@ -19,15 +19,14 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    private static readonly ImmutableHashSet<string> RawMongoQuerySymbols =
-        ImmutableHashSet.Create(
-            StringComparer.Ordinal,
-            "IMongoCollection",
-            "IAsyncCursor",
-            "IFindFluent",
-            "FilterDefinition",
-            "UpdateDefinition",
-            "Builders");
+    private static readonly ImmutableHashSet<string> RawMongoQuerySymbols = ImmutableHashSet.Create(
+        StringComparer.Ordinal,
+        "IMongoCollection",
+        "IAsyncCursor",
+        "IFindFluent",
+        "FilterDefinition",
+        "UpdateDefinition",
+        "Builders");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
@@ -35,10 +34,7 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-        context.RegisterSyntaxNodeAction(
-            AnalyzeSimpleName,
-            SyntaxKind.IdentifierName,
-            SyntaxKind.GenericName);
+        context.RegisterSyntaxNodeAction(AnalyzeSimpleName, SyntaxKind.IdentifierName, SyntaxKind.GenericName);
     }
 
     private static void AnalyzeSimpleName(SyntaxNodeAnalysisContext context)
@@ -48,9 +44,6 @@ public sealed class MongoApplicationBoundaryAnalyzer : DiagnosticAnalyzer
             MongoApplicationPaths.Classify(name.SyntaxTree.FilePath) != MongoApplicationPath.EntryPoint)
             return;
 
-        context.ReportDiagnostic(Diagnostic.Create(
-            Rule,
-            name.GetLocation(),
-            name.Identifier.ValueText));
+        context.ReportDiagnostic(Diagnostic.Create(Rule, name.GetLocation(), name.Identifier.ValueText));
     }
 }

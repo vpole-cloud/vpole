@@ -1,9 +1,7 @@
-using k8s;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
-using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -16,7 +14,8 @@ public delegate Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> DiscoverKu
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverPersistentVolumeClaims(
-    StorageObservationReader reader)
+    StorageObservationReader reader
+)
 {
     public async Task<DiscoverKubernetesPersistentVolumeClaimsOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -24,20 +23,23 @@ internal sealed class KubernetesDiscoverPersistentVolumeClaims(
     {
         return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Claims, cancellationToken) switch
         {
-            StorageObservationSnapshot snapshot => snapshot.PersistentVolumeClaims.Select(item =>
-                new KubernetesPersistentVolumeClaimDto(item.Name,
+            StorageObservationSnapshot snapshot => snapshot.PersistentVolumeClaims
+                .Select(item => new KubernetesPersistentVolumeClaimDto(
+                    item.Name,
                     item.Namespace,
                     item.Capacity,
                     item.RequestedCapacity,
                     item.Status,
                     item.StorageClassName,
                     item.VolumeName,
-                    Owner(item.Owner))).ToArray(),
-            KubernetesStorageDiscoveryUnavailable unavailable => unavailable
+                    Owner(item.Owner)))
+                .ToArray(),
+            KubernetesStorageDiscoveryUnavailable unavailable => unavailable,
         };
     }
 
-    private static KubernetesStorageOwnerDto Owner(StorageOwnerObservation owner) => new(owner.TenantId,
+    private static KubernetesStorageOwnerDto Owner(StorageOwnerObservation owner) => new(
+        owner.TenantId,
         owner.ResourceGroupId,
         owner.ResourceType,
         owner.ResourceId,

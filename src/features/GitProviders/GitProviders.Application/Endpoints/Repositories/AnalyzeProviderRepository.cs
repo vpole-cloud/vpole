@@ -17,16 +17,14 @@ public sealed record AnalyzeProviderRepositoryRequest(
     [FromRoute] string ConnectionId,
     [FromRoute] string RepositoryId,
     [FromTenantHeader] string TenantId,
-    [FromBody] AnalyzeRepositoryRequestBody Body)
-    : IMediatorRequest<AnalyzeProviderRepositoryOutcome>, ITenantReadOperation;
+    [FromBody] AnalyzeRepositoryRequestBody Body
+) : IMediatorRequest<AnalyzeProviderRepositoryOutcome>, ITenantReadOperation;
 
-public union AnalyzeProviderRepositoryOutcome(
-    RepositoryAnalysisDto,
-    AnalyzeProviderRepositoryError);
+public union AnalyzeProviderRepositoryOutcome(RepositoryAnalysisDto, AnalyzeProviderRepositoryError);
 
 public sealed class AnalyzeProviderRepositoryHandler(
-    AnalyzeProviderRepository analyzeProviderRepository)
-    : IMediatorOutcomeHandler<AnalyzeProviderRepositoryRequest, AnalyzeProviderRepositoryOutcome>
+    AnalyzeProviderRepository analyzeProviderRepository
+) : IMediatorOutcomeHandler<AnalyzeProviderRepositoryRequest, AnalyzeProviderRepositoryOutcome>
 {
     public async Task<AnalyzeProviderRepositoryOutcome> HandleAsync(
         AnalyzeProviderRepositoryRequest request,
@@ -41,13 +39,12 @@ public sealed class AnalyzeProviderRepositoryHandler(
         return analyzed switch
         {
             AnalyzedProviderRepository success => success.Analysis.ToDto(success.Repository),
-            AnalyzeProviderRepositoryError error => error
+            AnalyzeProviderRepositoryError error => error,
         };
     }
 }
 
-public sealed class AnalyzeProviderRepositoryRequestValidator
-    : AbstractValidator<AnalyzeProviderRepositoryRequest>
+public sealed class AnalyzeProviderRepositoryRequestValidator : AbstractValidator<AnalyzeProviderRepositoryRequest>
 {
     public AnalyzeProviderRepositoryRequestValidator()
     {
@@ -62,18 +59,19 @@ public static class AnalyzeProviderRepositoryEndpoint
 {
     public static IEndpointRouteBuilder MapAnalyzeProviderRepositoryEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/analysis", async (
-                IMediator mediator,
-                [AsParameters] AnalyzeProviderRepositoryRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/{ConnectionId}/repositories/{RepositoryId}/analysis",
+                async (
+                    IMediator mediator, [AsParameters] AnalyzeProviderRepositoryRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    RepositoryAnalysisDto analysis => Results.Ok(analysis),
-                    AnalyzeProviderRepositoryError error => MapAnalyzeError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        RepositoryAnalysisDto analysis => Results.Ok(analysis),
+                        AnalyzeProviderRepositoryError error => MapAnalyzeError(error),
+                    });
+                })
             .WithName("AnalyzeProviderRepository")
             .Produces<RepositoryAnalysisDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

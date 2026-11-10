@@ -10,7 +10,6 @@ using Pole.Features.SourceBuilds.Application.Execution.Workspace;
 using Pole.Features.SourceBuilds.Application.Logs;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.SourceBuilds.Application.Jobs;
 
@@ -27,30 +26,35 @@ public sealed class SourceBuildJobExecutor(
     ILogger<SourceBuildJobExecutor> logger,
     CreateSourceBuildLogCapture createLogCapture,
     RenewSourceBuildExecution renewExecution,
-    CheckSourceRepositoryBuildAccess checkRepositoryAccess)
+    CheckSourceRepositoryBuildAccess checkRepositoryAccess
+)
 {
     [AutomaticRetry(Attempts = 0)]
     public async Task ExecuteAsync(string buildJobId)
     {
         var job = await claimQueuedSourceBuildJob(
-            new(buildJobId, Guid.NewGuid().ToString("N")));
+            new ClaimSourceBuildJobRequest(buildJobId, Guid.NewGuid().ToString("N")));
         if (job is null)
             return;
 
         var execution = (ClaimedSourceBuildExecution)job.Execution;
         var trigger = (ManualSourceBuildTrigger)job.Trigger;
         await using var heartbeat = new SourceBuildHeartbeat(
-            new(job.TenantId, job.Id, execution.WorkerId, execution.Attempt), renewExecution, timeProvider);
+            new SourceBuildExecutionIdentity(job.TenantId, job.Id, execution.WorkerId, execution.Attempt),
+            renewExecution,
+            timeProvider);
         var cancellationToken = heartbeat.Token;
         await using var capture = await createLogCapture(job);
-        await capture.WriteAsync(SourceBuildLogStream.System,
+        await capture.WriteAsync(
+            SourceBuildLogStream.System,
             "Source build started. Repository archive preparation is in progress.\n");
 
         try
         {
             var configuration = await loadSourceBuildConfiguration(
                 job.TenantId,
-                job.ConfigurationId, cancellationToken);
+                job.ConfigurationId,
+                cancellationToken);
             if (configuration is null)
             {
                 await FailAsync(
@@ -64,7 +68,10 @@ public sealed class SourceBuildJobExecutor(
             if (configuration.Revision != job.InputVersion.ConfigurationRevision ||
                 configuration.BuildGeneration != job.InputVersion.Generation)
             {
-                await FailAsync(job, SourceBuildPhase.Cloning, "SupersededBuild",
+                await FailAsync(
+                    job,
+                    SourceBuildPhase.Cloning,
+                    "SupersededBuild",
                     "A newer build request or configuration superseded this build.");
                 return;
             }
@@ -73,7 +80,8 @@ public sealed class SourceBuildJobExecutor(
                 job.TenantId,
                 job.SourceRepositoryId,
                 job.CommitSha,
-                job.Id, cancellationToken);
+                job.Id,
+                cancellationToken);
             if (workspaceResult is CreateSourceBuildWorkspaceError workspaceError)
             {
                 await FailAsync(job, SourceBuildPhase.Cloning, workspaceError);
@@ -97,11 +105,13 @@ public sealed class SourceBuildJobExecutor(
                         "The selected build recipe does not contain a Dockerfile.");
                     return;
                 }
+
                 var building = job.StartBuilding(timeProvider.GetUtcNow().UtcDateTime);
                 if (!await tryPersistSourceBuildJob(job, building, cancellationToken))
                     return;
                 job = building;
-                await capture.WriteAsync(SourceBuildLogStream.System,
+                await capture.WriteAsync(
+                    SourceBuildLogStream.System,
                     "BuildKit build and registry push are starting.\n");
 
                 var repositoryName = $"web-services/{job.WebServiceId}";
@@ -111,12 +121,14 @@ public sealed class SourceBuildJobExecutor(
                         TenantId: job.TenantId,
                         InitiatedByUserId: trigger.UserId,
                         RepositoryName: repositoryName,
-                        Tag: tag), cancellationToken);
+                        Tag: tag),
+                    cancellationToken);
                 if (registryAccessResult.Value is PrepareRegistryBuildPushError accessError)
                 {
                     await FailAsync(job, SourceBuildPhase.Building, accessError);
                     return;
                 }
+
                 var registryAccess = (RegistryBuildAccess)registryAccessResult.Value;
 
                 var imageResult = await buildContainerImage(
@@ -127,21 +139,23 @@ public sealed class SourceBuildJobExecutor(
                         registryAccess.Username,
                         registryAccess.Secret,
                         capture.WriteAsync,
-                        capture.MarkUnavailable), cancellationToken);
+                        capture.MarkUnavailable),
+                    cancellationToken);
                 if (imageResult is BuildContainerImageError imageError)
                 {
-                    await capture.WriteAsync(SourceBuildLogStream.System,
+                    await capture.WriteAsync(
+                        SourceBuildLogStream.System,
                         "BuildKit did not produce an accepted image. Inspect the job's fixed failure summary.\n");
                     await FailAsync(job, SourceBuildPhase.Building, imageError);
                     return;
                 }
+
                 var image = (SourceBuildArtifact)imageResult.Value;
-                await capture.WriteAsync(SourceBuildLogStream.System,
+                await capture.WriteAsync(
+                    SourceBuildLogStream.System,
                     "BuildKit output capture finished; deployment outcome is tracked separately.\n");
 
-                var pushing = job.StartPushing(
-                    image,
-                    timeProvider.GetUtcNow().UtcDateTime);
+                var pushing = job.StartPushing(image, timeProvider.GetUtcNow().UtcDateTime);
                 if (!await tryPersistSourceBuildJob(job, pushing, cancellationToken))
                     return;
                 job = pushing;
@@ -151,18 +165,17 @@ public sealed class SourceBuildJobExecutor(
                         TenantId: job.TenantId,
                         RegistryProjectId: registryAccess.RegistryProjectId,
                         RepositoryName: repositoryName,
-                        Reference: tag), cancellationToken);
+                        Reference: tag),
+                    cancellationToken);
                 if (artifactResult.Value is GetTenantRegistryArtifactError artifactError)
                 {
                     await FailAsync(job, SourceBuildPhase.Pushing, artifactError);
                     return;
                 }
+
                 var artifact = (RegistryArtifact)artifactResult.Value;
 
-                if (!string.Equals(
-                        artifact.Digest,
-                        image.Digest,
-                        StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(artifact.Digest, image.Digest, StringComparison.OrdinalIgnoreCase))
                 {
                     await FailAsync(
                         job,
@@ -172,7 +185,9 @@ public sealed class SourceBuildJobExecutor(
                     return;
                 }
 
-                var access = await checkRepositoryAccess(new(job.TenantId, job.SourceRepositoryId), cancellationToken);
+                var access = await checkRepositoryAccess(
+                    new SourceRepositoryReferenceRequest(job.TenantId, job.SourceRepositoryId),
+                    cancellationToken);
                 if (access is not SourceRepositoryBuildSnapshot repository)
                 {
                     var failure = RepositoryAccessFailure(access);
@@ -183,7 +198,10 @@ public sealed class SourceBuildJobExecutor(
                 if (repository.Id != job.SourceRepositoryId ||
                     repository.Revision != job.InputVersion.RepositoryRevision)
                 {
-                    await FailAsync(job, SourceBuildPhase.Pushing, "SourceRepositoryChanged",
+                    await FailAsync(
+                        job,
+                        SourceBuildPhase.Pushing,
+                        "SourceRepositoryChanged",
                         "The application repository binding changed while the artifact was being built.");
                     return;
                 }
@@ -195,8 +213,12 @@ public sealed class SourceBuildJobExecutor(
                         job.Id,
                         job.SourceRepositoryId,
                         job.CommitSha,
-                        new(job.ConfigurationId, job.InputVersion.ConfigurationRevision, job.InputVersion.Generation,
-                            execution.WorkerId, execution.Attempt),
+                        new SourceBuildDeploymentAuthority(
+                            job.ConfigurationId,
+                            job.InputVersion.ConfigurationRevision,
+                            job.InputVersion.Generation,
+                            execution.WorkerId,
+                            execution.Attempt),
                         trigger.UserId,
                         trigger.Email,
                         new SourceBuildDeploymentImage(
@@ -204,12 +226,14 @@ public sealed class SourceBuildJobExecutor(
                             $"{registryAccess.Target.ProjectName}/{registryAccess.Target.RepositoryName}",
                             registryAccess.Target.Tag,
                             artifact.Digest,
-                            registryAccess.KubernetesPullSecretName)), cancellationToken);
+                            registryAccess.KubernetesPullSecretName)),
+                    cancellationToken);
                 if (deploymentResult is SourceBuildWebServiceDeploymentError deploymentError)
                 {
                     await FailAsync(job, SourceBuildPhase.Deploying, deploymentError);
                     return;
                 }
+
                 var deployment = (SourceBuildDeploymentResult)deploymentResult.Value;
 
                 var deploying = job.StartDeploying(
@@ -230,142 +254,139 @@ public sealed class SourceBuildJobExecutor(
                 buildJobId,
                 exception.GetType().FullName);
             await FailAsync(
-                job, PhaseOf(job.State),
+                job,
+                PhaseOf(job.State),
                 "UnexpectedBuildFailure",
                 "An unexpected error interrupted the source build.");
         }
     }
 
     private static (string Code, string Message) RepositoryAccessFailure(
-        CheckSourceRepositoryBuildAccessOutcome outcome) =>
-        outcome switch
-        {
-            SourceRepositoryBuildNotFound =>
-                ("SourceRepositoryNotFound", "The application repository no longer exists."),
-            SourceRepositoryBuildConnectionNotFound =>
-                ("SourceRepositoryConnectionNotFound", "The application repository connection is unavailable."),
-            SourceRepositoryRemoteNotFound =>
-                ("SourceRepositoryRemoteNotFound", "The remote repository is unavailable."),
-            SourceRepositoryAccessDenied =>
-                ("SourceRepositoryAccessDenied", "Access to the application repository was revoked."),
-            SourceRepositoryUnavailable => ("SourceRepositoryUnavailable", "Repository access could not be verified."),
-            SourceRepositoryBuildSnapshot =>
-                throw new InvalidOperationException("An available repository is not a failure.")
-        };
+        CheckSourceRepositoryBuildAccessOutcome outcome) => outcome switch
+    {
+        SourceRepositoryBuildNotFound => ("SourceRepositoryNotFound", "The application repository no longer exists."),
+        SourceRepositoryBuildConnectionNotFound => ("SourceRepositoryConnectionNotFound",
+            "The application repository connection is unavailable."),
+        SourceRepositoryRemoteNotFound => ("SourceRepositoryRemoteNotFound", "The remote repository is unavailable."),
+        SourceRepositoryAccessDenied => ("SourceRepositoryAccessDenied",
+            "Access to the application repository was revoked."),
+        SourceRepositoryUnavailable => ("SourceRepositoryUnavailable", "Repository access could not be verified."),
+        SourceRepositoryBuildSnapshot => throw new InvalidOperationException(
+            "An available repository is not a failure."),
+    };
 
     private async Task FailAsync(
         SourceBuildJob job,
         SourceBuildPhase phase,
-        CreateSourceBuildWorkspaceError error) =>
-        await FailAsync(job, phase, error switch
+        CreateSourceBuildWorkspaceError error) => await FailAsync(
+        job,
+        phase,
+        error switch
         {
             DownloadSourceRepositoryArchiveError download => DownloadFailure(download),
-            SourceBuildRepositoryArchiveInvalid invalid =>
-                ("RepositoryArchiveInvalid", invalid.Message),
-            SourceBuildWorkspaceArchiveLimitExceeded =>
-                ("RepositoryArchiveLimitExceeded", "Repository archive exceeds the configured download limit.")
+            SourceBuildRepositoryArchiveInvalid invalid => ("RepositoryArchiveInvalid", invalid.Message),
+            SourceBuildWorkspaceArchiveLimitExceeded => ("RepositoryArchiveLimitExceeded",
+                "Repository archive exceeds the configured download limit."),
         });
 
     private async Task FailAsync(
         SourceBuildJob job,
         SourceBuildPhase phase,
-        PrepareRegistryBuildPushError error) =>
-        await FailAsync(job, phase, error switch
+        PrepareRegistryBuildPushError error) => await FailAsync(
+        job,
+        phase,
+        error switch
         {
-            TenantContainerRegistryNotReady =>
-                ("ContainerRegistryNotReady", "The tenant container registry is not ready."),
-            TenantContainerRegistryProvisioningConflict =>
-                ("ContainerRegistryProvisioningConflict", "The tenant container registry is being provisioned."),
+            TenantContainerRegistryNotReady => ("ContainerRegistryNotReady",
+                "The tenant container registry is not ready."),
+            TenantContainerRegistryProvisioningConflict => ("ContainerRegistryProvisioningConflict",
+                "The tenant container registry is being provisioned."),
             ContainerRegistryProviderError provider => provider switch
             {
-                ContainerRegistryProviderNotConfigured =>
-                    ("ContainerRegistryNotConfigured", "The container registry provider is not configured."),
-                ContainerRegistryProviderUnavailable =>
-                    ("ContainerRegistryUnavailable", "The container registry provider is unavailable.")
+                ContainerRegistryProviderNotConfigured => ("ContainerRegistryNotConfigured",
+                    "The container registry provider is not configured."),
+                ContainerRegistryProviderUnavailable => ("ContainerRegistryUnavailable",
+                    "The container registry provider is unavailable."),
             },
-            RegistryCredentialUnavailable =>
-                ("RegistryCredentialUnavailable", "The container registry build credential is unavailable."),
-            RegistryCredentialProtectionFailed =>
-                ("RegistryCredentialProtectionFailed",
-                "The container registry build credential could not be protected.")
+            RegistryCredentialUnavailable => ("RegistryCredentialUnavailable",
+                "The container registry build credential is unavailable."),
+            RegistryCredentialProtectionFailed => ("RegistryCredentialProtectionFailed",
+                "The container registry build credential could not be protected."),
         });
 
     private async Task FailAsync(
         SourceBuildJob job,
         SourceBuildPhase phase,
-        BuildContainerImageError error) =>
-        await FailAsync(job, phase, error switch
+        BuildContainerImageError error) => await FailAsync(
+        job,
+        phase,
+        error switch
         {
-            BuildKitNotConfigured =>
-                ("BuildKitNotConfigured", "Container image building is not configured."),
-            BuildKitTimedOut timeout =>
-                ("BuildKitTimedOut", $"BuildKit timed out after {timeout.TimeoutMinutes} minutes."),
-            BuildKitUnavailable =>
-                ("BuildKitUnavailable", "BuildKit could not be started."),
-            BuildKitBuildRejected rejected =>
-                ("BuildKitBuildRejected", rejected.Classification)
+            BuildKitNotConfigured => ("BuildKitNotConfigured", "Container image building is not configured."),
+            BuildKitTimedOut timeout => ("BuildKitTimedOut",
+                $"BuildKit timed out after {timeout.TimeoutMinutes} minutes."),
+            BuildKitUnavailable => ("BuildKitUnavailable", "BuildKit could not be started."),
+            BuildKitBuildRejected rejected => ("BuildKitBuildRejected", rejected.Classification),
         });
 
     private async Task FailAsync(
         SourceBuildJob job,
         SourceBuildPhase phase,
-        GetTenantRegistryArtifactError error) =>
-        await FailAsync(job, phase, error switch
+        GetTenantRegistryArtifactError error) => await FailAsync(
+        job,
+        phase,
+        error switch
         {
-            TenantContainerRegistryProjectNotFound =>
-                ("ContainerRegistryProjectNotFound", "The tenant container registry project was not found."),
-            TenantContainerRegistryNotReady =>
-                ("ContainerRegistryNotReady", "The tenant container registry is not ready."),
+            TenantContainerRegistryProjectNotFound => ("ContainerRegistryProjectNotFound",
+                "The tenant container registry project was not found."),
+            TenantContainerRegistryNotReady => ("ContainerRegistryNotReady",
+                "The tenant container registry is not ready."),
             ContainerRegistryArtifactLookupError lookup => lookup switch
             {
-                ContainerRegistryArtifactNotFound =>
-                    ("ContainerRegistryArtifactNotFound", "The pushed container image was not found in the registry."),
+                ContainerRegistryArtifactNotFound => ("ContainerRegistryArtifactNotFound",
+                    "The pushed container image was not found in the registry."),
                 ContainerRegistryProviderError provider => provider switch
                 {
-                    ContainerRegistryProviderNotConfigured =>
-                        ("ContainerRegistryNotConfigured", "The container registry provider is not configured."),
-                    ContainerRegistryProviderUnavailable =>
-                        ("ContainerRegistryUnavailable", "The container registry provider is unavailable.")
-                }
-            }
+                    ContainerRegistryProviderNotConfigured => ("ContainerRegistryNotConfigured",
+                        "The container registry provider is not configured."),
+                    ContainerRegistryProviderUnavailable => ("ContainerRegistryUnavailable",
+                        "The container registry provider is unavailable."),
+                },
+            },
         });
 
     private async Task FailAsync(
         SourceBuildJob job,
         SourceBuildPhase phase,
-        SourceBuildWebServiceDeploymentError error) =>
-        await FailAsync(job, phase, error switch
+        SourceBuildWebServiceDeploymentError error) => await FailAsync(
+        job,
+        phase,
+        error switch
         {
-            SourceBuildWebServiceNotFound notFound =>
-                ("WebServiceNotFound", $"Web service '{notFound.WebServiceId}' was not found."),
-            SourceBuildWebServiceDeleting deleting =>
-                ("WebServiceDeleting", $"Web service '{deleting.WebServiceId}' is being deleted."),
-            SourceBuildWebServiceHasNoActiveDeployments empty =>
-                ("WebServiceNoActiveDeployments",
-                    $"Web service '{empty.WebServiceId}' has no active resource deployments."),
-            SourceBuildWebServiceDeploymentRejected rejected =>
-                (DeploymentRejectionCode(rejected.Reason),
-                    $"Web service deployment was rejected ({rejected.Reason.Value.GetType().Name})."),
-            SourceBuildWebServiceUpdateConflict conflict =>
-                conflict.Reason switch
-                {
-                    SourceBuildWebServiceUpdateConflictReason.SupersededBuild =>
-                        ("SupersededBuild", "A newer build request or configuration superseded this build."),
-                    SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration =>
-                        ("GitOwnedConfiguration",
+            SourceBuildWebServiceNotFound notFound => ("WebServiceNotFound",
+                $"Web service '{notFound.WebServiceId}' was not found."),
+            SourceBuildWebServiceDeleting deleting => ("WebServiceDeleting",
+                $"Web service '{deleting.WebServiceId}' is being deleted."),
+            SourceBuildWebServiceHasNoActiveDeployments empty => ("WebServiceNoActiveDeployments",
+                $"Web service '{empty.WebServiceId}' has no active resource deployments."),
+            SourceBuildWebServiceDeploymentRejected rejected => (DeploymentRejectionCode(rejected.Reason),
+                $"Web service deployment was rejected ({rejected.Reason.Value.GetType().Name})."),
+            SourceBuildWebServiceUpdateConflict conflict => conflict.Reason switch
+            {
+                SourceBuildWebServiceUpdateConflictReason.SupersededBuild => ("SupersededBuild",
+                    "A newer build request or configuration superseded this build."),
+                SourceBuildWebServiceUpdateConflictReason.GitOwnedConfiguration => ("GitOwnedConfiguration",
                     "The image was built; edit the managing Git source to change the workload image."),
-                    SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict =>
-                        ("WebServiceUpdateConflict",
+                SourceBuildWebServiceUpdateConflictReason.ExpectedRevisionConflict => ("WebServiceUpdateConflict",
                     $"Web service '{conflict.WebServiceId}' changed while the source build was being deployed."),
-                    _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason))
-                }
+                _ => throw new ArgumentOutOfRangeException(nameof(conflict.Reason)),
+            },
         });
 
     private async Task FailAsync(
         SourceBuildJob job,
         SourceBuildPhase phase,
-        (string Code, string Message) failure) =>
-        await FailAsync(job, phase, failure.Code, failure.Message);
+        (string Code, string Message) failure) => await FailAsync(job, phase, failure.Code, failure.Message);
 
     private async Task FailAsync(
         SourceBuildJob job,
@@ -377,35 +398,32 @@ public sealed class SourceBuildJobExecutor(
         await tryPersistSourceBuildJob(job, failed);
     }
 
-    private static (string Code, string Message) DownloadFailure(
-        DownloadSourceRepositoryArchiveError error) => error switch
-        {
-            SourceRepositoryBuildNotFound =>
-                ("SourceRepositoryNotFound", "The linked source repository no longer exists."),
-            SourceRepositoryBuildConnectionNotFound =>
-                ("GitProviderConnectionNotFound", "The linked git provider connection no longer exists."),
-            GitProviderRepositoryAccessError provider => provider switch
-            {
-                GitProviderUnsupported =>
-                    ("GitProviderUnsupported", "The linked git provider is not supported."),
-                GitProviderUnavailable =>
-                    ("GitProviderUnavailable", "The linked git provider is unavailable.")
-            }
-        };
-
-    private static string DeploymentRejectionCode(SourceBuildResourceDeploymentRejection error) =>
+    private static (string Code, string Message) DownloadFailure(DownloadSourceRepositoryArchiveError error) =>
         error switch
         {
-            SourceBuildResourceDeploymentNotFound => "ResourceDeploymentNotFound",
-            SourceBuildResourceDeploymentChanged => "ResourceDeploymentChanged",
-            SourceBuildResourceDeploymentCardinalityConflict => "ResourceDeploymentCardinalityConflict",
-            SourceBuildResourceDeploymentPendingDeletion => "ResourceDeploymentPendingDeletion",
-            SourceBuildResourceDeploymentPlacementUnavailable => "ResourceDeploymentPlacementUnavailable",
-            SourceBuildResourceDeploymentReplacementTargetMismatch => "ResourceDeploymentReplacementTargetMismatch",
-            SourceBuildResourceDeploymentIngressConfigurationChanged => "ResourceDeploymentIngressConfigurationChanged",
-            SourceBuildResourceDeploymentRetryUnavailable => "ResourceDeploymentRetryUnavailable",
-            SourceBuildResourceDeploymentComputeConfigurationChanged => "ResourceDeploymentComputeConfigurationChanged"
+            SourceRepositoryBuildNotFound => ("SourceRepositoryNotFound",
+                "The linked source repository no longer exists."),
+            SourceRepositoryBuildConnectionNotFound => ("GitProviderConnectionNotFound",
+                "The linked git provider connection no longer exists."),
+            GitProviderRepositoryAccessError provider => provider switch
+            {
+                GitProviderUnsupported => ("GitProviderUnsupported", "The linked git provider is not supported."),
+                GitProviderUnavailable => ("GitProviderUnavailable", "The linked git provider is unavailable."),
+            },
         };
+
+    private static string DeploymentRejectionCode(SourceBuildResourceDeploymentRejection error) => error switch
+    {
+        SourceBuildResourceDeploymentNotFound => "ResourceDeploymentNotFound",
+        SourceBuildResourceDeploymentChanged => "ResourceDeploymentChanged",
+        SourceBuildResourceDeploymentCardinalityConflict => "ResourceDeploymentCardinalityConflict",
+        SourceBuildResourceDeploymentPendingDeletion => "ResourceDeploymentPendingDeletion",
+        SourceBuildResourceDeploymentPlacementUnavailable => "ResourceDeploymentPlacementUnavailable",
+        SourceBuildResourceDeploymentReplacementTargetMismatch => "ResourceDeploymentReplacementTargetMismatch",
+        SourceBuildResourceDeploymentIngressConfigurationChanged => "ResourceDeploymentIngressConfigurationChanged",
+        SourceBuildResourceDeploymentRetryUnavailable => "ResourceDeploymentRetryUnavailable",
+        SourceBuildResourceDeploymentComputeConfigurationChanged => "ResourceDeploymentComputeConfigurationChanged",
+    };
 
     private static SourceBuildPhase PhaseOf(SourceBuildJobState state) => state switch
     {
@@ -415,7 +433,6 @@ public sealed class SourceBuildJobExecutor(
         BuildingSourceBuild => SourceBuildPhase.Building,
         PushingSourceBuild => SourceBuildPhase.Pushing,
         DeployingSourceBuild => SourceBuildPhase.Deploying,
-        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
     };
-
 }

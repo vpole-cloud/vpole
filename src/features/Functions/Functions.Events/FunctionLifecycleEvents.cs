@@ -12,7 +12,8 @@ public sealed record FunctionAppCreatedEvent(
     FunctionPlacementSnapshot Placement,
     string Name,
     string FunctionRoute,
-    FunctionRevisionSpecSnapshot Spec) : IPoleEvent
+    FunctionRevisionSpecSnapshot Spec
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -23,7 +24,8 @@ public sealed record FunctionRevisionCreatedEvent(
     string RevisionId,
     int RevisionNumber,
     FunctionPlacementSnapshot Placement,
-    FunctionRevisionSpecSnapshot Spec) : IPoleEvent
+    FunctionRevisionSpecSnapshot Spec
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -34,7 +36,8 @@ public sealed record FunctionRevisionPromotedEvent(
     string RevisionId,
     int RevisionNumber,
     FunctionPlacementSnapshot Placement,
-    string? PreviousRevisionId) : IPoleEvent
+    string? PreviousRevisionId
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -46,7 +49,8 @@ public sealed record FunctionRevisionFailedEvent(
     int RevisionNumber,
     FunctionPlacementSnapshot Placement,
     string Code,
-    string Message) : IPoleEvent
+    string Message
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -56,7 +60,8 @@ public sealed record FunctionRevisionRetiredEvent(
     string FunctionAppId,
     string RevisionId,
     int RevisionNumber,
-    FunctionPlacementSnapshot Placement) : IPoleEvent
+    FunctionPlacementSnapshot Placement
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -65,7 +70,8 @@ public sealed record FunctionRevisionRetiredEvent(
 public sealed record FunctionAppDeleteRequestedEvent(
     string FunctionAppId,
     FunctionPlacementSnapshot Placement,
-    string? ActiveRevisionId) : IPoleEvent
+    string? ActiveRevisionId
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
@@ -73,4 +79,5 @@ public sealed record FunctionAppDeleteRequestedEvent(
 public sealed record FunctionPlacementSnapshot(
     string ResourceDeploymentId,
     string RuntimeCellId,
-    string DeploymentTargetId);
+    string DeploymentTargetId
+);

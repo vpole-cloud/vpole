@@ -6,8 +6,6 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Mediator;
 using Pole.Validation;
@@ -18,26 +16,24 @@ public static class DeleteResourceGroup
 {
     public static IEndpointRouteBuilder MapDeleteResourceGroupEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] DeleteResourceGroupRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteResourceGroupRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ResourceGroupDeletionCompleted => Results.NoContent(),
-                    ResourceGroupDeletionRequested => Results.Accepted(value:
-                        new DeleteResourceGroupResponse(
-                            Deleted: false,
-                            DeletionRequested: true)),
-                    ResourceGroupDeletionError error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ResourceGroupDeletionCompleted => Results.NoContent(),
+                        ResourceGroupDeletionRequested => Results.Accepted(
+                            value: new DeleteResourceGroupResponse(Deleted: false, DeletionRequested: true)),
+                        ResourceGroupDeletionError error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("DeleteResourceGroup")
             .WithSummary("Deletes a resource group by its ID.")
-            .WithDescription(
-                "Deletes an empty resource group immediately, or starts deletion of its runtime cells.")
+            .WithDescription("Deletes an empty resource group immediately, or starts deletion of its runtime cells.")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<DeleteResourceGroupResponse>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -49,20 +45,18 @@ public static class DeleteResourceGroup
 
 public sealed record DeleteResourceGroupRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<DeleteResourceGroupOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<DeleteResourceGroupOutcome>, ITenantWriteOperation;
 
-public sealed class DeleteResourceGroupRequestValidator
-    : AbstractValidator<DeleteResourceGroupRequest>
+public sealed class DeleteResourceGroupRequestValidator : AbstractValidator<DeleteResourceGroupRequest>
 {
-    public DeleteResourceGroupRequestValidator() =>
-        RuleFor(request => request.Id)
-            .MongoObjectId("Resource group ID");
+    public DeleteResourceGroupRequestValidator() => RuleFor(request => request.Id).MongoObjectId("Resource group ID");
 }
 
 public sealed record DeleteResourceGroupResponse(
     bool Deleted,
-    bool DeletionRequested);
+    bool DeletionRequested
+);
 
 public union DeleteResourceGroupOutcome(
     ResourceGroupDeletionCompleted,
@@ -70,20 +64,19 @@ public union DeleteResourceGroupOutcome(
     ResourceGroupDeletionError);
 
 public sealed class DeleteResourceGroupHandler(
-    BeginResourceGroupDeletion beginResourceGroupDeletion)
-    : IMediatorOutcomeHandler<DeleteResourceGroupRequest, DeleteResourceGroupOutcome>
+    BeginResourceGroupDeletion beginResourceGroupDeletion
+) : IMediatorOutcomeHandler<DeleteResourceGroupRequest, DeleteResourceGroupOutcome>
 {
     public async Task<DeleteResourceGroupOutcome> HandleAsync(
         DeleteResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
-        var outcome = await beginResourceGroupDeletion(
-            request.TenantId, request.Id, cancellationToken);
+        var outcome = await beginResourceGroupDeletion(request.TenantId, request.Id, cancellationToken);
         return outcome switch
         {
             ResourceGroupDeletionCompleted completed => new DeleteResourceGroupOutcome(completed),
             ResourceGroupDeletionRequested requested => new DeleteResourceGroupOutcome(requested),
-            ResourceGroupDeletionError error => new DeleteResourceGroupOutcome(error)
+            ResourceGroupDeletionError error => new DeleteResourceGroupOutcome(error),
         };
     }
 }

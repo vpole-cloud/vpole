@@ -2,17 +2,9 @@ using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Jobs;
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.ResourceGroups.Contracts;
@@ -24,10 +16,9 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 
 [Collection(IntegrationTestCollection.Global4)]
 public sealed class ResourceDeploymentRecoveryJobTests(
-    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
-    private ServiceProvider? serviceProvider;
-    private IServiceScope? serviceScope;
     private const string TenantId = "507f1f77bcf86cd799439071";
     private const string ResourceId = "507f1f77bcf86cd799439072";
     private const string ResourceGroupId = "507f1f77bcf86cd799439073";
@@ -36,8 +27,15 @@ public sealed class ResourceDeploymentRecoveryJobTests(
     private const string TargetId = "507f1f77bcf86cd799439076";
     private const string DeploymentId = "507f1f77bcf86cd799439077";
     private const string ClaimId = "507f1f77bcf86cd799439078";
-    private static readonly ResourceTypeId TestResourceType =
-        ResourceTypeId.Create("pole/test-resource");
+
+    private static readonly ResourceTypeId TestResourceType = ResourceTypeId.Create("pole/test-resource");
+
+    private ServiceProvider? serviceProvider;
+    private IServiceScope? serviceScope;
+
+    private IServiceProvider Services =>
+        serviceScope?.ServiceProvider ??
+        throw new InvalidOperationException("The test service scope was not initialized.");
 
     public override async Task InitializeAsync()
     {
@@ -64,9 +62,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                 ScopeId,
                 TargetId,
                 "pole-recovery-test",
-                new RuntimeCellFactory.CreateOptions(
-                    RuntimeCellId,
-                    createdAtUtc))
+                new RuntimeCellFactory.CreateOptions(RuntimeCellId, createdAtUtc))
             .MarkReady(expectedGeneration: 1, createdAtUtc.AddSeconds(1));
         var deployment = ResourceDeploymentFactory.Create(
                 TenantId,
@@ -89,7 +85,7 @@ public sealed class ResourceDeploymentRecoveryJobTests(
                 ResourceDeploymentFactory.DefaultOptions with
                 {
                     Id = DeploymentId,
-                    CreatedAtUtc = createdAtUtc
+                    CreatedAtUtc = createdAtUtc,
                 })
             .Start(
                 expectedGeneration: 1,
@@ -106,12 +102,11 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         {
             if (instrument.Meter.Name == ResourceDeploymentMetrics.MeterName &&
                 instrument.Name == "pole.resource_deployments.recovery.stale_claims")
-            {
                 meterListener.EnableMeasurementEvents(instrument);
-            }
         };
-        listener.SetMeasurementEventCallback<long>(
-            (_, measurement, _, _) => measurements.Add(measurement));
+        listener.SetMeasurementEventCallback<long>((
+            _, measurement,
+            _, _) => measurements.Add(measurement));
         listener.Start();
 
         using var metrics = new ResourceDeploymentMetrics();
@@ -119,14 +114,12 @@ public sealed class ResourceDeploymentRecoveryJobTests(
             Fixture.DbContext.ResourceDeployments);
         var recover = new RecoverResourceDeploymentOperation(
             Fixture.DbContext.ResourceDeployments,
-            (operation, cancellationToken) => Fixture.DbContext
-                .RunOutcomeInTransactionAsync(
-                    operation,
-                    cancellationToken: cancellationToken),
-            (session, writes, cancellationToken) => Fixture.StoreOutboxWrites(
-                session,
-                writes,
-                cancellationToken),
+            (operation, cancellationToken) => Fixture.DbContext.RunOutcomeInTransactionAsync(
+                operation,
+                cancellationToken: cancellationToken),
+            (
+                session, writes,
+                cancellationToken) => Fixture.StoreOutboxWrites(session, writes, cancellationToken),
             Services.GetRequiredService<LoadResourcePlacementInTransaction>());
         var job = new ResourceDeploymentRecoveryJob(
             loadCandidates.InvokeAsync,
@@ -137,17 +130,13 @@ public sealed class ResourceDeploymentRecoveryJobTests(
 
         await job.RecoverAsync();
 
-        var saved = await Fixture.DbContext.ResourceDeployments
-            .Find(item => item.Id == DeploymentId)
-            .SingleAsync();
+        var saved = await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == DeploymentId).SingleAsync();
         var pending = Assert.IsType<PendingResourceDeploymentState>(saved.State);
         Assert.Equal(1, pending.AttemptCount);
         Assert.Equal(
             1L,
-            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-                message =>
-                    message.PendingKey ==
-                    ResourceDeploymentPendingKey.Apply(DeploymentId, 1)));
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(message =>
+                message.PendingKey == ResourceDeploymentPendingKey.Apply(DeploymentId, 1)));
         Assert.Equal([1L], measurements);
     }
 
@@ -163,7 +152,8 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         var recover = new RecoverResourceDeploymentOperation(
             Fixture.DbContext.ResourceDeployments,
             (operation, cancellationToken) => Fixture.DbContext.RunOutcomeInTransactionAsync(
-                operation, cancellationToken: cancellationToken),
+                operation,
+                cancellationToken: cancellationToken),
             Fixture.StoreOutboxWrites,
             Services.GetRequiredService<LoadResourcePlacementInTransaction>());
 
@@ -176,11 +166,14 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         Assert.Equal(oldest.DesiredGeneration, queued.DesiredGeneration);
         Assert.Equal(oldest.ResourceRevision, queued.ResourceRevision);
         Assert.Equal(oldest.ResolvedPlacement.KubernetesNamespace, queued.ResolvedPlacement.KubernetesNamespace);
-        Assert.Equal(oldest.ResolvedPlacement.TargetWorkloadConfigurationRevision,
+        Assert.Equal(
+            oldest.ResolvedPlacement.TargetWorkloadConfigurationRevision,
             queued.ResolvedPlacement.TargetWorkloadConfigurationRevision);
         Assert.Equal(oldest.Revision + 1, queued.Revision);
-        Assert.Equal(1, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            message => message.PendingKey == ResourceDeploymentPendingKey.Apply(oldest.Id, oldest.DesiredGeneration)));
+        Assert.Equal(
+            1,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(message =>
+                message.PendingKey == ResourceDeploymentPendingKey.Apply(oldest.Id, oldest.DesiredGeneration)));
         Assert.Equal([next.Id], await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
         await recover.InvokeAsync(next.Id, now);
         Assert.Empty(await candidates.InvokeAsync(now, now.AddSeconds(-30), 1));
@@ -195,7 +188,8 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         var recover = new RecoverResourceDeploymentOperation(
             Fixture.DbContext.ResourceDeployments,
             (operation, cancellationToken) => Fixture.DbContext.RunOutcomeInTransactionAsync(
-                operation, cancellationToken: cancellationToken),
+                operation,
+                cancellationToken: cancellationToken),
             Fixture.StoreOutboxWrites,
             Services.GetRequiredService<LoadResourcePlacementInTransaction>());
 
@@ -205,34 +199,46 @@ public sealed class ResourceDeploymentRecoveryJobTests(
         Assert.Equal(ResourceDeploymentOperation.Delete, saved.DesiredOperation);
         Assert.Equal(deleting.DesiredGeneration, saved.DesiredGeneration);
         Assert.Throws<InvalidOperationException>(() => saved.RequestVerification(now));
-        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            message => message.PendingKey == ResourceDeploymentPendingKey.Apply(saved.Id, saved.DesiredGeneration)));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(message =>
+                message.PendingKey == ResourceDeploymentPendingKey.Apply(saved.Id, saved.DesiredGeneration)));
     }
 
     private static ResourceDeployment CreateApplied(string id, DateTime completedAtUtc)
     {
         var createdAtUtc = completedAtUtc.AddMinutes(-1);
         return ResourceDeploymentFactory.Create(
-                TenantId, TestResourceType, id, ResourceGroupId, ScopeId,
+                TenantId,
+                TestResourceType,
+                id,
+                ResourceGroupId,
+                ScopeId,
                 ResolvedResourcePlacement.Create(
-                    RuntimeCellId, TargetId, "pole-verification-test", 1, 1,
-                    null, null, ResourceDeploymentTestData.Compute(), createdAtUtc),
-                ResourcePlacementCapability.SingleTarget, true,
+                    RuntimeCellId,
+                    TargetId,
+                    "pole-verification-test",
+                    1,
+                    1,
+                    null,
+                    null,
+                    ResourceDeploymentTestData.Compute(),
+                    createdAtUtc),
+                ResourcePlacementCapability.SingleTarget,
+                true,
                 ResourceDeploymentFactory.DefaultOptions with
                 {
                     Id = id,
-                    CreatedAtUtc = createdAtUtc
+                    CreatedAtUtc = createdAtUtc,
                 })
             .Start(1, ResourceDeploymentOperation.Apply, ClaimId, createdAtUtc, completedAtUtc.AddMinutes(1))
             .Complete(1, ResourceDeploymentOperation.Apply, ClaimId, [], completedAtUtc);
     }
 
-    private sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTime utcNow
+    ) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() =>
-            new(utcNow, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => new(utcNow, TimeSpan.Zero);
     }
-
-    private IServiceProvider Services => serviceScope?.ServiceProvider ??
-        throw new InvalidOperationException("The test service scope was not initialized.");
 }

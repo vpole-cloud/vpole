@@ -17,12 +17,13 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 public sealed record UpdateSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,
     [FromBody] UpdateSourceBuildConfigurationBody Body,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<UpdateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<UpdateSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateSourceBuildConfigurationBody(
     SourceBuildRecipeDto Recipe,
-    long ExpectedRevision);
+    long ExpectedRevision
+);
 
 public union UpdateSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDto,
@@ -33,35 +34,31 @@ public union UpdateSourceBuildConfigurationOutcome(
 public sealed class UpdateSourceBuildConfigurationHandler(
     LoadSourceBuildConfiguration loadSourceBuildConfiguration,
     UpdateSourceBuildConfiguration updateSourceBuildConfiguration,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<
-        UpdateSourceBuildConfigurationRequest,
-        UpdateSourceBuildConfigurationOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<UpdateSourceBuildConfigurationRequest, UpdateSourceBuildConfigurationOutcome>
 {
     public async Task<UpdateSourceBuildConfigurationOutcome> HandleAsync(
         UpdateSourceBuildConfigurationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var existing = await loadSourceBuildConfiguration(
-            request.TenantId,
-            request.ConfigurationId,
-            cancellationToken);
+        var existing = await loadSourceBuildConfiguration(request.TenantId, request.ConfigurationId, cancellationToken);
         if (existing is null)
-        {
             return new SourceBuildConfigurationNotFound(request.ConfigurationId);
-        }
         if (existing.Revision != request.Body.ExpectedRevision)
             return new SourceBuildConfigurationUpdateConflict(existing.Id);
 
         var updated = await updateSourceBuildConfiguration(
-            new(existing, request.Body.Recipe.ToDomain(), timeProvider.GetUtcNow().UtcDateTime),
+            new UpdateSourceBuildConfigurationCommand(
+                existing,
+                request.Body.Recipe.ToDomain(),
+                timeProvider.GetUtcNow().UtcDateTime),
             cancellationToken);
         return updated switch
         {
             SourceBuildConfiguration success => success.ToDto(),
             SourceBuildConfigurationNotFound notFound => notFound,
             SourceBuildConfigurationUpdateConflict conflict => conflict,
-            SourceBuildConfigurationGitOwned owned => owned
+            SourceBuildConfigurationGitOwned owned => owned,
         };
     }
 }
@@ -72,43 +69,38 @@ public sealed class UpdateSourceBuildConfigurationRequestValidator
     public UpdateSourceBuildConfigurationRequestValidator()
     {
         RuleFor(item => item.ConfigurationId).MongoObjectId("Source build configuration ID");
-        RuleFor(item => item.Body)
-            .NotNull()
-            .SetValidator(new UpdateSourceBuildConfigurationBodyValidator());
+        RuleFor(item => item.Body).NotNull().SetValidator(new UpdateSourceBuildConfigurationBodyValidator());
     }
 }
 
-public sealed class UpdateSourceBuildConfigurationBodyValidator
-    : AbstractValidator<UpdateSourceBuildConfigurationBody>
+public sealed class UpdateSourceBuildConfigurationBodyValidator : AbstractValidator<UpdateSourceBuildConfigurationBody>
 {
     public UpdateSourceBuildConfigurationBodyValidator()
     {
         RuleFor(item => item.ExpectedRevision).GreaterThan(0);
-        RuleFor(item => item.Recipe)
-            .NotNull()
-            .SetValidator(new SourceBuildRecipeDtoValidator());
+        RuleFor(item => item.Recipe).NotNull().SetValidator(new SourceBuildRecipeDtoValidator());
     }
 }
 
 public static class UpdateSourceBuildConfigurationEndpoint
 {
-    public static IEndpointRouteBuilder MapUpdateSourceBuildConfigurationEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapUpdateSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{ConfigurationId}", async (
-                IMediator mediator,
-                [AsParameters] UpdateSourceBuildConfigurationRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPut(
+                "/{ConfigurationId}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateSourceBuildConfigurationRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    SourceBuildConfigurationDto configuration => Results.Ok(configuration),
-                    SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
-                    SourceBuildConfigurationGitOwned error => MapConfigurationGitOwned(error),
-                    SourceBuildConfigurationUpdateConflict error => MapConfigurationUpdateConflict(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        SourceBuildConfigurationDto configuration => Results.Ok(configuration),
+                        SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
+                        SourceBuildConfigurationGitOwned error => MapConfigurationGitOwned(error),
+                        SourceBuildConfigurationUpdateConflict error => MapConfigurationUpdateConflict(error),
+                    });
+                })
             .WithName("UpdateSourceBuildConfiguration")
             .Produces<SourceBuildConfigurationDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

@@ -23,7 +23,8 @@ public sealed record WebServiceDeploymentToken(
     DateTime? RevokedAtUtc,
     string? RevokedByUserId,
     DateTime? LastUsedAtUtc,
-    string? LastUsedSource) : ITenantOwned;
+    string? LastUsedSource
+) : ITenantOwned;
 
 public static class WebServiceDeploymentTokenOperations
 {
@@ -34,19 +35,11 @@ public static class WebServiceDeploymentTokenFactory
 {
     public const string RawTokenPrefix = "pole_ci_";
 
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc,
-        ImmutableHashSet<string> AllowedOperations);
-
-    public sealed record IssuedToken(
-        WebServiceDeploymentToken Token,
-        string RawToken);
-
-    public static CreateOptions DefaultOptions => new(
-        Id: ObjectId.GenerateNewId().ToString(),
-        CreatedAtUtc: DateTime.UtcNow,
-        AllowedOperations: [WebServiceDeploymentTokenOperations.UpdateImageTag]);
+    public static CreateOptions DefaultOptions =>
+        new(
+            Id: ObjectId.GenerateNewId().ToString(),
+            CreatedAtUtc: DateTime.UtcNow,
+            AllowedOperations: [WebServiceDeploymentTokenOperations.UpdateImageTag]);
 
     public static IssuedToken Issue(
         string tenantId,
@@ -79,8 +72,7 @@ public static class WebServiceDeploymentTokenFactory
             rawToken);
     }
 
-    public static bool IsRawDeploymentToken(string? rawToken) =>
-        !string.IsNullOrWhiteSpace(rawToken) &&
+    public static bool IsRawDeploymentToken(string? rawToken) => !string.IsNullOrWhiteSpace(rawToken) &&
         rawToken.StartsWith(RawTokenPrefix, StringComparison.Ordinal);
 
     public static string Hash(string rawToken)
@@ -91,4 +83,15 @@ public static class WebServiceDeploymentTokenFactory
 
     private static string GenerateRawToken() =>
         $"{RawTokenPrefix}{Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant()}";
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        ImmutableHashSet<string> AllowedOperations
+    );
+
+    public sealed record IssuedToken(
+        WebServiceDeploymentToken Token,
+        string RawToken
+    );
 }

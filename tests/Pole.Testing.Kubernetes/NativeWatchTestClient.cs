@@ -13,12 +13,15 @@ public static class NativeWatchTestClient
 
     public static bool IsWatch(Uri uri) => uri.Query.Contains("watch=true", StringComparison.OrdinalIgnoreCase);
 
-    public static string DeploymentList(string version, string? continuation = null, params V1Deployment[] items) =>
-        KubernetesJson.Serialize(new V1DeploymentList
+    public static string DeploymentList(
+        string version,
+        string? continuation = null,
+        params V1Deployment[] items) => KubernetesJson.Serialize(
+        new V1DeploymentList
         {
             ApiVersion = "apps/v1",
             Kind = "DeploymentList",
             Metadata = new V1ListMeta { ResourceVersion = version, ContinueProperty = continuation },
-            Items = items
+            Items = items,
         });
 }

@@ -1,24 +1,8 @@
 using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
-using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Revisions;
-using Pole.Features.Functions.Application.Runtime.Gateway;
-using Pole.Features.Functions.Application.Runtime.Metering;
-using Pole.Features.Functions.Application.Runtime.Provisioning;
-using Pole.Features.Functions.Application.Runtime.Scaling;
-using Pole.Features.Functions.Application.Runtime.Timers;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.Functions.Application.Mongo;
 
@@ -48,48 +32,32 @@ internal static class FunctionAppFilters
         var filter = ByTenant(query.TenantId);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            var namePattern = new BsonRegularExpression(
-                $".*{Regex.Escape(query.Search)}.*",
-                "i");
+            var namePattern = new BsonRegularExpression($".*{Regex.Escape(query.Search)}.*", "i");
             var name = Builders<FunctionApp>.Filter.Regex(app => app.Name, namePattern);
             filter &= ObjectId.TryParse(query.Search, out _)
-                ? Builders<FunctionApp>.Filter.Or(
-                    name,
-                    Builders<FunctionApp>.Filter.Eq(app => app.Id, query.Search))
+                ? Builders<FunctionApp>.Filter.Or(name, Builders<FunctionApp>.Filter.Eq(app => app.Id, query.Search))
                 : name;
         }
 
         if (!string.IsNullOrWhiteSpace(query.ResourceGroupId))
-        {
-            filter &= Builders<FunctionApp>.Filter.Eq(
-                app => app.ResourceGroupId,
-                query.ResourceGroupId);
-        }
+            filter &= Builders<FunctionApp>.Filter.Eq(app => app.ResourceGroupId, query.ResourceGroupId);
 
         return filter;
     }
 
-    public static FilterDefinition<FunctionApp> ForPendingRevision(
-        FunctionApp current) =>
+    public static FilterDefinition<FunctionApp> ForPendingRevision(FunctionApp current) =>
         Builders<FunctionApp>.Filter.And(
             ByTenantAndId(current.TenantId, current.Id),
             Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, null),
             Builders<FunctionApp>.Filter.Eq(app => app.PlanningFence, current.PlanningFence),
             Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, current.DesiredState),
-            Builders<FunctionApp>.Filter.Eq(
-                app => app.NextRevisionNumber,
-                current.NextRevisionNumber));
+            Builders<FunctionApp>.Filter.Eq(app => app.NextRevisionNumber, current.NextRevisionNumber));
 
-    public static FilterDefinition<FunctionApp> ForDeletion(FunctionApp current) =>
-        Builders<FunctionApp>.Filter.And(
-            AtPlanningVersion(current),
-            Builders<FunctionApp>.Filter.Ne(
-                app => app.DesiredState,
-                FunctionAppDesiredState.Deleting));
+    public static FilterDefinition<FunctionApp> ForDeletion(FunctionApp current) => Builders<FunctionApp>.Filter.And(
+        AtPlanningVersion(current),
+        Builders<FunctionApp>.Filter.Ne(app => app.DesiredState, FunctionAppDesiredState.Deleting));
 
-    public static FilterDefinition<FunctionApp> ForRetry(
-        FunctionApp current,
-        string revisionId) =>
+    public static FilterDefinition<FunctionApp> ForRetry(FunctionApp current, string revisionId) =>
         Builders<FunctionApp>.Filter.And(
             ByTenantAndId(current.TenantId, current.Id),
             Builders<FunctionApp>.Filter.Eq(app => app.ActiveRevisionId, revisionId),
@@ -105,14 +73,12 @@ internal static class FunctionRevisionFilters
 
     public static FilterDefinition<FunctionRevision> ReferencedConfiguration(
         FunctionApp app,
-        IReadOnlyCollection<string> revisionIds) =>
-        ByFunctionApp(app.TenantId, app.Id) & Builders<FunctionRevision>.Filter.Or(
+        IReadOnlyCollection<string> revisionIds) => ByFunctionApp(app.TenantId, app.Id) &
+        Builders<FunctionRevision>.Filter.Or(
             Builders<FunctionRevision>.Filter.In(revision => revision.Id, revisionIds),
             Builders<FunctionRevision>.Filter.Eq(revision => revision.RevisionNumber, app.NextRevisionNumber - 1));
 
-    public static FilterDefinition<FunctionRevision> ByFunctionApp(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionRevision> ByFunctionApp(string tenantId, string functionAppId) =>
         Builders<FunctionRevision>.Filter.And(
             Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, tenantId),
             Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionAppId));
@@ -120,10 +86,9 @@ internal static class FunctionRevisionFilters
     public static FilterDefinition<FunctionRevision> ByFunctionAppAndIds(
         string tenantId,
         string functionAppId,
-        IReadOnlyCollection<string> revisionIds) =>
-        Builders<FunctionRevision>.Filter.And(
-            ByFunctionApp(tenantId, functionAppId),
-            Builders<FunctionRevision>.Filter.In(revision => revision.Id, revisionIds));
+        IReadOnlyCollection<string> revisionIds) => Builders<FunctionRevision>.Filter.And(
+        ByFunctionApp(tenantId, functionAppId),
+        Builders<FunctionRevision>.Filter.In(revision => revision.Id, revisionIds));
 }
 
 internal static class FunctionRouteBindingFilters
@@ -152,9 +117,7 @@ internal static class FunctionTimerFilters
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.FunctionAppId, app.Id),
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.Enabled, true));
 
-    public static FilterDefinition<FunctionTimerState> ActiveForRetry(
-        FunctionApp app,
-        FunctionInvocation invocation) =>
+    public static FilterDefinition<FunctionTimerState> ActiveForRetry(FunctionApp app, FunctionInvocation invocation) =>
         Builders<FunctionTimerState>.Filter.And(
             EnabledByFunctionApp(app),
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.TriggerId, invocation.TriggerId));
@@ -162,23 +125,17 @@ internal static class FunctionTimerFilters
     public static FilterDefinition<FunctionTimerState> ForRetryStamp(FunctionTimerState timer) =>
         Builders<FunctionTimerState>.Filter.And(
             Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.Id, timer.Id),
-            Builders<FunctionTimerState>.Filter.Eq(
-                candidate => candidate.UpdatedAtUtc,
-                timer.UpdatedAtUtc));
+            Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.UpdatedAtUtc, timer.UpdatedAtUtc));
 }
 
 internal static class FunctionInvocationRetryFilters
 {
-    public static FilterDefinition<FunctionInvocation> ByIdForFunctionApp(
-        FunctionApp app,
-        string invocationId) =>
+    public static FilterDefinition<FunctionInvocation> ByIdForFunctionApp(FunctionApp app, string invocationId) =>
         Builders<FunctionInvocation>.Filter.And(
             FunctionInvocationFilters.ByFunctionApp(app.TenantId, app.Id),
             Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.Id, invocationId));
 
-    public static FilterDefinition<FunctionInvocation> Overlapping(
-        FunctionApp app,
-        FunctionInvocation invocation) =>
+    public static FilterDefinition<FunctionInvocation> Overlapping(FunctionApp app, FunctionInvocation invocation) =>
         Builders<FunctionInvocation>.Filter.And(
             FunctionInvocationFilters.ByFunctionApp(app.TenantId, app.Id),
             Builders<FunctionInvocation>.Filter.Ne(candidate => candidate.Id, invocation.Id),
@@ -189,27 +146,19 @@ internal static class FunctionInvocationRetryFilters
                     FunctionInvocationState.Pending,
                     FunctionInvocationState.Dispatching,
                     FunctionInvocationState.Running,
-                    FunctionInvocationState.RetryScheduled
+                    FunctionInvocationState.RetryScheduled,
                 ]));
 
-    public static FilterDefinition<FunctionInvocation> ForManualRetry(
-        FunctionApp app,
-        FunctionInvocation invocation) =>
+    public static FilterDefinition<FunctionInvocation> ForManualRetry(FunctionApp app, FunctionInvocation invocation) =>
         Builders<FunctionInvocation>.Filter.And(
             ByIdForFunctionApp(app, invocation.Id),
-            Builders<FunctionInvocation>.Filter.Eq(
-                candidate => candidate.State,
-                FunctionInvocationState.Failed),
-            Builders<FunctionInvocation>.Filter.Eq(
-                candidate => candidate.UpdatedAtUtc,
-                invocation.UpdatedAtUtc));
+            Builders<FunctionInvocation>.Filter.Eq(candidate => candidate.State, FunctionInvocationState.Failed),
+            Builders<FunctionInvocation>.Filter.Eq(candidate => candidate.UpdatedAtUtc, invocation.UpdatedAtUtc));
 }
 
 internal static class FunctionInvocationFilters
 {
-    public static FilterDefinition<FunctionInvocation> ByFunctionApp(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionInvocation> ByFunctionApp(string tenantId, string functionAppId) =>
         Builders<FunctionInvocation>.Filter.And(
             Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.TenantId, tenantId),
             Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.FunctionAppId, functionAppId));
@@ -244,51 +193,33 @@ internal static class FunctionAppDeletionFilters
     public static FilterDefinition<FunctionApp> App(
         string tenantId,
         string functionAppId,
-        string resourceDeploymentId) =>
-        Builders<FunctionApp>.Filter.And(
-            FunctionAppFilters.ByTenantAndId(tenantId, functionAppId),
-            Builders<FunctionApp>.Filter.Eq(
-                app => app.DesiredState,
-                FunctionAppDesiredState.Deleting),
-            Builders<FunctionApp>.Filter.Eq(
-                app => app.Placement.ResourceDeploymentId,
-                resourceDeploymentId));
+        string resourceDeploymentId) => Builders<FunctionApp>.Filter.And(
+        FunctionAppFilters.ByTenantAndId(tenantId, functionAppId),
+        Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, FunctionAppDesiredState.Deleting),
+        Builders<FunctionApp>.Filter.Eq(app => app.Placement.ResourceDeploymentId, resourceDeploymentId));
 
-    public static FilterDefinition<FunctionRevision> Revisions(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionRevision> Revisions(string tenantId, string functionAppId) =>
         FunctionRevisionFilters.ByFunctionApp(tenantId, functionAppId);
 
-    public static FilterDefinition<FunctionRouteBinding> Routes(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionRouteBinding> Routes(string tenantId, string functionAppId) =>
         Builders<FunctionRouteBinding>.Filter.Eq(item => item.TenantId, tenantId) &
         Builders<FunctionRouteBinding>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
-    public static FilterDefinition<FunctionTimerState> Timers(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionTimerState> Timers(string tenantId, string functionAppId) =>
         Builders<FunctionTimerState>.Filter.Eq(item => item.TenantId, tenantId) &
         Builders<FunctionTimerState>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
-    public static FilterDefinition<FunctionInvocation> Invocations(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionInvocation> Invocations(string tenantId, string functionAppId) =>
         Builders<FunctionInvocation>.Filter.Eq(item => item.TenantId, tenantId) &
         Builders<FunctionInvocation>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
-    public static FilterDefinition<FunctionMeterEvent> MeterEvents(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionMeterEvent> MeterEvents(string tenantId, string functionAppId) =>
         Builders<FunctionMeterEvent>.Filter.Eq(item => item.TenantId, tenantId) &
         Builders<FunctionMeterEvent>.Filter.Eq(item => item.FunctionAppId, functionAppId);
 
-    public static FilterDefinition<FunctionUsageBucket> UsageBuckets(
-        string tenantId,
-        string functionAppId) =>
+    public static FilterDefinition<FunctionUsageBucket> UsageBuckets(string tenantId, string functionAppId) =>
         Builders<FunctionUsageBucket>.Filter.Eq(item => item.TenantId, tenantId) &
         Builders<FunctionUsageBucket>.Filter.Eq(item => item.FunctionAppId, functionAppId);
-
 }
 
 internal static class FunctionRevisionLifecycleFilters
@@ -301,49 +232,43 @@ internal static class FunctionRevisionLifecycleFilters
     public static FilterDefinition<FunctionRevision> RevisionByOwner(
         string tenantId,
         string functionAppId,
-        string revisionId) =>
-        Builders<FunctionRevision>.Filter.And(
-            Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, tenantId),
-            Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionAppId),
-            Builders<FunctionRevision>.Filter.Eq(revision => revision.Id, revisionId));
+        string revisionId) => Builders<FunctionRevision>.Filter.And(
+        Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, tenantId),
+        Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionAppId),
+        Builders<FunctionRevision>.Filter.Eq(revision => revision.Id, revisionId));
 
     public static FilterDefinition<FunctionRevision> RevisionInStatus<TStatus>(
         string tenantId,
         string functionAppId,
         string revisionId)
-        where TStatus : FunctionRevisionStatus =>
-        Builders<FunctionRevision>.Filter.And(
-            RevisionByOwner(tenantId, functionAppId, revisionId),
-            Status<TStatus>());
+        where TStatus : FunctionRevisionStatus => Builders<FunctionRevision>.Filter.And(
+        RevisionByOwner(tenantId, functionAppId, revisionId),
+        Status<TStatus>());
 
     public static FilterDefinition<FunctionRevision> RevisionInOneOfStatuses(
         string tenantId,
         string functionAppId,
         string revisionId,
-        params FilterDefinition<FunctionRevision>[] statuses) =>
-        Builders<FunctionRevision>.Filter.And(
-            RevisionByOwner(tenantId, functionAppId, revisionId),
-            Builders<FunctionRevision>.Filter.Or(statuses));
+        params FilterDefinition<FunctionRevision>[] statuses) => Builders<FunctionRevision>.Filter.And(
+        RevisionByOwner(tenantId, functionAppId, revisionId),
+        Builders<FunctionRevision>.Filter.Or(statuses));
 
     public static FilterDefinition<FunctionApp> PendingEnabledApp(
         string tenantId,
         string functionAppId,
-        string revisionId) =>
-        Builders<FunctionApp>.Filter.And(
-            AppByOwner(tenantId, functionAppId),
-            Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, revisionId),
-            Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, FunctionAppDesiredState.Enabled));
+        string revisionId) => Builders<FunctionApp>.Filter.And(
+        AppByOwner(tenantId, functionAppId),
+        Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, revisionId),
+        Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, FunctionAppDesiredState.Enabled));
 
     public static FilterDefinition<FunctionApp> PendingApp(
         string tenantId,
         string functionAppId,
-        string revisionId) =>
-        Builders<FunctionApp>.Filter.And(
-            AppByOwner(tenantId, functionAppId),
-            Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, revisionId));
+        string revisionId) => Builders<FunctionApp>.Filter.And(
+        AppByOwner(tenantId, functionAppId),
+        Builders<FunctionApp>.Filter.Eq(app => app.PendingRevisionId, revisionId));
 
-    public static FilterDefinition<FunctionRouteBinding> AvailableRoute(
-        FunctionApp app) =>
+    public static FilterDefinition<FunctionRouteBinding> AvailableRoute(FunctionApp app) =>
         Builders<FunctionRouteBinding>.Filter.And(
             Builders<FunctionRouteBinding>.Filter.Eq(route => route.NormalizedRoute, app.FunctionRoute),
             Builders<FunctionRouteBinding>.Filter.Eq(route => route.TenantId, app.TenantId),
@@ -355,9 +280,7 @@ internal static class FunctionRevisionLifecycleFilters
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.TenantId, app.TenantId),
             Builders<FunctionTimerState>.Filter.Eq(timer => timer.FunctionAppId, app.Id));
 
-    public static FilterDefinition<FunctionTimerState> TimerForUpsert(
-        FunctionTimerState timer,
-        FunctionApp app) =>
+    public static FilterDefinition<FunctionTimerState> TimerForUpsert(FunctionTimerState timer, FunctionApp app) =>
         Builders<FunctionTimerState>.Filter.And(
             Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.Id, timer.Id),
             Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.TenantId, app.TenantId),
@@ -365,28 +288,26 @@ internal static class FunctionRevisionLifecycleFilters
 
     public static FilterDefinition<FunctionTimerState> EnabledTimersNotIn(
         FunctionApp app,
-        IReadOnlyCollection<string> activeTriggerIds) =>
-        Builders<FunctionTimerState>.Filter.And(
-            TimersForApp(app),
-            Builders<FunctionTimerState>.Filter.Eq(timer => timer.Enabled, true),
-            Builders<FunctionTimerState>.Filter.Nin(timer => timer.TriggerId, activeTriggerIds));
+        IReadOnlyCollection<string> activeTriggerIds) => Builders<FunctionTimerState>.Filter.And(
+        TimersForApp(app),
+        Builders<FunctionTimerState>.Filter.Eq(timer => timer.Enabled, true),
+        Builders<FunctionTimerState>.Filter.Nin(timer => timer.TriggerId, activeTriggerIds));
 
     public static FilterDefinition<FunctionInvocation> DurableWork(
         string tenantId,
         string functionAppId,
-        string revisionId) =>
-        Builders<FunctionInvocation>.Filter.And(
-            Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.TenantId, tenantId),
-            Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.FunctionAppId, functionAppId),
-            Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.RevisionId, revisionId),
-            Builders<FunctionInvocation>.Filter.In(
-                invocation => invocation.State,
-                [
-                    FunctionInvocationState.Pending,
-                    FunctionInvocationState.Dispatching,
-                    FunctionInvocationState.Running,
-                    FunctionInvocationState.RetryScheduled
-                ]));
+        string revisionId) => Builders<FunctionInvocation>.Filter.And(
+        Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.TenantId, tenantId),
+        Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.FunctionAppId, functionAppId),
+        Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.RevisionId, revisionId),
+        Builders<FunctionInvocation>.Filter.In(
+            invocation => invocation.State,
+            [
+                FunctionInvocationState.Pending,
+                FunctionInvocationState.Dispatching,
+                FunctionInvocationState.Running,
+                FunctionInvocationState.RetryScheduled,
+            ]));
 
     private static FilterDefinition<FunctionRevision> Status<TStatus>()
         where TStatus : FunctionRevisionStatus =>
@@ -395,8 +316,7 @@ internal static class FunctionRevisionLifecycleFilters
     public static FilterDefinition<FunctionRevision> ProvisioningStatus() =>
         Status<ProvisioningFunctionRevisionStatus>();
 
-    public static FilterDefinition<FunctionRevision> ReadyStatus() =>
-        Status<ReadyFunctionRevisionStatus>();
+    public static FilterDefinition<FunctionRevision> ReadyStatus() => Status<ReadyFunctionRevisionStatus>();
 }
 
 internal static class FunctionRuntimeRouteTargetFilters
@@ -407,9 +327,7 @@ internal static class FunctionRuntimeRouteTargetFilters
             Builders<FunctionRouteBinding>.Filter.Eq(binding => binding.State, FunctionRouteBindingState.Active),
             Builders<FunctionRouteBinding>.Filter.Ne(binding => binding.ActiveRevisionId, null));
 
-    public static FilterDefinition<FunctionApp> ServingApp(
-        FunctionRouteBinding binding,
-        string revisionId) =>
+    public static FilterDefinition<FunctionApp> ServingApp(FunctionRouteBinding binding, string revisionId) =>
         Builders<FunctionApp>.Filter.And(
             Builders<FunctionApp>.Filter.Eq(app => app.TenantId, binding.TenantId),
             Builders<FunctionApp>.Filter.Eq(app => app.Id, binding.FunctionAppId),
@@ -418,15 +336,13 @@ internal static class FunctionRuntimeRouteTargetFilters
             Builders<FunctionApp>.Filter.Eq(app => app.DesiredState, FunctionAppDesiredState.Enabled),
             Builders<FunctionApp>.Filter.Eq(app => app.Status, FunctionAppStatus.Ready));
 
-    public static FilterDefinition<FunctionRevision> ActiveRevision(
-        FunctionRouteBinding binding,
-        string revisionId) =>
+    public static FilterDefinition<FunctionRevision> ActiveRevision(FunctionRouteBinding binding, string revisionId) =>
         Builders<FunctionRevision>.Filter.And(
             Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, binding.TenantId),
             Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, binding.FunctionAppId),
             Builders<FunctionRevision>.Filter.Eq(revision => revision.Id, revisionId),
-            Builders<FunctionRevision>.Filter
-                .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(revision => revision.Status));
+            Builders<FunctionRevision>.Filter.OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(revision =>
+                revision.Status));
 }
 
 internal static class FunctionMeterAggregationFilters
@@ -453,37 +369,34 @@ internal static class FunctionRevisionProvisioningSubjectFilters
     public static FilterDefinition<FunctionRevision> RevisionByOwner(
         string tenantId,
         string functionAppId,
-        string revisionId) =>
-        Builders<FunctionRevision>.Filter.And(
-            Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, tenantId),
-            Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionAppId),
-            Builders<FunctionRevision>.Filter.Eq(revision => revision.Id, revisionId));
+        string revisionId) => Builders<FunctionRevision>.Filter.And(
+        Builders<FunctionRevision>.Filter.Eq(revision => revision.TenantId, tenantId),
+        Builders<FunctionRevision>.Filter.Eq(revision => revision.FunctionAppId, functionAppId),
+        Builders<FunctionRevision>.Filter.Eq(revision => revision.Id, revisionId));
 }
 
 internal static class FunctionScaleSubjectFilters
 {
-    public static FilterDefinition<FunctionRevision> ScalableRevisions() =>
-        Builders<FunctionRevision>.Filter.Or(
-            Builders<FunctionRevision>.Filter
-                .OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(revision => revision.Status),
-            Builders<FunctionRevision>.Filter
-                .OfType<FunctionRevisionStatus, DrainingFunctionRevisionStatus>(revision => revision.Status));
+    public static FilterDefinition<FunctionRevision> ScalableRevisions() => Builders<FunctionRevision>.Filter.Or(
+        Builders<FunctionRevision>.Filter.OfType<FunctionRevisionStatus, ActiveFunctionRevisionStatus>(revision =>
+            revision.Status),
+        Builders<FunctionRevision>.Filter.OfType<FunctionRevisionStatus, DrainingFunctionRevisionStatus>(revision =>
+            revision.Status));
 
     public static FilterDefinition<FunctionApp> AppsById(IReadOnlyCollection<string> appIds) =>
         Builders<FunctionApp>.Filter.In(app => app.Id, appIds);
 
-    public static FilterDefinition<FunctionInvocation> DurableWorkForRevisions(
-        IReadOnlyCollection<string> revisionIds) =>
-        Builders<FunctionInvocation>.Filter.And(
-            Builders<FunctionInvocation>.Filter.In(invocation => invocation.RevisionId, revisionIds),
-            Builders<FunctionInvocation>.Filter.In(
-                invocation => invocation.State,
-                [
-                    FunctionInvocationState.Pending,
-                    FunctionInvocationState.Dispatching,
-                    FunctionInvocationState.Running,
-                    FunctionInvocationState.RetryScheduled
-                ]));
+    public static FilterDefinition<FunctionInvocation>
+        DurableWorkForRevisions(IReadOnlyCollection<string> revisionIds) => Builders<FunctionInvocation>.Filter.And(
+        Builders<FunctionInvocation>.Filter.In(invocation => invocation.RevisionId, revisionIds),
+        Builders<FunctionInvocation>.Filter.In(
+            invocation => invocation.State,
+            [
+                FunctionInvocationState.Pending,
+                FunctionInvocationState.Dispatching,
+                FunctionInvocationState.Running,
+                FunctionInvocationState.RetryScheduled,
+            ]));
 }
 
 internal static class FunctionInvocationClaimFilters
@@ -491,9 +404,7 @@ internal static class FunctionInvocationClaimFilters
     public static FilterDefinition<FunctionInvocation> ReadyAt(DateTimeOffset nowUtc) =>
         Builders<FunctionInvocation>.Filter.Or(
             Builders<FunctionInvocation>.Filter.And(
-                Builders<FunctionInvocation>.Filter.Eq(
-                    invocation => invocation.State,
-                    FunctionInvocationState.Pending),
+                Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.State, FunctionInvocationState.Pending),
                 Builders<FunctionInvocation>.Filter.Or(
                     Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.NextAttemptAtUtc, null),
                     Builders<FunctionInvocation>.Filter.Lte(invocation => invocation.NextAttemptAtUtc, nowUtc))),
@@ -568,9 +479,8 @@ internal static class FunctionTimerOccurrenceFilters
     public static FilterDefinition<FunctionInvocation> InvocationById(string invocationId) =>
         Builders<FunctionInvocation>.Filter.Eq(invocation => invocation.Id, invocationId);
 
-    public static FilterDefinition<FunctionInvocation> ActiveSiblingInvocation(
-        FunctionTimerState timer,
-        string invocationId) =>
+    public static FilterDefinition<FunctionInvocation>
+        ActiveSiblingInvocation(FunctionTimerState timer, string invocationId) =>
         Builders<FunctionInvocation>.Filter.And(
             Builders<FunctionInvocation>.Filter.Eq(candidate => candidate.TenantId, timer.TenantId),
             Builders<FunctionInvocation>.Filter.Eq(candidate => candidate.TriggerId, timer.TriggerId),
@@ -581,17 +491,15 @@ internal static class FunctionTimerOccurrenceFilters
                     FunctionInvocationState.Pending,
                     FunctionInvocationState.Dispatching,
                     FunctionInvocationState.Running,
-                    FunctionInvocationState.RetryScheduled
+                    FunctionInvocationState.RetryScheduled,
                 ]));
 
-    public static FilterDefinition<FunctionTimerState> Advance(
-        FunctionTimerState timer,
-        DateTimeOffset scheduledForUtc) =>
-        Builders<FunctionTimerState>.Filter.And(
-            Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.Id, timer.Id),
-            Builders<FunctionTimerState>.Filter.Ne(candidate => candidate.Lease, null),
-            Builders<FunctionTimerState>.Filter.Eq(item => item.Lease!.Token, timer.Lease!.Token),
-            Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.NextOccurrenceUtc, scheduledForUtc));
+    public static FilterDefinition<FunctionTimerState>
+        Advance(FunctionTimerState timer, DateTimeOffset scheduledForUtc) => Builders<FunctionTimerState>.Filter.And(
+        Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.Id, timer.Id),
+        Builders<FunctionTimerState>.Filter.Ne(candidate => candidate.Lease, null),
+        Builders<FunctionTimerState>.Filter.Eq(item => item.Lease!.Token, timer.Lease!.Token),
+        Builders<FunctionTimerState>.Filter.Eq(candidate => candidate.NextOccurrenceUtc, scheduledForUtc));
 }
 
 internal static class FunctionInvocationTransitionFilters

@@ -12,8 +12,9 @@ public sealed class SourceBuildLogTests
     public void Capture_bounds_UTF8_and_entries_preserves_prefix_and_round_trips()
     {
         var now = DateTime.UtcNow;
-        var log = Create(now, new(4096, 16, 512, 7));
-        for (var sequence = 1; sequence <= 16; sequence++) log = log.Append(sequence, SourceBuildLogStream.StandardError, new string('x', 255) + "🙂", now);
+        var log = Create(now, new SourceBuildLogLimits(4096, 16, 512, 7));
+        for (var sequence = 1; sequence <= 16; sequence++)
+            log = log.Append(sequence, SourceBuildLogStream.StandardError, new string('x', 255) + "🙂", now);
         Assert.True(log.Truncated);
         Assert.True(log.Entries.Count <= 16);
         Assert.True(log.CapturedBytes <= 4096);
@@ -32,9 +33,17 @@ public sealed class SourceBuildLogTests
         var now = DateTime.UtcNow;
         var log = Create(now).Append(1, SourceBuildLogStream.StandardOutput, "first", now);
         Assert.Same(log, log.Append(1, SourceBuildLogStream.StandardOutput, "first", now));
-        Assert.Throws<InvalidOperationException>(() => log.Append(1, SourceBuildLogStream.StandardOutput, "changed", now));
+        Assert.Throws<InvalidOperationException>(() => log.Append(
+            1,
+            SourceBuildLogStream.StandardOutput,
+            "changed",
+            now));
         Assert.Throws<InvalidOperationException>(() => log.Append(3, SourceBuildLogStream.StandardOutput, "gap", now));
-        Assert.Throws<ArgumentOutOfRangeException>(() => log.Append(2, SourceBuildLogStream.StandardOutput, new string('x', 8193), now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => log.Append(
+            2,
+            SourceBuildLogStream.StandardOutput,
+            new string('x', 8193),
+            now));
     }
 
     [Fact]
@@ -51,9 +60,19 @@ public sealed class SourceBuildLogTests
         Assert.Empty(expired.Entries);
         Assert.Equal(1, expired.LastSequence);
         Assert.Same(expired, expired.Recover(now.AddDays(9)));
-        Assert.Throws<InvalidOperationException>(() => expired.Append(2, SourceBuildLogStream.StandardOutput, "late", now.AddDays(9)));
+        Assert.Throws<InvalidOperationException>(() => expired.Append(
+            2,
+            SourceBuildLogStream.StandardOutput,
+            "late",
+            now.AddDays(9)));
     }
 
     private static SourceBuildLog Create(DateTime now, SourceBuildLogLimits? limits = null) =>
-        SourceBuildLogFactory.Create(ObjectId.GenerateNewId().ToString(), "tenant", "service", "writer", limits ?? new(1024 * 1024, 2048, 4096, 7), now);
+        SourceBuildLogFactory.Create(
+            ObjectId.GenerateNewId().ToString(),
+            "tenant",
+            "service",
+            "writer",
+            limits ?? new SourceBuildLogLimits(1024 * 1024, 2048, 4096, 7),
+            now);
 }

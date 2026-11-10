@@ -1,35 +1,35 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../src/features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj" />
-    <ProjectReference Include="../../src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
-    <ProjectReference Include="../Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
-    <ProjectReference Include="../../src/features/Functions/Functions.Runtime/Functions.Runtime.csproj" />
-    <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" />
-    <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
-    <ProjectReference Include="../../src/features/ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj" />
-    <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj" />
-    <ProjectReference Include="../../src/features/Secrets/Secrets.Application/Secrets.Application.csproj" />
-    <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" />
-    <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj" />
-    <ProjectReference Include="../../src/features/WebServices/WebServices.Application/WebServices.Application.csproj" />
-    <ProjectReference Include="../../src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj"/>
+        <ProjectReference Include="../../src/features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj"/>
+        <ProjectReference Include="../Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj"/>
+        <ProjectReference Include="../../src/features/Functions/Functions.Runtime/Functions.Runtime.csproj"/>
+        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj"/>
+        <ProjectReference Include="../../src/features/Secrets/Secrets.Application/Secrets.Application.csproj"/>
+        <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj"/>
+        <ProjectReference Include="../../src/features/WebServices/WebServices.Application/WebServices.Application.csproj"/>
+        <ProjectReference Include="../../src/features/WebServices/WebServices.Domain/WebServices.Domain.csproj"/>
+    </ItemGroup>
 
 </Project>

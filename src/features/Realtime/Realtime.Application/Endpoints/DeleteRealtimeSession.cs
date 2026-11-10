@@ -18,10 +18,11 @@ public sealed class DeleteRealtimeSessionHandler(
     IHttpContextAccessor contexts,
     IRealtimeTicketStore tickets,
     IRealtimeSubscriptions subscriptions,
-    IHubContext<RealtimeHub, IRealtimeClient> hub)
-    : IMediatorOutcomeHandler<DeleteRealtimeSessionRequest, DeleteRealtimeSessionOutcome>
+    IHubContext<RealtimeHub, IRealtimeClient> hub
+) : IMediatorOutcomeHandler<DeleteRealtimeSessionRequest, DeleteRealtimeSessionOutcome>
 {
-    public async Task<DeleteRealtimeSessionOutcome> HandleAsync(DeleteRealtimeSessionRequest request,
+    public async Task<DeleteRealtimeSessionOutcome> HandleAsync(
+        DeleteRealtimeSessionRequest request,
         CancellationToken cancellationToken = default)
     {
         var context = contexts.HttpContext!;
@@ -39,13 +40,17 @@ public static class DeleteRealtimeSessionEndpoint
 {
     public static IEndpointRouteBuilder MapDeleteRealtimeSession(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapDelete("/session",
-            async (IMediator mediator) =>
-            {
-                var result = await mediator.Send(new DeleteRealtimeSessionRequest());
-                return result.ToHttpResult(outcome => outcome switch { RealtimeSessionDeleted => Results.NoContent() });
-            }).WithoutTenantContext().RequireAuthorization(policy =>
-            policy.AddAuthenticationSchemes(RealtimeFeature.CookieScheme).RequireAuthenticatedUser());
+        endpoints.MapDelete(
+                "/session",
+                async (IMediator mediator) =>
+                {
+                    var result = await mediator.Send(new DeleteRealtimeSessionRequest());
+                    return result.ToHttpResult(outcome =>
+                        outcome switch { RealtimeSessionDeleted => Results.NoContent() });
+                })
+            .WithoutTenantContext()
+            .RequireAuthorization(policy =>
+                policy.AddAuthenticationSchemes(RealtimeFeature.CookieScheme).RequireAuthenticatedUser());
         return endpoints;
     }
 }

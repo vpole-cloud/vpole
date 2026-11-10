@@ -1,32 +1,28 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Events;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.ResourceConnections.Application;
-using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Features.Tenants.Testing;
 using Pole.Mediator;
 using Pole.Platform.Hosting;
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Features.RedisServices.Tests.Integration.Infrastructure;
 
 [Collection(IntegrationTestCollection.Name)]
-public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture) : IAsyncLifetime
+public abstract class MediatorIntegrationTestBase(
+    MongoReplicaSetFixture fixture
+) : IAsyncLifetime
 {
     private readonly TestEncryptionSettings _encryption = new();
-    private ServiceProvider? _serviceProvider;
     private IServiceScope? _scope;
+    private ServiceProvider? _serviceProvider;
 
     protected MongoReplicaSetFixture Fixture { get; } = fixture;
     protected RedisTestStore DbContext { get; private set; } = null!;
@@ -38,12 +34,12 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         await Fixture.ResetDatabaseAsync();
         DbContext = new RedisTestStore(Fixture.Client, Fixture.Database);
 
-        var configuration = new ConfigurationBuilder()
-            .AddConfiguration(_encryption.Configuration)
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["kubernetes:NamespaceNamePrefix"] = "test"
-            })
+        var configuration = new ConfigurationBuilder().AddConfiguration(_encryption.Configuration)
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["kubernetes:NamespaceNamePrefix"] = "test",
+                })
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
@@ -56,7 +52,8 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         services.AddSingleton<DiscoverKubernetesStorageClasses>(storageDiscovery.GetStorageClassesAsync);
         services.AddSingleton<DiscoverKubernetesStorageClassNames>(storageDiscovery.GetStorageClassNamesAsync);
         services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storageDiscovery.GetPersistentVolumesAsync);
-        services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storageDiscovery.GetPersistentVolumeClaimsAsync);
+        services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
+            storageDiscovery.GetPersistentVolumeClaimsAsync);
         services.AddPolePlatform(
             configuration,
             [typeof(RedisServiceEndpoints).Assembly],
@@ -72,7 +69,8 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
         await _serviceProvider.InitializePolePlatformAsync();
 
         await DbContext.StorageProfiles.InsertOneAsync(RedisTestData.SeedStorageProfile());
-        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+        await Fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
             .InsertOneAsync(RedisTestData.SeedComputeProfile());
         await new TenantTestData(Fixture.Database).CreateAsync("Test tenant", RedisTestData.TenantId);
         _scope = _serviceProvider.CreateScope();
@@ -95,5 +93,4 @@ public abstract class MediatorIntegrationTestBase(MongoReplicaSetFixture fixture
             services.Remove(descriptor);
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(FakeAuthBehaviour<,>));
     }
-
 }

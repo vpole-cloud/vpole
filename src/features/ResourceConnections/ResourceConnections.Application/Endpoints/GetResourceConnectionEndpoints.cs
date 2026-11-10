@@ -6,12 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
 using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -28,8 +23,8 @@ public sealed record GetResourceConnectionEndpointsRequest(
     [FromQuery] string ResourceId,
     [FromTenantHeader] string TenantId,
     [FromQuery] string? SourceResourceType = null,
-    [FromQuery] string? SourceResourceId = null)
-    : IMediatorRequest<GetResourceConnectionEndpointsOutcome>, ITenantReadOperation;
+    [FromQuery] string? SourceResourceId = null
+) : IMediatorRequest<GetResourceConnectionEndpointsOutcome>, ITenantReadOperation;
 
 public sealed record ConnectionEndpointMetadata(
     string Id,
@@ -37,20 +32,24 @@ public sealed record ConnectionEndpointMetadata(
     string Protocol,
     string Transport,
     int Port,
-    IReadOnlyList<ResourceConnectionConfigurationField> Configuration);
+    IReadOnlyList<ResourceConnectionConfigurationField> Configuration
+);
+
 public sealed record ConnectionEndpointTopology(
     string Status,
-    string? ReasonCode = null);
+    string? ReasonCode = null
+);
+
 public sealed record ResourceConnectionEndpointsDto(
     string ResourceType,
     string ResourceId,
     string DisplayName,
     string Availability,
     IReadOnlyList<ConnectionEndpointMetadata> Endpoints,
-    ConnectionEndpointTopology Topology);
-public union GetResourceConnectionEndpointsOutcome(
-    ResourceConnectionEndpointsDto,
-    ConnectionResourceMissing);
+    ConnectionEndpointTopology Topology
+);
+
+public union GetResourceConnectionEndpointsOutcome(ResourceConnectionEndpointsDto, ConnectionResourceMissing);
 
 public sealed class GetResourceConnectionEndpointsValidator : AbstractValidator<GetResourceConnectionEndpointsRequest>
 {
@@ -58,29 +57,35 @@ public sealed class GetResourceConnectionEndpointsValidator : AbstractValidator<
     {
         RuleFor(request => request.ResourceType).Must(value => ResourceTypeId.TryCreate(value, out _));
         RuleFor(request => request.ResourceId).MongoObjectId("Resource ID");
-        When(request => request.SourceResourceType is not null || request.SourceResourceId is not null, () =>
-        {
-            RuleFor(request => request.SourceResourceType).NotEmpty().Must(value => ResourceTypeId.TryCreate(value, out _));
-            RuleFor(request => request.SourceResourceId).NotEmpty().MongoObjectId("Source resource ID");
-        });
+        When(
+            request => request.SourceResourceType is not null || request.SourceResourceId is not null,
+            () =>
+            {
+                RuleFor(request => request.SourceResourceType)
+                    .NotEmpty()
+                    .Must(value => ResourceTypeId.TryCreate(value, out _));
+                RuleFor(request => request.SourceResourceId).NotEmpty().MongoObjectId("Source resource ID");
+            });
     }
 }
 
-public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource loadResource,
-    ResourceConnectionEndpointCatalog catalog, LoadResourceDeploymentSet loadPlacements)
-    : IMediatorOutcomeHandler<GetResourceConnectionEndpointsRequest, GetResourceConnectionEndpointsOutcome>
+public sealed class GetResourceConnectionEndpointsHandler(
+    LoadRegisteredResource loadResource,
+    ResourceConnectionEndpointCatalog catalog,
+    LoadResourceDeploymentSet loadPlacements
+) : IMediatorOutcomeHandler<GetResourceConnectionEndpointsRequest, GetResourceConnectionEndpointsOutcome>
 {
-    public async Task<GetResourceConnectionEndpointsOutcome> HandleAsync(GetResourceConnectionEndpointsRequest request, CancellationToken cancellationToken = default)
+    public async Task<GetResourceConnectionEndpointsOutcome> HandleAsync(
+        GetResourceConnectionEndpointsRequest request,
+        CancellationToken cancellationToken = default)
     {
         var type = ResourceTypeId.Create(request.ResourceType);
         var id = ObjectId.Parse(request.ResourceId).ToString();
         var resource = await loadResource(
-            new LoadRegisteredResourceRequest(
-                TenantId: request.TenantId,
-                ResourceTypeId: type,
-                ResourceId: id),
+            new LoadRegisteredResourceRequest(TenantId: request.TenantId, ResourceTypeId: type, ResourceId: id),
             cancellationToken: cancellationToken);
-        if (resource is null) return new ConnectionResourceMissing();
+        if (resource is null)
+            return new ConnectionResourceMissing();
         ResourceTypeId? sourceType = null;
         string? sourceId = null;
         if (request.SourceResourceType is not null)
@@ -88,20 +93,31 @@ public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource
             sourceType = ResourceTypeId.Create(request.SourceResourceType);
             sourceId = ObjectId.Parse(request.SourceResourceId!).ToString();
             if (await loadResource(
-                new LoadRegisteredResourceRequest(
-                    TenantId: request.TenantId,
-                    ResourceTypeId: sourceType.Value,
-                    ResourceId: sourceId),
-                cancellationToken: cancellationToken) is null) return new ConnectionResourceMissing();
+                    new LoadRegisteredResourceRequest(
+                        TenantId: request.TenantId,
+                        ResourceTypeId: sourceType.Value,
+                        ResourceId: sourceId),
+                    cancellationToken: cancellationToken) is null)
+                return new ConnectionResourceMissing();
         }
+
         var supported = catalog.SupportsDestination(type);
-        var published = supported ? await catalog.LoadAvailableAsync(request.TenantId, type, id, cancellationToken) : null;
-        if (supported && published is null) return new ConnectionResourceMissing();
+        var published = supported
+            ? await catalog.LoadAvailableAsync(request.TenantId, type, id, cancellationToken)
+            : null;
+        if (supported && published is null)
+            return new ConnectionResourceMissing();
         var topology = new ConnectionEndpointTopology("NotEvaluated");
         if (sourceType is not null)
         {
-            if (!catalog.SupportsSource(sourceType.Value)) topology = new("Ineligible", "SourceUnsupported");
-            else if (!supported) topology = new("Ineligible", "DestinationUnsupported");
+            if (!catalog.SupportsSource(sourceType.Value))
+            {
+                topology = new ConnectionEndpointTopology("Ineligible", "SourceUnsupported");
+            }
+            else if (!supported)
+            {
+                topology = new ConnectionEndpointTopology("Ineligible", "DestinationUnsupported");
+            }
             else
             {
                 var source = await loadPlacements(
@@ -116,30 +132,54 @@ public sealed class GetResourceConnectionEndpointsHandler(LoadRegisteredResource
                         ResourceType: type,
                         ResourceId: id),
                     cancellationToken: cancellationToken);
-                var assessment = ResourceConnectionTopology.Evaluate(DesiredTargets(source), DesiredTargets(destination));
-                topology = assessment.Kind == ConnectionTopologyKind.Eligible ? new("Eligible") : new("Ineligible", assessment.Kind.ToString());
+                var assessment = ResourceConnectionTopology.Evaluate(
+                    DesiredTargets(source),
+                    DesiredTargets(destination));
+                topology = assessment.Kind == ConnectionTopologyKind.Eligible
+                    ? new ConnectionEndpointTopology("Eligible")
+                    : new ConnectionEndpointTopology("Ineligible", assessment.Kind.ToString());
             }
         }
-        return new ResourceConnectionEndpointsDto(type.Value, id, resource.DisplayName, supported ? "Supported" : "Unsupported",
-            published?.Endpoints.Select(endpoint => new ConnectionEndpointMetadata(endpoint.Id, endpoint.DisplayName, endpoint.Protocol,
-                endpoint.Transport, endpoint.ServicePort.Value, endpoint.Configuration)).ToArray() ?? [], topology);
+
+        return new ResourceConnectionEndpointsDto(
+            type.Value,
+            id,
+            resource.DisplayName,
+            supported ? "Supported" : "Unsupported",
+            published?.Endpoints
+                .Select(endpoint => new ConnectionEndpointMetadata(
+                    endpoint.Id,
+                    endpoint.DisplayName,
+                    endpoint.Protocol,
+                    endpoint.Transport,
+                    endpoint.ServicePort.Value,
+                    endpoint.Configuration))
+                .ToArray() ?? [],
+            topology);
     }
 
     private static IEnumerable<string> DesiredTargets(IEnumerable<PlacementSummaryDto> placements) => placements
-        .Where(item => item.DesiredOperation != ResourceDeploymentDesiredOperation.Delete
-            && item.Status != ResourceDeploymentStatus.Deleted).Select(item => item.DeploymentTargetId);
+        .Where(item => item.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
+            item.Status != ResourceDeploymentStatus.Deleted)
+        .Select(item => item.DeploymentTargetId);
 }
 
 public static class GetResourceConnectionEndpointsEndpoint
 {
     public static IEndpointRouteBuilder MapGetResourceConnectionEndpointsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/endpoints", async (IMediator mediator, [AsParameters] GetResourceConnectionEndpointsRequest request, CancellationToken cancellationToken) =>
-            (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
-            {
-                ResourceConnectionEndpointsDto response => Results.Ok(response),
-                ConnectionResourceMissing missing => MapResourceMissing(missing)
-            })).WithName("GetResourceConnectionEndpoints").Produces<ResourceConnectionEndpointsDto>();
+        app.MapGet(
+                "/endpoints",
+                async (
+                        IMediator mediator, [AsParameters] GetResourceConnectionEndpointsRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        ResourceConnectionEndpointsDto response => Results.Ok(response),
+                        ConnectionResourceMissing missing => MapResourceMissing(missing),
+                    }))
+            .WithName("GetResourceConnectionEndpoints")
+            .Produces<ResourceConnectionEndpointsDto>();
         return app;
     }
 }

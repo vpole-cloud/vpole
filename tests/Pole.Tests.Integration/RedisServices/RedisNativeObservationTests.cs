@@ -1,4 +1,3 @@
-using Pole.Observation;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Net;
@@ -12,22 +11,24 @@ using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Application.Kubernetes;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Tests.Integration.ResourceDeployments;
-using Pole.Workloads;
+using Pole.Observation;
 using Pole.Testing.Kubernetes;
+using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.RedisServices;
 
 public sealed class RedisNativeObservationTests
 {
-    internal static readonly Redis Resource = RedisFactory.Create("507f1f77bcf86cd799439010",
+    internal static readonly Redis Resource = RedisFactory.Create(
+        "507f1f77bcf86cd799439010",
         "cache",
         "507f1f77bcf86cd799439012",
         new RedisSpec(new Storage(1, "disk")),
         RedisFactory.DefaultCreateOptions with
         {
-            Id = "507f1f77bcf86cd799439011"
+            Id = "507f1f77bcf86cd799439011",
         });
 
     internal static readonly ResourceDeploymentObservationContext Context = new(
@@ -43,7 +44,8 @@ public sealed class RedisNativeObservationTests
             1,
             2,
             DateTime.UtcNow,
-            new ResourceDeploymentResolvedPlacementSnapshot("target",
+            new ResourceDeploymentResolvedPlacementSnapshot(
+                "target",
                 1,
                 "owned",
                 null,
@@ -52,7 +54,8 @@ public sealed class RedisNativeObservationTests
         3,
         1);
 
-    internal static readonly WorkloadIdentityLabels Identity = new(Resource.TenantId,
+    internal static readonly WorkloadIdentityLabels Identity = new(
+        Resource.TenantId,
         Resource.ResourceGroupId,
         "scope",
         "cell",
@@ -68,11 +71,13 @@ public sealed class RedisNativeObservationTests
         using var client = NativeWatchTestClient.Create(api);
         var budget = new Budget();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client), budget).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client), budget)
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
-        Assert.Equal(6,
+        Assert.Equal(
+            6,
             api.Requests.Count(NativeWatchTestClient.IsWatch)); // controller, Pod, Service, two UID warnings, slice
         Assert.Equal(0, budget.Active);
         Assert.True(budget.Reads >= 6);
@@ -94,7 +99,8 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi { ControllerPresent = false };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Equal(2, api.Requests.Count);
@@ -123,7 +129,8 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi { ControllerMismatch = field };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Null(changes.Current.BindingId);
@@ -138,7 +145,8 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var item = api.Controller();
@@ -159,14 +167,16 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi { PodCount = 12, IncludeForeignPod = true };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
-        Assert.Equal(8,
+        Assert.Equal(
+            8,
             api.Requests.Count(uri =>
-                uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) &&
-                NativeWatchTestClient.IsWatch(uri)));
-        Assert.DoesNotContain(api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
+                uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal) && NativeWatchTestClient.IsWatch(uri)));
+        Assert.DoesNotContain(
+            api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
             uri => uri.Query.Contains("foreign", StringComparison.Ordinal));
         var old = api.Stream("events", "pod-00");
         var removed = api.Pod("pod-00");
@@ -186,16 +196,19 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi
         {
             PodCount = kind == "pods" ? 100 : 1,
-            SliceCount = kind == "endpointslices" ? 100 : 1
+            SliceCount = kind == "endpointslices" ? 100 : 1,
         };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
-        api.Stream(kind).Write(kind == "pods"
-            ? RedisNativeTestApi.Frame("ADDED", api.Pod("overflow"))
-            : RedisNativeTestApi.Frame("ADDED", api.Slice("overflow")));
+        api.Stream(kind)
+            .Write(
+                kind == "pods"
+                    ? RedisNativeTestApi.Frame("ADDED", api.Pod("overflow"))
+                    : RedisNativeTestApi.Frame("ADDED", api.Slice("overflow")));
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await changes.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
@@ -213,7 +226,8 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var slice = api.Slice("foreign-slice");
@@ -239,7 +253,8 @@ public sealed class RedisNativeObservationTests
         using var api = new RedisNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var changes = Source(new ClientProvider(() => client)).WatchAsync(Context, cancellation.Token)
+        var changes = Source(new ClientProvider(() => client))
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         var old = api.Stream("endpointslices");
@@ -262,9 +277,11 @@ public sealed class RedisNativeObservationTests
     {
         using var api = new RedisNativeTestApi { ReplaceAtRead = replacement };
         using var client = NativeWatchTestClient.Create(api);
-        var result =
-            await new RedisResourceDeploymentObserver((_, _, _) => Task.FromResult<Redis?>(Resource),
-                new ClientProvider(() => client)).ObserveBoundAsync(Context, "controller");
+        var result = await new RedisResourceDeploymentObserver(
+            (
+                _, _,
+                _) => Task.FromResult<Redis?>(Resource),
+            new ClientProvider(() => client)).ObserveBoundAsync(Context, "controller");
         Assert.Null(result.BindingId);
         Assert.Equal("BindingChanged", Assert.IsType<UnavailableWorkloadObservation>(result.Observation).Reason);
         Assert.IsType<UnavailableWorkloadDiagnostics>(result.Diagnostics);
@@ -275,12 +292,15 @@ public sealed class RedisNativeObservationTests
     {
         using var api = new RedisNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
-        var result =
-            await new RedisResourceDeploymentObserver((_, _, _) => Task.FromResult<Redis?>(Resource),
-                new ClientProvider(() => client)).ObserveBoundAsync(Context, "controller");
+        var result = await new RedisResourceDeploymentObserver(
+            (
+                _, _,
+                _) => Task.FromResult<Redis?>(Resource),
+            new ClientProvider(() => client)).ObserveBoundAsync(Context, "controller");
         Assert.Equal("controller", result.BindingId);
         Assert.True(Assert.IsType<ObservedWorkload>(result.Observation).Ready);
-        Assert.Equal("pod-00",
+        Assert.Equal(
+            "pod-00",
             Assert.Single(Assert.IsType<AvailableWorkloadDiagnostics>(result.Diagnostics).Instances).Uid);
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(result));
         Assert.Equal(4, api.ControllerReads);
@@ -296,7 +316,8 @@ public sealed class RedisNativeObservationTests
         var provider = new ClientProvider(() => client);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(provider, target: () => Target(1) with { Enabled = enabled, DeletionRequested = deleting })
-            .WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
+            .WatchAsync(Context, cancellation.Token)
+            .GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.Unavailable);
         Assert.Equal(0, provider.Reads);
         Assert.Empty(api.Requests);
@@ -327,10 +348,12 @@ public sealed class RedisNativeObservationTests
         await first.DisposeAsync();
         await firstClient.AppsV1.ListNamespacedStatefulSetAsync("owned");
         using var cancelSecond = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var second = source.WatchAsync(Context with
-        {
-            TargetConnectionVersion = 2
-        }, cancelSecond.Token)
+        var second = source.WatchAsync(
+                Context with
+                {
+                    TargetConnectionVersion = 2,
+                },
+                cancelSecond.Token)
             .GetAsyncEnumerator();
         await NextAsync(second, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("replacement", second.Current.BindingId);
@@ -338,7 +361,8 @@ public sealed class RedisNativeObservationTests
         await second.DisposeAsync();
     }
 
-    internal static async Task NextAsync(IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
+    internal static async Task NextAsync(
+        IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
         ResourceDeploymentObservationChangeKind kind)
     {
         for (var count = 0; count < 100; count++)
@@ -351,12 +375,14 @@ public sealed class RedisNativeObservationTests
         Assert.Fail($"No {kind} transition.");
     }
 
-    private static DeploymentTargetLookupDto Target(long version) => new("target",
+    private static DeploymentTargetLookupDto Target(long version) => new(
+        "target",
         "Target",
         "cluster",
         "kubeconfig",
         version,
-        new DeploymentTargetWorkloadConfigurationLookupDto(1,
+        new DeploymentTargetWorkloadConfigurationLookupDto(
+            1,
             null,
             new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
         1,
@@ -367,10 +393,13 @@ public sealed class RedisNativeObservationTests
         TechnicalName: "test-target",
         NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
-    private static RedisResourceDeploymentChangeSource Source(ClientProvider provider,
+    private static RedisResourceDeploymentChangeSource Source(
+        ClientProvider provider,
         Budget? budget = null,
         Func<DeploymentTargetLookupDto>? target = null) => new(
-        (tenant, id, _) =>
+        (
+            tenant, id,
+            _) =>
         {
             Assert.Equal(Resource.TenantId, tenant);
             Assert.Equal(Resource.Id, id);
@@ -381,7 +410,9 @@ public sealed class RedisNativeObservationTests
         budget ?? new Budget(),
         TimeProvider.System);
 
-    private sealed class ClientProvider(Func<IKubernetes> client) : IKubernetesClientProvider
+    private sealed class ClientProvider(
+        Func<IKubernetes> client
+    ) : IKubernetesClientProvider
     {
         public int Reads { get; private set; }
 
@@ -401,6 +432,8 @@ public sealed class RedisNativeObservationTests
 
     private sealed class Budget : IObservationReadBudget
     {
+        private int _active;
+        private int _reads;
         public int Reads => Volatile.Read(ref _reads);
         public int Active => Volatile.Read(ref _active);
 
@@ -417,9 +450,6 @@ public sealed class RedisNativeObservationTests
                 Interlocked.Decrement(ref _active);
             }
         }
-
-        private int _active;
-        private int _reads;
     }
 }
 
@@ -452,9 +482,12 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
     public NativeWatchTestStream Stream(string kind, string? uid = null) => _streams[kind + ":" + uid];
 
     private static string? WarningUid(Uri uri) => Uri.UnescapeDataString(uri.Query)
-        .Split("involvedObject.uid=", StringSplitOptions.None).Last().Split(',', '&')[0];
+        .Split("involvedObject.uid=")
+        .Last()
+        .Split(',', '&')[0];
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
         var uri = request.RequestUri!;
@@ -465,49 +498,58 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
             Assert.Contains(kind, new[] { "statefulsets", "pods", "services", "events", "endpointslices" });
             var stream = new NativeWatchTestStream();
             _streams[kind + ":" + (kind == "events" ? WarningUid(uri) : null)] = stream;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                RequestMessage = request,
-                Content = new StreamContent(stream)
-            });
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    RequestMessage = request,
+                    Content = new StreamContent(stream),
+                });
         }
 
         var data = kind switch
         {
             "cache" => KubernetesJson.Serialize(ReadController()),
-            "statefulsets" => KubernetesJson.Serialize(new V1StatefulSetList
-            {
-                Metadata = ListMeta("controller-list"),
-                Items = ControllerPresent ? [Controller()] : []
-            }),
-            "pods" => KubernetesJson.Serialize(new V1PodList
-            {
-                Metadata = ListMeta("pods-list"),
-                Items = Enumerable.Range(0, PodCount).Select(i => Pod($"pod-{i:00}"))
-                    .Concat(IncludeForeignPod ? [Pod("foreign", "foreign")] : []).ToArray()
-            }),
-            "services" => KubernetesJson.Serialize(new V1ServiceList
-            {
-                Metadata = ListMeta("services-list"),
-                Items = [Service()]
-            }),
-            "events" => KubernetesJson.Serialize(new Corev1EventList
-            {
-                Metadata = ListMeta("events-" + WarningUid(uri)),
-                Items = []
-            }),
-            "endpointslices" => KubernetesJson.Serialize(new V1EndpointSliceList
-            {
-                Metadata = ListMeta("slices-" + ServiceUid),
-                Items = Enumerable.Range(0, SliceCount).Select(i => Slice($"slice-{i}")).ToArray()
-            }),
-            _ => throw new Xunit.Sdk.XunitException($"Unexpected native request {uri.AbsolutePath}")
+            "statefulsets" => KubernetesJson.Serialize(
+                new V1StatefulSetList
+                {
+                    Metadata = ListMeta("controller-list"),
+                    Items = ControllerPresent ? [Controller()] : [],
+                }),
+            "pods" => KubernetesJson.Serialize(
+                new V1PodList
+                {
+                    Metadata = ListMeta("pods-list"),
+                    Items = Enumerable.Range(0, PodCount)
+                        .Select(i => Pod($"pod-{i:00}"))
+                        .Concat(IncludeForeignPod ? [Pod("foreign", "foreign")] : [])
+                        .ToArray(),
+                }),
+            "services" => KubernetesJson.Serialize(
+                new V1ServiceList
+                {
+                    Metadata = ListMeta("services-list"),
+                    Items = [Service()],
+                }),
+            "events" => KubernetesJson.Serialize(
+                new Corev1EventList
+                {
+                    Metadata = ListMeta("events-" + WarningUid(uri)),
+                    Items = [],
+                }),
+            "endpointslices" => KubernetesJson.Serialize(
+                new V1EndpointSliceList
+                {
+                    Metadata = ListMeta("slices-" + ServiceUid),
+                    Items = Enumerable.Range(0, SliceCount).Select(i => Slice($"slice-{i}")).ToArray(),
+                }),
+            _ => throw new XunitException($"Unexpected native request {uri.AbsolutePath}"),
         };
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            RequestMessage = request,
-            Content = new StringContent(data, Encoding.UTF8, "application/json")
-        });
+        return Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new StringContent(data, Encoding.UTF8, "application/json"),
+            });
     }
 
     private static V1ListMeta ListMeta(string version) => new() { ResourceVersion = version };
@@ -521,7 +563,10 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
         return item;
     }
 
-    internal V1ObjectMeta Metadata(string name, string uid, string? parent = null) => new()
+    internal V1ObjectMeta Metadata(
+        string name,
+        string uid,
+        string? parent = null) => new()
     {
         Name = name,
         Uid = uid,
@@ -531,15 +576,15 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
         Labels = RedisNativeObservationTests.Identity.ToDictionary(),
         Annotations = new Dictionary<string, string>
         {
-            [KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "2"
+            [KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "2",
         },
         OwnerReferences = parent is null
             ? []
             :
             [
                 new V1OwnerReference
-                    { Uid = parent, Name = "parent", Kind = "StatefulSet", ApiVersion = "apps/v1", Controller = true }
-            ]
+                    { Uid = parent, Name = "parent", Kind = "StatefulSet", ApiVersion = "apps/v1", Controller = true },
+            ],
     };
 
     internal V1StatefulSet Controller()
@@ -553,7 +598,7 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
             meta.Uid = "";
         else if (ControllerMismatch is { } key)
             meta.Labels[key] = "foreign";
-        return new()
+        return new V1StatefulSet
         {
             ApiVersion = "apps/v1",
             Kind = "StatefulSet",
@@ -561,7 +606,7 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
             Spec = new V1StatefulSetSpec
             {
                 Replicas = 1,
-                Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") }
+                Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") },
             },
             Status = new V1StatefulSetStatus
             {
@@ -571,8 +616,8 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
                 Replicas = 1,
                 UpdatedReplicas = 1,
                 ReadyReplicas = 1,
-                AvailableReplicas = 1
-            }
+                AvailableReplicas = 1,
+            },
         };
     }
 
@@ -589,16 +634,16 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
             ContainerStatuses =
             [
                 new V1ContainerStatus
-                    { Name = "redis", Ready = true, Image = "native-canary-image", ImageID = "native-canary-id" }
-            ]
-        }
+                    { Name = "redis", Ready = true, Image = "native-canary-image", ImageID = "native-canary-id" },
+            ],
+        },
     };
 
     internal V1Service Service() => new()
     {
         ApiVersion = "v1",
         Kind = "Service",
-        Metadata = Metadata("cache-svc", ServiceUid)
+        Metadata = Metadata("cache-svc", ServiceUid),
     };
 
     internal V1EndpointSlice Slice(string uid) => new()
@@ -618,9 +663,9 @@ internal sealed class RedisNativeTestApi : DelegatingHandler
             OwnerReferences =
             [
                 new V1OwnerReference
-                    { Name = "cache-svc", Uid = ServiceUid, Kind = "Service", ApiVersion = "v1", Controller = true }
-            ]
-        }
+                    { Name = "cache-svc", Uid = ServiceUid, Kind = "Service", ApiVersion = "v1", Controller = true },
+            ],
+        },
     };
 
     internal static string Frame<T>(string kind, T value) =>

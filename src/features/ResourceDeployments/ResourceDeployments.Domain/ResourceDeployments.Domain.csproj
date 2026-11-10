@@ -9,14 +9,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
-      <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
-      <ProjectReference Include="..\..\..\shared\Dns\Dns.csproj" />
-      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
-      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
+        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Dns\Dns.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Models\Models.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj"/>
     </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../../shared/Observation.Primitives/Observation.Primitives.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../../shared/Observation.Primitives/Observation.Primitives.csproj"/>
+    </ItemGroup>
 </Project>

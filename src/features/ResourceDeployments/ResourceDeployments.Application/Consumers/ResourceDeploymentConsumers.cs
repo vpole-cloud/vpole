@@ -6,11 +6,10 @@ using Pole.Features.ResourceDeployments.Events;
 namespace Pole.Features.ResourceDeployments.Application.Consumers;
 
 public sealed class ReconcileResourceDeploymentConsumer(
-    ResourceDeploymentReconciler reconciler)
-    : IConsumer<ResourceDeploymentReconciliationRequestedEvent>
+    ResourceDeploymentReconciler reconciler
+) : IConsumer<ResourceDeploymentReconciliationRequestedEvent>
 {
-    public Task Consume(
-        ConsumeContext<ResourceDeploymentReconciliationRequestedEvent> context) =>
+    public Task Consume(ConsumeContext<ResourceDeploymentReconciliationRequestedEvent> context) =>
         reconciler.HandleAsync(
             context.Message.EventCore.TenantId,
             context.Message.ResourceDeploymentId,
@@ -21,18 +20,16 @@ public sealed class ReconcileResourceDeploymentConsumer(
 }
 
 public sealed class DeleteResourceDeploymentConsumer(
-    ResourceDeploymentReconciler reconciler)
-    : IConsumer<ResourceDeploymentDeletionRequestedEvent>
+    ResourceDeploymentReconciler reconciler
+) : IConsumer<ResourceDeploymentDeletionRequestedEvent>
 {
-    public Task Consume(
-        ConsumeContext<ResourceDeploymentDeletionRequestedEvent> context) =>
-        reconciler.HandleAsync(
-            context.Message.EventCore.TenantId,
-            context.Message.ResourceDeploymentId,
-            context.Message.RuntimeCellId,
-            context.Message.Generation,
-            ResourceDeploymentOperation.Delete,
-            context.CancellationToken);
+    public Task Consume(ConsumeContext<ResourceDeploymentDeletionRequestedEvent> context) => reconciler.HandleAsync(
+        context.Message.EventCore.TenantId,
+        context.Message.ResourceDeploymentId,
+        context.Message.RuntimeCellId,
+        context.Message.Generation,
+        ResourceDeploymentOperation.Delete,
+        context.CancellationToken);
 }
 
 public sealed class ReconcileResourceDeploymentConsumerDefinition
@@ -41,24 +38,15 @@ public sealed class ReconcileResourceDeploymentConsumerDefinition
     protected override void ConfigureConsumer(
         IReceiveEndpointConfigurator endpointConfigurator,
         IConsumerConfigurator<ReconcileResourceDeploymentConsumer> consumerConfigurator,
-        IRegistrationContext context) =>
-        endpointConfigurator.UseMessageRetry(retry =>
-            retry.Intervals(
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(10),
-                TimeSpan.FromSeconds(30)));
+        IRegistrationContext context) => endpointConfigurator.UseMessageRetry(retry =>
+        retry.Intervals(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)));
 }
 
-public sealed class DeleteResourceDeploymentConsumerDefinition
-    : ConsumerDefinition<DeleteResourceDeploymentConsumer>
+public sealed class DeleteResourceDeploymentConsumerDefinition : ConsumerDefinition<DeleteResourceDeploymentConsumer>
 {
     protected override void ConfigureConsumer(
         IReceiveEndpointConfigurator endpointConfigurator,
         IConsumerConfigurator<DeleteResourceDeploymentConsumer> consumerConfigurator,
-        IRegistrationContext context) =>
-        endpointConfigurator.UseMessageRetry(retry =>
-            retry.Intervals(
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(10),
-                TimeSpan.FromSeconds(30)));
+        IRegistrationContext context) => endpointConfigurator.UseMessageRetry(retry =>
+        retry.Intervals(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)));
 }

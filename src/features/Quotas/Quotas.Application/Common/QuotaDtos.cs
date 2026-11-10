@@ -1,26 +1,27 @@
 using System.Collections.Immutable;
-using Pole.Features.Quotas.Application.Endpoints;
-using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
 
 namespace Pole.Features.Quotas.Application.Common;
 
 public sealed record QuotaValueDto(
     string Key,
-    long Value);
+    long Value
+);
 
 /// <summary>
-/// A null limit means that the tenant has no cap for this quota.
+///     A null limit means that the tenant has no cap for this quota.
 /// </summary>
 public sealed record QuotaLimitDto(
     string Key,
-    long? Limit);
+    long? Limit
+);
 
 public sealed record TenantQuotaPolicyDto(
     string TenantId,
     IReadOnlyCollection<QuotaLimitDto> Limits,
     DateTime? CreatedAtUtc,
-    DateTime? UpdatedAtUtc);
+    DateTime? UpdatedAtUtc
+);
 
 public sealed record TenantQuotaUsageDto(
     string TenantId,
@@ -28,22 +29,23 @@ public sealed record TenantQuotaUsageDto(
     IReadOnlyCollection<QuotaValueDto> ActiveReservations,
     IReadOnlyCollection<QuotaLimitDto> Limits,
     DateTime? PolicyUpdatedAtUtc,
-    DateTime? UsageUpdatedAtUtc);
+    DateTime? UsageUpdatedAtUtc
+);
 
 public sealed record UpsertTenantQuotaPolicyRequestBody(
-    IReadOnlyCollection<QuotaValueDto>? Limits);
+    IReadOnlyCollection<QuotaValueDto>? Limits
+);
 
 public static class QuotaDtoExtensions
 {
     public static TenantQuotaPolicyDto ToDto(
         this TenantQuotaPolicy? policy,
         string tenantId,
-        QuotaCatalog catalog) =>
-        new(
-            tenantId,
-            ToLimitDtos(policy?.Limits, catalog),
-            policy?.CreatedAtUtc,
-            policy?.UpdatedAtUtc);
+        QuotaCatalog catalog) => new(
+        tenantId,
+        ToLimitDtos(policy?.Limits, catalog),
+        policy?.CreatedAtUtc,
+        policy?.UpdatedAtUtc);
 
     public static TenantQuotaUsageDto ToDto(
         this TenantQuotaUsage? usage,
@@ -62,9 +64,7 @@ public static class QuotaDtoExtensions
             usage?.UpdatedAtUtc);
     }
 
-    public static QuotaDelta ToQuotaLimits(
-        this UpsertTenantQuotaPolicyRequestBody body,
-        QuotaCatalog catalog)
+    public static QuotaDelta ToQuotaLimits(this UpsertTenantQuotaPolicyRequestBody body, QuotaCatalog catalog)
     {
         var errors = ValidateQuotaLimits(body, catalog);
         if (errors.Count > 0)
@@ -74,8 +74,7 @@ public static class QuotaDtoExtensions
             definition => definition.Key.Value,
             definition => definition.Key,
             StringComparer.OrdinalIgnoreCase);
-        return QuotaDelta.Create(body.Limits!
-            .Select(limit => new QuotaValue(definitions[limit.Key], limit.Value)));
+        return QuotaDelta.Create(body.Limits!.Select(limit => new QuotaValue(definitions[limit.Key], limit.Value)));
     }
 
     public static IReadOnlyDictionary<string, string[]> ValidateQuotaLimits(
@@ -96,8 +95,7 @@ public static class QuotaDtoExtensions
         var seen = new HashSet<QuotaKey>();
         foreach (var (limit, index) in body.Limits.Select((limit, index) => (limit, index)))
         {
-            if (limit is null ||
-                string.IsNullOrWhiteSpace(limit.Key) ||
+            if (limit is null || string.IsNullOrWhiteSpace(limit.Key) ||
                 !definitions.TryGetValue(limit.Key, out var key))
             {
                 errors[$"Body.Limits[{index}].Key"] = ["Quota key is invalid."];
@@ -114,21 +112,15 @@ public static class QuotaDtoExtensions
         return errors;
     }
 
-    private static IReadOnlyCollection<QuotaValueDto> ToValueDtos(
-        IEnumerable<QuotaValue>? values,
-        QuotaCatalog catalog)
+    private static IReadOnlyCollection<QuotaValueDto> ToValueDtos(IEnumerable<QuotaValue>? values, QuotaCatalog catalog)
     {
         var source = values ?? ImmutableList<QuotaValue>.Empty;
         return catalog.Definitions
-            .Select(definition => new QuotaValueDto(
-                definition.Key.Value,
-                QuotaValues.GetValue(source, definition.Key)))
+            .Select(definition => new QuotaValueDto(definition.Key.Value, QuotaValues.GetValue(source, definition.Key)))
             .ToArray();
     }
 
-    private static IReadOnlyCollection<QuotaLimitDto> ToLimitDtos(
-        IEnumerable<QuotaValue>? limits,
-        QuotaCatalog catalog)
+    private static IReadOnlyCollection<QuotaLimitDto> ToLimitDtos(IEnumerable<QuotaValue>? limits, QuotaCatalog catalog)
     {
         var source = limits ?? ImmutableList<QuotaValue>.Empty;
         return catalog.Definitions

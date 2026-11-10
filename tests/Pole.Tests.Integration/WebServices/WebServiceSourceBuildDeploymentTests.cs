@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Domain;
@@ -11,38 +12,31 @@ using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Consumers;
-using Pole.Features.WebServices.Application.Declarations;
 using Pole.Features.WebServices.Application.Deployments;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Queries;
 using Pole.Features.WebServices.Application.Releases;
 using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.WebServices;
 
 [Collection(IntegrationTestCollection.Tenant1)]
-public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class WebServiceSourceBuildDeploymentTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
+    private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    private readonly string ConfigurationId = ObjectId.GenerateNewId().ToString();
+    private readonly string JobId = ObjectId.GenerateNewId().ToString();
+    private readonly string RepositoryId = ObjectId.GenerateNewId().ToString();
+
     protected override void ConfigureServices(IServiceCollection services) =>
         services.AddGitProvidersFeature(new ConfigurationBuilder().Build());
-
-    private readonly string ConfigurationId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private readonly string JobId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private readonly string RepositoryId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private const string Digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Fact]
     public async Task SourceBuildDeployment_CreatesTypedProvenanceAndCompletionEvent()
@@ -51,7 +45,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var deployments = new[]
         {
             CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061"),
-            CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062")
+            CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062"),
         };
         var mutationWriter = new SuccessfulSetMutationWriter(deployments);
         var service = CreateService(deployments, mutationWriter.RequestSetApplyAsync);
@@ -63,7 +57,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var updated = await Fixture.Database.WebServices().Find(item => item.Id == webService.Id).SingleAsync();
         Assert.Equal("harbor.test", updated.Spec.Image.ResolvedImage!.Server);
         Assert.Equal("pole-registry-project-1", updated.Spec.Image.ResolvedImage!.SecretName);
-        var release = await Fixture.Database.WebServiceReleases()
+        var release = await Fixture.Database
+            .WebServiceReleases()
             .Find(item => item.Id == deployment.ReleaseId)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.SourceBuild, release.Action);
@@ -76,7 +71,8 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
 
         Assert.Equal(1, mutationWriter.ApplyCallCount);
         Assert.Equal(updated.ActiveRevision, mutationWriter.LastCommand?.ResourceRevision);
-        Assert.Equal(deployments.Select(item => item.DeploymentId),
+        Assert.Equal(
+            deployments.Select(item => item.DeploymentId),
             mutationWriter.LastCommand?.Deployments.Select(item => item.ResourceDeploymentId));
         var releaseDeployment = release.Deployments[0];
         var applied = new ResourceDeploymentAppliedEvent(
@@ -87,72 +83,69 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             releaseDeployment.DeploymentGeneration,
             releaseDeployment.ResourceRevision)
         {
-            EventCore = EventCore.Create(Data.TenantId)
+            EventCore = EventCore.Create(Data.TenantId),
         };
         var consumer = new WebServiceDeploymentConsumer(
             Services.GetRequiredService<CompleteWebServiceDeployment>(),
             TimeProvider.System);
         await consumer.Handle(applied);
 
-        var partiallyCompletedRelease = await Fixture.Database.WebServiceReleases()
-            .Find(item => item.Id == release.Id)
-            .SingleAsync();
+        var partiallyCompletedRelease
+            = await Fixture.Database.WebServiceReleases().Find(item => item.Id == release.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Pending, partiallyCompletedRelease.Outcome);
-        Assert.Equal(WebServiceReleaseDeploymentOutcome.Succeeded,
-            partiallyCompletedRelease.Deployments[0].Outcome);
-        Assert.Equal(WebServiceReleaseDeploymentOutcome.Pending,
-            partiallyCompletedRelease.Deployments[1].Outcome);
+        Assert.Equal(WebServiceReleaseDeploymentOutcome.Succeeded, partiallyCompletedRelease.Deployments[0].Outcome);
+        Assert.Equal(WebServiceReleaseDeploymentOutcome.Pending, partiallyCompletedRelease.Deployments[1].Outcome);
 
         var secondReleaseDeployment = release.Deployments[1];
-        await consumer.Handle(applied with
-        {
-            ResourceDeploymentId = secondReleaseDeployment.ResourceDeploymentId,
-            Generation = secondReleaseDeployment.DeploymentGeneration,
-            ResourceRevision = secondReleaseDeployment.ResourceRevision
-        });
+        await consumer.Handle(
+            applied with
+            {
+                ResourceDeploymentId = secondReleaseDeployment.ResourceDeploymentId,
+                Generation = secondReleaseDeployment.DeploymentGeneration,
+                ResourceRevision = secondReleaseDeployment.ResourceRevision,
+            });
 
-        var completedRelease = await Fixture.Database.WebServiceReleases()
-            .Find(item => item.Id == release.Id)
-            .SingleAsync();
+        var completedRelease
+            = await Fixture.Database.WebServiceReleases().Find(item => item.Id == release.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseOutcome.Succeeded, completedRelease.Outcome);
-        Assert.True(await Fixture.DbContext.OutboxMessages
-            .Find(item => item.TenantId == Data.TenantId && item.EventType == "pole.web-services/v1/web-service-deployment-completed")
-            .AnyAsync());
+        Assert.True(
+            await Fixture.DbContext
+                .OutboxMessages
+                .Find(item =>
+                    item.TenantId == Data.TenantId &&
+                    item.EventType == "pole.web-services/v1/web-service-deployment-completed")
+                .AnyAsync());
     }
 
     [Fact]
     public async Task SourceBuildDeployment_AbortsOnTypedResourceDeploymentRejection()
     {
         var webService = await SeedWebServiceAsync();
-        var deployment = CreatePlacement(
-            "507f1f77bcf86cd799439051",
-            "507f1f77bcf86cd799439061");
+        var deployment = CreatePlacement("507f1f77bcf86cd799439051", "507f1f77bcf86cd799439061");
         var service = CreateService(
             [deployment],
             new RejectedSetMutationWriter(
-                new ResourceDeploymentPlacementUnavailable(
-                    webService.Id,
-                    deployment.DeploymentId)).RequestSetApplyAsync);
+                    new ResourceDeploymentPlacementUnavailable(webService.Id, deployment.DeploymentId))
+                .RequestSetApplyAsync);
 
         var result = await service.DeployAsync(CreateRequest(webService.Id));
 
         var error = Assert.IsType<SourceBuildWebServiceDeploymentError>(result.Value);
         var rejected = Assert.IsType<SourceBuildWebServiceDeploymentRejected>(error.Value);
-        var unavailable = Assert.IsType<SourceBuildResourceDeploymentPlacementUnavailable>(
-            rejected.Reason.Value);
+        var unavailable = Assert.IsType<SourceBuildResourceDeploymentPlacementUnavailable>(rejected.Reason.Value);
         Assert.Equal(deployment.DeploymentId, unavailable.ResourceDeploymentId);
 
-        var persisted = await Fixture.Database.WebServices()
-            .Find(item => item.Id == webService.Id)
-            .SingleAsync();
+        var persisted = await Fixture.Database.WebServices().Find(item => item.Id == webService.Id).SingleAsync();
         Assert.Equal(webService.Spec.Image, persisted.Spec.Image);
         Assert.Equal(webService.ActiveRevision, persisted.ActiveRevision);
-        Assert.False(await Fixture.Database.WebServiceReleases()
-            .Find(item => item.WebServiceId == webService.Id)
-            .AnyAsync());
-        Assert.False(await Fixture.DbContext.OutboxMessages
-            .Find(item => item.TenantId == Data.TenantId && item.EventType == "pole.web-services/v1/web-service-updated")
-            .AnyAsync());
+        Assert.False(
+            await Fixture.Database.WebServiceReleases().Find(item => item.WebServiceId == webService.Id).AnyAsync());
+        Assert.False(
+            await Fixture.DbContext
+                .OutboxMessages
+                .Find(item =>
+                    item.TenantId == Data.TenantId && item.EventType == "pole.web-services/v1/web-service-updated")
+                .AnyAsync());
     }
 
     [Fact]
@@ -163,7 +156,7 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var removed = CreatePlacement("507f1f77bcf86cd799439052", "507f1f77bcf86cd799439062") with
         {
             DesiredOperation = ResourceDeploymentDesiredOperation.Delete,
-            Status = ResourceDeploymentStatus.Pending
+            Status = ResourceDeploymentStatus.Pending,
         };
         var writer = new SuccessfulSetMutationWriter([desired]);
         var service = CreateService([desired, removed], writer.RequestSetApplyAsync);
@@ -171,12 +164,12 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
         var result = Assert.IsType<SourceBuildDeploymentResult>(
             (await service.DeployAsync(CreateRequest(webService.Id))).Value);
 
-        Assert.Equal(desired.DeploymentId,
-            Assert.Single(writer.LastCommand!.Deployments).ResourceDeploymentId);
-        var release = await Fixture.Database.WebServiceReleases()
-            .Find(item => item.Id == result.ReleaseId).SingleAsync();
-        Assert.Equal(desired.DeploymentId,
-            Assert.Single(release.Deployments).ResourceDeploymentId);
+        Assert.Equal(desired.DeploymentId, Assert.Single(writer.LastCommand!.Deployments).ResourceDeploymentId);
+        var release = await Fixture.Database
+            .WebServiceReleases()
+            .Find(item => item.Id == result.ReleaseId)
+            .SingleAsync();
+        Assert.Equal(desired.DeploymentId, Assert.Single(release.Deployments).ResourceDeploymentId);
     }
 
     private async Task<WebService> SeedWebServiceAsync()
@@ -188,41 +181,74 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             IsolationScopeId = group.DefaultIsolationScopeId,
             Spec = allocated.Spec with { Image = new UnboundSourceBuildImage() },
             Lifecycle = new PreparedWebServiceLifecycle(),
-            Exposure = WebServiceExposure.Create(WebServiceExposureMode.Public)
+            Exposure = WebServiceExposure.Create(WebServiceExposureMode.Public),
         };
         var webService = allocated.AcceptConfigurationAwaitingArtifact(
             allocated.Spec with { Image = WebServiceImageFactory.Pending(ConfigurationId) },
-            allocated.Tags, allocated.Exposure);
-        var connection = GitProviderConnectionFactory.Create(Data.TenantId, "build-github", GitProviderKind.GitHub,
-            "installation-" + Data.TenantId, "account", "owner", GitProviderAccountType.User, GitProviderRepositorySelection.All,
-            Data.UserId, GitProviderConnectionFactory.DefaultOptions);
+            allocated.Tags,
+            allocated.Exposure);
+        var connection = GitProviderConnectionFactory.Create(
+            Data.TenantId,
+            "build-github",
+            GitProviderKind.GitHub,
+            "installation-" + Data.TenantId,
+            "account",
+            "owner",
+            GitProviderAccountType.User,
+            GitProviderRepositorySelection.All,
+            Data.UserId,
+            GitProviderConnectionFactory.DefaultOptions);
         await DbContext.GitProviderConnections.InsertOneAsync(connection);
         var now = DateTime.UtcNow;
-        await DbContext.SourceRepositories.InsertOneAsync(SourceRepositoryFactory.Create(Data.TenantId,
-            "application", connection.Id, "application", "owner/application", "https://github.test/owner/application",
-            true, "main", new(RepositoryId, now, now)));
-        var configuration = SourceBuildConfigurationFactory.Create(Data.TenantId, "application-build", RepositoryId,
-            webService.Id, new("FROM scratch"), new ManualSourceBuildConfigurationOrigin(Data.UserId),
-            new(ConfigurationId, now)) with
-        {
-            BuildGeneration = 1
-        };
-        await DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
-        var job = SourceBuildJobFactory.CreateManual(Data.TenantId, ConfigurationId, RepositoryId, webService.Id,
-            "main", new string('a', 40), new(1, 1, 1), configuration.Recipe, Data.UserId, Data.UserEmail,
-            new(JobId, now)) with
-        {
-            Execution = new ClaimedSourceBuildExecution("deployment-test", 1, now.AddMinutes(2))
-        };
-        job = job.StartCloning(now).StartAnalyzing(now).StartBuilding(now)
-            .StartPushing(SourceBuildArtifactFactory.Create(
-                "harbor.test/pole-test/web-services/service-1:build-1", Digest), now);
-        await DbContext.SourceBuildJobs.InsertOneAsync(job);
-        await DbContext.RunOutcomeInTransactionAsync<RegisteredResource>(
-            async (transaction, cancellationToken) =>
+        await DbContext.SourceRepositories.InsertOneAsync(
+            SourceRepositoryFactory.Create(
+                Data.TenantId,
+                "application",
+                connection.Id,
+                "application",
+                "owner/application",
+                "https://github.test/owner/application",
+                true,
+                "main",
+                new SourceRepositoryFactory.CreateOptions(RepositoryId, now, now)));
+        var configuration = SourceBuildConfigurationFactory.Create(
+                Data.TenantId,
+                "application-build",
+                RepositoryId,
+                webService.Id,
+                new SourceBuildRecipe("FROM scratch"),
+                new ManualSourceBuildConfigurationOrigin(Data.UserId),
+                new SourceBuildConfigurationFactory.CreateOptions(ConfigurationId, now)) with
             {
-                var registration = await Services.GetRequiredService<IResourceRegistrar>()
-                    .RegisterAsync(
+                BuildGeneration = 1,
+            };
+        await DbContext.SourceBuildConfigurations.InsertOneAsync(configuration);
+        var job = SourceBuildJobFactory.CreateManual(
+                Data.TenantId,
+                ConfigurationId,
+                RepositoryId,
+                webService.Id,
+                "main",
+                new string('a', 40),
+                new SourceBuildInputVersion(1, 1, 1),
+                configuration.Recipe,
+                Data.UserId,
+                Data.UserEmail,
+                new SourceBuildJobFactory.CreateOptions(JobId, now)) with
+            {
+                Execution = new ClaimedSourceBuildExecution("deployment-test", 1, now.AddMinutes(2)),
+            };
+        job = job.StartCloning(now)
+            .StartAnalyzing(now)
+            .StartBuilding(now)
+            .StartPushing(
+                SourceBuildArtifactFactory.Create("harbor.test/pole-test/web-services/service-1:build-1", Digest),
+                now);
+        await DbContext.SourceBuildJobs.InsertOneAsync(job);
+        await DbContext.RunOutcomeInTransactionAsync<RegisteredResource>(async (transaction, cancellationToken) =>
+        {
+            var registration = await Services.GetRequiredService<IResourceRegistrar>()
+                .RegisterAsync(
                     new RegisterResourceRequest(
                         TenantId: webService.TenantId,
                         ResourceGroupId: group.Id,
@@ -232,60 +258,78 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
                             webService.Name)),
                     session: transaction.Session,
                     cancellationToken: cancellationToken);
-                var registered = Assert.IsType<RegisteredResource>(registration.Value);
-                await Fixture.Database.WebServices().InsertOneAsync(
-                    transaction.Session,
-                    webService,
-                    cancellationToken: cancellationToken);
-                return transaction.Commit(registered);
-            });
+            var registered = Assert.IsType<RegisteredResource>(registration.Value);
+            await Fixture.Database
+                .WebServices()
+                .InsertOneAsync(transaction.Session, webService, cancellationToken: cancellationToken);
+            return transaction.Commit(registered);
+        });
         return webService;
     }
 
     private WebServiceSourceBuildDeploymentService CreateService(
         IReadOnlyList<PlacementSummaryDto> deployments,
-        RequestResourceDeploymentSetApply requestSetApply) =>
-        new(
-            Services.GetRequiredService<LoadWebServiceForSourceBuild>(),
-            Services.GetRequiredService<Pole.Database.RunMongoOutcomeTransaction<DeploySourceBuildWebServiceOutcome>>(),
-            new FixedSetQueryService(deployments).LoadAsync,
-            requestSetApply,
-            Services.GetRequiredService<PersistWebServiceArtifactPromotion>(),
-            Services.GetRequiredService<BeginSourceBuildPromotion>(),
-            Services.GetRequiredService<CompleteSourceBuildPromotion>(),
-            Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
-            TimeProvider.System);
+        RequestResourceDeploymentSetApply requestSetApply) => new(
+        Services.GetRequiredService<LoadWebServiceForSourceBuild>(),
+        Services.GetRequiredService<RunMongoOutcomeTransaction<DeploySourceBuildWebServiceOutcome>>(),
+        new FixedSetQueryService(deployments).LoadAsync,
+        requestSetApply,
+        Services.GetRequiredService<PersistWebServiceArtifactPromotion>(),
+        Services.GetRequiredService<BeginSourceBuildPromotion>(),
+        Services.GetRequiredService<CompleteSourceBuildPromotion>(),
+        Services.GetRequiredService<PersistCurrentWebServiceRelease>(),
+        TimeProvider.System);
 
-    private SourceBuildDeploymentRequest CreateRequest(string webServiceId) =>
-        new(
-            Data.TenantId,
-            webServiceId,
-            JobId,
-            RepositoryId,
-            new string('a', 40),
-            new(ConfigurationId, 1, 1, "deployment-test", 1),
-            Data.UserId,
-            Data.UserEmail,
-            new SourceBuildDeploymentImage(
-                "harbor.test",
-                "pole-test/web-services/service-1",
-                "build-1",
-                Digest,
-                "pole-registry-project-1"));
+    private SourceBuildDeploymentRequest CreateRequest(string webServiceId) => new(
+        Data.TenantId,
+        webServiceId,
+        JobId,
+        RepositoryId,
+        new string('a', 40),
+        new SourceBuildDeploymentAuthority(ConfigurationId, 1, 1, "deployment-test", 1),
+        Data.UserId,
+        Data.UserEmail,
+        new SourceBuildDeploymentImage(
+            "harbor.test",
+            "pole-test/web-services/service-1",
+            "build-1",
+            Digest,
+            "pole-registry-project-1"));
 
-    private static PlacementSummaryDto CreatePlacement(string deploymentId, string targetId) =>
-        new(deploymentId, "507f1f77bcf86cd799439070", ObjectId.GenerateNewId().ToString(), targetId,
-            DesiredGeneration: 1, ObservedGeneration: 1, Status: ResourceDeploymentStatus.Applied, FailureCode: null,
-            new ComputeConfigurationSummaryDto(new ComputeProfileReference(ObjectId.GenerateNewId().ToString(), 1),
-            "default", new ComputeResourceValuesDto(250, 256), new ComputeResourceValuesDto(1000, 512),
-            ImmutableList<ComputeExtendedResourceDto>.Empty), Endpoints: [], ResourceRevision: 1, FixedReplicas: 2,
-            Ingress: ResourceDeploymentIngressConfiguration.Create("traefik", "letsencrypt-prod", "example.test",
-            [$"{deploymentId}.example.test"]), DeploymentRevision: 1,
-            DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
-            Isolation: new ResourceDeploymentIsolationDto("Unknown", "EnforcementRequired", "EnforcementNotEstablished",
+    private static PlacementSummaryDto CreatePlacement(string deploymentId, string targetId) => new(
+        deploymentId,
+        "507f1f77bcf86cd799439070",
+        ObjectId.GenerateNewId().ToString(),
+        targetId,
+        DesiredGeneration: 1,
+        ObservedGeneration: 1,
+        Status: ResourceDeploymentStatus.Applied,
+        FailureCode: null,
+        new ComputeConfigurationSummaryDto(
+            new ComputeProfileReference(ObjectId.GenerateNewId().ToString(), 1),
+            "default",
+            new ComputeResourceValuesDto(250, 256),
+            new ComputeResourceValuesDto(1000, 512),
+            ImmutableList<ComputeExtendedResourceDto>.Empty),
+        Endpoints: [],
+        ResourceRevision: 1,
+        FixedReplicas: 2,
+        Ingress: ResourceDeploymentIngressConfiguration.Create(
+            "traefik",
+            "letsencrypt-prod",
+            "example.test",
+            [$"{deploymentId}.example.test"]),
+        DeploymentRevision: 1,
+        DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
+        Isolation: new ResourceDeploymentIsolationDto(
+            "Unknown",
+            "EnforcementRequired",
+            "EnforcementNotEstablished",
             null));
 
-    private sealed class SuccessfulSetMutationWriter(IReadOnlyList<PlacementSummaryDto> deployments)
+    private sealed class SuccessfulSetMutationWriter(
+        IReadOnlyList<PlacementSummaryDto> deployments
+    )
     {
         public int ApplyCallCount { get; private set; }
         public ResourceDeploymentSetApplyRequest? LastCommand { get; private set; }
@@ -300,15 +344,18 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             return Task.FromResult<ResourceDeploymentSetMutationOutcome>(
                 new MutatedResourceDeployments(
                     deployments.Select(item => item with
-                    {
-                        DesiredGeneration = item.DesiredGeneration + 1,
-                        ResourceRevision = command.ResourceRevision,
-                        Status = ResourceDeploymentStatus.Pending
-                    }).ToArray()));
+                        {
+                            DesiredGeneration = item.DesiredGeneration + 1,
+                            ResourceRevision = command.ResourceRevision,
+                            Status = ResourceDeploymentStatus.Pending,
+                        })
+                        .ToArray()));
         }
     }
 
-    private sealed class RejectedSetMutationWriter(ResourceDeploymentMutationError error)
+    private sealed class RejectedSetMutationWriter(
+        ResourceDeploymentMutationError error
+    )
     {
         public Task<ResourceDeploymentSetMutationOutcome> RequestSetApplyAsync(
             ResourceDeploymentSetApplyRequest command,
@@ -317,7 +364,9 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             Task.FromResult<ResourceDeploymentSetMutationOutcome>(error);
     }
 
-    private sealed class FixedSetQueryService(IReadOnlyList<PlacementSummaryDto> deployments)
+    private sealed class FixedSetQueryService(
+        IReadOnlyList<PlacementSummaryDto> deployments
+    )
     {
         public Task<LoadResourceDeploymentPlanningSnapshotOutcome> LoadAsync(
             ResourceDeploymentPlanningRequest request,
@@ -325,18 +374,45 @@ public sealed class WebServiceSourceBuildDeploymentTests(MongoReplicaSetFixture 
             CancellationToken cancellationToken)
         {
             Assert.True(session.IsInTransaction);
-            var items = deployments.Select(item => new ResourceDeploymentPlanningItem(item.DeploymentId,
-                "group", item.IsolationScopeId, item.DeploymentTargetId, item.DeploymentRevision, item.FixedReplicas,
-                new(item.Compute.Profile.ComputeProfileId, item.Compute.Profile.ComputeProfileRevision,
-                    item.DeploymentTargetId, item.Compute.DisplayName,
-                    new(item.Compute.Requests.CpuMillis, item.Compute.Requests.MemoryMi),
-                    new(item.Compute.Limits.CpuMillis, item.Compute.Limits.MemoryMi), ComputeArchitecture.Any,
-                    [], [], [], [], [], null),
-                item.DesiredOperation == ResourceDeploymentDesiredOperation.Delete
-                    ? ResourceDeploymentPlanningState.Deleting : ResourceDeploymentPlanningState.Prepared,
-                null, item.Ingress, 1, item.DesiredGeneration, item.ResourceRevision)).ToArray();
+            var items = deployments.Select(item => new ResourceDeploymentPlanningItem(
+                    item.DeploymentId,
+                    "group",
+                    item.IsolationScopeId,
+                    item.DeploymentTargetId,
+                    item.DeploymentRevision,
+                    item.FixedReplicas,
+                    new ResourceDeploymentComputeConfiguration(
+                        item.Compute.Profile.ComputeProfileId,
+                        item.Compute.Profile.ComputeProfileRevision,
+                        item.DeploymentTargetId,
+                        item.Compute.DisplayName,
+                        new ResourceDeploymentComputeResourceValues(
+                            item.Compute.Requests.CpuMillis,
+                            item.Compute.Requests.MemoryMi),
+                        new ResourceDeploymentComputeResourceValues(
+                            item.Compute.Limits.CpuMillis,
+                            item.Compute.Limits.MemoryMi),
+                        ComputeArchitecture.Any,
+                        [],
+                        [],
+                        [],
+                        [],
+                        [],
+                        null),
+                    item.DesiredOperation == ResourceDeploymentDesiredOperation.Delete
+                        ? ResourceDeploymentPlanningState.Deleting
+                        : ResourceDeploymentPlanningState.Prepared,
+                    null,
+                    item.Ingress,
+                    1,
+                    item.DesiredGeneration,
+                    item.ResourceRevision))
+                .ToArray();
             return Task.FromResult<LoadResourceDeploymentPlanningSnapshotOutcome>(
-                new ResourceDeploymentPlanningSnapshot(request.TenantId, request.ResourceType, request.ResourceId,
+                new ResourceDeploymentPlanningSnapshot(
+                    request.TenantId,
+                    request.ResourceType,
+                    request.ResourceId,
                     items));
         }
     }

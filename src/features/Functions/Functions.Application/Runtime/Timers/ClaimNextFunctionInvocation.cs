@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -13,7 +11,8 @@ public delegate Task<FunctionInvocation?> ClaimNextFunctionInvocation(
 
 public sealed class MongoClaimNextFunctionInvocation(
     IMongoCollection<FunctionInvocation> functionInvocations,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<FunctionInvocation?> InvokeAsync(
         string ownerId,
@@ -23,8 +22,7 @@ public sealed class MongoClaimNextFunctionInvocation(
         for (var retry = 0; retry < 5; retry++)
         {
             var now = timeProvider.GetUtcNow();
-            var candidate = await functionInvocations.Find(
-                    FunctionInvocationClaimFilters.ReadyAt(now))
+            var candidate = await functionInvocations.Find(FunctionInvocationClaimFilters.ReadyAt(now))
                 .SortBy(invocation => invocation.NextAttemptAtUtc)
                 .ThenBy(invocation => invocation.CreatedAtUtc)
                 .FirstOrDefaultAsync(cancellationToken);

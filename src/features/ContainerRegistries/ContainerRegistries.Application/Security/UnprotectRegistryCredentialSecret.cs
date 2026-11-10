@@ -1,19 +1,18 @@
+using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.Encryption;
 
 namespace Pole.Features.ContainerRegistries.Application.Security;
 
-public union UnprotectRegistryCredentialOutcome(
-    string,
-    RegistryCredentialUnavailable);
+public union UnprotectRegistryCredentialOutcome(string, RegistryCredentialUnavailable);
 
-public delegate ValueTask<UnprotectRegistryCredentialOutcome>
-    UnprotectRegistryCredentialSecret(
-        RegistryCredential credential,
-        CancellationToken cancellationToken = default);
+public delegate ValueTask<UnprotectRegistryCredentialOutcome> UnprotectRegistryCredentialSecret(
+    RegistryCredential credential,
+    CancellationToken cancellationToken = default);
 
-public sealed class EnvelopeUnprotectRegistryCredentialSecret(Pole.Encryption.IEnvelopeEncryptionService encryption)
+public sealed class EnvelopeUnprotectRegistryCredentialSecret(
+    IEnvelopeEncryptionService encryption
+)
 {
     public async ValueTask<UnprotectRegistryCredentialOutcome> InvokeAsync(
         RegistryCredential credential,
@@ -21,15 +20,12 @@ public sealed class EnvelopeUnprotectRegistryCredentialSecret(Pole.Encryption.IE
     {
         var result = await encryption.DecryptStringAsync(
             credential.EncryptedSecret,
-            RegistryCredentialEncryptionContext.Create(
-                credential.TenantId,
-                credential.Id,
-                credential.SecretVersion),
+            RegistryCredentialEncryptionContext.Create(credential.TenantId, credential.Id, credential.SecretVersion),
             cancellationToken);
         return result switch
         {
             string secret => secret,
-            EnvelopeDecryptionFailed => new RegistryCredentialUnavailable(credential.RegistryProjectId)
+            EnvelopeDecryptionFailed => new RegistryCredentialUnavailable(credential.RegistryProjectId),
         };
     }
 }

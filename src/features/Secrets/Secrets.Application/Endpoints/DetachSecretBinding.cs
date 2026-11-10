@@ -5,21 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
-
 using static Pole.Features.Secrets.Application.SecretHttpMappings;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
@@ -33,8 +22,8 @@ public union DetachSecretBindingOutcome(
 public sealed record DetachSecretBindingRequest(
     [FromRoute] string Id,
     [FromRoute] string BindingId,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<DetachSecretBindingOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<DetachSecretBindingOutcome>, ITenantWriteOperation;
 
 public sealed class DetachSecretBindingValidator : AbstractValidator<DetachSecretBindingRequest>
 {
@@ -45,13 +34,17 @@ public sealed class DetachSecretBindingValidator : AbstractValidator<DetachSecre
     }
 }
 
-public sealed class DetachSecretBindingHandler(RemoveSecretBinding persist)
-    : IMediatorOutcomeHandler<DetachSecretBindingRequest, DetachSecretBindingOutcome>
+public sealed class DetachSecretBindingHandler(
+    RemoveSecretBinding persist
+) : IMediatorOutcomeHandler<DetachSecretBindingRequest, DetachSecretBindingOutcome>
 {
     public async Task<DetachSecretBindingOutcome> HandleAsync(
         DetachSecretBindingRequest request,
-        CancellationToken cancellationToken = default) =>
-        (await persist(request.TenantId, request.Id, request.BindingId, cancellationToken)) switch
+        CancellationToken cancellationToken = default) => await persist(
+            request.TenantId,
+            request.Id,
+            request.BindingId,
+            cancellationToken) switch
         {
             Secret secret => SecretMetadata.From(secret),
             SecretMissing error => error,
@@ -64,17 +57,16 @@ public static class DetachSecretBindingEndpoint
 {
     public static IEndpointRouteBuilder MapDetachSecretBindingEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}/bindings/{BindingId}", async (
-                IMediator mediator,
-                [AsParameters] DetachSecretBindingRequest request,
-                CancellationToken ct) =>
-                (await mediator.Send(request, ct))
-                .ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{Id}/bindings/{BindingId}",
+                async (
+                    IMediator mediator, [AsParameters] DetachSecretBindingRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     SecretMetadata metadata => Results.Ok(metadata),
                     SecretMissing error => MapMissing(error),
                     SecretGitOwned error => MapGitOwned(error),
-                    SecretManagedByProvider error => MapManagedByProvider(error)
+                    SecretManagedByProvider error => MapManagedByProvider(error),
                 }))
             .WithName("DetachSecretBinding");
 

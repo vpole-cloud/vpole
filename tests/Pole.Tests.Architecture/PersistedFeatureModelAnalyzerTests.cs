@@ -9,19 +9,19 @@ namespace Pole.Tests.Architecture;
 public sealed class PersistedFeatureModelAnalyzerTests
 {
     private const string Driver = """
-        namespace MongoDB.Driver
-        {
-            public interface IMongoCollection<T> { }
-            public interface IMongoDatabase
-            {
-                IMongoCollection<T> GetCollection<T>(string name);
-            }
-            public sealed class Store<T>
-            {
-                private IMongoCollection<T>? collection;
-            }
-        }
-        """;
+                                  namespace MongoDB.Driver
+                                  {
+                                      public interface IMongoCollection<T> { }
+                                      public interface IMongoDatabase
+                                      {
+                                          IMongoCollection<T> GetCollection<T>(string name);
+                                      }
+                                      public sealed class Store<T>
+                                      {
+                                          private IMongoCollection<T>? collection;
+                                      }
+                                  }
+                                  """;
 
     [Theory]
     [InlineData("Pole.Features.Sample.Application", "Pole.Features.Sample.Application")]
@@ -62,38 +62,47 @@ public sealed class PersistedFeatureModelAnalyzerTests
     [Fact]
     public async Task Closed_generic_persistence_wrappers_cannot_hide_application_models()
     {
-        var diagnostics = await Analyze("Pole.Features.Sample.Application", "Pole.Features.Sample.Application", false,
+        var diagnostics = await Analyze(
+            "Pole.Features.Sample.Application",
+            "Pole.Features.Sample.Application",
+            false,
             "private MongoDB.Driver.Store<Model>? store;");
 
         Assert.Equal(PersistedFeatureModelAnalyzer.DiagnosticId, Assert.Single(diagnostics).Id);
     }
 
     [Fact]
-    public async Task Ordinary_generic_containers_are_outside_persistence_ownership()
-    {
-        Assert.Empty(await Analyze("Pole.Features.Sample.Application", "Pole.Features.Sample.Application", false,
+    public async Task Ordinary_generic_containers_are_outside_persistence_ownership() => Assert.Empty(
+        await Analyze(
+            "Pole.Features.Sample.Application",
+            "Pole.Features.Sample.Application",
+            false,
             "private System.Collections.Generic.List<(Model, string)>? rows;"));
-    }
 
     private static async Task<Diagnostic[]> Analyze(
-        string modelNamespace, string assembly, bool invoke, string? customUse = null)
+        string modelNamespace,
+        string assembly,
+        bool invoke,
+        string? customUse = null)
     {
         var use = customUse ?? (invoke
             ? "public void Read(MongoDB.Driver.IMongoDatabase db) { var rows = db.GetCollection<Model>(\"rows\"); }"
             : "private MongoDB.Driver.IMongoCollection<Model>? rows;");
         var source = $$"""
-            using Model = {{modelNamespace}}.Document;
-            {{Driver}}
-            namespace {{modelNamespace}} { public sealed record Document(string Id); }
-            namespace Persistence { public sealed class Store { {{use}} } }
-            """;
-        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(Path.PathSeparator).Select(path => MetadataReference.CreateFromFile(path));
-        var compilation = CSharpCompilation.Create(assembly,
+                       using Model = {{modelNamespace}}.Document;
+                       {{Driver}}
+                       namespace {{modelNamespace}} { public sealed record Document(string Id); }
+                       namespace Persistence { public sealed class Store { {{use}} } }
+                       """;
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path));
+        var compilation = CSharpCompilation.Create(
+            assembly,
             [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview))],
-            references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         Assert.Empty(compilation.GetDiagnostics().Where(item => item.Severity == DiagnosticSeverity.Error));
-        return (await compilation.WithAnalyzers([new PersistedFeatureModelAnalyzer()])
-            .GetAnalyzerDiagnosticsAsync()).ToArray();
+        return (await compilation.WithAnalyzers([new PersistedFeatureModelAnalyzer()]).GetAnalyzerDiagnosticsAsync())
+            .ToArray();
     }
 }

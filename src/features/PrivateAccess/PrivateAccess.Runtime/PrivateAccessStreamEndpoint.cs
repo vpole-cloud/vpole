@@ -28,14 +28,14 @@ public static class PrivateAccessStreamEndpoint
         PrivateAccessDrainState drain,
         PrivateAccessSessionRunner runner)
     {
-        if (!options.Value.Enabled || !context.Request.IsHttps ||
-            !context.WebSockets.IsWebSocketRequest || drain.IsDraining)
+        if (!options.Value.Enabled || !context.Request.IsHttps || !context.WebSockets.IsWebSocketRequest ||
+            drain.IsDraining)
         {
             context.Response.StatusCode = 404;
             return;
         }
-        await HandleVerifiedAsync(context, false, locate, routing, relay,
-            registry, capacity, drain, runner);
+
+        await HandleVerifiedAsync(context, false, locate, routing, relay, registry, capacity, drain, runner);
     }
 
     private static async Task HandleInternalAsync(
@@ -53,8 +53,8 @@ public static class PrivateAccessStreamEndpoint
             context.Response.StatusCode = 401;
             return;
         }
-        await HandleVerifiedAsync(context, true, locate, routing, relay,
-            registry, capacity, drain, runner);
+
+        await HandleVerifiedAsync(context, true, locate, routing, relay, registry, capacity, drain, runner);
     }
 
     private static async Task HandleVerifiedAsync(
@@ -73,34 +73,37 @@ public static class PrivateAccessStreamEndpoint
             context.Response.StatusCode = 503;
             return;
         }
+
         var ticket = PrivateAccessTicketHeader.Read(context.Request);
         if (ticket is null)
         {
             context.Response.StatusCode = 401;
             return;
         }
+
         var route = await locate(ticket, context.RequestAborted);
         if (route is null)
         {
             context.Response.StatusCode = 401;
             return;
         }
-        var owner = await routing.FindAsync(route.TenantId,
-            route.DeploymentTargetId, context.RequestAborted);
+
+        var owner = await routing.FindAsync(route.TenantId, route.DeploymentTargetId, context.RequestAborted);
         if (owner is null)
         {
             context.Response.StatusCode = 503;
             return;
         }
+
         if (!routing.IsLocal(owner))
         {
             if (internalRequest)
                 context.Response.StatusCode = 503;
             else
-                await relay.ProxyAsync(context, owner,
-                    "/_private-access/relay/streams", ticket);
+                await relay.ProxyAsync(context, owner, "/_private-access/relay/streams", ticket);
             return;
         }
+
         var gateway = registry.Find(route.TenantId, route.DeploymentTargetId);
         if (gateway is null || gateway.Owner.Epoch != owner.Epoch ||
             !await routing.IsCurrentAsync(owner, context.RequestAborted))
@@ -108,13 +111,21 @@ public static class PrivateAccessStreamEndpoint
             context.Response.StatusCode = 503;
             return;
         }
+
         if (!await capacity.Sessions.WaitAsync(0, context.RequestAborted))
         {
             context.Response.StatusCode = 503;
             return;
         }
-        try { await runner.RunAsync(context, ticket, gateway); }
-        finally { capacity.Sessions.Release(); }
+
+        try
+        {
+            await runner.RunAsync(context, ticket, gateway);
+        }
+        finally
+        {
+            capacity.Sessions.Release();
+        }
     }
 }
 
@@ -127,7 +138,8 @@ public sealed class PrivateAccessSessionRunner(
     PrivateAccessGatewayRegistry gateways,
     PrivateAccessGatewayRendezvous rendezvous,
     PrivateAccessBrokerRouting routing,
-    TimeProvider time)
+    TimeProvider time
+)
 {
     public async Task RunAsync(
         HttpContext context,
@@ -140,23 +152,26 @@ public sealed class PrivateAccessSessionRunner(
             context.Response.StatusCode = 401;
             return;
         }
+
         var reason = PrivateAccessSessionCloseReason.SetupFailed;
         PendingPrivateAccessGatewayStream? pending = null;
         try
         {
             if (lease.TenantId != gateway.Identity.TenantId ||
-                lease.DeploymentTargetId != gateway.Identity.DeploymentTargetId ||
-                !gateways.IsCurrent(gateway) ||
+                lease.DeploymentTargetId != gateway.Identity.DeploymentTargetId || !gateways.IsCurrent(gateway) ||
                 !await routing.IsCurrentAsync(gateway.Owner, context.RequestAborted))
             {
                 context.Response.StatusCode = 503;
                 return;
             }
+
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-                context.RequestAborted, gateway.Disconnected);
+                context.RequestAborted,
+                gateway.Disconnected);
             lifetime.CancelAfter(TimeSpan.FromSeconds(30));
             var destination = new PrivateAccessGatewayDestination(
-                $"{lease.ServiceName}.{lease.KubernetesNamespace}.svc", lease.ServicePort.Value);
+                $"{lease.ServiceName}.{lease.KubernetesNamespace}.svc",
+                lease.ServicePort.Value);
             pending = rendezvous.Prepare(gateway, destination);
             await gateway.OpenStreamAsync(pending.Ticket, lifetime.Token);
             using var gatewayStream = await pending.Connected.WaitAsync(lifetime.Token);
@@ -294,7 +309,10 @@ public sealed class PrivateAccessSessionRunner(
 
     private static async Task<T> GuardAsync<T>(Func<Task<T>> operation, CancellationTokenSource lifetime)
     {
-        try { return await operation(); }
+        try
+        {
+            return await operation();
+        }
         catch
         {
             await lifetime.CancelAsync();
@@ -304,7 +322,10 @@ public sealed class PrivateAccessSessionRunner(
 
     private static async Task ObserveAsync(Task task)
     {
-        try { await task; }
+        try
+        {
+            await task;
+        }
         catch (Exception exception) when (exception is OperationCanceledException or IOException or WebSocketException)
         {
             // The first terminal pump is observed by RelayAsync; drain its cancelled sibling.

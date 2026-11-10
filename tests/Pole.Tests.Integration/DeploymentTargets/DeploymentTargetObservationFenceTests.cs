@@ -1,6 +1,5 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -11,8 +10,9 @@ using Xunit;
 namespace Pole.Tests.Integration.DeploymentTargets;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class DeploymentTargetObservationFenceTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
     public override Task DisposeAsync() => base.DisposeAsync();
@@ -23,24 +23,30 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
         var target = Create() with
         {
             AcceptsWorkloads = false,
-            ReferenceFence = 17
+            ReferenceFence = 17,
         };
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var result = await Fence().InvokeAsync(new(target.Id, target.Connection.Version), session);
+        var result = await Fence()
+            .InvokeAsync(new DeploymentTargetObservationFenceRequest(target.Id, target.Connection.Version), session);
         Assert.IsType<DeploymentTargetObservationFenced>(result.Value);
         var beforeCommit = await Fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).SingleAsync();
         Assert.Equal(0, beforeCommit.ObservationFence);
         await session.CommitTransactionAsync();
         var current = await Fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).SingleAsync();
-        Assert.Equal((target with
-        {
-            ObservationFence = 1
-        }).ToBsonDocument(), current.ToBsonDocument());
+        Assert.Equal(
+            (target with
+            {
+                ObservationFence = 1,
+            }).ToBsonDocument(),
+            current.ToBsonDocument());
         // Observation must not spuriously reject a reference-aware mutation loaded earlier.
-        Assert.True(await Fixture.DbContext.DeploymentTargets
-            .Find(DeploymentTargetFilters.AtRevisionAndReferenceFence(target)).AnyAsync());
+        Assert.True(
+            await Fixture.DbContext
+                .DeploymentTargets
+                .Find(DeploymentTargetFilters.AtRevisionAndReferenceFence(target))
+                .AnyAsync());
     }
 
     [Theory]
@@ -56,13 +62,13 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
             "rotated" => target with { Connection = DeploymentTargetConnectionFactory.CreateInCluster(2) },
             "disabled" => target with { Enabled = false },
             "deleting" => target with { DeletionRequestedAtUtc = DateTime.UtcNow },
-            _ => target
+            _ => target,
         };
         if (state != "missing")
             await Fixture.DbContext.DeploymentTargets.InsertOneAsync(stored);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var result = await Fence().InvokeAsync(new(target.Id, 1), session);
+        var result = await Fence().InvokeAsync(new DeploymentTargetObservationFenceRequest(target.Id, 1), session);
         Assert.IsType<DeploymentTargetObservationFenceRejected>(result.Value);
         await session.AbortTransactionAsync();
         var current = await Fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).FirstOrDefaultAsync();
@@ -79,9 +85,11 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        Assert.IsType<DeploymentTargetObservationFenced>((await Fence().InvokeAsync(new(target.Id, 1), session)).Value);
+        Assert.IsType<DeploymentTargetObservationFenced>(
+            (await Fence().InvokeAsync(new DeploymentTargetObservationFenceRequest(target.Id, 1), session)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(target.ToBsonDocument(),
+        Assert.Equal(
+            target.ToBsonDocument(),
             (await Fixture.DbContext.DeploymentTargets.Find(x => x.Id == target.Id).SingleAsync()).ToBsonDocument());
     }
 
@@ -92,11 +100,13 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
         var request = new DeploymentTargetObservationFenceRequest(ObjectId.GenerateNewId().ToString(), 1);
         await Assert.ThrowsAsync<InvalidOperationException>(() => Fence().InvokeAsync(request, session));
         session.StartTransaction();
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            Fence().InvokeAsync(request with
-            {
-                ExpectedConnectionVersion = 0
-            }, session));
+        await Assert.ThrowsAsync<ArgumentException>(() => Fence()
+            .InvokeAsync(
+                request with
+                {
+                    ExpectedConnectionVersion = 0,
+                },
+                session));
         await session.AbortTransactionAsync();
     }
 
@@ -106,18 +116,22 @@ public sealed class DeploymentTargetObservationFenceTests(MongoReplicaSetFixture
     {
         var id = ObjectId.GenerateNewId().ToString();
         var now = DateTime.UtcNow;
-        return DeploymentTargetFactory.Create("target-" + id, "Observation target",
-            $"kubernetes:kube-system:{id}",
-            DeploymentTargetConnectionFactory.CreateInCluster(1),
-            DeploymentTargetHealth.Healthy(1, now),
-            DeploymentTargetCapabilities.Observed(1,
-                now,
-                "v1.35.0",
-                new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
-                new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
-            DeploymentTargetTestData.CreateWorkloadConfiguration(),
-            true,
-            true,
-            new DeploymentTargetFactory.CreateOptions(id, now)).AttestForTests();
+        return DeploymentTargetFactory.Create(
+                "target-" + id,
+                "Observation target",
+                $"kubernetes:kube-system:{id}",
+                DeploymentTargetConnectionFactory.CreateInCluster(1),
+                DeploymentTargetHealth.Healthy(1, now),
+                DeploymentTargetCapabilities.Observed(
+                    1,
+                    now,
+                    "v1.35.0",
+                    new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
+                    new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true)),
+                DeploymentTargetTestData.CreateWorkloadConfiguration(),
+                true,
+                true,
+                new DeploymentTargetFactory.CreateOptions(id, now))
+            .AttestForTests();
     }
 }

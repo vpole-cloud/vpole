@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Pole.Features.GitProviders.Application.Endpoints;
 using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
 using Pole.Features.GitProviders.Application.Endpoints.Connections;
 using Pole.Features.GitProviders.Application.Endpoints.Repositories;

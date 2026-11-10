@@ -14,4 +14,5 @@ public sealed record ResourceConnectionCleanupTombstone(
     string TenantId,
     long Generation,
     ImmutableList<ConnectionTargetSnapshot> Targets,
-    DateTime CompletedAtUtc) : ITenantOwned;
+    DateTime CompletedAtUtc
+) : ITenantOwned;

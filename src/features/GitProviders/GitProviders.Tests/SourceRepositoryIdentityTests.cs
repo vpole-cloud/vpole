@@ -3,8 +3,8 @@ using MongoDB.Bson.Serialization;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Endpoints.Repositories;
 using Pole.Features.GitProviders.Application.Endpoints.SourceRepositories;
-using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Xunit;
@@ -15,9 +15,15 @@ namespace Pole.Features.GitProviders.Tests;
 public sealed class SourceRepositoryIdentityTests
 {
     private const string Commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     private static readonly ProviderRepository Remote = new(
-        "42", "application", "organization/application", "https://github.test/organization/application",
-        true, "main", null);
+        "42",
+        "application",
+        "organization/application",
+        "https://github.test/organization/application",
+        true,
+        "main",
+        null);
 
     [Fact]
     public void FactoryCreatesIndependentIdentityAndExplicitFencesWithoutBuildMetadata()
@@ -48,7 +54,8 @@ public sealed class SourceRepositoryIdentityTests
         var handler = new LinkProviderRepositoryHandler(
             (request, _) =>
             {
-                Assert.Equal(new ResolveProviderRepositoryRequest("tenant", "connection", "42", "feature/api"),
+                Assert.Equal(
+                    new ResolveProviderRepositoryRequest("tenant", "connection", "42", "feature/api"),
                     request);
                 return Task.FromResult<ResolveProviderRepositoryOutcome>(
                     new ResolvedProviderRepository(Remote, Commit));
@@ -58,7 +65,12 @@ public sealed class SourceRepositoryIdentityTests
                 persisted = repository;
                 return Task.FromResult<PersistLinkedSourceRepositoryOutcome>(repository);
             });
-        var result = await handler.HandleAsync(new("connection", "42", "tenant", new("application", "feature/api")));
+        var result = await handler.HandleAsync(
+            new LinkProviderRepositoryRequest(
+                "connection",
+                "42",
+                "tenant",
+                new LinkSourceRepositoryRequestBody("application", "feature/api")));
         var dto = Assert.IsType<SourceRepositoryDto>(result.Value);
         Assert.Equal("application", dto.TechnicalName);
         Assert.Equal("feature/api", dto.Branch);
@@ -71,7 +83,12 @@ public sealed class SourceRepositoryIdentityTests
         var handler = new LinkProviderRepositoryHandler(
             (_, _) => Task.FromResult<ResolveProviderRepositoryOutcome>(new SourceRepositoryBranchNotFound("missing")),
             (_, _) => throw new InvalidOperationException("Persistence must not run after failed resolution."));
-        var result = await handler.HandleAsync(new("connection", "42", "tenant", new("application", "missing")));
+        var result = await handler.HandleAsync(
+            new LinkProviderRepositoryRequest(
+                "connection",
+                "42",
+                "tenant",
+                new LinkSourceRepositoryRequestBody("application", "missing")));
         Assert.IsType<SourceRepositoryBranchNotFound>(result.Value);
     }
 
@@ -81,19 +98,22 @@ public sealed class SourceRepositoryIdentityTests
         var sha = Commit;
         var repository = Repository();
         var resolver = new SourceRepositoryCommitResolver(
-            (tenant, id, _) => Task.FromResult<SourceRepository?>(
-                tenant == repository.TenantId && id == repository.Id ? repository : null),
+            (
+                tenant, id,
+                _) => Task.FromResult(tenant == repository.TenantId && id == repository.Id ? repository : null),
             (_, _) => Task.FromResult<ResolveProviderRepositoryOutcome>(new ResolvedProviderRepository(Remote, sha)));
         var first = Assert.IsType<SourceRepositoryCommitResolved>(
-            (await resolver.InvokeAsync(new("tenant", repository.Id), default)).Value);
+            (await resolver.InvokeAsync(new SourceRepositoryReferenceRequest("tenant", repository.Id), default)).Value);
         sha = new string('b', 40);
         var second = Assert.IsType<SourceRepositoryCommitResolved>(
-            (await resolver.InvokeAsync(new("tenant", repository.Id), default)).Value);
+            (await resolver.InvokeAsync(new SourceRepositoryReferenceRequest("tenant", repository.Id), default)).Value);
         Assert.Equal(Commit, first.CommitSha);
         Assert.Equal(sha, second.CommitSha);
         Assert.Equal(first.Repository, second.Repository);
         Assert.IsType<SourceRepositoryBuildNotFound>(
-            (await resolver.InvokeAsync(new("foreign", repository.Id), default)).Value);
+            (await resolver.InvokeAsync(
+                new SourceRepositoryReferenceRequest("foreign", repository.Id),
+                default)).Value);
     }
 
     [Fact]
@@ -101,25 +121,45 @@ public sealed class SourceRepositoryIdentityTests
     {
         var repository = Repository();
         var analysis = new SourceRepositoryAnalysis(repository.Branch, Commit, DateTime.UnixEpoch, [], []);
-        var connection = GitProviderConnectionFactory.Create("tenant", "github", GitProviderKind.GitHub,
-            "installation", "account", "organization", GitProviderAccountType.Organization,
-            GitProviderRepositorySelection.All, "creator", GitProviderConnectionFactory.DefaultOptions);
+        var connection = GitProviderConnectionFactory.Create(
+            "tenant",
+            "github",
+            GitProviderKind.GitHub,
+            "installation",
+            "account",
+            "organization",
+            GitProviderAccountType.Organization,
+            GitProviderRepositorySelection.All,
+            "creator",
+            GitProviderConnectionFactory.DefaultOptions);
         var handler = new ReanalyzeSourceRepositoryHandler(
-            (_, _, _) => Task.FromResult<SourceRepository?>(repository),
-            (_, _, _, _, _) => Task.FromResult<AnalyzeOutcome>(
-                new AnalyzedProviderRepository(connection, Remote, analysis)));
+            (
+                _, _,
+                _) => Task.FromResult<SourceRepository?>(repository),
+            (
+                _, _,
+                _, _,
+                _) => Task.FromResult<AnalyzeOutcome>(new AnalyzedProviderRepository(connection, Remote, analysis)));
         var result = Assert.IsType<RepositoryAnalysisDto>(
-            (await handler.HandleAsync(new(repository.Id, repository.TenantId))).Value);
+            (await handler.HandleAsync(new ReanalyzeSourceRepositoryRequest(repository.Id, repository.TenantId)))
+            .Value);
         Assert.Empty(result.Candidates);
         Assert.Equal(Commit, result.CommitSha);
         Assert.Equal(1, repository.Revision);
     }
 
     private static SourceRepository Repository(string name = "application") => SourceRepositoryFactory.Create(
-        "tenant", name, "connection", Remote.Id, Remote.FullName, Remote.HtmlUrl, Remote.IsPrivate, "main",
+        "tenant",
+        name,
+        "connection",
+        Remote.Id,
+        Remote.FullName,
+        Remote.HtmlUrl,
+        Remote.IsPrivate,
+        "main",
         SourceRepositoryFactory.DefaultOptions with
         {
             CreatedAtUtc = DateTime.UnixEpoch,
-            UpdatedAtUtc = DateTime.UnixEpoch
+            UpdatedAtUtc = DateTime.UnixEpoch,
         });
 }

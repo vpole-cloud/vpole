@@ -5,16 +5,18 @@ using Pole.Features.ContainerRegistries.Domain;
 
 namespace Pole.Features.ContainerRegistries.Application.Credentials;
 
-public sealed class RegistryCredentialRewrapPersistence(IMongoCollection<RegistryCredential> credentials)
+public sealed class RegistryCredentialRewrapPersistence(
+    IMongoCollection<RegistryCredential> credentials
+)
 {
     internal async Task<IReadOnlyList<RegistryCredential>> LoadBatchAsync(
         string? cursor,
         int limit,
-        CancellationToken cancellationToken) =>
-        await credentials.Find(ContainerRegistryFilters.CredentialsAfter(cursor))
-            .SortBy(credential => credential.Id)
-            .Limit(limit)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken) => await credentials
+        .Find(ContainerRegistryFilters.CredentialsAfter(cursor))
+        .SortBy(credential => credential.Id)
+        .Limit(limit)
+        .ToListAsync(cancellationToken);
 
     internal async Task<bool> TryReplaceEnvelopeAsync(
         RegistryCredential credential,
@@ -22,12 +24,8 @@ public sealed class RegistryCredentialRewrapPersistence(IMongoCollection<Registr
         CancellationToken cancellationToken)
     {
         var update = await credentials.UpdateOneAsync(
-            ContainerRegistryFilters.CredentialForConcurrentRewrap(
-                credential.Id,
-                credential.EncryptedSecret),
-            Builders<RegistryCredential>.Update.Set(
-                item => item.EncryptedSecret,
-                rewrappedEnvelope),
+            ContainerRegistryFilters.CredentialForConcurrentRewrap(credential.Id, credential.EncryptedSecret),
+            Builders<RegistryCredential>.Update.Set(item => item.EncryptedSecret, rewrappedEnvelope),
             cancellationToken: cancellationToken);
         return update.ModifiedCount == 1;
     }

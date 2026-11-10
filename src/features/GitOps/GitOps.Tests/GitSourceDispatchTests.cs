@@ -24,12 +24,14 @@ public sealed class GitSourceDispatchTests
     {
         var dispatched = new List<GitSourceIdentity>();
         var scheduled = new List<(GitSourceIdentity Source, DateTime Due)>();
-        var consumer = new EnqueueGitSourceOnRequested(dispatched.Add,
-            (source, due) => scheduled.Add((source, due)), NullLogger<EnqueueGitSourceOnRequested>.Instance);
+        var consumer = new EnqueueGitSourceOnRequested(
+            dispatched.Add,
+            (source, due) => scheduled.Add((source, due)),
+            NullLogger<EnqueueGitSourceOnRequested>.Instance);
 
-        await consumer.Consume(Context(new("source", EventCore.Create("tenant"))));
+        await consumer.Consume(Context(new GitSourceWorkRequested("source", EventCore.Create("tenant"))));
 
-        Assert.Equal(new("tenant", "source"), Assert.Single(dispatched));
+        Assert.Equal(new GitSourceIdentity("tenant", "source"), Assert.Single(dispatched));
         Assert.Empty(scheduled);
     }
 
@@ -40,14 +42,16 @@ public sealed class GitSourceDispatchTests
     {
         var dispatched = new List<GitSourceIdentity>();
         var scheduled = new List<(GitSourceIdentity Source, DateTime Due)>();
-        var consumer = new EnqueueGitSourceOnRequested(dispatched.Add,
-            (source, due) => scheduled.Add((source, due)), NullLogger<EnqueueGitSourceOnRequested>.Instance);
+        var consumer = new EnqueueGitSourceOnRequested(
+            dispatched.Add,
+            (source, due) => scheduled.Add((source, due)),
+            NullLogger<EnqueueGitSourceOnRequested>.Instance);
         var notBeforeUtc = DateTime.UtcNow.AddMinutes(minuteOffset);
 
-        await consumer.Consume(Context(new("source", EventCore.Create("tenant"), notBeforeUtc)));
+        await consumer.Consume(Context(new GitSourceWorkRequested("source", EventCore.Create("tenant"), notBeforeUtc)));
 
         var actual = Assert.Single(scheduled);
-        Assert.Equal(new("tenant", "source"), actual.Source);
+        Assert.Equal(new GitSourceIdentity("tenant", "source"), actual.Source);
         Assert.Equal(notBeforeUtc, actual.Due);
         Assert.Empty(dispatched);
     }
@@ -57,11 +61,13 @@ public sealed class GitSourceDispatchTests
     {
         var dispatched = new List<GitSourceIdentity>();
         var expected = new InvalidOperationException("The job store is unavailable.");
-        var consumer = new EnqueueGitSourceOnRequested(dispatched.Add, (_, _) => throw expected,
+        var consumer = new EnqueueGitSourceOnRequested(
+            dispatched.Add,
+            (_, _) => throw expected,
             NullLogger<EnqueueGitSourceOnRequested>.Instance);
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() => consumer.Consume(
-            Context(new("source", EventCore.Create("tenant"), DateTime.UtcNow.AddMinutes(1)))));
+            Context(new GitSourceWorkRequested("source", EventCore.Create("tenant"), DateTime.UtcNow.AddMinutes(1)))));
 
         Assert.Same(expected, actual);
         Assert.Empty(dispatched);
@@ -86,8 +92,7 @@ public sealed class GitSourceDispatchTests
     public void Registered_dispatchers_create_the_correct_Hangfire_job_and_state(bool delayed)
     {
         var jobs = new RecordingJobs();
-        using var provider = new ServiceCollection()
-            .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
+        using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IBackgroundJobClient>(jobs)
             .AddGitOpsFeature()
             .BuildServiceProvider();
@@ -119,8 +124,7 @@ public sealed class GitSourceDispatchTests
     public void Scheduled_transport_score_cannot_precede_the_durable_due(long fractionalTicks)
     {
         var jobs = new RecordingJobs();
-        using var provider = new ServiceCollection()
-            .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
+        using var provider = new ServiceCollection().AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IBackgroundJobClient>(jobs)
             .AddGitOpsFeature()
             .BuildServiceProvider();
@@ -144,7 +148,7 @@ public sealed class GitSourceDispatchTests
     private static ConsumeContext<GitSourceWorkRequested> Context(GitSourceWorkRequested message)
     {
         var context = DispatchProxy.Create<ConsumeContext<GitSourceWorkRequested>, WorkRequestedContext>();
-        ((WorkRequestedContext)(object)context).Message = message;
+        ((WorkRequestedContext)context).Message = message;
         return context;
     }
 
@@ -153,9 +157,7 @@ public sealed class GitSourceDispatchTests
         public GitSourceWorkRequested Message { get; set; } = null!;
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
-            targetMethod?.Name == "get_Message"
-                ? Message
-                : throw new NotSupportedException(targetMethod?.Name);
+            targetMethod?.Name == "get_Message" ? Message : throw new NotSupportedException(targetMethod?.Name);
     }
 
     private sealed class RecordingJobs : IBackgroundJobClient
@@ -168,7 +170,9 @@ public sealed class GitSourceDispatchTests
             return Recorded.Count.ToString();
         }
 
-        public bool ChangeState(string jobId, IState state, string expectedState) =>
-            throw new NotSupportedException();
+        public bool ChangeState(
+            string jobId,
+            IState state,
+            string expectedState) => throw new NotSupportedException();
     }
 }

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,9 +7,6 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
 using Pole.Mediator;
 using Pole.Validation;
 
@@ -20,12 +16,10 @@ public sealed record ListRepositoryRunsRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
     [FromQuery] int Page = 1,
-    [FromQuery] int PageSize = 50)
-    : IMediatorRequest<ListRepositoryRunsOutcome>, ITenantReadOperation;
+    [FromQuery] int PageSize = 50
+) : IMediatorRequest<ListRepositoryRunsOutcome>, ITenantReadOperation;
 
-public union ListRepositoryRunsOutcome(
-    RepositoryRunPage,
-    GitSourceNotFound);
+public union ListRepositoryRunsOutcome(RepositoryRunPage, GitSourceNotFound);
 
 public sealed class ListRepositoryRunsValidator : AbstractValidator<ListRepositoryRunsRequest>
 {
@@ -37,8 +31,9 @@ public sealed class ListRepositoryRunsValidator : AbstractValidator<ListReposito
     }
 }
 
-public sealed class ListRepositoryRunsHandler(GitRepositoryQueries queries)
-    : IMediatorOutcomeHandler<ListRepositoryRunsRequest, ListRepositoryRunsOutcome>
+public sealed class ListRepositoryRunsHandler(
+    GitRepositoryQueries queries
+) : IMediatorOutcomeHandler<ListRepositoryRunsRequest, ListRepositoryRunsOutcome>
 {
     public async Task<ListRepositoryRunsOutcome> HandleAsync(
         ListRepositoryRunsRequest request,
@@ -47,12 +42,7 @@ public sealed class ListRepositoryRunsHandler(GitRepositoryQueries queries)
         var tenantId = ObjectId.Parse(request.TenantId).ToString();
         var sourceId = ObjectId.Parse(request.Id).ToString();
 
-        var result = await queries.RunsAsync(
-            tenantId,
-            sourceId,
-            request.Page,
-            request.PageSize,
-            cancellationToken);
+        var result = await queries.RunsAsync(tenantId, sourceId, request.Page, request.PageSize, cancellationToken);
         return result is null ? new GitSourceNotFound() : result;
     }
 }
@@ -61,14 +51,16 @@ public static class ListRepositoryRunsEndpoint
 {
     public static IEndpointRouteBuilder MapListRepositoryRunsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/runs",
-            async (IMediator mediator,
-                    [AsParameters] ListRepositoryRunsRequest request, CancellationToken ct) =>
-                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}/runs",
+                async (
+                    IMediator mediator, [AsParameters] ListRepositoryRunsRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     RepositoryRunPage value => Results.Ok(value),
-                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing)
-                })).WithName("ListRepositoryRuns");
+                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
+                }))
+            .WithName("ListRepositoryRuns");
         return app;
     }
 }

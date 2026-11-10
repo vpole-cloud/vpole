@@ -1,13 +1,14 @@
-using Pole.Features.StorageProfiles.Domain.Observation;
 using MongoDB.Bson;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Contracts;
+using Pole.Features.StorageProfiles.Domain.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Observation;
 
 internal static class StorageObservationValueMappings
 {
-    internal static StorageObservationSnapshot Load(StorageObservationSnapshotDocument snapshot) => new(snapshot.Id,
+    internal static StorageObservationSnapshot Load(StorageObservationSnapshotDocument snapshot) => new(
+        snapshot.Id,
         snapshot.ConnectionVersion,
         snapshot.ObservationVersion,
         snapshot.CheckedAtUtc,
@@ -98,7 +99,8 @@ internal static class StorageObservationValueMappings
         value.PersistentVolumeClaims.Select(Restore).ToArray(),
         value.Complete);
 
-    internal static StorageInventoryObservation? Sanitize(StorageInventoryObservation inventory,
+    internal static StorageInventoryObservation? Sanitize(
+        StorageInventoryObservation inventory,
         StorageObservationOptions options)
     {
         if (!inventory.Complete || inventory.StorageClasses.Length > options.MaximumItemsPerKind ||
@@ -112,43 +114,53 @@ internal static class StorageObservationValueMappings
                     Name = Name(item.Name),
                     Provisioner = Provisioner(item.Provisioner),
                     ReclaimPolicy = Reclaim(item.ReclaimPolicy),
-                    VolumeBindingMode = Binding(item.VolumeBindingMode)
-                }).OrderBy(item => item.Name, StringComparer.Ordinal).ToArray(),
-            inventory.PersistentVolumes.Select(item => item with
-            {
-                Name = Name(item.Name),
-                Capacity = Quantity(item.Capacity),
-                Status = VolumePhase(item.Status),
-                StorageClassName = OptionalName(item.StorageClassName),
-                BoundClaimNamespace = OptionalName(item.BoundClaimNamespace),
-                BoundClaimName = OptionalName(item.BoundClaimName),
-                ReclaimPolicy = Reclaim(item.ReclaimPolicy),
-                Owner = Owner(item.Owner)
-            }).OrderBy(item => item.Name, StringComparer.Ordinal).ToArray(),
-            inventory.PersistentVolumeClaims.Select(item => item with
-            {
-                Name = Name(item.Name),
-                Namespace = Name(item.Namespace),
-                Capacity = Quantity(item.Capacity),
-                RequestedCapacity = Quantity(item.RequestedCapacity),
-                Status = ClaimPhase(item.Status),
-                StorageClassName = OptionalName(item.StorageClassName),
-                VolumeName = OptionalName(item.VolumeName),
-                Owner = Owner(item.Owner)
-            }).OrderBy(item => item.Namespace, StringComparer.Ordinal)
-                .ThenBy(item => item.Name, StringComparer.Ordinal).ToArray(),
+                    VolumeBindingMode = Binding(item.VolumeBindingMode),
+                })
+                .OrderBy(item => item.Name, StringComparer.Ordinal)
+                .ToArray(),
+            inventory.PersistentVolumes
+                .Select(item => item with
+                {
+                    Name = Name(item.Name),
+                    Capacity = Quantity(item.Capacity),
+                    Status = VolumePhase(item.Status),
+                    StorageClassName = OptionalName(item.StorageClassName),
+                    BoundClaimNamespace = OptionalName(item.BoundClaimNamespace),
+                    BoundClaimName = OptionalName(item.BoundClaimName),
+                    ReclaimPolicy = Reclaim(item.ReclaimPolicy),
+                    Owner = Owner(item.Owner),
+                })
+                .OrderBy(item => item.Name, StringComparer.Ordinal)
+                .ToArray(),
+            inventory.PersistentVolumeClaims
+                .Select(item => item with
+                {
+                    Name = Name(item.Name),
+                    Namespace = Name(item.Namespace),
+                    Capacity = Quantity(item.Capacity),
+                    RequestedCapacity = Quantity(item.RequestedCapacity),
+                    Status = ClaimPhase(item.Status),
+                    StorageClassName = OptionalName(item.StorageClassName),
+                    VolumeName = OptionalName(item.VolumeName),
+                    Owner = Owner(item.Owner),
+                })
+                .OrderBy(item => item.Namespace, StringComparer.Ordinal)
+                .ThenBy(item => item.Name, StringComparer.Ordinal)
+                .ToArray(),
             true);
         return safe.ToBson().Length <= options.MaximumSnapshotBytes ? safe : null;
     }
 
-    internal static StorageClassObservation From(KubernetesStorageClassDto item) => new(item.Name,
+    internal static StorageClassObservation From(KubernetesStorageClassDto item) => new(
+        item.Name,
         item.Provisioner,
         item.IsDefault,
         item.ReclaimPolicy,
         item.VolumeBindingMode,
         item.AllowVolumeExpansion);
 
-    internal static PersistentVolumeObservation From(KubernetesPersistentVolumeDto item) => new(item.Name,
+    internal static PersistentVolumeObservation From(KubernetesPersistentVolumeDto item) => new(
+        item.Name,
         item.Capacity,
         item.Status,
         item.StorageClassName,
@@ -157,7 +169,8 @@ internal static class StorageObservationValueMappings
         item.ReclaimPolicy,
         From(item.Owner));
 
-    internal static PersistentVolumeClaimObservation From(KubernetesPersistentVolumeClaimDto item) => new(item.Name,
+    internal static PersistentVolumeClaimObservation From(KubernetesPersistentVolumeClaimDto item) => new(
+        item.Name,
         item.Namespace,
         item.Capacity,
         item.RequestedCapacity,
@@ -166,7 +179,8 @@ internal static class StorageObservationValueMappings
         item.VolumeName,
         From(item.Owner));
 
-    private static StorageOwnerObservation From(KubernetesStorageOwnerDto item) => new(item.TenantId,
+    private static StorageOwnerObservation From(KubernetesStorageOwnerDto item) => new(
+        item.TenantId,
         item.ResourceGroupId,
         item.ResourceType,
         item.ResourceId,
@@ -207,13 +221,15 @@ internal static class StorageObservationValueMappings
         var parts = value.Split('/');
         var name = parts[^1];
         if (parts.Length > 2 || name.Length is 0 or > 63 || !char.IsAsciiLetterOrDigit(name[0]) ||
-            !char.IsAsciiLetterOrDigit(name[^1])
-            || !name.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '.' or '_'))
+            !char.IsAsciiLetterOrDigit(name[^1]) || !name.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '-' or '.' or '_'))
             throw new ArgumentException("Invalid storage provisioner.");
         // StorageClass validation lowercases the provisioner before validating its prefix.
-        if (parts.Length == 2 && (parts[0].Length is 0 or > 253 || !parts[0].Split('.').All(label => label.Length > 0
-                && char.IsAsciiLetterOrDigit(label[0]) && char.IsAsciiLetterOrDigit(label[^1])
-                && label.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))))
+        if (parts.Length == 2 && (parts[0].Length is 0 or > 253 || !parts[0]
+                .Split('.')
+                .All(label => label.Length > 0 && char.IsAsciiLetterOrDigit(label[0]) &&
+                    char.IsAsciiLetterOrDigit(label[^1]) &&
+                    label.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))))
             throw new ArgumentException("Invalid storage provisioner.");
         return value;
     }

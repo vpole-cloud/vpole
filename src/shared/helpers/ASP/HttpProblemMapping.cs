@@ -5,12 +5,13 @@ namespace Pole.ASP.Helpers;
 
 public abstract class HttpProblemMapping
 {
-    private protected HttpProblemMapping() { }
+    private protected HttpProblemMapping()
+    {
+    }
 
     public abstract Type MappedType { get; }
 
-    public static HttpProblemMapping For<TError>(
-        Func<TError, HttpProblem> map)
+    public static HttpProblemMapping For<TError>(Func<TError, HttpProblem> map)
         where TError : notnull
     {
         ArgumentNullException.ThrowIfNull(map);
@@ -20,14 +21,13 @@ public abstract class HttpProblemMapping
     internal abstract HttpProblem Map(object value);
 
     private sealed class TypedHttpProblemMapping<TError>(
-        Func<TError, HttpProblem> map)
-        : HttpProblemMapping
+        Func<TError, HttpProblem> map
+    ) : HttpProblemMapping
         where TError : notnull
     {
         public override Type MappedType => typeof(TError);
 
-        internal override HttpProblem Map(object value) =>
-            map((TError)value) ??
+        internal override HttpProblem Map(object value) => map((TError)value) ??
             throw new InvalidOperationException(
                 $"The HTTP problem mapping for '{typeof(TError).FullName}' returned null.");
     }
@@ -44,17 +44,13 @@ public sealed class HttpProblemMappingSet
         if (mappingArray.Any(mapping => mapping is null))
             throw new ArgumentException("An HTTP problem mapping cannot be null.", nameof(mappings));
 
-        var duplicate = mappingArray
-            .GroupBy(mapping => mapping.MappedType)
+        var duplicate = mappingArray.GroupBy(mapping => mapping.MappedType)
             .FirstOrDefault(group => group.Skip(1).Any());
         if (duplicate is not null)
-        {
             throw new InvalidOperationException(
                 $"HTTP problem mapping for '{duplicate.Key.FullName}' is registered more than once.");
-        }
 
-        this.mappings = mappingArray.ToFrozenDictionary(
-            mapping => mapping.MappedType);
+        this.mappings = mappingArray.ToFrozenDictionary(mapping => mapping.MappedType);
     }
 
     public IReadOnlyCollection<Type> MappedTypes => mappings.Keys;
@@ -74,39 +70,29 @@ public sealed class HttpProblemMappingSet
 
 public interface IHttpProblemMapper
 {
-    HttpProblem Map<TError>(
-        TError error,
-        HttpProblemMappingSet? overrides = null)
+    HttpProblem Map<TError>(TError error, HttpProblemMappingSet? overrides = null)
         where TError : notnull;
 }
 
 public sealed class HttpProblemMapper(
-    IEnumerable<HttpProblemMapping> mappings)
-    : IHttpProblemMapper
+    IEnumerable<HttpProblemMapping> mappings
+) : IHttpProblemMapper
 {
     private readonly HttpProblemMappingSet defaults = new(mappings);
 
-    public HttpProblem Map<TError>(
-        TError error,
-        HttpProblemMappingSet? overrides = null)
+    public HttpProblem Map<TError>(TError error, HttpProblemMappingSet? overrides = null)
         where TError : notnull
     {
         ArgumentNullException.ThrowIfNull(error);
         var candidates = Unwrap(error);
         if (overrides is not null)
-        {
             foreach (var candidate in candidates)
-            {
                 if (overrides.TryMap(candidate, out var problem))
                     return problem;
-            }
-        }
 
         foreach (var candidate in candidates)
-        {
             if (defaults.TryMap(candidate, out var problem))
                 return problem;
-        }
 
         throw new InvalidOperationException(
             $"No HTTP problem mapping is registered for '{typeof(TError).FullName}'. " +

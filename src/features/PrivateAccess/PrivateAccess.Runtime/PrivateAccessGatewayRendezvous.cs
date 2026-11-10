@@ -6,7 +6,9 @@ using System.Text;
 namespace Pole.Features.PrivateAccess.Runtime;
 
 /// <summary>One-use broker-local tickets are bound to the active gateway registration.</summary>
-public sealed class PrivateAccessGatewayRendezvous(TimeProvider time)
+public sealed class PrivateAccessGatewayRendezvous(
+    TimeProvider time
+)
 {
     private readonly ConcurrentDictionary<string, PendingPrivateAccessGatewayStream> pending = new();
 
@@ -15,26 +17,21 @@ public sealed class PrivateAccessGatewayRendezvous(TimeProvider time)
         PrivateAccessGatewayDestination destination)
     {
         var ticket = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        var stream = new PendingPrivateAccessGatewayStream(
-            ticket, time.GetTimestamp(), registration, destination);
+        var stream = new PendingPrivateAccessGatewayStream(ticket, time.GetTimestamp(), registration, destination);
         if (!pending.TryAdd(Digest(ticket), stream))
             throw new InvalidOperationException("Could not allocate a gateway stream rendezvous.");
         return stream;
     }
 
-    public PendingPrivateAccessGatewayStream? Claim(
-        string ticket,
-        PrivateAccessGatewayRegistration registration)
+    public PendingPrivateAccessGatewayStream? Claim(string ticket, PrivateAccessGatewayRegistration registration)
     {
         if (ticket.Length != 64 || !ticket.All(Uri.IsHexDigit))
             return null;
         var digest = Digest(ticket);
-        if (!pending.TryGetValue(digest, out var stream) ||
-            !ReferenceEquals(stream.Registration, registration) ||
+        if (!pending.TryGetValue(digest, out var stream) || !ReferenceEquals(stream.Registration, registration) ||
             !pending.TryRemove(new KeyValuePair<string, PendingPrivateAccessGatewayStream>(digest, stream)))
             return null;
-        if (time.GetElapsedTime(stream.CreatedTimestamp) < TimeSpan.FromSeconds(30) &&
-            !stream.Finished.IsCompleted)
+        if (time.GetElapsedTime(stream.CreatedTimestamp) < TimeSpan.FromSeconds(30) && !stream.Finished.IsCompleted)
             return stream;
         stream.Complete();
         return null;
@@ -52,7 +49,9 @@ public sealed class PrivateAccessGatewayRendezvous(TimeProvider time)
 
 public sealed class PendingPrivateAccessGatewayStream
 {
-    private readonly TaskCompletionSource<WebSocket> connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<WebSocket>
+        connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private readonly TaskCompletionSource finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal PendingPrivateAccessGatewayStream(
@@ -74,6 +73,7 @@ public sealed class PendingPrivateAccessGatewayStream
     public Task<WebSocket> Connected => connected.Task;
     public Task Finished => finished.Task;
     public bool Accept(WebSocket socket) => !Finished.IsCompleted && connected.TrySetResult(socket);
+
     public void Complete()
     {
         finished.TrySetResult();

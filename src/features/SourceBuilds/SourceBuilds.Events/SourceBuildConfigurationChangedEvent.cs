@@ -8,7 +8,8 @@ public sealed record SourceBuildConfigurationChangedEvent(
     string ConfigurationId,
     string WebServiceId,
     string TechnicalName,
-    long Revision) : IPoleEvent
+    long Revision
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

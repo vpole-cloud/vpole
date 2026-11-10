@@ -5,4 +5,5 @@ public sealed record WebServiceDeclaredPlacement(
     string DeploymentTargetName,
     string DeploymentTargetId,
     string ComputeProfileName,
-    string ComputeProfileId);
+    string ComputeProfileId
+);

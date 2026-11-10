@@ -1,13 +1,8 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
-using Pole.Features.PrivateAccess.Application.Admission;
-using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
 using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Features.PrivateAccess.Events;
 using Pole.Features.Tenants.Contracts;
@@ -35,34 +30,30 @@ internal sealed class MongoRevokePrivateAccessGrant(
     IMongoCollection<PrivateAccessGrant> grants,
     IMongoCollection<PrivateAccessAudit> audit,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public Task<PersistRevokePrivateAccessGrantOutcome> InvokeAsync(
         string tenantId,
         string grantId,
         string actorUserId,
-        CancellationToken cancellationToken = default) =>
-        transactions(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => transactions(
+        async (transaction, ct) =>
         {
             var actor = await loadTenantMember(
-                new LoadTenantMemberRequest(
-                    TenantId: tenantId,
-                    UserId: actorUserId),
+                new LoadTenantMemberRequest(TenantId: tenantId, UserId: actorUserId),
                 session: transaction.Session,
                 cancellationToken: ct);
             if (actor is not TenantMemberSnapshot { Role: >= TenantMembershipRole.Admin })
-                return transaction.Abort(new PersistRevokePrivateAccessGrantOutcome(
-                    new PrivateAccessManageRoleRequired()));
+                return transaction.Abort(
+                    new PersistRevokePrivateAccessGrantOutcome(new PrivateAccessManageRoleRequired()));
 
-            var grant = await grants.Find(transaction.Session,
-                    PrivateAccessFilters.Grant(tenantId, grantId))
+            var grant = await grants.Find(transaction.Session, PrivateAccessFilters.Grant(tenantId, grantId))
                 .FirstOrDefaultAsync(ct);
             if (grant is null)
-                return transaction.Abort(new PersistRevokePrivateAccessGrantOutcome(
-                    new PrivateAccessGrantMissing()));
+                return transaction.Abort(new PersistRevokePrivateAccessGrantOutcome(new PrivateAccessGrantMissing()));
             if (grant.State is RevokedPrivateAccessGrant)
-                return transaction.Abort(new PersistRevokePrivateAccessGrantOutcome(
-                    new PrivateAccessGrantRevoked()));
+                return transaction.Abort(new PersistRevokePrivateAccessGrantOutcome(new PrivateAccessGrantRevoked()));
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var updated = grant.Revoke(actorUserId, now);
@@ -73,15 +64,27 @@ internal sealed class MongoRevokePrivateAccessGrant(
                 cancellationToken: ct);
             if (changed.ModifiedCount != 1)
                 throw new InvalidOperationException("Grant changed during revocation transaction.");
-            await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
-                tenantId, grantId,
-                null, actorUserId, now, new PrivateAccessGrantRevokedAudit()), cancellationToken: ct);
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new PrivateAccessGrantRevokedEvent(grantId, updated.Revision)
-                {
-                    EventCore = EventCore.Create(tenantId)
-                })], ct);
-            return transaction.Commit(new PersistRevokePrivateAccessGrantOutcome(
-                new PrivateAccessGrantRevoked()));
-        }, cancellationToken);
+            await audit.InsertOneAsync(
+                transaction.Session,
+                PrivateAccessAuditFactory.Create(
+                    tenantId,
+                    grantId,
+                    null,
+                    actorUserId,
+                    now,
+                    new PrivateAccessGrantRevokedAudit()),
+                cancellationToken: ct);
+            await storeOutboxWrites(
+                transaction.Session,
+                [
+                    OutboxWrite.Create(
+                        new PrivateAccessGrantRevokedEvent(grantId, updated.Revision)
+                        {
+                            EventCore = EventCore.Create(tenantId),
+                        }),
+                ],
+                ct);
+            return transaction.Commit(new PersistRevokePrivateAccessGrantOutcome(new PrivateAccessGrantRevoked()));
+        },
+        cancellationToken);
 }

@@ -9,42 +9,42 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../../../shared/Observation/Observation.csproj" />
-      <InternalsVisibleTo Include="Pole.Tests.Integration" />
-      <InternalsVisibleTo Include="Pole.Tests.Kubernetes" />
+        <ProjectReference Include="../../../shared/Observation/Observation.csproj"/>
+        <InternalsVisibleTo Include="Pole.Tests.Integration"/>
+        <InternalsVisibleTo Include="Pole.Tests.Kubernetes"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj" />
-      <ProjectReference Include="..\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-      <ProjectReference Include="..\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
-      <ProjectReference Include="..\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
-      <ProjectReference Include="..\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
-      <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
-      <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-      <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Events\ResourceGroups.Events.csproj" />
-      <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
-      <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
-      <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj" />
-      <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj" />
-      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-      <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
-      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
-      <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
-      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
-      <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
-      <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj" />
+        <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj"/>
+        <ProjectReference Include="..\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj"/>
+        <ProjectReference Include="..\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj"/>
+        <ProjectReference Include="..\ResourceDeployments.Events\ResourceDeployments.Events.csproj"/>
+        <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj"/>
+        <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Events\ResourceGroups.Events.csproj"/>
+        <ProjectReference Include="..\..\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Search\Search.Contracts\Search.Contracts.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj"/>
+        <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Kubernetes.Validation\Kubernetes.Validation.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="FluentValidation" />
-      <PackageReference Include="Hangfire.Core" />
-      <PackageReference Include="MassTransit" />
-      <PackageReference Include="KubernetesClient" />
+        <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="Hangfire.Core"/>
+        <PackageReference Include="MassTransit"/>
+        <PackageReference Include="KubernetesClient"/>
     </ItemGroup>
 
 </Project>

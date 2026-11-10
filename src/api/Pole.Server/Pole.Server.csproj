@@ -9,70 +9,74 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Aspire.Keycloak.Authentication" />
-        <PackageReference Include="Aspire.MongoDB.Driver" />
-        <PackageReference Include="Aspire.RabbitMQ.Client" />
-        <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
-        <PackageReference Include="Hangfire" />
-        <PackageReference Include="Hangfire.Mongo" />
-        <PackageReference Include="MassTransit.RabbitMQ" />
-        <PackageReference Include="Microsoft.Orleans.Hosting.Kubernetes" />
-        <PackageReference Include="Newtonsoft.Json" />
-        <PackageReference Include="Orleans.Providers.MongoDB" />
+        <PackageReference Include="Aspire.Keycloak.Authentication"/>
+        <PackageReference Include="Aspire.MongoDB.Driver"/>
+        <PackageReference Include="Aspire.RabbitMQ.Client"/>
+        <PackageReference Include="FluentValidation.DependencyInjectionExtensions"/>
+        <PackageReference Include="Hangfire"/>
+        <PackageReference Include="Hangfire.Mongo"/>
+        <PackageReference Include="MassTransit.RabbitMQ"/>
+        <PackageReference Include="Microsoft.Orleans.Hosting.Kubernetes"/>
+        <PackageReference Include="Newtonsoft.Json"/>
+        <PackageReference Include="Orleans.Providers.MongoDB"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="..\..\.dockerignore">
-        <Link>.dockerignore</Link>
-      </Content>
+        <Content Include="..\..\.dockerignore">
+            <Link>.dockerignore</Link>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\features\Domains\Domains.Application\Domains.Application.csproj" />
-      <ProjectReference Include="..\..\features\Functions\Functions.Application\Functions.Application.csproj" />
-      <ProjectReference Include="..\..\features\Functions\Functions.Runtime\Functions.Runtime.csproj" />
-      <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj" />
-      <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
-      <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
-      <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Application\DeploymentTargets.Application.csproj" />
-      <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
-      <ProjectReference Include="..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\..\shared\Encryption\Encryption.csproj" />
-      <ProjectReference Include="..\..\features\Outbox\Outbox.Application\Outbox.Application.csproj" />
-      <ProjectReference Include="..\..\features\Postgres\Postgres.Application\Postgres.Application.fsproj" />
-      <ProjectReference Include="..\..\features\Quotas\Quotas.Application\Quotas.Application.csproj" />
-      <ProjectReference Include="..\..\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
-      <ProjectReference Include="..\..\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
-      <ProjectReference Include="..\..\features\RedisServices\RedisServices.Application\RedisServices.Application.csproj" />
-      <ProjectReference Include="..\..\features\ResourceConnections\ResourceConnections.Application\ResourceConnections.Application.csproj" />
-      <ProjectReference Include="..\..\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
-      <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj" />
-      <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-      <ProjectReference Include="..\..\features\Search\Search.Application\Search.Application.fsproj" />
-      <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Application\StorageProfiles.Application.csproj" />
-      <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj" />
-      <ProjectReference Include="..\..\features\Users\Users.Application\Users.Application.csproj" />
-      <ProjectReference Include="..\..\features\Users\Users.Events\Users.Events.csproj" />
-      <ProjectReference Include="..\..\features\WebServices\WebServices.Application\WebServices.Application.csproj" />
-      <ProjectReference Include="..\..\features\Tenants\Tenants.Application\Tenants.Application.csproj" />
-      <ProjectReference Include="..\..\shared\Observability\Observability.csproj" />
-      <ProjectReference Include="..\..\shared\Multitenancy\Multitenancy.csproj" />
-      <ProjectReference Include="..\..\shared\Mediator.Runtime\Mediator.Runtime.csproj" />
-      <ProjectReference Include="..\..\shared\Mediator.Logging\Mediator.Logging.csproj" />
-      <ProjectReference Include="..\..\shared\Mediator.Validation\Mediator.Validation.csproj" />
-      <ProjectReference Include="..\..\shared\Mediator.Multitenancy\Mediator.Multitenancy.csproj" />
-      <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj" />
+        <ProjectReference Include="..\..\features\Domains\Domains.Application\Domains.Application.csproj"/>
+        <ProjectReference Include="..\..\features\Functions\Functions.Application\Functions.Application.csproj"/>
+        <ProjectReference Include="..\..\features\Functions\Functions.Runtime\Functions.Runtime.csproj"/>
+        <ProjectReference Include="..\..\features\GitProviders\GitProviders.Application\GitProviders.Application.csproj"/>
+        <ProjectReference Include="..\..\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj"/>
+        <ProjectReference Include="..\..\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj"/>
+        <ProjectReference Include="..\..\features\DeploymentTargets\DeploymentTargets.Application\DeploymentTargets.Application.csproj"/>
+        <ProjectReference Include="..\..\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj"/>
+        <ProjectReference Include="..\..\shared\Events\Events.csproj"/>
+        <ProjectReference Include="..\..\shared\Encryption\Encryption.csproj"/>
+        <ProjectReference Include="..\..\features\Outbox\Outbox.Application\Outbox.Application.csproj"/>
+        <ProjectReference Include="..\..\features\Postgres\Postgres.Application\Postgres.Application.fsproj"/>
+        <ProjectReference Include="..\..\features\Quotas\Quotas.Application\Quotas.Application.csproj"/>
+        <ProjectReference Include="..\..\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj"/>
+        <ProjectReference Include="..\..\features\Quotas\Quotas.Domain\Quotas.Domain.csproj"/>
+        <ProjectReference Include="..\..\features\RedisServices\RedisServices.Application\RedisServices.Application.csproj"/>
+        <ProjectReference Include="..\..\features\ResourceConnections\ResourceConnections.Application\ResourceConnections.Application.csproj"/>
+        <ProjectReference Include="..\..\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj"/>
+        <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Application\ResourceGroups.Application.csproj"/>
+        <ProjectReference Include="..\..\features\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="..\..\features\Search\Search.Application\Search.Application.fsproj"/>
+        <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Application\StorageProfiles.Application.csproj"/>
+        <ProjectReference Include="..\..\features\StorageProfiles\StorageProfiles.Contracts\StorageProfiles.Contracts.csproj"/>
+        <ProjectReference Include="..\..\features\Users\Users.Application\Users.Application.csproj"/>
+        <ProjectReference Include="..\..\features\Users\Users.Events\Users.Events.csproj"/>
+        <ProjectReference Include="..\..\features\WebServices\WebServices.Application\WebServices.Application.csproj"/>
+        <ProjectReference Include="..\..\features\Tenants\Tenants.Application\Tenants.Application.csproj"/>
+        <ProjectReference Include="..\..\shared\Observability\Observability.csproj"/>
+        <ProjectReference Include="..\..\shared\Multitenancy\Multitenancy.csproj"/>
+        <ProjectReference Include="..\..\shared\Mediator.Runtime\Mediator.Runtime.csproj"/>
+        <ProjectReference Include="..\..\shared\Mediator.Logging\Mediator.Logging.csproj"/>
+        <ProjectReference Include="..\..\shared\Mediator.Validation\Mediator.Validation.csproj"/>
+        <ProjectReference Include="..\..\shared\Mediator.Multitenancy\Mediator.Multitenancy.csproj"/>
+        <ProjectReference Include="..\ServiceDefaults\ServiceDefaults.csproj"/>
     </ItemGroup>
 
-<ItemGroup><ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" /></ItemGroup>
-<ItemGroup><ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj" /></ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../features/RedisServices/RedisServices.Migrations/RedisServices.Migrations.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj" />
-    <ProjectReference Include="../../features/Functions/Functions.Migrations/Functions.Migrations.csproj" />
-    <ProjectReference Include="../../features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj" />
-    <ProjectReference Include="../../features/Postgres/Postgres.Migrations/Postgres.Migrations.fsproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../features/RedisServices/RedisServices.Migrations/RedisServices.Migrations.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Functions/Functions.Migrations/Functions.Migrations.csproj"/>
+        <ProjectReference Include="../../features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Postgres/Postgres.Migrations/Postgres.Migrations.fsproj"/>
+    </ItemGroup>
 </Project>

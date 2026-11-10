@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
@@ -35,35 +36,43 @@ public sealed class TenantContextHttpTests
         await using var app = builder.Build();
         app.MapApiEndpoints();
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).ToArray();
-        var tenantEndpoints = endpoints.Where(endpoint => endpoint.Metadata.GetMetadata<MethodInfo>()?
-                                                              .GetParameters().Any(parameter =>
-                                                                  typeof(ITenantOperation).IsAssignableFrom(
-                                                                      parameter.ParameterType)) ==
-                                                          true)
+        var tenantEndpoints = endpoints.Where(endpoint =>
+                endpoint.Metadata
+                    .GetMetadata<MethodInfo>()
+                    ?.GetParameters()
+                    .Any(parameter => typeof(ITenantOperation).IsAssignableFrom(parameter.ParameterType)) == true)
             .ToArray();
         Assert.NotEmpty(tenantEndpoints);
-        Assert.All(tenantEndpoints,
-            endpoint => Assert.Equal(ActiveTenantRequirement.Required,
+        Assert.All(
+            tenantEndpoints,
+            endpoint => Assert.Equal(
+                ActiveTenantRequirement.Required,
                 endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant));
-        Assert.Contains(tenantEndpoints,
+        Assert.Contains(
+            tenantEndpoints,
             endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "GetSearch");
-        Assert.Contains(tenantEndpoints,
+        Assert.Contains(
+            tenantEndpoints,
             endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateRedisService");
-        Assert.Contains(tenantEndpoints,
+        Assert.Contains(
+            tenantEndpoints,
             endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName ==
-                        "CreatePostgresCluster");
-        Assert.Contains(tenantEndpoints,
+                "CreatePostgresCluster");
+        Assert.Contains(
+            tenantEndpoints,
             endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateSecret");
         var apiEndpoints = endpoints.OfType<RouteEndpoint>().ToArray();
-        Assert.All(apiEndpoints,
+        Assert.All(
+            apiEndpoints,
             endpoint =>
             {
                 var route = endpoint.RoutePattern.RawText!;
                 var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
-                                  route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
-                                  route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
-                                  route.StartsWith("/api/v1/users", StringComparison.Ordinal);
-                Assert.Equal(independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,
+                    route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
+                    route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
+                    route.StartsWith("/api/v1/users", StringComparison.Ordinal);
+                Assert.Equal(
+                    independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,
                     endpoint.Metadata.GetMetadata<TenantEndpointMetadata>()?.ActiveTenant);
             });
     }
@@ -104,9 +113,7 @@ public sealed class TenantContextHttpTests
     [Theory]
     [InlineData("507f1f77bcf86cd799439012", HttpStatusCode.NotFound)]
     [InlineData(TenantId, HttpStatusCode.Forbidden)]
-    public async Task UnknownTenantAndNonmemberCannotReachTheEndpoint(
-        string tenantHeader,
-        HttpStatusCode expected)
+    public async Task UnknownTenantAndNonmemberCannotReachTheEndpoint(string tenantHeader, HttpStatusCode expected)
     {
         await using var app = await StartAsync(userId: "outsider");
         using var client = app.GetTestClient();
@@ -120,11 +127,11 @@ public sealed class TenantContextHttpTests
     {
         await using var app = await StartAsync(userId: "outsider", platformAdmin: true);
         using var client = app.GetTestClient();
-        Assert.Equal(HttpStatusCode.BadRequest,
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
             (await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10")).StatusCode);
         client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, TenantId);
-        Assert.Equal(HttpStatusCode.OK,
-            (await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10")).StatusCode);
     }
 
     [Theory]
@@ -139,8 +146,7 @@ public sealed class TenantContextHttpTests
         var response = await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Contains("tenant.authorization.user-identity-required",
-            await response.Content.ReadAsStringAsync());
+        Assert.Contains("tenant.authorization.user-identity-required", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -184,9 +190,10 @@ public sealed class TenantContextHttpTests
         await using var app = await StartAsync(authenticated: false);
         using var client = app.GetTestClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/credential")).StatusCode);
-        client.DefaultRequestHeaders.Authorization = new("Bearer", "pole_ci_unvalidated");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "pole_ci_unvalidated");
         Assert.Equal("credential-handler", await client.GetStringAsync("/credential"));
-        Assert.Equal(HttpStatusCode.Unauthorized,
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
             (await client.GetAsync("/unlisted/redis?PageNumber=1&PageSize=10")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/unrelated-anonymous")).StatusCode);
     }
@@ -239,7 +246,7 @@ public sealed class TenantContextHttpTests
         var tenant = TenantFactory.Create("test") with
         {
             Id = TenantId,
-            Members = [TenantFactory.CreateMember(TenantId, "member", "member@example.test", TenantRole.Member)]
+            Members = [TenantFactory.CreateMember(TenantId, "member", "member@example.test", TenantRole.Member)],
         };
         builder.Services.AddScoped<LoadTenant>(_ => (id, _) => Task.FromResult(id == TenantId ? tenant : null));
         var app = builder.Build();
@@ -263,15 +270,15 @@ public sealed class TenantContextHttpTests
             nested.WithoutTenantContext();
         nested.MapGet("/plain", (ITenantContextAccessor accessor) => Results.Text(accessor.Current!.TenantId));
         app.MapGet("/health", () => Results.Text("healthy"));
-        nested.MapGet("/redis",
-            (
-                [AsParameters] GetRedisServicesRequest request,
-                ITenantContextAccessor accessor) =>
+        nested.MapGet(
+            "/redis",
+            ([AsParameters] GetRedisServicesRequest request, ITenantContextAccessor accessor) =>
             {
                 Assert.Equal(accessor.Current?.TenantId, request.TenantId);
                 return Results.Text(request.TenantId);
             });
-        nested.MapGet("/search",
+        nested.MapGet(
+            "/search",
             ([AsParameters] GetSearchRequest request, ITenantContextAccessor accessor) =>
             {
                 Assert.Equal(accessor.Current?.TenantId, request.TenantId);
@@ -279,14 +286,14 @@ public sealed class TenantContextHttpTests
             });
         api.MapGet("/optional", (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
             .WithMetadata(new TenantEndpointMetadata(ActiveTenantRequirement.Optional));
-        api.MapGet("/independent",
+        api.MapGet(
+                "/independent",
                 (ITenantContextAccessor accessor) => Results.Text(accessor.Current?.TenantId ?? "none"))
             .WithoutTenantContext();
         api.MapGet("/credential", () => Results.Text("credential-handler"))
             .WithMetadata(new TenantCredentialMetadata("pole_ci_"))
             .AllowAnonymous();
-        api.MapGet("/unrelated-anonymous", () => Results.Text("must-not-run"))
-            .AllowAnonymous();
+        api.MapGet("/unrelated-anonymous", () => Results.Text("must-not-run")).AllowAnonymous();
         try
         {
             await app.StartAsync();

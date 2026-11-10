@@ -1,6 +1,8 @@
 namespace Pole.Features.Outbox.Application;
 
-public sealed class OutboxRetryDelayPolicy(OutboxSettings settings)
+public sealed class OutboxRetryDelayPolicy(
+    OutboxSettings settings
+)
 {
     public TimeSpan Calculate(string messageId, int nextAttemptCount)
     {
@@ -8,16 +10,11 @@ public sealed class OutboxRetryDelayPolicy(OutboxSettings settings)
         ArgumentOutOfRangeException.ThrowIfLessThan(nextAttemptCount, 1);
 
         var exponent = Math.Min(nextAttemptCount - 1, 62);
-        var exponentialTicks =
-            settings.InitialRetryDelay.Ticks * Math.Pow(2, exponent);
-        var cappedTicks = Math.Min(
-            exponentialTicks,
-            settings.MaximumRetryDelay.Ticks);
+        var exponentialTicks = settings.InitialRetryDelay.Ticks * Math.Pow(2, exponent);
+        var cappedTicks = Math.Min(exponentialTicks, settings.MaximumRetryDelay.Ticks);
         var jitteredTicks = cappedTicks * JitterFactor(messageId, nextAttemptCount);
 
-        return TimeSpan.FromTicks((long)Math.Min(
-            jitteredTicks,
-            settings.MaximumRetryDelay.Ticks));
+        return TimeSpan.FromTicks((long)Math.Min(jitteredTicks, settings.MaximumRetryDelay.Ticks));
     }
 
     private static double JitterFactor(string messageId, int attemptCount)

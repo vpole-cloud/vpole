@@ -10,16 +10,16 @@ public sealed class PrivateAccessBrokerOptions
     public int GatewayPort { get; set; } = 9444;
     public int MaximumSessions { get; set; } = 64;
     public int MaximumGatewayControls { get; set; } = 1024;
-    public string GatewayImage { get; set; } = string.Empty;
-    public string BrokerUri { get; set; } = string.Empty;
+    public string GatewayImage { get; set; } = "";
+    public string BrokerUri { get; set; } = "";
     public string[] BrokerAddresses { get; set; } = [];
     public int InternalPort { get; set; } = 9445;
-    public string InstanceId { get; set; } = string.Empty;
-    public string InternalOrigin { get; set; } = string.Empty;
+    public string InstanceId { get; set; } = "";
+    public string InternalOrigin { get; set; } = "";
     public string[] InternalPeerOrigins { get; set; } = [];
-    public string InternalCertificatePath { get; set; } = string.Empty;
-    public string InternalCertificatePassword { get; set; } = string.Empty;
-    public string InternalCertificateSha256Pin { get; set; } = string.Empty;
+    public string InternalCertificatePath { get; set; } = "";
+    public string InternalCertificatePassword { get; set; } = "";
+    public string InternalCertificateSha256Pin { get; set; } = "";
 
     public PrivateAccessGatewaySettings GatewaySettings() => new(
         GatewayImage,
@@ -33,23 +33,19 @@ public sealed class PrivateAccessBrokerOptionsValidator : IValidateOptions<Priva
     {
         if (!options.Enabled)
             return ValidateOptionsResult.Success;
-        if (options.GatewayPort is < 1 or > 65535 ||
-            options.MaximumSessions is < 1 or > 1024 ||
+        if (options.GatewayPort is < 1 or > 65535 || options.MaximumSessions is < 1 or > 1024 ||
             options.MaximumGatewayControls is < 1 or > 10000)
             return ValidateOptionsResult.Fail("Private Access listener or session limits are invalid.");
         if (string.IsNullOrWhiteSpace(options.GatewayImage) ||
             options.GatewayImage.EndsWith(":latest", StringComparison.Ordinal))
             return ValidateOptionsResult.Fail("Private Access requires an explicit, versioned gateway image.");
-        if (!Uri.TryCreate(options.BrokerUri, UriKind.Absolute, out var uri) ||
-            uri.Scheme != "https" || uri.UserInfo.Length != 0 || uri.Query.Length != 0 ||
-            uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
+        if (!Uri.TryCreate(options.BrokerUri, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
+            uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
             return ValidateOptionsResult.Fail("Private Access broker URI must be an HTTPS origin.");
-        if (options.BrokerAddresses.Length == 0 ||
-            options.BrokerAddresses.Any(address => !IsReachableAddress(address)))
+        if (options.BrokerAddresses.Length == 0 || options.BrokerAddresses.Any(address => !IsReachableAddress(address)))
             return ValidateOptionsResult.Fail(
                 "Private Access requires exact reachable broker IP addresses for gateway egress.");
-        if (options.InternalPort is < 1 or > 65535 ||
-            options.InternalPort == options.GatewayPort ||
+        if (options.InternalPort is < 1 or > 65535 || options.InternalPort == options.GatewayPort ||
             string.IsNullOrWhiteSpace(options.InstanceId) ||
             string.IsNullOrWhiteSpace(options.InternalCertificatePath) ||
             options.InternalCertificateSha256Pin.Length != 64 ||
@@ -59,8 +55,7 @@ public sealed class PrivateAccessBrokerOptionsValidator : IValidateOptions<Priva
             options.InternalPeerOrigins.Length == 0 ||
             !options.InternalPeerOrigins.Contains(options.InternalOrigin, StringComparer.Ordinal) ||
             options.InternalPeerOrigins.Distinct(StringComparer.Ordinal).Count() !=
-            options.InternalPeerOrigins.Length ||
-            options.InternalPeerOrigins.Any(origin => !IsInternalOrigin(origin)))
+            options.InternalPeerOrigins.Length || options.InternalPeerOrigins.Any(origin => !IsInternalOrigin(origin)))
             return ValidateOptionsResult.Fail(
                 "Private Access requires a distinct internal HTTPS listener, instance identity, " +
                 "certificate pin and explicit peer origins.");
@@ -68,15 +63,11 @@ public sealed class PrivateAccessBrokerOptionsValidator : IValidateOptions<Priva
     }
 
     private static bool IsInternalOrigin(string value, int? port = null) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-        uri.Scheme == Uri.UriSchemeHttps && (port is null || uri.Port == port) &&
-        uri.UserInfo.Length == 0 && uri.Query.Length == 0 &&
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+        (port is null || uri.Port == port) && uri.UserInfo.Length == 0 && uri.Query.Length == 0 &&
         uri.Fragment.Length == 0 && uri.AbsolutePath == "/";
 
-    private static bool IsReachableAddress(string address) =>
-        IPAddress.TryParse(address, out var parsed) &&
-        !parsed.Equals(IPAddress.Any) &&
-        !parsed.Equals(IPAddress.IPv6Any) &&
-        !IPAddress.IsLoopback(parsed) &&
+    private static bool IsReachableAddress(string address) => IPAddress.TryParse(address, out var parsed) &&
+        !parsed.Equals(IPAddress.Any) && !parsed.Equals(IPAddress.IPv6Any) && !IPAddress.IsLoopback(parsed) &&
         !parsed.IsIPv6Multicast;
 }

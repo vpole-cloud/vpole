@@ -6,8 +6,7 @@ namespace Pole.Features.ResourceDeployments.Application.Common;
 
 internal static class ResourceDeploymentContractMappings
 {
-    public static ResolvedComputeConfiguration ToDomain(
-        this ResourceDeploymentComputeConfiguration compute)
+    public static ResolvedComputeConfiguration ToDomain(this ResourceDeploymentComputeConfiguration compute)
     {
         ArgumentNullException.ThrowIfNull(compute);
 
@@ -15,34 +14,25 @@ internal static class ResourceDeploymentContractMappings
             compute.ComputeProfileId,
             compute.ComputeProfileRevision,
             compute.DisplayName,
-            ResolvedComputeResourceValues.Create(
-                compute.Requests.CpuMillis,
-                compute.Requests.MemoryMi),
-            ResolvedComputeResourceValues.Create(
-                compute.Limits.CpuMillis,
-                compute.Limits.MemoryMi),
+            ResolvedComputeResourceValues.Create(compute.Requests.CpuMillis, compute.Requests.MemoryMi),
+            ResolvedComputeResourceValues.Create(compute.Limits.CpuMillis, compute.Limits.MemoryMi),
             compute.Architecture,
             compute.ExtendedResources.Select(resource =>
                 ResolvedComputeExtendedResource.Create(resource.Name, resource.Quantity)),
-            compute.NodeSelector.Select(selector =>
-                ResolvedComputeNodeSelector.Create(selector.Key, selector.Value)),
+            compute.NodeSelector.Select(selector => ResolvedComputeNodeSelector.Create(selector.Key, selector.Value)),
             compute.RequiredNodeAffinity.Select(ToDomain),
             compute.PreferredNodeAffinity.Select(term =>
-                ResolvedComputePreferredNodeAffinityTerm.Create(
-                    term.Weight,
-                    ToDomain(term.Term))),
-            compute.Tolerations.Select(toleration =>
-                ResolvedComputeToleration.Create(
-                    toleration.Key,
-                    toleration.Operator,
-                    toleration.Value,
-                    toleration.Effect,
-                    toleration.TolerationSeconds)),
+                ResolvedComputePreferredNodeAffinityTerm.Create(term.Weight, ToDomain(term.Term))),
+            compute.Tolerations.Select(toleration => ResolvedComputeToleration.Create(
+                toleration.Key,
+                toleration.Operator,
+                toleration.Value,
+                toleration.Effect,
+                toleration.TolerationSeconds)),
             compute.RuntimeClassName);
     }
 
-    public static ResolvedIngressConfiguration? ToDomain(
-        this ResourceDeploymentIngressConfiguration? ingress) =>
+    public static ResolvedIngressConfiguration? ToDomain(this ResourceDeploymentIngressConfiguration? ingress) =>
         ingress is null
             ? null
             : ResolvedIngressConfiguration.Create(
@@ -51,8 +41,7 @@ internal static class ResourceDeploymentContractMappings
                 ingress.PublicBaseDomain,
                 ingress.Hostnames);
 
-    public static ResolvedStorageConfiguration? ToDomain(
-        this ResourceDeploymentStorageConfiguration? storage) =>
+    public static ResolvedStorageConfiguration? ToDomain(this ResourceDeploymentStorageConfiguration? storage) =>
         storage is null
             ? null
             : ResolvedStorageConfiguration.Create(
@@ -60,8 +49,7 @@ internal static class ResourceDeploymentContractMappings
                 storage.StorageProfileRevision,
                 storage.StorageClassName);
 
-    public static ResourceDeploymentReconciliationSnapshot ToReconciliationSnapshot(
-        this ResourceDeployment deployment)
+    public static ResourceDeploymentReconciliationSnapshot ToReconciliationSnapshot(this ResourceDeployment deployment)
     {
         ArgumentNullException.ThrowIfNull(deployment);
 
@@ -94,75 +82,52 @@ internal static class ResourceDeploymentContractMappings
                         deployment.ResolvedPlacement.Storage.StorageProfileId,
                         deployment.ResolvedPlacement.Storage.StorageProfileRevision,
                         deployment.ResolvedPlacement.Storage.StorageClassName),
-                deployment.ResolvedPlacement.Compute.ToContract(
-                    deployment.ResolvedPlacement.DeploymentTargetId)));
+                deployment.ResolvedPlacement.Compute.ToContract(deployment.ResolvedPlacement.DeploymentTargetId)));
     }
 
-    public static ResourceDeploymentEndpoint ToDomain(
-        this ResourceDeploymentEndpointDto endpoint)
+    public static ResourceDeploymentEndpoint ToDomain(this ResourceDeploymentEndpointDto endpoint)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
 
-        return ResourceDeploymentEndpoint.Create(
-            endpoint.Kind,
-            endpoint.Host,
-            endpoint.Port,
-            endpoint.Scheme);
+        return ResourceDeploymentEndpoint.Create(endpoint.Kind, endpoint.Host, endpoint.Port, endpoint.Scheme);
     }
 
-    private static ResourceDeploymentComputeConfiguration ToContract(
-        this ResolvedComputeConfiguration compute,
-        string deploymentTargetId) =>
-        new(
-            compute.ComputeProfileId,
-            compute.ComputeProfileRevision,
-            deploymentTargetId,
-            compute.DisplayName,
-            new ResourceDeploymentComputeResourceValues(
-                compute.Requests.CpuMillis,
-                compute.Requests.MemoryMi),
-            new ResourceDeploymentComputeResourceValues(
-                compute.Limits.CpuMillis,
-                compute.Limits.MemoryMi),
-            compute.Architecture,
-            compute.ExtendedResources
-                .Select(resource => new ResourceDeploymentExtendedResource(
-                    resource.Name,
-                    resource.Quantity))
-                .ToImmutableList(),
-            compute.NodeSelector
-                .Select(selector => new ResourceDeploymentNodeSelector(
-                    selector.Key,
-                    selector.Value))
-                .ToImmutableList(),
-            compute.RequiredNodeAffinity.Select(ToContract).ToImmutableList(),
-            compute.PreferredNodeAffinity
-                .Select(term => new ResourceDeploymentPreferredNodeAffinityTerm(
-                    term.Weight,
-                    ToContract(term.Term)))
-                .ToImmutableList(),
-            compute.Tolerations
-                .Select(toleration => new ResourceDeploymentToleration(
-                    toleration.Key,
-                    toleration.Operator,
-                    toleration.Value,
-                    toleration.Effect,
-                    toleration.TolerationSeconds))
-                .ToImmutableList(),
-            compute.RuntimeClassName);
+    private static ResourceDeploymentComputeConfiguration
+        ToContract(this ResolvedComputeConfiguration compute, string deploymentTargetId) => new(
+        compute.ComputeProfileId,
+        compute.ComputeProfileRevision,
+        deploymentTargetId,
+        compute.DisplayName,
+        new ResourceDeploymentComputeResourceValues(compute.Requests.CpuMillis, compute.Requests.MemoryMi),
+        new ResourceDeploymentComputeResourceValues(compute.Limits.CpuMillis, compute.Limits.MemoryMi),
+        compute.Architecture,
+        compute.ExtendedResources
+            .Select(resource => new ResourceDeploymentExtendedResource(resource.Name, resource.Quantity))
+            .ToImmutableList(),
+        compute.NodeSelector
+            .Select(selector => new ResourceDeploymentNodeSelector(selector.Key, selector.Value))
+            .ToImmutableList(),
+        compute.RequiredNodeAffinity.Select(ToContract).ToImmutableList(),
+        compute.PreferredNodeAffinity
+            .Select(term => new ResourceDeploymentPreferredNodeAffinityTerm(term.Weight, ToContract(term.Term)))
+            .ToImmutableList(),
+        compute.Tolerations
+            .Select(toleration => new ResourceDeploymentToleration(
+                toleration.Key,
+                toleration.Operator,
+                toleration.Value,
+                toleration.Effect,
+                toleration.TolerationSeconds))
+            .ToImmutableList(),
+        compute.RuntimeClassName);
 
-    private static ResolvedComputeNodeAffinityTerm ToDomain(
-        ResourceDeploymentNodeAffinityTerm term) =>
+    private static ResolvedComputeNodeAffinityTerm ToDomain(ResourceDeploymentNodeAffinityTerm term) =>
         ResolvedComputeNodeAffinityTerm.Create(
             term.Expressions.Select(expression =>
-                ResolvedComputeNodeAffinityExpression.Create(
-                    expression.Key,
-                    expression.Operator,
-                    expression.Values)));
+                ResolvedComputeNodeAffinityExpression.Create(expression.Key, expression.Operator, expression.Values)));
 
-    private static ResourceDeploymentNodeAffinityTerm ToContract(
-        ResolvedComputeNodeAffinityTerm term) =>
-        new(term.Expressions
+    private static ResourceDeploymentNodeAffinityTerm ToContract(ResolvedComputeNodeAffinityTerm term) => new(
+        term.Expressions
             .Select(expression => new ResourceDeploymentNodeAffinityExpression(
                 expression.Key,
                 expression.Operator,

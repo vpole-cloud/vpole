@@ -1,10 +1,7 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.RedisServices.Application;
-using Pole.Features.RedisServices.Application.Declarations;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Lifecycle;
-using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
 
 namespace Pole.Features.RedisServices.Application.Common;
@@ -29,19 +26,19 @@ public static class RedisHttpMappings
         "Redis service cannot be updated in its current lifecycle",
         ("redisId", unavailable.RedisId));
 
-    public static HttpProblem MapStorageProfileChangeNotAllowed(
-        RedisStorageProfileChangeNotAllowed rejected) => Problem(
-        HttpStatusCode.UnprocessableEntity,
-        "redis-services.storage-profile-change-not-allowed",
-        "Storage profile cannot be changed for an existing Redis service",
-        ("redisId", rejected.RedisId));
+    public static HttpProblem MapStorageProfileChangeNotAllowed(RedisStorageProfileChangeNotAllowed rejected) =>
+        Problem(
+            HttpStatusCode.UnprocessableEntity,
+            "redis-services.storage-profile-change-not-allowed",
+            "Storage profile cannot be changed for an existing Redis service",
+            ("redisId", rejected.RedisId));
 
-    public static HttpProblem MapDeletionResourceDeploymentMissing(
-        RedisDeletionResourceDeploymentMissing missing) => Problem(
-        HttpStatusCode.Conflict,
-        "redis-services.deletion-deployment-missing",
-        "Deleting Redis service has no resource deployment",
-        ("redisId", missing.RedisId));
+    public static HttpProblem MapDeletionResourceDeploymentMissing(RedisDeletionResourceDeploymentMissing missing) =>
+        Problem(
+            HttpStatusCode.Conflict,
+            "redis-services.deletion-deployment-missing",
+            "Deleting Redis service has no resource deployment",
+            ("redisId", missing.RedisId));
 
     public static HttpProblem MapStorageResizeUnsupported(RedisStorageResizeUnsupported rejected) => Problem(
         HttpStatusCode.UnprocessableEntity,
@@ -77,13 +74,10 @@ public static class RedisHttpMappings
         HttpStatusCode status,
         string code,
         string title,
-        params (string Name, object Value)[] extensions) =>
-        new(
-            (int)status,
-            PoleProblemTypeId.FromCode(code),
-            title,
-            code,
-            extensions: extensions.ToDictionary(
-                extension => extension.Name,
-                extension => extension.Value));
+        params (string Name, object Value)[] extensions) => new(
+        (int)status,
+        PoleProblemTypeId.FromCode(code),
+        title,
+        code,
+        extensions: extensions.ToDictionary(extension => extension.Name, extension => extension.Value));
 }

@@ -2,16 +2,10 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Encryption;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
+using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Primitives;
@@ -24,10 +18,13 @@ internal sealed class BootstrapSecrets(
     SecretPlanningFence fence,
     IEnvelopeEncryptionService encryption,
     PrepareManagedSecret prepare,
-    CreateBoundManagedSecret create)
+    CreateBoundManagedSecret create
+)
 {
-    public async Task<ReadBootstrapSecretOutcome> ReadAsync(BootstrapSecretRequest request,
-        IClientSessionHandle session, CancellationToken ct)
+    public async Task<ReadBootstrapSecretOutcome> ReadAsync(
+        BootstrapSecretRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         EnsureTransaction(session);
         var existing = await secrets.Find(session, ManagedSecretFilters.Owner(request.TenantId, request.Owner))
@@ -43,7 +40,7 @@ internal sealed class BootstrapSecrets(
             binding.Consumer.ResourceId == request.Owner.ResourceId);
         if (source is null || grant is null || source.ResourceGroupId != request.Placement.ResourceGroupId ||
             source.IsolationScopeId != request.Placement.IsolationScopeId ||
-            !Projections.SecretProjectionAuthority.IncludesDeployment(grant.Selection, request.Placement.DeploymentId))
+            !SecretProjectionAuthority.IncludesDeployment(grant.Selection, request.Placement.DeploymentId))
             return new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretBindingUnavailable);
 
         if (!source.KeyNames.Contains(request.Source.Key) || !grant.IncludesKey(request.Source.Key))
@@ -52,12 +49,16 @@ internal sealed class BootstrapSecrets(
         if (!source.HasValue(request.Source.Key))
             return new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretValuesMissing);
 
-        return new BootstrapSecretReady(request,
-            new(source.Id, source.Revision, source.ReferenceFence), source.CurrentVersion);
+        return new BootstrapSecretReady(
+            request,
+            new SecretPlanningVersion(source.Id, source.Revision, source.ReferenceFence),
+            source.CurrentVersion);
     }
 
-    public async Task<CreateBootstrapSecretOutcome> CreateAsync(BootstrapSecretReady expected,
-        IClientSessionHandle session, CancellationToken ct)
+    public async Task<CreateBootstrapSecretOutcome> CreateAsync(
+        BootstrapSecretReady expected,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var read = await ReadAsync(expected.Request, session, ct);
         if (read is BootstrapSecretInitialized initialized)
@@ -76,14 +77,17 @@ internal sealed class BootstrapSecrets(
         if (!await fence.FenceAsync(source, session, ct))
             return new BootstrapSecretChanged();
 
-        var version = await versions.Find(session,
+        var version = await versions.Find(
+                session,
                 SecretFilters.Version(request.TenantId, source.Id, current.ValueVersion))
             .SingleOrDefaultAsync(ct);
         if (version is null)
             return new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretValuesMissing);
 
-        var decrypted = await encryption.DecryptAsync(version.Value,
-            EnvelopeEncryptionContext.ForTenant(request.TenantId, "Secret", source.Id, "values", version.Version), ct);
+        var decrypted = await encryption.DecryptAsync(
+            version.Value,
+            EnvelopeEncryptionContext.ForTenant(request.TenantId, "Secret", source.Id, "values", version.Version),
+            ct);
         if (decrypted is not byte[] plaintext)
             return new ManagedSecretEncryptionUnavailable();
 
@@ -96,27 +100,41 @@ internal sealed class BootstrapSecrets(
             var credentials = new Dictionary<string, string>
             {
                 ["username"] = request.Username,
-                ["password"] = password
+                ["password"] = password,
             };
-            if (!Endpoints.SecretValuesValidation.Valid(credentials))
+            if (!SecretValuesValidation.Valid(credentials))
                 return new BootstrapSecretValuesTooLarge();
 
-            var prepared = await prepare(new(request.TenantId, request.CredentialId, request.Owner,
-                request.CredentialName, 1, credentials, ManagedSecretKubernetesType.BasicAuthentication), ct);
+            var prepared = await prepare(
+                new PrepareManagedSecretRequest(
+                    request.TenantId,
+                    request.CredentialId,
+                    request.Owner,
+                    request.CredentialName,
+                    1,
+                    credentials,
+                    ManagedSecretKubernetesType.BasicAuthentication),
+                ct);
             if (prepared is ManagedSecretEncryptionUnavailable encryptionFailure)
                 return encryptionFailure;
 
-            var outcome = await create(new((PreparedManagedSecret)prepared.Value, request.Placement.ResourceGroupId,
-                request.Placement.IsolationScopeId, request.Placement.DeploymentId), session, ct);
+            var outcome = await create(
+                new CreateBoundManagedSecretRequest(
+                    (PreparedManagedSecret)prepared.Value,
+                    request.Placement.ResourceGroupId,
+                    request.Placement.IsolationScopeId,
+                    request.Placement.DeploymentId),
+                session,
+                ct);
             return outcome switch
             {
                 ManagedSecretMutationSucceeded => new BootstrapSecretInitialized(request.CredentialId),
                 ManagedSecretChanged => new BootstrapSecretChanged(),
-                ManagedSecretUnavailable =>
-                    new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretConsumerUnavailable),
-                ManagedSecretReferenceRejected =>
-                    new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretConsumerUnavailable),
-                ManagedSecretEncryptionUnavailable error => error
+                ManagedSecretUnavailable => new BootstrapSecretUnavailable(
+                    ConsumerSecretReferenceError.SecretConsumerUnavailable),
+                ManagedSecretReferenceRejected => new BootstrapSecretUnavailable(
+                    ConsumerSecretReferenceError.SecretConsumerUnavailable),
+                ManagedSecretEncryptionUnavailable error => error,
             };
         }
         finally

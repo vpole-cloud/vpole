@@ -1,26 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.GitOps.Application</AssemblyName>
-    <RootNamespace>Pole.Features.GitOps.Application</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <InternalsVisibleTo Include="Pole.Tests.Integration" />
-    <ProjectReference Include="../GitOps.Contracts/GitOps.Contracts.csproj"/>
-    <ProjectReference Include="../GitOps.Compiler/GitOps.Compiler.csproj"/>
-    <ProjectReference Include="../GitOps.Domain/GitOps.Domain.csproj"/>
-    <ProjectReference Include="../GitOps.Events/GitOps.Events.csproj"/>
-    <ProjectReference Include="../../Outbox/Outbox.Contracts/Outbox.Contracts.csproj"/>
-    <ProjectReference Include="../../../shared/Database/Database.csproj"/>
-    <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj"/>
-    <ProjectReference Include="../../../shared/Validation/Validation.csproj"/>
-    <PackageReference Include="FluentValidation"/>
-    <PackageReference Include="Hangfire.Core"/>
-    <PackageReference Include="MassTransit"/>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../../shared/Architecture/Architecture.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.GitOps.Application</AssemblyName>
+        <RootNamespace>Pole.Features.GitOps.Application</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <InternalsVisibleTo Include="Pole.Tests.Integration"/>
+        <ProjectReference Include="../GitOps.Contracts/GitOps.Contracts.csproj"/>
+        <ProjectReference Include="../GitOps.Compiler/GitOps.Compiler.csproj"/>
+        <ProjectReference Include="../GitOps.Domain/GitOps.Domain.csproj"/>
+        <ProjectReference Include="../GitOps.Events/GitOps.Events.csproj"/>
+        <ProjectReference Include="../../Outbox/Outbox.Contracts/Outbox.Contracts.csproj"/>
+        <ProjectReference Include="../../../shared/Database/Database.csproj"/>
+        <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj"/>
+        <ProjectReference Include="../../../shared/Validation/Validation.csproj"/>
+        <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="Hangfire.Core"/>
+        <PackageReference Include="MassTransit"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../../shared/Architecture/Architecture.csproj"/>
+    </ItemGroup>
 </Project>

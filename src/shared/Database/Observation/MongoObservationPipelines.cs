@@ -1,17 +1,19 @@
-using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Architecture;
 using Pole.Observation;
 using static Pole.Database.Observation.MongoObservationExpressions;
 
 namespace Pole.Database.Observation;
 
 // Each control transition remains ONE server-side $set stage, including the clock and fences.
-[ViolateArchitecture(ArchitectureRules.RawBson,
+[ViolateArchitecture(
+    ArchitectureRules.RawBson,
     "Atomic observation transitions combine server timestamps, original expiry bounds and fences in " +
     "one computed $set pipeline.")]
 internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSnapshot>(
-    IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition)
+    IMongoObservationDefinition<TContext, TControl, TDemand, TSnapshot> definition
+)
     where TControl : class, IObservationControl
     where TDemand : class, IObservationDemand
     where TSnapshot : class, IObservationSnapshot
@@ -25,17 +27,22 @@ internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSn
             .Set(item => item.ConnectionId, demand.Identity.ConnectionId)
             .Set(item => item.SessionId, demand.Identity.SessionId);
         var fields = LiteralAssignments(assignments);
-        var bound = new BsonDocument("$min", new BsonArray
-        {
-            new BsonDocument("$ifNull", new BsonArray
+        var bound = new BsonDocument(
+            "$min",
+            new BsonArray
             {
-                Reference<TDemand, DateTime>(item => item.OriginalExpiresAtUtc),
-                Literal(new BsonDateTime(demand.ExpiresAtUtc.UtcDateTime))
-            }),
-            Literal(new BsonDateTime(demand.ExpiresAtUtc.UtcDateTime))
-        });
+                new BsonDocument(
+                    "$ifNull",
+                    new BsonArray
+                    {
+                        Reference<TDemand, DateTime>(item => item.OriginalExpiresAtUtc),
+                        Literal(new BsonDateTime(demand.ExpiresAtUtc.UtcDateTime)),
+                    }),
+                Literal(new BsonDateTime(demand.ExpiresAtUtc.UtcDateTime)),
+            });
         fields.Add(Field<TDemand, DateTime>(item => item.OriginalExpiresAtUtc), bound);
-        fields.Add(Field<TDemand, DateTime>(item => item.ExpiresAtUtc),
+        fields.Add(
+            Field<TDemand, DateTime>(item => item.ExpiresAtUtc),
             new BsonDocument("$min", new BsonArray { bound, After(ObservationPolicy.DemandDuration) }));
         return Set<TDemand>(fields);
     }
@@ -49,19 +56,24 @@ internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSn
             AdvanceObservation(fields);
             fields.AddRange(LiteralAssignments(definition.PinUpdate(context)));
         }
+
         return Transition(fields);
     }
 
-    internal UpdateDefinition<TControl> Claim(TContext context, string instanceId, bool changed)
+    internal UpdateDefinition<TControl> Claim(
+        TContext context,
+        string instanceId,
+        bool changed)
     {
-        var fields = LiteralAssignments(Control
-            .Set(item => item.InstanceId, instanceId)
-            .Set(item => item.Token, Guid.NewGuid().ToString("N"))
-            .Set(item => item.SourceHealthy, false)
-            .Set(definition.Source, null)
-            .Set(item => item.IdleSinceUtc, null));
+        var fields = LiteralAssignments(
+            Control.Set(item => item.InstanceId, instanceId)
+                .Set(item => item.Token, Guid.NewGuid().ToString("N"))
+                .Set(item => item.SourceHealthy, false)
+                .Set(definition.Source, null)
+                .Set(item => item.IdleSinceUtc, null));
         fields.Add(Field<TControl, long>(item => item.Epoch), Increment<TControl>(item => item.Epoch));
-        fields.Add(Field<TControl, long>(item => item.SourceControlVersion),
+        fields.Add(
+            Field<TControl, long>(item => item.SourceControlVersion),
             Increment<TControl>(item => item.SourceControlVersion));
         fields.Add(Field<TControl, DateTime>(item => item.LeaseExpiresAtUtc), After(ObservationPolicy.LeaseDuration));
         fields.AddRange(LiteralAssignments(definition.PinUpdate(context)));
@@ -70,8 +82,10 @@ internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSn
         return Transition(fields);
     }
 
-    internal UpdateDefinition<TControl> RenewLease() => Transition(new BsonDocument(
-        Field<TControl, DateTime>(item => item.LeaseExpiresAtUtc), After(ObservationPolicy.LeaseDuration)));
+    internal UpdateDefinition<TControl> RenewLease() => Transition(
+        new BsonDocument(
+            Field<TControl, DateTime>(item => item.LeaseExpiresAtUtc),
+            After(ObservationPolicy.LeaseDuration)));
 
     internal UpdateDefinition<TControl> Release()
     {
@@ -83,9 +97,10 @@ internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSn
 
     internal UpdateDefinition<TControl> SetSource(string? sourceId)
     {
-        var fields = LiteralAssignments(Control.Set(item => item.SourceHealthy, sourceId is not null)
-            .Set(definition.Source, sourceId));
-        fields.Add(Field<TControl, long>(item => item.SourceControlVersion),
+        var fields = LiteralAssignments(
+            Control.Set(item => item.SourceHealthy, sourceId is not null).Set(definition.Source, sourceId));
+        fields.Add(
+            Field<TControl, long>(item => item.SourceControlVersion),
             Increment<TControl>(item => item.SourceControlVersion));
         AdvanceObservation(fields);
         return Transition(fields);
@@ -111,12 +126,15 @@ internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSn
     internal UpdateDefinition<TSnapshot> ClearSnapshotExpiry() =>
         Builders<TSnapshot>.Update.Set(item => item.ExpiresAtUtc, null);
 
-    internal UpdateDefinition<TSnapshot> RetainIdleSnapshot() => Set<TSnapshot>(new BsonDocument(
-        Field<TSnapshot, DateTime?>(item => item.ExpiresAtUtc),
-        new BsonDocument("$ifNull", new BsonArray
-        {
-            Reference<TSnapshot, DateTime?>(item => item.ExpiresAtUtc), After(ObservationPolicy.IdleRetention)
-        })));
+    internal UpdateDefinition<TSnapshot> RetainIdleSnapshot() => Set<TSnapshot>(
+        new BsonDocument(
+            Field<TSnapshot, DateTime?>(item => item.ExpiresAtUtc),
+            new BsonDocument(
+                "$ifNull",
+                new BsonArray
+                {
+                    Reference<TSnapshot, DateTime?>(item => item.ExpiresAtUtc), After(ObservationPolicy.IdleRetention),
+                })));
 
     private static UpdateDefinition<T> Set<T>(BsonDocument fields) =>
         Builders<T>.Update.Pipeline(new[] { new BsonDocument("$set", fields) });
@@ -128,20 +146,22 @@ internal sealed class MongoObservationPipelines<TContext, TControl, TDemand, TSn
         return Set<TControl>(fields);
     }
 
-    private static void AdvanceObservation(BsonDocument fields) =>
-        fields.Add(Field<TControl, long>(item => item.ObservationVersion),
-            Increment<TControl>(item => item.ObservationVersion));
+    private static void AdvanceObservation(BsonDocument fields) => fields.Add(
+        Field<TControl, long>(item => item.ObservationVersion),
+        Increment<TControl>(item => item.ObservationVersion));
 
     private void Invalidate(BsonDocument fields)
     {
         fields.Add(Field<TControl, long>(item => item.Epoch), Increment<TControl>(item => item.Epoch));
-        fields.Add(Field<TControl, long>(item => item.SourceControlVersion),
+        fields.Add(
+            Field<TControl, long>(item => item.SourceControlVersion),
             Increment<TControl>(item => item.SourceControlVersion));
-        fields.AddRange(LiteralAssignments(Control
-            .Set(item => item.InstanceId, null)
-            .Set(item => item.Token, null)
-            .Set(item => item.LeaseExpiresAtUtc, DateTime.UnixEpoch)
-            .Set(item => item.SourceHealthy, false)
-            .Set(definition.Source, null)));
+        fields.AddRange(
+            LiteralAssignments(
+                Control.Set(item => item.InstanceId, null)
+                    .Set(item => item.Token, null)
+                    .Set(item => item.LeaseExpiresAtUtc, DateTime.UnixEpoch)
+                    .Set(item => item.SourceHealthy, false)
+                    .Set(definition.Source, null)));
     }
 }

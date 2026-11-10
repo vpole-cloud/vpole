@@ -1,25 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.ContainerRegistries.Application</AssemblyName>
-    <RootNamespace>Pole.Features.ContainerRegistries.Application</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="FluentValidation" />
-    <PackageReference Include="Hangfire.Core" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj" />
-    <ProjectReference Include="..\ContainerRegistries.Domain\ContainerRegistries.Domain.csproj" />
-    <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-    <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj" />
-    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-    <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj" />
-    <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.ContainerRegistries.Application</AssemblyName>
+        <RootNamespace>Pole.Features.ContainerRegistries.Application</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="Hangfire.Core"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\ContainerRegistries.Contracts\ContainerRegistries.Contracts.csproj"/>
+        <ProjectReference Include="..\ContainerRegistries.Domain\ContainerRegistries.Domain.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Encryption\Encryption.csproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Mediator\Mediator.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Validation\Validation.csproj"/>
+    </ItemGroup>
 </Project>

@@ -1,7 +1,7 @@
-using Pole.Features.Core.Kubernetes;
 using System.Collections.Immutable;
 using System.Globalization;
 using k8s.Models;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.RedisServices.Application.Common;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -14,7 +14,8 @@ public sealed record RedisResourceDeploymentMetadata(
     string RuntimeCellId,
     string DeploymentTargetId,
     long DesiredGeneration,
-    DateTime RequestedAtUtc)
+    DateTime RequestedAtUtc
+)
 {
     public static RedisResourceDeploymentMetadata Create(
         string resourceDeploymentId,
@@ -30,7 +31,7 @@ public sealed record RedisResourceDeploymentMetadata(
         if (requestedAtUtc == default)
             throw new ArgumentException("The request time is required.", nameof(requestedAtUtc));
 
-        return new(
+        return new RedisResourceDeploymentMetadata(
             resourceDeploymentId.Trim(),
             runtimeCellId.Trim(),
             deploymentTargetId.Trim(),
@@ -44,8 +45,23 @@ public readonly record struct RedisInKubernetes(
     string Namespace,
     ResourceDeploymentStorageConfiguration StorageConfiguration,
     ResourceDeploymentComputeConfiguration ComputeConfiguration,
-    WorkloadIdentityLabels PlacementIdentity)
+    WorkloadIdentityLabels PlacementIdentity
+)
 {
+    public string StatefulSetName => Redis.Name;
+    public string ServiceName => BuildServiceName(Redis.Name);
+
+    public string ClusterLocalHost => $"{ServiceName}.{Namespace}.svc.cluster.local";
+
+    private ImmutableDictionary<string, string> DefaultAnnotations =>
+        new Dictionary<string, string>
+        {
+            { "app.kubernetes.io/managed-by", "pole-server" },
+            { "pole.server/redisId", Redis.Id },
+            { PoleStorageLabels.ResourceName, Redis.Name },
+            { PoleStorageLabels.ResourceType, RedisResourceDeployment.ResourceType.Value },
+        }.ToImmutableDictionary();
+
     public static RedisInKubernetes Create(
         Redis redis,
         string kubernetesNamespace,
@@ -58,7 +74,7 @@ public readonly record struct RedisInKubernetes(
         ArgumentNullException.ThrowIfNull(storageConfiguration);
         ArgumentNullException.ThrowIfNull(computeConfiguration);
 
-        return new(
+        return new RedisInKubernetes(
             redis,
             kubernetesNamespace.Trim(),
             storageConfiguration,
@@ -66,18 +82,12 @@ public readonly record struct RedisInKubernetes(
             placementIdentity);
     }
 
-    public string StatefulSetName => Redis.Name;
-    public string ServiceName => BuildServiceName(Redis.Name);
     public static string BuildServiceName(string redisName) => $"{redisName}-svc";
 
-    public string ClusterLocalHost =>
-        $"{ServiceName}.{Namespace}.svc.cluster.local";
-
-    public V1StatefulSet ToStatefulSet(
-        RedisResourceDeploymentMetadata? deploymentMetadata = null)
+    public V1StatefulSet ToStatefulSet(RedisResourceDeploymentMetadata? deploymentMetadata = null)
     {
         EnsureRuntimeActive();
-        return new()
+        return new V1StatefulSet
         {
             ApiVersion = "apps/v1",
             Kind = "StatefulSet",
@@ -85,9 +95,8 @@ public readonly record struct RedisInKubernetes(
             {
                 Name = StatefulSetName,
                 NamespaceProperty = Namespace,
-                Labels = new Dictionary<string, string>
-                (BuildLabels()),
-                Annotations = DefaultAnnotations
+                Labels = new Dictionary<string, string>(BuildLabels()),
+                Annotations = DefaultAnnotations,
             },
             Spec = new V1StatefulSetSpec
             {
@@ -96,57 +105,56 @@ public readonly record struct RedisInKubernetes(
                 PersistentVolumeClaimRetentionPolicy = new V1StatefulSetPersistentVolumeClaimRetentionPolicy
                 {
                     WhenDeleted = "Delete",
-                    WhenScaled = "Retain"
+                    WhenScaled = "Retain",
                 },
                 Selector = new V1LabelSelector
                 {
                     MatchLabels = new Dictionary<string, string>
-                {
-                    { "pole.io/resource-id", Redis.Id }
-                }
+                    {
+                        { "pole.io/resource-id", Redis.Id },
+                    },
                 },
                 Template = new V1PodTemplateSpec
                 {
                     Metadata = new V1ObjectMeta
                     {
-                        Labels = new Dictionary<string, string>
-                        (BuildLabels()),
-                        Annotations = BuildPodTemplateAnnotations(deploymentMetadata)
+                        Labels = new Dictionary<string, string>(BuildLabels()),
+                        Annotations = BuildPodTemplateAnnotations(deploymentMetadata),
                     },
-                    Spec = BuildPodSpec()
+                    Spec = BuildPodSpec(),
                 },
                 VolumeClaimTemplates = new List<V1PersistentVolumeClaim>
-            {
-                new()
                 {
-                    Metadata = new V1ObjectMeta
+                    new()
                     {
-                        Name = "redis-data",
-                        Labels = new Dictionary<string, string>(BuildLabels()),
-                        Annotations = DefaultAnnotations
-                    },
-                    Spec = new V1PersistentVolumeClaimSpec
-                    {
-                        AccessModes = new List<string> { "ReadWriteOnce" },
-                        StorageClassName = StorageConfiguration.StorageClassName,
-                        Resources = new V1VolumeResourceRequirements
+                        Metadata = new V1ObjectMeta
                         {
-                            Requests = new Dictionary<string, ResourceQuantity>
+                            Name = "redis-data",
+                            Labels = new Dictionary<string, string>(BuildLabels()),
+                            Annotations = DefaultAnnotations,
+                        },
+                        Spec = new V1PersistentVolumeClaimSpec
+                        {
+                            AccessModes = new List<string> { "ReadWriteOnce" },
+                            StorageClassName = StorageConfiguration.StorageClassName,
+                            Resources = new V1VolumeResourceRequirements
                             {
-                                ["storage"] = new($"{Redis.Spec.Storage.SizeGb}Gi")
-                            }
-                        }
-                    }
-                }
-            }
-            }
+                                Requests = new Dictionary<string, ResourceQuantity>
+                                {
+                                    ["storage"] = new($"{Redis.Spec.Storage.SizeGb}Gi"),
+                                },
+                            },
+                        },
+                    },
+                },
+            },
         };
     }
 
     public V1Service ToService()
     {
         EnsureRuntimeActive();
-        return new()
+        return new V1Service
         {
             ApiVersion = "v1",
             Kind = "Service",
@@ -154,29 +162,28 @@ public readonly record struct RedisInKubernetes(
             {
                 Name = ServiceName,
                 NamespaceProperty = Namespace,
-                Labels = new Dictionary<string, string>
-                (BuildLabels()),
-                Annotations = DefaultAnnotations
+                Labels = new Dictionary<string, string>(BuildLabels()),
+                Annotations = DefaultAnnotations,
             },
             Spec = new V1ServiceSpec
             {
                 Type = "ClusterIP",
                 ClusterIP = "None", // Headless service for StatefulSet
                 Selector = new Dictionary<string, string>
-            {
-                { "pole.io/resource-id", Redis.Id }
-            },
-                Ports = new List<V1ServicePort>
-            {
-                new()
                 {
-                    Name = "redis",
-                    Port = 6379,
-                    TargetPort = 6379,
-                    Protocol = "TCP"
-                }
-            }
-            }
+                    { "pole.io/resource-id", Redis.Id },
+                },
+                Ports = new List<V1ServicePort>
+                {
+                    new()
+                    {
+                        Name = "redis",
+                        Port = 6379,
+                        TargetPort = 6379,
+                        Protocol = "TCP",
+                    },
+                },
+            },
         };
     }
 
@@ -186,35 +193,20 @@ public readonly record struct RedisInKubernetes(
             throw new InvalidOperationException("Redis runtime objects require an activated resource.");
     }
 
-    private ImmutableDictionary<string, string> DefaultAnnotations =>
-        new Dictionary<string, string>
-        {
-            { "app.kubernetes.io/managed-by", "pole-server" },
-            { "pole.server/redisId", Redis.Id },
-            { PoleStorageLabels.ResourceName, Redis.Name },
-            { PoleStorageLabels.ResourceType, RedisResourceDeployment.ResourceType.Value }
-        }.ToImmutableDictionary();
-
-    private Dictionary<string, string> BuildPodTemplateAnnotations(
-        RedisResourceDeploymentMetadata? deploymentMetadata)
+    private Dictionary<string, string> BuildPodTemplateAnnotations(RedisResourceDeploymentMetadata? deploymentMetadata)
     {
         var annotations = new Dictionary<string, string>(DefaultAnnotations);
         if (deploymentMetadata is null)
             return annotations;
 
-        annotations["pole.server/resourceDeploymentId"] =
-            deploymentMetadata.ResourceDeploymentId;
-        annotations["pole.server/runtimeCellId"] =
-            deploymentMetadata.RuntimeCellId;
-        annotations["pole.server/deploymentTargetId"] =
-            deploymentMetadata.DeploymentTargetId;
-        annotations["pole.server/deploymentGeneration"] =
-            deploymentMetadata.DesiredGeneration.ToString(
-                CultureInfo.InvariantCulture);
-        annotations["pole.server/deploymentRequestedAtUtc"] =
-            deploymentMetadata.RequestedAtUtc.ToUniversalTime().ToString(
-                "O",
-                CultureInfo.InvariantCulture);
+        annotations["pole.server/resourceDeploymentId"] = deploymentMetadata.ResourceDeploymentId;
+        annotations["pole.server/runtimeCellId"] = deploymentMetadata.RuntimeCellId;
+        annotations["pole.server/deploymentTargetId"] = deploymentMetadata.DeploymentTargetId;
+        annotations["pole.server/deploymentGeneration"]
+            = deploymentMetadata.DesiredGeneration.ToString(CultureInfo.InvariantCulture);
+        annotations["pole.server/deploymentRequestedAtUtc"] = deploymentMetadata.RequestedAtUtc
+            .ToUniversalTime()
+            .ToString("O", CultureInfo.InvariantCulture);
         return annotations;
     }
 
@@ -235,20 +227,20 @@ public readonly record struct RedisInKubernetes(
                         new V1ContainerPort
                         {
                             ContainerPort = 6379,
-                            Name = "redis"
-                        }
+                            Name = "redis",
+                        },
                     ],
                     VolumeMounts =
                     [
                         new V1VolumeMount
                         {
                             Name = "redis-data",
-                            MountPath = "/data"
-                        }
+                            MountPath = "/data",
+                        },
                     ],
-                    Resources = ComputeConfiguration.ToKubernetesCompute().ToResourceRequirements()
-                }
-            ]
+                    Resources = ComputeConfiguration.ToKubernetesCompute().ToResourceRequirements(),
+                },
+            ],
         };
         ComputeConfiguration.ToKubernetesCompute().ApplyTo(podSpec);
         return podSpec;

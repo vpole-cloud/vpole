@@ -21,8 +21,12 @@ public abstract class MongoIntegrationTestBase : IAsyncLifetime, IIsolatedIntegr
     protected IMongoDatabase Database => Fixture.Database;
     protected MongoTestStore DbContext => Fixture.DbContext;
     public virtual Task InitializeAsync() => Task.CompletedTask;
+
     public virtual async Task DisposeAsync()
     {
-        using (Timings.Measure("database.dispose")) await Fixture.DisposeAsync();
+        using (Timings.Measure("database.dispose"))
+        {
+            await Fixture.DisposeAsync();
+        }
     }
 }

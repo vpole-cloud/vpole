@@ -67,14 +67,13 @@ public sealed class EnvelopeEncryptionSettingsTests
     [Fact]
     public async Task CustomProviderCanOptOutOfLocalKeyFileConfiguration()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["EnvelopeEncryption:ActiveProviderId"] = "test-provider"
-            })
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["EnvelopeEncryption:ActiveProviderId"] = "test-provider",
+                })
             .Build();
-        using var host = new HostBuilder()
-            .ConfigureServices(services =>
+        using var host = new HostBuilder().ConfigureServices(services =>
             {
                 services.AddSingleton<IKeyEncryptionProvider, TestKeyEncryptionProvider>();
                 services.AddEnvelopeEncryption(configuration, includeLocalKeyFileProvider: false);
@@ -87,15 +86,12 @@ public sealed class EnvelopeEncryptionSettingsTests
         Assert.Equal("test-provider", service.ActiveKey.ProviderId);
     }
 
-    private static IHost CreateHost(IConfiguration configuration) =>
-        new HostBuilder()
-            .ConfigureServices(services => services.AddEnvelopeEncryption(configuration))
-            .Build();
+    private static IHost CreateHost(IConfiguration configuration) => new HostBuilder()
+        .ConfigureServices(services => services.AddEnvelopeEncryption(configuration))
+        .Build();
 
     private static IConfiguration Configuration(string path) =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(ConfigurationValues(path))
-            .Build();
+        new ConfigurationBuilder().AddInMemoryCollection(ConfigurationValues(path)).Build();
 
     private static Dictionary<string, string?> ConfigurationValues(string path) => new()
     {
@@ -104,7 +100,7 @@ public sealed class EnvelopeEncryptionSettingsTests
         ["EnvelopeEncryption:LocalKeyFile:ActiveKeyVersion"] = "1",
         ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "settings-test",
         ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
-        ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = path
+        ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = path,
     };
 
     private sealed class TestKeyFile : IDisposable
@@ -117,6 +113,8 @@ public sealed class EnvelopeEncryptionSettingsTests
 
         private string Directory { get; }
         public string Path { get; }
+
+        public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
 
         public static TestKeyFile Create()
         {
@@ -144,8 +142,6 @@ public sealed class EnvelopeEncryptionSettingsTests
         }
 
         public static TestDirectory CreateDirectoryOnly() => new();
-
-        public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
     }
 
     private sealed class TestDirectory : IDisposable
@@ -156,17 +152,18 @@ public sealed class EnvelopeEncryptionSettingsTests
                 System.IO.Path.GetTempPath(),
                 "pole-encryption-settings",
                 Guid.NewGuid().ToString("N"));
-            System.IO.Directory.CreateDirectory(Path);
+            Directory.CreateDirectory(Path);
         }
 
         public string Path { get; }
 
-        public void Dispose() => System.IO.Directory.Delete(Path, recursive: true);
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 
     private sealed class TestKeyEncryptionProvider : IKeyEncryptionProvider
     {
         public string ProviderId => "test-provider";
+
         public KeyEncryptionKeyDescriptor ActiveKey { get; } = new(
             new KeyEncryptionKeyIdentity("test-key", 1),
             "test-wrap",
@@ -176,8 +173,7 @@ public sealed class EnvelopeEncryptionSettingsTests
             KeyEncryptionKeyDescriptor key,
             ReadOnlyMemory<byte> dataEncryptionKey,
             ReadOnlyMemory<byte> associatedData,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public ValueTask<DataEncryptionKeyUnwrappingOutcome> UnwrapKeyAsync(
             KeyEncryptionKeyIdentity key,
@@ -187,7 +183,6 @@ public sealed class EnvelopeEncryptionSettingsTests
             ReadOnlyMemory<byte> nonce,
             ReadOnlyMemory<byte> authenticationTag,
             ReadOnlyMemory<byte> associatedData,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

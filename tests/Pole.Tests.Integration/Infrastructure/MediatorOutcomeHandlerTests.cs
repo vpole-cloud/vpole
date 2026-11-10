@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Mediator;
-using Pole.Server.Extensions;
 using Pole.Platform.Hosting;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
@@ -16,8 +16,7 @@ public sealed class MediatorOutcomeHandlerTests
         var outcome = result switch
         {
             string value => value,
-            PipelineRejected => throw new Xunit.Sdk.XunitException(
-                "Expected a request outcome.")
+            PipelineRejected => throw new XunitException("Expected a request outcome."),
         };
 
         Assert.Equal("created", outcome);
@@ -26,14 +25,12 @@ public sealed class MediatorOutcomeHandlerTests
     [Fact]
     public void MediatorResultAcceptsAPluginDefinedRejection()
     {
-        MediatorResult<string> result = new PipelineRejected(
-            new PluginPolicyRejected("plugin.policy.denied"));
+        MediatorResult<string> result = new PipelineRejected(new PluginPolicyRejected("plugin.policy.denied"));
 
         var reason = result switch
         {
-            string => throw new Xunit.Sdk.XunitException(
-                "Expected a pipeline rejection."),
-            PipelineRejected rejected => rejected.Reason
+            string => throw new XunitException("Expected a pipeline rejection."),
+            PipelineRejected rejected => rejected.Reason,
         };
 
         var rejection = Assert.IsType<PluginPolicyRejected>(reason);
@@ -43,24 +40,19 @@ public sealed class MediatorOutcomeHandlerTests
     [Fact]
     public void PipelineRejectionRequiresATypedReason()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            new PipelineRejected(null!));
+        Assert.Throws<ArgumentNullException>(() => new PipelineRejected(null!));
     }
 
     [Fact]
     public void RequestValidationRejectionRequiresFieldErrors()
     {
-        Assert.Throws<ArgumentNullException>(() =>
-            new RequestValidationRejected(null!));
-        Assert.Throws<ArgumentException>(() =>
-            new RequestValidationRejected(
-                new Dictionary<string, string[]>()));
-        Assert.Throws<ArgumentException>(() =>
-            new RequestValidationRejected(
-                new Dictionary<string, string[]>
-                {
-                    ["Body.Name"] = []
-                }));
+        Assert.Throws<ArgumentNullException>(() => new RequestValidationRejected(null!));
+        Assert.Throws<ArgumentException>(() => new RequestValidationRejected(new Dictionary<string, string[]>()));
+        Assert.Throws<ArgumentException>(() => new RequestValidationRejected(
+            new Dictionary<string, string[]>
+            {
+                ["Body.Name"] = [],
+            }));
     }
 
     [Fact]
@@ -69,18 +61,15 @@ public sealed class MediatorOutcomeHandlerTests
         var messages = new[] { "Name is required." };
         var errors = new Dictionary<string, string[]>
         {
-            ["Body.Name"] = messages
+            ["Body.Name"] = messages,
         };
 
         var rejection = new RequestValidationRejected(errors);
         messages[0] = "Changed.";
         errors["Body.Name"] = ["Replaced."];
 
-        Assert.Equal(
-            "Name is required.",
-            Assert.Single(rejection.Errors["Body.Name"]));
-        Assert.IsAssignableFrom<IReadOnlyList<string>>(
-            rejection.Errors["Body.Name"]);
+        Assert.Equal("Name is required.", Assert.Single(rejection.Errors["Body.Name"]));
+        Assert.IsAssignableFrom<IReadOnlyList<string>>(rejection.Errors["Body.Name"]);
     }
 
     [Fact]
@@ -91,8 +80,7 @@ public sealed class MediatorOutcomeHandlerTests
         services.AddPoleMediator(typeof(MediatorOutcomeHandlerTests).Assembly);
         await using var provider = services.BuildServiceProvider();
 
-        var handler = provider.GetRequiredService<
-            IMediatorOutcomeHandler<OutcomeRequest, string>>();
+        var handler = provider.GetRequiredService<IMediatorOutcomeHandler<OutcomeRequest, string>>();
 
         Assert.IsType<OutcomeHandler>(handler);
     }
@@ -109,8 +97,7 @@ public sealed class MediatorOutcomeHandlerTests
         var outcome = result switch
         {
             string value => value,
-            PipelineRejected => throw new Xunit.Sdk.XunitException(
-                "Expected a request outcome.")
+            PipelineRejected => throw new XunitException("Expected a request outcome."),
         };
 
         Assert.Equal("created", outcome);
@@ -128,9 +115,8 @@ public sealed class MediatorOutcomeHandlerTests
 
         var reason = result switch
         {
-            string => throw new Xunit.Sdk.XunitException(
-                "Expected a pipeline rejection."),
-            PipelineRejected rejected => rejected.Reason
+            string => throw new XunitException("Expected a pipeline rejection."),
+            PipelineRejected rejected => rejected.Reason,
         };
 
         var rejection = Assert.IsType<PluginPolicyRejected>(reason);
@@ -144,51 +130,44 @@ public sealed class MediatorOutcomeHandlerTests
         var trace = new List<string>();
         var handler = new OutcomeHandler(trace);
         var services = new ServiceCollection();
-        services.AddSingleton<IMediator, Pole.Mediator.Mediator>();
+        services.AddSingleton<IMediator, Mediator.Mediator>();
         services.AddSingleton<IMediatorOutcomeHandler<OutcomeRequest, string>>(handler);
-        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(
-            new RecordingBehavior("outer", trace));
-        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(
-            new RecordingBehavior("inner", trace));
+        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(new RecordingBehavior("outer", trace));
+        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(new RecordingBehavior("inner", trace));
         await using var provider = services.BuildServiceProvider();
         var mediator = provider.GetRequiredService<IMediator>();
 
         var result = await mediator.Send(new OutcomeRequest("created"));
 
-        var outcome = result.Match(
-            value => value,
-            _ => throw new Xunit.Sdk.XunitException("Expected a request outcome."));
+        var outcome = result.Match(value => value, _ => throw new XunitException("Expected a request outcome."));
         Assert.Equal("created", outcome);
-        Assert.Equal(
-            ["outer:before", "inner:before", "handler", "inner:after", "outer:after"],
-            trace);
+        Assert.Equal(["outer:before", "inner:before", "handler", "inner:after", "outer:after"], trace);
     }
 
-    private static ServiceProvider CreateProvider(
-        OutcomeHandler handler,
-        bool shortCircuit = false)
+    private static ServiceProvider CreateProvider(OutcomeHandler handler, bool shortCircuit = false)
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IMediator, Pole.Mediator.Mediator>();
+        services.AddSingleton<IMediator, Mediator.Mediator>();
         services.AddSingleton<IMediatorOutcomeHandler<OutcomeRequest, string>>(handler);
-        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(
-            new ShortCircuitBehavior(shortCircuit));
+        services.AddSingleton<IPipelineBehavior<OutcomeRequest, string>>(new ShortCircuitBehavior(shortCircuit));
         return services.BuildServiceProvider();
     }
 
-    public sealed record OutcomeRequest(string Outcome) : IMediatorRequest<string>;
+    public sealed record OutcomeRequest(
+        string Outcome
+    ) : IMediatorRequest<string>;
 
-    private sealed record PluginPolicyRejected(string Code)
-        : IMediatorRejection;
+    private sealed record PluginPolicyRejected(
+        string Code
+    ) : IMediatorRejection;
 
-    public sealed class OutcomeHandler(ICollection<string>? trace = null)
-        : IMediatorOutcomeHandler<OutcomeRequest, string>
+    public sealed class OutcomeHandler(
+        ICollection<string>? trace = null
+    ) : IMediatorOutcomeHandler<OutcomeRequest, string>
     {
         public int Calls { get; private set; }
 
-        public Task<string> HandleAsync(
-            OutcomeRequest request,
-            CancellationToken cancellationToken = default)
+        public Task<string> HandleAsync(OutcomeRequest request, CancellationToken cancellationToken = default)
         {
             Calls++;
             trace?.Add("handler");
@@ -196,24 +175,23 @@ public sealed class MediatorOutcomeHandlerTests
         }
     }
 
-    public sealed class ShortCircuitBehavior(bool shortCircuit)
-        : IPipelineBehavior<OutcomeRequest, string>
+    public sealed class ShortCircuitBehavior(
+        bool shortCircuit
+    ) : IPipelineBehavior<OutcomeRequest, string>
     {
         public Task<MediatorResult<string>> Handle(
             OutcomeRequest request,
             RequestHandlerDelegate<string> next,
-            CancellationToken cancellationToken) =>
-            shortCircuit
-                ? Task.FromResult<MediatorResult<string>>(
-                    new PipelineRejected(
-                        new PluginPolicyRejected("plugin.policy.denied")))
-                : next();
+            CancellationToken cancellationToken) => shortCircuit
+            ? Task.FromResult<MediatorResult<string>>(
+                new PipelineRejected(new PluginPolicyRejected("plugin.policy.denied")))
+            : next();
     }
 
     public sealed class RecordingBehavior(
         string name,
-        ICollection<string> trace)
-        : IPipelineBehavior<OutcomeRequest, string>
+        ICollection<string> trace
+    ) : IPipelineBehavior<OutcomeRequest, string>
     {
         public async Task<MediatorResult<string>> Handle(
             OutcomeRequest request,

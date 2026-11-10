@@ -9,7 +9,8 @@ namespace Pole.Features.StorageProfiles.Application.Resolution;
 internal sealed class MongoStorageProfilePlanningSnapshots(
     IMongoCollection<StorageProfile> profiles,
     IMongoCollection<StorageProfileRevision> revisions,
-    DiscoverKubernetesStorageClassNames discover)
+    DiscoverKubernetesStorageClassNames discover
+)
 {
     public async Task<ResolveStorageProfilePlanningSnapshotOutcome> ReadAsync(
         StorageProfilePlanningRequest request,
@@ -17,8 +18,13 @@ internal sealed class MongoStorageProfilePlanningSnapshots(
         CancellationToken ct)
     {
         RequireTransaction(session);
-        var input = new StorageProfileResolutionRequest(request.StorageProfileId, request.DeploymentTargetId,
-            request.TenantId, request.ResourceType, request.SizeGb, request.Revision);
+        var input = new StorageProfileResolutionRequest(
+            request.StorageProfileId,
+            request.DeploymentTargetId,
+            request.TenantId,
+            request.ResourceType,
+            request.SizeGb,
+            request.Revision);
         StorageProfileResolution.EnsureValid(input);
         var current = await profiles.Find(session, StorageProfileFilters.ById(request.StorageProfileId))
             .FirstOrDefaultAsync(ct);
@@ -32,8 +38,10 @@ internal sealed class MongoStorageProfilePlanningSnapshots(
         var selected = current;
         if (current.Revision != request.Revision)
         {
-            var historical = await revisions.Find(session,
-                StorageProfileRevisionFilters.Identity(current.Id, request.Revision)).FirstOrDefaultAsync(ct);
+            var historical = await revisions.Find(
+                    session,
+                    StorageProfileRevisionFilters.Identity(current.Id, request.Revision))
+                .FirstOrDefaultAsync(ct);
             if (historical is null)
                 return new StorageProfilePlanningUnavailable(
                     new StorageProfileRevisionUnavailable(current.Id, request.Revision));
@@ -45,7 +53,7 @@ internal sealed class MongoStorageProfilePlanningSnapshots(
         return resolved switch
         {
             ResolvedStorageProfile storage => new StorageProfilePlanningSnapshot(request, current.Revision, storage),
-            StorageProfileResolutionError error => new StorageProfilePlanningUnavailable(error)
+            StorageProfileResolutionError error => new StorageProfilePlanningUnavailable(error),
         };
     }
 
@@ -59,9 +67,11 @@ internal sealed class MongoStorageProfilePlanningSnapshots(
             current.Storage != request.Storage)
             return new StorageProfilePlanningFenceRejected();
 
-        var fenced = await profiles.UpdateOneAsync(session,
+        var fenced = await profiles.UpdateOneAsync(
+            session,
             StorageProfileFilters.AtPolicy(request.Request.StorageProfileId, request.PolicyRevision),
-            Builders<StorageProfile>.Update.Inc(profile => profile.ResolutionFence, 1), cancellationToken: ct);
+            Builders<StorageProfile>.Update.Inc(profile => profile.ResolutionFence, 1),
+            cancellationToken: ct);
         return fenced.ModifiedCount == 1
             ? new StorageProfilePlanningFenced()
             : new StorageProfilePlanningFenceRejected();

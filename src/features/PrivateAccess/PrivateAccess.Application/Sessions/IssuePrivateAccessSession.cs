@@ -6,8 +6,6 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.PrivateAccess.Application.Admission;
 using Pole.Features.PrivateAccess.Application.Catalog;
 using Pole.Features.PrivateAccess.Application.Common;
-using Pole.Features.PrivateAccess.Application.Gateway;
-using Pole.Features.PrivateAccess.Application.Grants;
 using Pole.Features.PrivateAccess.Application.Mongo;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
@@ -24,7 +22,8 @@ public sealed record PrivateAccessSessionSubjectMismatch;
 public sealed record PrivateAccessSessionIssued(
     string SessionId,
     string Ticket,
-    DateTime ExpiresAtUtc)
+    DateTime ExpiresAtUtc
+)
 {
     public override string ToString() =>
         $"PrivateAccessSessionIssued {{ SessionId = {SessionId}, Ticket = [redacted], ExpiresAtUtc = {ExpiresAtUtc:O} }}";
@@ -57,14 +56,15 @@ internal sealed class MongoIssuePrivateAccessSession(
     PrivateAccessAdmission admission,
     ApplyDeploymentTargetReferenceChanges targetReferences,
     StoreOutboxWrites storeOutboxWrites,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public Task<IssuePrivateAccessSessionOutcome> InvokeAsync(
         string tenantId,
         string grantId,
         string subjectUserId,
-        CancellationToken cancellationToken = default) =>
-        transactions(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => transactions(
+        async (transaction, ct) =>
         {
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var grant = await grants.FindOneAndUpdateAsync(
@@ -76,16 +76,18 @@ internal sealed class MongoIssuePrivateAccessSession(
             if (grant is null || !grant.IsActive(now))
                 return await DenyAsync(new PrivateAccessGrantUnavailable(), PrivateAccessAuditReason.GrantUnavailable);
             if (grant.SubjectUserId != subjectUserId)
-                return await DenyAsync(new PrivateAccessSessionSubjectMismatch(), PrivateAccessAuditReason.SubjectMismatch);
+                return await DenyAsync(
+                    new PrivateAccessSessionSubjectMismatch(),
+                    PrivateAccessAuditReason.SubjectMismatch);
 
             var member = await loadTenantMember(
-                new LoadTenantMemberRequest(
-                    TenantId: tenantId,
-                    UserId: subjectUserId),
+                new LoadTenantMemberRequest(TenantId: tenantId, UserId: subjectUserId),
                 session: transaction.Session,
                 cancellationToken: ct);
             if (member is not TenantMemberSnapshot)
-                return await DenyAsync(new PrivateAccessSubjectMembershipRequired(), PrivateAccessAuditReason.MembershipRequired);
+                return await DenyAsync(
+                    new PrivateAccessSubjectMembershipRequired(),
+                    PrivateAccessAuditReason.MembershipRequired);
 
             var resourceType = ResourceTypeId.Create(grant.ResourceType);
             var registered = await fenceResource(
@@ -96,7 +98,9 @@ internal sealed class MongoIssuePrivateAccessSession(
                 session: transaction.Session,
                 cancellationToken: ct);
             if (registered is null)
-                return await DenyAsync(new PrivateAccessDeploymentUnavailable(), PrivateAccessAuditReason.DeploymentUnavailable);
+                return await DenyAsync(
+                    new PrivateAccessDeploymentUnavailable(),
+                    PrivateAccessAuditReason.DeploymentUnavailable);
             var placement = await loadPlacement(
                 new LoadExactResourceDeploymentAccessPlacementRequest(
                     TenantId: tenantId,
@@ -105,85 +109,129 @@ internal sealed class MongoIssuePrivateAccessSession(
                     DeploymentId: grant.ResourceDeploymentId),
                 session: transaction.Session,
                 cancellationToken: ct);
-            if (placement is null ||
-                placement.ResourceGroupId != registered.ResourceGroupId ||
+            if (placement is null || placement.ResourceGroupId != registered.ResourceGroupId ||
                 placement.Status != ResourceDeploymentStatus.Applied ||
                 placement.DesiredOperation != ResourceDeploymentDesiredOperation.Apply)
-                return await DenyAsync(new PrivateAccessDeploymentUnavailable(), PrivateAccessAuditReason.DeploymentUnavailable);
+                return await DenyAsync(
+                    new PrivateAccessDeploymentUnavailable(),
+                    PrivateAccessAuditReason.DeploymentUnavailable);
             var endpoint = await endpointCatalog.ResolveAsync(
-                tenantId, resourceType, grant.ResourceId, grant.EndpointId,
-                transaction.Session, ct);
+                tenantId,
+                resourceType,
+                grant.ResourceId,
+                grant.EndpointId,
+                transaction.Session,
+                ct);
             if (endpoint is null)
-                return await DenyAsync(new PrivateAccessEndpointUnavailable(), PrivateAccessAuditReason.EndpointUnavailable);
+                return await DenyAsync(
+                    new PrivateAccessEndpointUnavailable(),
+                    PrivateAccessAuditReason.EndpointUnavailable);
 
             var (rawTicket, ticketHash) = PrivateAccessTicketCodec.Issue();
             var ticketExpiresAt = now.AddSeconds(30);
             if (ticketExpiresAt > grant.ExpiresAtUtc)
                 ticketExpiresAt = grant.ExpiresAtUtc;
             var accessSession = PrivateAccessSessionFactory.Create(
-                tenantId, subjectUserId,
+                tenantId,
+                subjectUserId,
                 new PrivateAccessSessionGrantSnapshot(
-                    grant.Id, grant.Revision, grant.ResourceType, grant.ResourceId,
-                    grant.ResourceDeploymentId, grant.EndpointId),
+                    grant.Id,
+                    grant.Revision,
+                    grant.ResourceType,
+                    grant.ResourceId,
+                    grant.ResourceDeploymentId,
+                    grant.EndpointId),
                 new PrivateAccessSessionTicket(ticketHash, ticketExpiresAt),
                 new PrivateAccessSessionRouteSnapshot(
-                    placement.DeploymentTargetId, placement.RuntimeCellId,
-                    placement.IsolationScopeId, placement.KubernetesNamespace,
-                    endpoint.ServiceName, endpoint.ServicePort, endpoint.TargetPort,
-                    placement.DeploymentRevision, placement.DesiredGeneration),
-                grant.ExpiresAtUtc, now);
+                    placement.DeploymentTargetId,
+                    placement.RuntimeCellId,
+                    placement.IsolationScopeId,
+                    placement.KubernetesNamespace,
+                    endpoint.ServiceName,
+                    endpoint.ServicePort,
+                    endpoint.TargetPort,
+                    placement.DeploymentRevision,
+                    placement.DesiredGeneration),
+                grant.ExpiresAtUtc,
+                now);
 
-            var checkedAccess = await admission.CheckAsync(
-                accessSession, transaction.Session, ct);
+            var checkedAccess = await admission.CheckAsync(accessSession, transaction.Session, ct);
             if (checkedAccess is not PrivateAccessLeaseSnapshot)
-            {
                 return checkedAccess switch
                 {
-                    PrivateAccessGrantUnavailable error => await DenyAsync(error, PrivateAccessAuditReason.GrantUnavailable),
-                    PrivateAccessSubjectMembershipRequired error => await DenyAsync(error, PrivateAccessAuditReason.MembershipRequired),
-                    PrivateAccessDeploymentUnavailable error => await DenyAsync(error, PrivateAccessAuditReason.DeploymentUnavailable),
-                    PrivateAccessEndpointUnavailable error => await DenyAsync(error, PrivateAccessAuditReason.EndpointUnavailable),
-                    PrivateAccessBindingChanged error => await DenyAsync(error, PrivateAccessAuditReason.BindingChanged),
-                    PrivateAccessLeaseSnapshot => throw new InvalidOperationException()
+                    PrivateAccessGrantUnavailable error => await DenyAsync(
+                        error,
+                        PrivateAccessAuditReason.GrantUnavailable),
+                    PrivateAccessSubjectMembershipRequired error => await DenyAsync(
+                        error,
+                        PrivateAccessAuditReason.MembershipRequired),
+                    PrivateAccessDeploymentUnavailable error => await DenyAsync(
+                        error,
+                        PrivateAccessAuditReason.DeploymentUnavailable),
+                    PrivateAccessEndpointUnavailable error => await DenyAsync(
+                        error,
+                        PrivateAccessAuditReason.EndpointUnavailable),
+                    PrivateAccessBindingChanged error => await DenyAsync(
+                        error,
+                        PrivateAccessAuditReason.BindingChanged),
+                    PrivateAccessLeaseSnapshot => throw new InvalidOperationException(),
                 };
-            }
 
             var reference = await targetReferences(
                 new ApplyDeploymentTargetReferenceChangesRequest(
                     Owner: new DeploymentTargetReferenceOwner(
-                    DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
-                    accessSession.Id),
+                        DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
+                        accessSession.Id),
                     AddedDeploymentTargetIds: [accessSession.Route.DeploymentTargetId],
                     RemovedDeploymentTargetIds: []),
                 session: transaction.Session,
                 cancellationToken: ct);
             if (reference is DeploymentTargetReferenceChangeRejected)
-                return await DenyAsync(new PrivateAccessDeploymentUnavailable(), PrivateAccessAuditReason.DeploymentUnavailable);
+                return await DenyAsync(
+                    new PrivateAccessDeploymentUnavailable(),
+                    PrivateAccessAuditReason.DeploymentUnavailable);
 
-            await sessions.InsertOneAsync(transaction.Session, accessSession,
+            await sessions.InsertOneAsync(transaction.Session, accessSession, cancellationToken: ct);
+            await audit.InsertOneAsync(
+                transaction.Session,
+                PrivateAccessAuditFactory.Create(
+                    tenantId,
+                    grant.Id,
+                    accessSession.Id,
+                    subjectUserId,
+                    now,
+                    new PrivateAccessSessionIssuedAudit()),
                 cancellationToken: ct);
-            await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
-                tenantId, grant.Id,
-                accessSession.Id, subjectUserId, now, new PrivateAccessSessionIssuedAudit()),
-                cancellationToken: ct);
-            await storeOutboxWrites(transaction.Session,
-                [OutboxWrite.Create(new PrivateAccessSessionIssuedEvent(
-                    grant.Id, accessSession.Id, subjectUserId)
-                {
-                    EventCore = EventCore.Create(tenantId)
-                })], ct);
-            return transaction.Commit(new IssuePrivateAccessSessionOutcome(
-                new PrivateAccessSessionIssued(accessSession.Id, rawTicket, ticketExpiresAt)));
+            await storeOutboxWrites(
+                transaction.Session,
+                [
+                    OutboxWrite.Create(
+                        new PrivateAccessSessionIssuedEvent(grant.Id, accessSession.Id, subjectUserId)
+                        {
+                            EventCore = EventCore.Create(tenantId),
+                        }),
+                ],
+                ct);
+            return transaction.Commit(
+                new IssuePrivateAccessSessionOutcome(
+                    new PrivateAccessSessionIssued(accessSession.Id, rawTicket, ticketExpiresAt)));
 
             async Task<MongoTransactionDecision<IssuePrivateAccessSessionOutcome>> DenyAsync(
                 IssuePrivateAccessSessionOutcome denied,
                 PrivateAccessAuditReason reason)
             {
-                await audit.InsertOneAsync(transaction.Session, PrivateAccessAuditFactory.Create(
-                    tenantId, grantId,
-                    null, subjectUserId, now, new PrivateAccessSessionIssueDeniedAudit(reason)),
+                await audit.InsertOneAsync(
+                    transaction.Session,
+                    PrivateAccessAuditFactory.Create(
+                        tenantId,
+                        grantId,
+                        null,
+                        subjectUserId,
+                        now,
+                        new PrivateAccessSessionIssueDeniedAudit(reason)),
                     cancellationToken: ct);
                 return transaction.Commit(denied);
             }
-        }, cancellationToken);
+        },
+        cancellationToken);
 }

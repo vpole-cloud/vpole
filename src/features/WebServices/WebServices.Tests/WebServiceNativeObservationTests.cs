@@ -1,5 +1,3 @@
-using Pole.Observation;
-using Pole.Features.Secrets.Contracts;
 using System.Collections.Immutable;
 using System.Text.Json;
 using k8s;
@@ -7,12 +5,14 @@ using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Kubernetes;
 using Pole.Features.WebServices.Domain;
-using Pole.Workloads;
+using Pole.Observation;
 using Pole.Testing.Kubernetes;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Features.WebServices.Tests;
@@ -37,7 +37,8 @@ public sealed class WebServiceNativeObservationTests
             1,
             2,
             DateTime.UtcNow,
-            new ResourceDeploymentResolvedPlacementSnapshot("target",
+            new ResourceDeploymentResolvedPlacementSnapshot(
+                "target",
                 1,
                 "owned",
                 null,
@@ -46,7 +47,8 @@ public sealed class WebServiceNativeObservationTests
         3,
         1);
 
-    internal static readonly WorkloadIdentityLabels Identity = new(TenantId,
+    internal static readonly WorkloadIdentityLabels Identity = new(
+        TenantId,
         GroupId,
         ScopeId,
         "cell",
@@ -55,19 +57,19 @@ public sealed class WebServiceNativeObservationTests
         ResourceId,
         "deployment");
 
-    internal static readonly WebService Resource = WebServiceFactory.Create("application",
+    internal static readonly WebService Resource = WebServiceFactory.Create(
+        "application",
         TenantId,
         GroupId,
         ScopeId,
-        new WebServiceSpec(new ImageInfo("registry", "application",
-            Tag: "latest",
-            SecretName: null),
-            new WebServiceConfig()
+        new WebServiceSpec(
+            new ImageInfo("registry", "application", Tag: "latest", SecretName: null),
+            new WebServiceConfig
             {
                 EnvironmentVariables = ImmutableDictionary<string, string>.Empty,
                 PortMappings = [],
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
-                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty,
             },
             null,
             new ProbeSpec(new ProbeConfig("/", "8080"), new ProbeConfig("/", "8080"), new ProbeConfig("/", "8080"))),
@@ -76,7 +78,7 @@ public sealed class WebServiceNativeObservationTests
         {
             Id = ResourceId,
             Revision = 2,
-            ActiveRevision = 2
+            ActiveRevision = 2,
         });
 
     [Theory]
@@ -91,50 +93,97 @@ public sealed class WebServiceNativeObservationTests
     public async Task Secret_key_retirement_requires_current_complete_native_rollout(string scenario, bool confirmed)
     {
         var podReads = 0;
-        using var handler = new NativeWatchTestHandler(request =>
-        {
-            if (scenario == "native-unavailable") throw new HttpRequestException("Synthetic native outage");
-            var json = NativeResponse(request, () =>
+        using var handler = new NativeWatchTestHandler(
+            request =>
             {
-                var controller = Controller();
-                if (scenario == "waiting") controller.Status.ReadyReplicas = 0;
-                if (scenario == "old-controller-generation") controller.Status.ObservedGeneration = 1;
-                return controller;
-            });
-            if (request.RequestUri!.AbsolutePath.EndsWith("/pods", StringComparison.Ordinal))
-            {
-                var pods = KubernetesJson.Deserialize<V1PodList>(json);
-                podReads++;
-                if (scenario == "truncated" || scenario == "retirement-scan-truncated" && podReads > 1)
-                    pods.Metadata.ContinueProperty = "more";
-                if (scenario is "old-terminating-pod" or "old-orphaned-pod")
+                if (scenario == "native-unavailable")
+                    throw new HttpRequestException("Synthetic native outage");
+                var json = NativeResponse(
+                    request,
+                    () =>
+                    {
+                        var controller = Controller();
+                        if (scenario == "waiting")
+                            controller.Status.ReadyReplicas = 0;
+                        if (scenario == "old-controller-generation")
+                            controller.Status.ObservedGeneration = 1;
+                        return controller;
+                    });
+                if (request.RequestUri!.AbsolutePath.EndsWith("/pods", StringComparison.Ordinal))
                 {
-                    var old = KubernetesJson.Deserialize<V1Pod>(KubernetesJson.Serialize(pods.Items[0]));
-                    old.Metadata.Name = "old";
-                    old.Metadata.Uid = "old";
-                    old.Metadata.Annotations[KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "1";
-                    old.Metadata.DeletionTimestamp = DateTime.UtcNow;
-                    if (scenario == "old-orphaned-pod") old.Metadata.OwnerReferences[0].Uid =
-                        "previous-controller-replica";
-                    pods.Items.Add(old);
+                    var pods = KubernetesJson.Deserialize<V1PodList>(json);
+                    podReads++;
+                    if (scenario == "truncated" || (scenario == "retirement-scan-truncated" && podReads > 1))
+                        pods.Metadata.ContinueProperty = "more";
+                    if (scenario is "old-terminating-pod" or "old-orphaned-pod")
+                    {
+                        var old = KubernetesJson.Deserialize<V1Pod>(KubernetesJson.Serialize(pods.Items[0]));
+                        old.Metadata.Name = "old";
+                        old.Metadata.Uid = "old";
+                        old.Metadata.Annotations[KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "1";
+                        old.Metadata.DeletionTimestamp = DateTime.UtcNow;
+                        if (scenario == "old-orphaned-pod")
+                            old.Metadata.OwnerReferences[0].Uid = "previous-controller-replica";
+                        pods.Items.Add(old);
+                    }
+
+                    json = KubernetesJson.Serialize(pods);
                 }
-                json = KubernetesJson.Serialize(pods);
-            }
-            return json;
-        }, _ => throw new InvalidOperationException("Retirement must only sample."));
+
+                return json;
+            },
+            _ => throw new InvalidOperationException("Retirement must only sample."));
         using var client = NativeWatchTestClient.Create(handler);
-        var observer = new WebServiceSecretRolloutObserver((_, _, _) => Task.FromResult<WebService?>(Resource),
-(request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([new("deployment", ScopeId, "cell", "target", 2, 2,
-    ResourceDeploymentStatus.Applied, null, new(new("profile", 1), "test", new(100, 100), new(100, 100), []), [],
-    ResourceRevision: 1, FixedReplicas: 1, Ingress: null, DeploymentRevision: 1,
-    DesiredOperation: ResourceDeploymentDesiredOperation.Apply, Isolation: new ResourceDeploymentIsolationDto("Unknown",
-    "EnforcementRequired", "EnforcementNotEstablished", null))]),
-(request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(new("deployment", ResourceId,
-                "cell", "target", "owned", 3, 2, WebServiceTestData.ComputeForTarget("target"),
-                ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, ScopeId)),
-                    new ClientProvider(client));
-        Assert.Equal(confirmed, (await observer.ObserveAsync(TenantId, ResourceId,
-            default)).Value is SecretConsumerRolloutConfirmed);
+        var observer = new WebServiceSecretRolloutObserver(
+            (
+                _, _,
+                _) => Task.FromResult<WebService?>(Resource),
+            (request, _) => Task.FromResult<IReadOnlyList<PlacementSummaryDto>>(
+            [
+                new PlacementSummaryDto(
+                    "deployment",
+                    ScopeId,
+                    "cell",
+                    "target",
+                    2,
+                    2,
+                    ResourceDeploymentStatus.Applied,
+                    null,
+                    new ComputeConfigurationSummaryDto(
+                        new ComputeProfileReference("profile", 1),
+                        "test",
+                        new ComputeResourceValuesDto(100, 100),
+                        new ComputeResourceValuesDto(100, 100),
+                        []),
+                    [],
+                    ResourceRevision: 1,
+                    FixedReplicas: 1,
+                    Ingress: null,
+                    DeploymentRevision: 1,
+                    DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
+                    Isolation: new ResourceDeploymentIsolationDto(
+                        "Unknown",
+                        "EnforcementRequired",
+                        "EnforcementNotEstablished",
+                        null)),
+            ]),
+            (request, _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
+                new ResourceDeploymentRuntimePlacementDto(
+                    "deployment",
+                    ResourceId,
+                    "cell",
+                    "target",
+                    "owned",
+                    3,
+                    2,
+                    WebServiceTestData.ComputeForTarget("target"),
+                    ResourceDeploymentStatus.Applied,
+                    ResourceDeploymentDesiredOperation.Apply,
+                    ScopeId)),
+            new ClientProvider(client));
+        Assert.Equal(
+            confirmed,
+            (await observer.ObserveAsync(TenantId, ResourceId, default)).Value is SecretConsumerRolloutConfirmed);
     }
 
     [Fact]
@@ -191,8 +240,9 @@ public sealed class WebServiceNativeObservationTests
         else
             foreign.Metadata.Labels[field] = "foreign";
         using var stream = new NativeWatchTestStream();
-        using var handler =
-            new NativeWatchTestHandler(_ => NativeWatchTestClient.DeploymentList("list", null, foreign), _ => stream);
+        using var handler = new NativeWatchTestHandler(
+            _ => NativeWatchTestClient.DeploymentList("list", null, foreign),
+            _ => stream);
         using var client = NativeWatchTestClient.Create(handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(client, new ReadBudget()).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
@@ -213,7 +263,9 @@ public sealed class WebServiceNativeObservationTests
         int replacementAtRead)
     {
         var controllerReads = 0;
-        using var handler = new NativeWatchTestHandler(request => NativeResponse(request,
+        using var handler = new NativeWatchTestHandler(
+            request => NativeResponse(
+                request,
                 () =>
                 {
                     var controller = Controller();
@@ -223,8 +275,10 @@ public sealed class WebServiceNativeObservationTests
                 }),
             _ => throw new InvalidOperationException("Sampling cannot watch."));
         using var client = NativeWatchTestClient.Create(handler);
-        var observer = new WebServiceResourceDeploymentObserver((tenant, id, _) =>
-                Task.FromResult<WebService?>(Resource),
+        var observer = new WebServiceResourceDeploymentObserver(
+            (
+                tenant, id,
+                _) => Task.FromResult<WebService?>(Resource),
             new ClientProvider(client));
         var result = await observer.ObserveBoundAsync(Context, "controller");
         Assert.Null(result.BindingId);
@@ -238,11 +292,14 @@ public sealed class WebServiceNativeObservationTests
     public async Task
         Bound_sample_retains_safe_health_and_discovery_only_when_same_controller_is_verified_at_both_ends()
     {
-        using var handler = new NativeWatchTestHandler(request => NativeResponse(request, Controller),
+        using var handler = new NativeWatchTestHandler(
+            request => NativeResponse(request, Controller),
             _ => throw new InvalidOperationException("Sampling cannot watch."));
         using var client = NativeWatchTestClient.Create(handler);
-        var observer = new WebServiceResourceDeploymentObserver((tenant, id, _) =>
-                Task.FromResult<WebService?>(Resource),
+        var observer = new WebServiceResourceDeploymentObserver(
+            (
+                tenant, id,
+                _) => Task.FromResult<WebService?>(Resource),
             new ClientProvider(client));
         var result = await observer.ObserveBoundAsync(Context, "controller");
         Assert.Equal("controller", result.BindingId);
@@ -251,34 +308,40 @@ public sealed class WebServiceNativeObservationTests
         Assert.Equal("pod", Assert.Single(diagnostics.Instances).Uid);
         Assert.Equal("app", Assert.Single(diagnostics.Instances[0].Containers).Name);
         Assert.DoesNotContain("native-canary", JsonSerializer.Serialize(result));
-        Assert.Equal(4,
+        Assert.Equal(
+            4,
             handler.Requests.Count(uri => uri.AbsolutePath.EndsWith("/application", StringComparison.Ordinal)));
     }
 
     private static WebServiceResourceDeploymentChangeSource Source(IKubernetes client, ReadBudget budget) => new(
-        (tenant, id, _) =>
+        (
+            tenant, id,
+            _) =>
         {
             Assert.Equal(TenantId, tenant);
             Assert.Equal(ResourceId, id);
             return Task.FromResult<WebService?>(Resource);
         },
         new ClientProvider(client),
-        (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(new DeploymentTargetLookupDto(id,
-            "Target",
-            "cluster",
-            "kubeconfig",
-            1,
-            new DeploymentTargetWorkloadConfigurationLookupDto(1,
-                null,
-                new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>
-                    .Empty)),
-            1,
-            true,
-            true,
-            false,
-            "Healthy",
-        TechnicalName: "test-target",
-        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)),
+        (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(
+            new DeploymentTargetLookupDto(
+                id,
+                "Target",
+                "cluster",
+                "kubeconfig",
+                1,
+                new DeploymentTargetWorkloadConfigurationLookupDto(
+                    1,
+                    null,
+                    new DeploymentTargetNetworkSourcesDto(
+                        ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
+                1,
+                true,
+                true,
+                false,
+                "Healthy",
+                TechnicalName: "test-target",
+                NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)),
         budget,
         TimeProvider.System);
 
@@ -288,37 +351,40 @@ public sealed class WebServiceNativeObservationTests
         if (path.EndsWith("/application", StringComparison.Ordinal))
             return KubernetesJson.Serialize(controller());
         if (path.EndsWith("/replicasets", StringComparison.Ordinal))
-            return KubernetesJson.Serialize(new V1ReplicaSetList
-            {
-                Metadata = new V1ListMeta(),
-                Items = [new V1ReplicaSet { Metadata = Metadata("replica", "replica", "controller") }]
-            });
+            return KubernetesJson.Serialize(
+                new V1ReplicaSetList
+                {
+                    Metadata = new V1ListMeta(),
+                    Items = [new V1ReplicaSet { Metadata = Metadata("replica", "replica", "controller") }],
+                });
         if (path.EndsWith("/pods", StringComparison.Ordinal))
-            return KubernetesJson.Serialize(new V1PodList
-            {
-                Metadata = new V1ListMeta(),
-                Items =
-                [
-                    new V1Pod
-                    {
-                        Metadata = Metadata("application-pod", "pod", "replica"),
-                        Spec = new V1PodSpec
-                            { Containers = [new V1Container { Name = "app", Image = "native-canary-image" }] },
-                        Status = new V1PodStatus
+            return KubernetesJson.Serialize(
+                new V1PodList
+                {
+                    Metadata = new V1ListMeta(),
+                    Items =
+                    [
+                        new V1Pod
                         {
-                            Phase = "Running", Conditions = [new V1PodCondition { Type = "Ready", Status = "True" }],
-                            ContainerStatuses =
-                            [
-                                new V1ContainerStatus
-                                {
-                                    Name = "app", Ready = true, Image = "native-canary-image",
-                                    ImageID = "native-canary-id"
-                                }
-                            ]
-                        }
-                    }
-                ]
-            });
+                            Metadata = Metadata("application-pod", "pod", "replica"),
+                            Spec = new V1PodSpec
+                                { Containers = [new V1Container { Name = "app", Image = "native-canary-image" }] },
+                            Status = new V1PodStatus
+                            {
+                                Phase = "Running",
+                                Conditions = [new V1PodCondition { Type = "Ready", Status = "True" }],
+                                ContainerStatuses =
+                                [
+                                    new V1ContainerStatus
+                                    {
+                                        Name = "app", Ready = true, Image = "native-canary-image",
+                                        ImageID = "native-canary-id",
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                });
         return "{\"apiVersion\":\"v1\",\"kind\":\"EventList\",\"metadata\":{},\"items\":[]}";
     }
 
@@ -330,7 +396,7 @@ public sealed class WebServiceNativeObservationTests
         Spec = new V1DeploymentSpec
         {
             Replicas = 1,
-            Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") }
+            Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") },
         },
         Status = new V1DeploymentStatus
         {
@@ -338,11 +404,14 @@ public sealed class WebServiceNativeObservationTests
             Replicas = 1,
             UpdatedReplicas = 1,
             ReadyReplicas = 1,
-            AvailableReplicas = 1
-        }
+            AvailableReplicas = 1,
+        },
     };
 
-    private static V1ObjectMeta Metadata(string name, string uid, string? parent = null) => new()
+    private static V1ObjectMeta Metadata(
+        string name,
+        string uid,
+        string? parent = null) => new()
     {
         Name = name,
         Uid = uid,
@@ -352,21 +421,23 @@ public sealed class WebServiceNativeObservationTests
         Labels = Identity.ToDictionary(),
         Annotations = new Dictionary<string, string>
         {
-            [KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "2"
+            [KubernetesWorkloadObservation.TemplateGenerationAnnotation] = "2",
         },
         OwnerReferences = parent is null
             ? []
             :
             [
                 new V1OwnerReference
-                    { Name = "parent", Uid = parent, Kind = "ReplicaSet", ApiVersion = "apps/v1", Controller = true }
-            ]
+                    { Name = "parent", Uid = parent, Kind = "ReplicaSet", ApiVersion = "apps/v1", Controller = true },
+            ],
     };
 
     private static string Frame(string type, V1Deployment item) =>
         $"{{\"type\":\"{type}\",\"object\":{KubernetesJson.Serialize(item)}}}\n";
 
-    private sealed class ClientProvider(IKubernetes client) : IKubernetesClientProvider
+    private sealed class ClientProvider(
+        IKubernetes client
+    ) : IKubernetesClientProvider
     {
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {

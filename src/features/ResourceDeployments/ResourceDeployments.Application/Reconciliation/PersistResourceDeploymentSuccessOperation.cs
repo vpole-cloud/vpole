@@ -1,6 +1,3 @@
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Domain;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
@@ -14,7 +11,8 @@ public delegate Task PersistResourceDeploymentSuccess(
 
 internal sealed class PersistResourceDeploymentSuccessOperation(
     ResourceDeploymentCompletionPersistence completionPersistence,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public Task InvokeAsync(
         ResourceDeployment claimed,

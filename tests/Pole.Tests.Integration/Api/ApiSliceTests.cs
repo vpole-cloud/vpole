@@ -1,26 +1,26 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using System.Text.Json;
+using MongoDB.Bson;
 using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Request;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Endpoints;
-using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Features.Users.Application.Common;
-using Pole.Features.Users.Application.Endpoints;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Endpoints.Members;
+using Pole.Features.Users.Application.Common;
+using Pole.Features.Users.Application.Endpoints;
+using Pole.Features.WebServices.Application.Endpoints;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Api;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
-    : IsolatedApiIntegrationTestBase(fixture)
+public sealed class ApiSliceTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task MemberTargetUsesRouteMembershipIndependentlyOfTheActiveHeader()
@@ -63,7 +63,8 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("users.email.already-exists", problem.RootElement.GetProperty("code").GetString());
-        Assert.Equal("tag:pole.dev,2026:problem:users.email.already-exists",
+        Assert.Equal(
+            "tag:pole.dev,2026:problem:users.email.already-exists",
             problem.RootElement.GetProperty("type").GetString());
         Assert.Equal(request.Email, problem.RootElement.GetProperty("email").GetString());
     }
@@ -75,7 +76,8 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var path = $"/api/v1/tenants/{Data.TenantId}/members";
         var members = await Client.GetFromJsonAsync<TenantMemberDto[]>(path);
         var owner = Assert.Single(members!);
-        using var demotion = await Client.PutAsJsonAsync($"{path}/{owner.Id}",
+        using var demotion = await Client.PutAsJsonAsync(
+            $"{path}/{owner.Id}",
             new UpdateTenantMemberRequestBody(TenantRole.Admin));
         using var removal = await Client.DeleteAsync($"{path}/{owner.Id}");
         foreach (var response in new[] { demotion, removal })
@@ -96,7 +98,8 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         using var duplicateProblem = JsonDocument.Parse(await duplicate.Content.ReadAsStringAsync());
         Assert.Equal("tenants.member.already-exists", duplicateProblem.RootElement.GetProperty("code").GetString());
         Assert.Equal(request.UserId, duplicateProblem.RootElement.GetProperty("userId").GetString());
-        using var updated = await Client.PutAsJsonAsync($"{path}/{member.Id}",
+        using var updated = await Client.PutAsJsonAsync(
+            $"{path}/{member.Id}",
             new UpdateTenantMemberRequestBody(TenantRole.Viewer));
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         var updatedMember = await updated.Content.ReadFromJsonAsync<TenantMemberDto>();
@@ -128,20 +131,13 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
             content: null);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-        using var problem = JsonDocument.Parse(
-            await response.Content.ReadAsStringAsync());
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
             "tag:pole.dev,2026:problem:resource-deployments.not-found",
             problem.RootElement.GetProperty("type").GetString());
-        Assert.Equal(
-            "resource-deployments.not-found",
-            problem.RootElement.GetProperty("code").GetString());
-        Assert.Equal(
-            missingDeploymentId,
-            problem.RootElement.GetProperty("deploymentId").GetString());
+        Assert.Equal("resource-deployments.not-found", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(missingDeploymentId, problem.RootElement.GetProperty("deploymentId").GetString());
     }
 
     [Fact]
@@ -152,28 +148,22 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var response = await Client.GetAsync($"/api/v1/web-services/{missingId}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
             "tag:pole.dev,2026:problem:web-services.not-found",
             payload.RootElement.GetProperty("type").GetString());
-        Assert.Equal(
-            "Web service not found",
-            payload.RootElement.GetProperty("title").GetString());
-        Assert.Equal(
-            "web-services.not-found",
-            payload.RootElement.GetProperty("code").GetString());
-        Assert.Equal(
-            missingId,
-            payload.RootElement.GetProperty("webServiceId").GetString());
+        Assert.Equal("Web service not found", payload.RootElement.GetProperty("title").GetString());
+        Assert.Equal("web-services.not-found", payload.RootElement.GetProperty("code").GetString());
+        Assert.Equal(missingId, payload.RootElement.GetProperty("webServiceId").GetString());
     }
 
     [Fact]
     public async Task CreateWebService_ReturnsGeneratedDeployment()
     {
-        var resourceGroupResponse = await Client.PostAsJsonAsync("/api/v1/resource-groups/", Data.CreateResourceGroupRequest("web-rg").Body);
+        var resourceGroupResponse = await Client.PostAsJsonAsync(
+            "/api/v1/resource-groups/",
+            Data.CreateResourceGroupRequest("web-rg").Body);
         var resourceGroup = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>();
         Assert.NotNull(resourceGroup);
 
@@ -186,9 +176,6 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(created);
         Assert.Single(created.Deployments);
     }
-
-
-
 
 
     [Fact]
@@ -225,7 +212,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var response = await Client.PostAsJsonAsync(
             "/api/v1/platform/storage/profiles",
             new CreateStorageProfileRequestBody(
-                TechnicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
+                TechnicalName: "storage-" + ObjectId.GenerateNewId(),
                 DisplayName: "Fast SSD",
                 Description: "Fast tenant storage",
                 MediaType: "SSD",
@@ -234,9 +221,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
                 IsDefault: false,
                 TargetMappings:
                 [
-                    new StorageProfileTargetMappingRequestBody(
-                        TestData.DefaultDeploymentTargetId,
-                        "fast")
+                    new StorageProfileTargetMappingRequestBody(TestData.DefaultDeploymentTargetId, "fast"),
                 ],
                 AllowedResourceTypes: ["third-party/widget", "pole/postgresql"],
                 TenantAccess: new StorageProfileTenantAccessDto("AllTenants", []),
@@ -246,16 +231,13 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         var payload = await response.Content.ReadFromJsonAsync<StorageProfileDto>();
         Assert.NotNull(payload);
         Assert.Equal("Fast SSD", payload.DisplayName);
-        Assert.Equal(
-            "fast",
-            Assert.Single(payload.TargetMappings).StorageClassName);
+        Assert.Equal("fast", Assert.Single(payload.TargetMappings).StorageClassName);
     }
 
     [Fact]
     public async Task GetComputeProfiles_RequiresPlatformAdmin()
     {
-        var response = await Client.GetAsync(
-            "/api/v1/platform/compute-profiles?pageNumber=1&pageSize=10");
+        var response = await Client.GetAsync("/api/v1/platform/compute-profiles?pageNumber=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -265,8 +247,7 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
     {
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
 
-        var response = await Client.GetAsync(
-            "/api/v1/platform/compute-profiles?pageNumber=1&pageSize=10");
+        var response = await Client.GetAsync("/api/v1/platform/compute-profiles?pageNumber=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var page = await response.Content.ReadFromJsonAsync<ComputeProfilePageDto>();
@@ -281,15 +262,12 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
         const string computeProfileId = "507f1f77bcf86cd799439095";
 
-        var response = await Client.GetAsync(
-            $"/api/v1/platform/compute-profiles/{computeProfileId}");
+        var response = await Client.GetAsync($"/api/v1/platform/compute-profiles/{computeProfileId}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("compute-profiles.not-found", problem.RootElement
-            .GetProperty("code").GetString());
-        Assert.Equal(computeProfileId, problem.RootElement
-            .GetProperty("computeProfileId").GetString());
+        Assert.Equal("compute-profiles.not-found", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(computeProfileId, problem.RootElement.GetProperty("computeProfileId").GetString());
     }
 
     [Fact]
@@ -300,19 +278,14 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
 
         var response = await Client.PostAsJsonAsync(
             "/api/v1/platform/compute-profiles",
-            CreateComputeProfileBody(
-                new ComputeProfileTenantAccessRequestBody(
-                    "selected-tenants",
-                    [missingTenantId])));
+            CreateComputeProfileBody(new ComputeProfileTenantAccessRequestBody("selected-tenants", [missingTenantId])));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
             "compute-profiles.tenant-access.tenants-not-found",
             problem.RootElement.GetProperty("code").GetString());
-        Assert.Equal(
-            missingTenantId,
-            problem.RootElement.GetProperty("tenantIds")[0].GetString());
+        Assert.Equal(missingTenantId, problem.RootElement.GetProperty("tenantIds")[0].GetString());
     }
 
     [Fact]
@@ -323,16 +296,13 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
 
         var response = await Client.PostAsJsonAsync(
             "/api/v1/platform/compute-profiles",
-            CreateComputeProfileBody(
-                new ComputeProfileTenantAccessRequestBody("all-tenants", [])));
+            CreateComputeProfileBody(new ComputeProfileTenantAccessRequestBody("all-tenants", [])));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(
-            "compute-profiles.target-mappings.invalid",
-            problem.RootElement.GetProperty("code").GetString());
-        Assert.True(problem.RootElement.GetProperty("errors")
-            .TryGetProperty("TargetMappings[0].DeploymentTargetId", out _));
+        Assert.Equal("compute-profiles.target-mappings.invalid", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(
+            problem.RootElement.GetProperty("errors").TryGetProperty("TargetMappings[0].DeploymentTargetId", out _));
     }
 
     [Fact]
@@ -345,35 +315,25 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(
-            "compute-profiles.default-delete-forbidden",
-            problem.RootElement.GetProperty("code").GetString());
-        Assert.Equal(
-            TestData.DefaultComputeProfileId,
-            problem.RootElement.GetProperty("computeProfileId").GetString());
+        Assert.Equal("compute-profiles.default-delete-forbidden", problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(TestData.DefaultComputeProfileId, problem.RootElement.GetProperty("computeProfileId").GetString());
     }
 
-    private static CreateComputeProfileRequestBody CreateComputeProfileBody(
-        ComputeProfileTenantAccessRequestBody tenantAccess) =>
-        new("test-profile",
-            "General purpose",
-            "API test profile",
-            new ComputeResourceRequirementsRequestBody(
-                new ComputeResourceValuesRequestBody(250, 256),
-                new ComputeResourceValuesRequestBody(1000, 1024)),
-            "Any",
-            [],
-            ["pole/web-service"],
-            tenantAccess,
-            [new ComputeProfileTargetMappingRequestBody(
-                TestData.DefaultDeploymentTargetId,
-                [],
-                [],
-                [],
-                [],
-                null)],
-            IsEnabled: true,
-            IsDefault: false);
+    private static CreateComputeProfileRequestBody
+        CreateComputeProfileBody(ComputeProfileTenantAccessRequestBody tenantAccess) => new(
+        "test-profile",
+        "General purpose",
+        "API test profile",
+        new ComputeResourceRequirementsRequestBody(
+            new ComputeResourceValuesRequestBody(250, 256),
+            new ComputeResourceValuesRequestBody(1000, 1024)),
+        "Any",
+        [],
+        ["pole/web-service"],
+        tenantAccess,
+        [new ComputeProfileTargetMappingRequestBody(TestData.DefaultDeploymentTargetId, [], [], [], [], null)],
+        IsEnabled: true,
+        IsDefault: false);
 
     [Fact]
     public async Task GetAvailableComputeProfiles_RequiresTenantHeader()
@@ -393,17 +353,17 @@ public sealed class ApiSliceTests(MongoReplicaSetFixture fixture)
             $"/api/v1/compute-profiles/available?deploymentTargetId={TestData.DefaultDeploymentTargetId}&resourceType=third-party/widget");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var profiles = await response.Content.ReadFromJsonAsync<
-            IReadOnlyCollection<AvailableComputeProfileDto>>();
+        var profiles = await response.Content.ReadFromJsonAsync<IReadOnlyCollection<AvailableComputeProfileDto>>();
         var profile = Assert.Single(profiles!);
         Assert.True(profile.IsDefault);
         Assert.Equal(250, profile.Resources.Requests.CpuMillis);
         Assert.Equal(256, profile.Resources.Requests.MemoryMi);
     }
+
     private sealed record ResourceGroupCreatedResponse(
         string Id,
         string Name,
         string Description,
-        IReadOnlyCollection<string> Tags);
-
+        IReadOnlyCollection<string> Tags
+    );
 }

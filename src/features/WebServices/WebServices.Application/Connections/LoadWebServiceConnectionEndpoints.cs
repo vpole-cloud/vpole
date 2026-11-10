@@ -1,23 +1,16 @@
-using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Features.ResourceConnections.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
 using Pole.Features.WebServices.Application.Kubernetes;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.Queries;
-using Pole.Features.WebServices.Contracts;
 using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
 
 namespace Pole.Features.WebServices.Application.Connections;
 
-internal sealed class MongoLoadWebServiceConnectionEndpoints(IMongoCollection<WebService> services)
-    : IResourceConnectionDestinationCapability
+internal sealed class MongoLoadWebServiceConnectionEndpoints(
+    IMongoCollection<WebService> services
+) : IResourceConnectionDestinationCapability
 {
     public ResourceTypeId ResourceType => WebServiceResourceDeployment.ResourceType;
 
@@ -46,8 +39,7 @@ internal sealed class MongoLoadWebServiceConnectionEndpoints(IMongoCollection<We
             return new Dictionary<string, ResourceConnectionEndpointsFound>();
         var resources = await services.Find(WebServiceFilters.ByIds(tenantId, resourceIds))
             .ToListAsync(cancellationToken);
-        return resources
-            .Where(resource => resource.Lifecycle is not DeletingWebServiceLifecycle)
+        return resources.Where(resource => resource.Lifecycle is not DeletingWebServiceLifecycle)
             .ToDictionary(resource => resource.Id, Endpoints, StringComparer.Ordinal);
     }
 

@@ -1,8 +1,7 @@
-using Pole.Features.GitOps.Primitives;
-using System.Collections.Immutable;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.GitOps.Domain;
+using Pole.Features.GitOps.Primitives;
 using Xunit;
 
 namespace Pole.Features.GitOps.Tests;
@@ -10,32 +9,68 @@ namespace Pole.Features.GitOps.Tests;
 public sealed class GitOperationPreviewTests
 {
     private static readonly GitResourceIdentity Resource = new("Widget", "demo", "id");
-    private static readonly GitResourcePreconditions Expected = new(Resource, "source", [new("Widget/id", 4)], "hash");
+
+    private static readonly GitResourcePreconditions Expected = new(
+        Resource,
+        "source",
+        [new GitResourceVersion("Widget/id", 4)],
+        "hash");
+
     private static readonly DateTime Now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
     private static readonly GitRepositoryLocation Location = new("GitHub", "connection", "repository", "main", "");
     private static readonly GitAcceptedSnapshot Snapshot = new(new string('a', 40), "desired", "v1", [], []);
-    private static readonly GitPreviewSourceStamp Source = new(new("tenant", "source"), 2, 4,
+
+    private static readonly GitPreviewSourceStamp Source = new(
+        new GitSourceIdentity("tenant", "source"),
+        2,
+        4,
         new GitPreviewRepositoryInput(Location, Snapshot));
 
     private static GitOperationPreview Preview() => GitOperationPreviewFactory.Create(
-        "preview", Source, new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
-        [Operation()], Now);
+        "preview",
+        Source,
+        new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
+        [Operation()],
+        Now);
 
-    private static GitPreviewConfirmationContext Context() => new("preview", 1, Source, [new(Resource, Expected)],
-        "reviewer", Now, "run");
+    private static GitPreviewConfirmationContext Context() => new(
+        "preview",
+        1,
+        Source,
+        [new GitPreviewObservation(Resource, Expected)],
+        "reviewer",
+        Now,
+        "run");
 
-    private static GitPreviewOperation Operation() =>
-        new("remove", Resource, GitLifecycleAction.Remove, Expected, null, [], [], [],
-            GitLifecycleProtection.ConfigurationOnly);
+    private static GitPreviewOperation Operation() => new(
+        "remove",
+        Resource,
+        GitLifecycleAction.Remove,
+        Expected,
+        null,
+        [],
+        [],
+        [],
+        GitLifecycleProtection.ConfigurationOnly);
 
     [Theory]
     [InlineData(GitPreviewRemovalDisposition.Remove)]
     [InlineData(GitPreviewRemovalDisposition.Retain)]
     public void Removal_disposition_is_explicit_and_round_trips(GitPreviewRemovalDisposition removal)
     {
-        var preview = GitOperationPreviewFactory.Create("preview", Source, new GitPreviewResourceChanges(removal),
-            [Operation() with { Action = removal == GitPreviewRemovalDisposition.Retain
-                ? GitLifecycleAction.Retain : GitLifecycleAction.Remove }], Now);
+        var preview = GitOperationPreviewFactory.Create(
+            "preview",
+            Source,
+            new GitPreviewResourceChanges(removal),
+            [
+                Operation() with
+                {
+                    Action = removal == GitPreviewRemovalDisposition.Retain
+                        ? GitLifecycleAction.Retain
+                        : GitLifecycleAction.Remove,
+                },
+            ],
+            Now);
         var restored = BsonSerializer.Deserialize<GitOperationPreview>(preview.ToBsonDocument());
         Assert.Equal(removal, Assert.IsType<GitPreviewResourceChanges>(restored.Intent).Removal);
         RoundTrip(preview.Confirm(Context()));
@@ -44,8 +79,12 @@ public sealed class GitOperationPreviewTests
     [Fact]
     public void Unknown_removal_disposition_is_rejected_by_the_factory()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => GitOperationPreviewFactory.Create("invalid", Source,
-            new GitPreviewResourceChanges((GitPreviewRemovalDisposition)99), [Operation()], Now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => GitOperationPreviewFactory.Create(
+            "invalid",
+            Source,
+            new GitPreviewResourceChanges((GitPreviewRemovalDisposition)99),
+            [Operation()],
+            Now));
     }
 
     [Theory]
@@ -68,45 +107,65 @@ public sealed class GitOperationPreviewTests
         var context = Context();
         context = change switch
         {
-            "tenant" => context with { Source = Source with { Source = new("other", "source") } },
-            "source" => context with { Source = Source with { Source = new("tenant", "other") } },
+            "tenant" => context with { Source = Source with { Source = new GitSourceIdentity("other", "source") } },
+            "source" => context with { Source = Source with { Source = new GitSourceIdentity("tenant", "other") } },
             "configuration" => context with { Source = Source with { ConfigurationRevision = 3 } },
             "inventory" => context with { Source = Source with { InventoryRevision = 5 } },
             "commit" => context with
             {
                 Source = Source with
                 {
-                    Input = new GitPreviewRepositoryInput(Location, Snapshot with { Commit = new string('b', 40) })
-                }
+                    Input = new GitPreviewRepositoryInput(Location, Snapshot with { Commit = new string('b', 40) }),
+                },
             },
             "desired" => context with
             {
                 Source = Source with
                 {
-                    Input = new GitPreviewRepositoryInput(Location, Snapshot with { DesiredHash = "new" })
-                }
+                    Input = new GitPreviewRepositoryInput(Location, Snapshot with { DesiredHash = "new" }),
+                },
             },
             "preview" => context with { PreviewId = "other" },
             "revision" => context with { PreviewRevision = 2 },
-            "owner" => context with { Observations = [new(Resource, Expected with { OwnerSourceId = "other" })] },
-            "resource" => context with { Observations = [new(Resource with { ResourceId = "recreated" }, Expected)] },
+            "owner" => context with
+            {
+                Observations = [new GitPreviewObservation(Resource, Expected with { OwnerSourceId = "other" })],
+            },
+            "resource" => context with
+            {
+                Observations = [new GitPreviewObservation(Resource with { ResourceId = "recreated" }, Expected)],
+            },
             "resource-version" => context with
             {
-                Observations = [new(Resource, Expected with
-            {
-                Versions = [new("Widget/id", 5)]
-            })]
+                Observations =
+                [
+                    new GitPreviewObservation(
+                        Resource,
+                        Expected with
+                        {
+                            Versions = [new GitResourceVersion("Widget/id", 5)],
+                        }),
+                ],
             },
             "configuration-hash" => context with
             {
-                Observations = [new(Resource, Expected with
-            {
-                ConfigurationHash = "drift"
-            })]
+                Observations =
+                [
+                    new GitPreviewObservation(
+                        Resource,
+                        Expected with
+                        {
+                            ConfigurationHash = "drift",
+                        }),
+                ],
             },
-            "deleted" => context with { Observations = [new(Resource, null)] },
-            "duplicate" => context with { Observations = [new(Resource, Expected), new(Resource, Expected)] },
-            _ => throw new ArgumentOutOfRangeException(nameof(change))
+            "deleted" => context with { Observations = [new GitPreviewObservation(Resource, null)] },
+            "duplicate" => context with
+            {
+                Observations =
+                [new GitPreviewObservation(Resource, Expected), new GitPreviewObservation(Resource, Expected)],
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(change)),
         };
         Assert.Equal(GitPreviewValidity.Stale, Preview().Evaluate(context));
         Assert.Throws<InvalidOperationException>(() => Preview().Confirm(context));
@@ -115,14 +174,20 @@ public sealed class GitOperationPreviewTests
     [Fact]
     public void Create_preview_requires_continued_absence()
     {
-        var preview = GitOperationPreviewFactory.Create("preview", Source,
+        var preview = GitOperationPreviewFactory.Create(
+            "preview",
+            Source,
             new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
-            [Operation() with { Action = GitLifecycleAction.Apply, Expected = null }], Now);
+            [Operation() with { Action = GitLifecycleAction.Apply, Expected = null }],
+            Now);
         Assert.Equal(GitPreviewValidity.Stale, preview.Evaluate(Context()));
-        Assert.Equal(GitPreviewValidity.Current, preview.Evaluate(Context() with
-        {
-            Observations = [new(Resource, null)]
-        }));
+        Assert.Equal(
+            GitPreviewValidity.Current,
+            preview.Evaluate(
+                Context() with
+                {
+                    Observations = [new GitPreviewObservation(Resource, null)],
+                }));
     }
 
     [Fact]
@@ -146,16 +211,19 @@ public sealed class GitOperationPreviewTests
         var confirmed = Preview().Confirm(Context());
         var current = change switch
         {
-            "version" => Expected with { Versions = [new("Widget/id", 5)] },
+            "version" => Expected with { Versions = [new GitResourceVersion("Widget/id", 5)] },
             "owner" => Expected with { OwnerSourceId = "other-source" },
             "hash" => Expected with { ConfigurationHash = "changed" },
-            _ => throw new ArgumentOutOfRangeException(nameof(change))
+            _ => throw new ArgumentOutOfRangeException(nameof(change)),
         };
-        Assert.Equal(GitPreviewValidity.Stale, confirmed.Evaluate(Context() with
-        {
-            PreviewRevision = confirmed.Revision,
-            Observations = [new(Resource, current)]
-        }));
+        Assert.Equal(
+            GitPreviewValidity.Stale,
+            confirmed.Evaluate(
+                Context() with
+                {
+                    PreviewRevision = confirmed.Revision,
+                    Observations = [new GitPreviewObservation(Resource, current)],
+                }));
     }
 
     [Fact]
@@ -171,10 +239,12 @@ public sealed class GitOperationPreviewTests
     [Fact]
     public void Other_actions_cannot_use_inventory_only_input()
     {
-        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create("invalid",
+        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create(
+            "invalid",
             Source with { Input = new GitPreviewInventoryInput() },
             new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
-            [Operation()], Now));
+            [Operation()],
+            Now));
     }
 
     [Fact]
@@ -188,12 +258,18 @@ public sealed class GitOperationPreviewTests
     [Fact]
     public void Graph_rejects_cycles_and_dependencies_outside_the_reviewed_set()
     {
-        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create("cycle", Source,
+        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create(
+            "cycle",
+            Source,
             new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
-            [Operation() with { Dependencies = ["remove"] }], Now));
-        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create("missing", Source,
+            [Operation() with { Dependencies = ["remove"] }],
+            Now));
+        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create(
+            "missing",
+            Source,
             new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
-            [Operation() with { Dependencies = ["unreviewed"] }], Now));
+            [Operation() with { Dependencies = ["unreviewed"] }],
+            Now));
     }
 
     [Fact]
@@ -202,12 +278,21 @@ public sealed class GitOperationPreviewTests
         var selection = new GitReplacementSelection(Resource, "Widget", "renamed");
         var intent = new GitPreviewReplacement([selection]);
         var operation = Operation() with { Action = GitLifecycleAction.Replace };
-        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create("missing", Source,
-            intent, [operation], Now));
-        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create("same", Source,
-            intent, [operation with { Replacement = Resource }], Now));
-        RoundTrip(GitOperationPreviewFactory.Create("valid", Source, intent,
-            [operation with { Replacement = new("Widget", "renamed", "new-id") }], Now));
+        Assert.Throws<ArgumentException>(() =>
+            GitOperationPreviewFactory.Create("missing", Source, intent, [operation], Now));
+        Assert.Throws<ArgumentException>(() => GitOperationPreviewFactory.Create(
+            "same",
+            Source,
+            intent,
+            [operation with { Replacement = Resource }],
+            Now));
+        RoundTrip(
+            GitOperationPreviewFactory.Create(
+                "valid",
+                Source,
+                intent,
+                [operation with { Replacement = new GitResourceIdentity("Widget", "renamed", "new-id") }],
+                Now));
     }
 
     [Fact]

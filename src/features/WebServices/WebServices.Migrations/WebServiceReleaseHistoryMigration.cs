@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.WebServices.Migrations;
 
@@ -15,27 +15,27 @@ public sealed class WebServiceReleaseHistoryMigration : IMigration
         var releases = context.GetCollection<BsonDocument>("WebServiceReleases");
 
         await releases.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("WebServiceId")
-                    .Ascending("ResourceRevision"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "IX_WebServiceReleases_Tenant_Service_ResourceRevision"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("WebServiceId")
-                    .Descending("RequestedAtUtc"),
-                new CreateIndexOptions
-                {
-                    Name = "IX_WebServiceReleases_Tenant_Service_RequestedAt"
-                })
-        ], cancellationToken);
-
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TenantId")
+                        .Ascending("WebServiceId")
+                        .Ascending("ResourceRevision"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Name = "IX_WebServiceReleases_Tenant_Service_ResourceRevision",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TenantId")
+                        .Ascending("WebServiceId")
+                        .Descending("RequestedAtUtc"),
+                    new CreateIndexOptions
+                    {
+                        Name = "IX_WebServiceReleases_Tenant_Service_RequestedAt",
+                    }),
+            ],
+            cancellationToken);
     }
 }

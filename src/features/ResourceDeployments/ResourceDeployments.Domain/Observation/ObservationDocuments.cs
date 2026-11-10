@@ -17,10 +17,12 @@ public sealed record ObservationContextPin(
     string DeploymentTargetId,
     long TargetConnectionVersion,
     long TargetWorkloadConfigurationRevision,
-    string KubernetesNamespace);
+    string KubernetesNamespace
+);
 
 public sealed record ObservationControlDocument(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     [property: BsonRepresentation(BsonType.ObjectId)]
     string TenantId,
@@ -38,7 +40,8 @@ public sealed record ObservationControlDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? IdleSinceUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime UpdatedAtUtc) : IObservationControl;
+    DateTime UpdatedAtUtc
+) : IObservationControl;
 
 public sealed record ObservationDemandDocument(
     [property: BsonId] string Id,
@@ -52,10 +55,12 @@ public sealed record ObservationDemandDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime OriginalExpiresAtUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime ExpiresAtUtc) : IObservationDemand;
+    DateTime ExpiresAtUtc
+) : IObservationDemand;
 
 public sealed record ObservationSnapshotDocument(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     [property: BsonRepresentation(BsonType.ObjectId)]
     string TenantId,
@@ -69,12 +74,14 @@ public sealed record ObservationSnapshotDocument(
     StoredDiagnostics? Diagnostics,
     string Fingerprint,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? ExpiresAtUtc) : IObservationSnapshot;
+    DateTime? ExpiresAtUtc
+) : IObservationSnapshot;
 
 public sealed record StoredObservation(
     string Kind,
     string? Reason,
-    StoredObservedWorkload? Observed);
+    StoredObservedWorkload? Observed
+);
 
 public sealed record StoredObservedWorkload(
     bool Ready,
@@ -87,7 +94,8 @@ public sealed record StoredObservedWorkload(
     bool PodsTruncated,
     StoredPod[] Pods,
     StoredEvent[] Events,
-    string? EventsUnavailableReason);
+    string? EventsUnavailableReason
+);
 
 public sealed record StoredPod(
     string Name,
@@ -95,25 +103,29 @@ public sealed record StoredPod(
     bool Ready,
     bool CurrentGeneration,
     int RestartCount,
-    string[] Reasons);
+    string[] Reasons
+);
 
 public sealed record StoredEvent(
     string Reason,
     int Count,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? LastSeenAtUtc);
+    DateTime? LastSeenAtUtc
+);
 
 public sealed record StoredDiagnostics(
     string Kind,
     string? Reason,
-    StoredAvailableDiagnostics? Available);
+    StoredAvailableDiagnostics? Available
+);
 
 public sealed record StoredAvailableDiagnostics(
     StoredInstance[] Instances,
     bool InstancesTruncated,
     StoredDiagnosticEvent[] Events,
     bool EventsTruncated,
-    string? EventsUnavailableReason);
+    string? EventsUnavailableReason
+);
 
 public sealed record StoredInstance(
     string Uid,
@@ -124,12 +136,14 @@ public sealed record StoredInstance(
     int RestartCount,
     string[] Reasons,
     StoredContainer[] Containers,
-    bool ContainersTruncated);
+    bool ContainersTruncated
+);
 
 public sealed record StoredContainer(
     string Name,
     string Kind,
-    bool PreviousAvailable);
+    bool PreviousAvailable
+);
 
 public sealed record StoredDiagnosticEvent(
     string ObjectKind,
@@ -137,4 +151,5 @@ public sealed record StoredDiagnosticEvent(
     string Reason,
     int Count,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? LastSeenAtUtc);
+    DateTime? LastSeenAtUtc
+);

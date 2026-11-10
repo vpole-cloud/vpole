@@ -4,16 +4,19 @@ namespace Pole.Features.GitOps.Domain;
 
 public sealed record GitActiveRun(
     string RunId,
-    long Generation);
+    long Generation
+);
 
 public sealed record GitCommitProgress(
     string? Observed,
     string? Attempted,
-    string? FullyApplied);
+    string? FullyApplied
+);
 
 public sealed record GitPendingRequest(
     GitRunInitiator Initiator,
-    string? RetryOfRunId);
+    string? RetryOfRunId
+);
 
 public sealed record GitSynchronizationState(
     [property: BsonId] string Id,
@@ -27,12 +30,13 @@ public sealed record GitSynchronizationState(
     GitCommitProgress Commits,
     DateTime NextPollAtUtc,
     long MutationVersion,
-    long InventoryRevision)
+    long InventoryRevision
+)
 {
     public GitSynchronizationState RequestSync(GitPendingRequest request) => this with
     {
         RequestedGeneration = checked(RequestedGeneration + 1),
-        Pending = request
+        Pending = request,
     };
 
     public GitSynchronizationState Observe(string commit)
@@ -55,9 +59,9 @@ public sealed record GitSynchronizationState(
 
         return this with
         {
-            CurrentRun = new(runId, RequestedGeneration),
+            CurrentRun = new GitActiveRun(runId, RequestedGeneration),
             LatestRunId = runId,
-            Fence = checked(Fence + 1)
+            Fence = checked(Fence + 1),
         };
     }
 
@@ -73,7 +77,7 @@ public sealed record GitSynchronizationState(
             CompletedGeneration = stamp.Generation,
             Commits = completion is GitRunCompletion.ConfigurationApplied or GitRunCompletion.AlreadyCurrent
                 ? Commits with { FullyApplied = Commits.Attempted }
-                : Commits
+                : Commits,
         };
     }
 }
@@ -84,15 +88,16 @@ public static class GitSynchronizationStateFactory
     {
         GitSourceGuards.Identity(source);
         GitSourceGuards.Utc(nextPollAtUtc);
-        return new($"{source.TenantId}/{source.SourceId}",
+        return new GitSynchronizationState(
+            $"{source.TenantId}/{source.SourceId}",
             source,
             0,
             0,
             0,
             null,
             null,
-            new(new(GitRunTrigger.Poll, null), null),
-            new(null, null, null),
+            new GitPendingRequest(new GitRunInitiator(GitRunTrigger.Poll, null), null),
+            new GitCommitProgress(null, null, null),
             nextPollAtUtc,
             0,
             0);

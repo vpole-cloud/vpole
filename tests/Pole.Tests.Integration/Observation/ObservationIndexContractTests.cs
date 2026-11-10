@@ -10,8 +10,9 @@ using Xunit;
 namespace Pole.Tests.Integration.Observation;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class ObservationIndexContractTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
     public override Task DisposeAsync() => base.DisposeAsync();
@@ -26,25 +27,34 @@ public sealed class ObservationIndexContractTests(MongoReplicaSetFixture fixture
         else
             await new ResourceDeploymentObservationIndexMigration().Up(Fixture.Database);
 
-        var demands = storage ? MongoStorageObservationStore.DemandsCollection :
-            MongoResourceDeploymentObservationStore.DemandsCollection;
-        var controls = storage ? MongoStorageObservationStore.ControlsCollection :
-            MongoResourceDeploymentObservationStore.ControlsCollection;
-        var snapshots = storage ? MongoStorageObservationStore.SnapshotsCollection :
-            MongoResourceDeploymentObservationStore.SnapshotsCollection;
+        var demands = storage
+            ? MongoStorageObservationStore.DemandsCollection
+            : MongoResourceDeploymentObservationStore.DemandsCollection;
+        var controls = storage
+            ? MongoStorageObservationStore.ControlsCollection
+            : MongoResourceDeploymentObservationStore.ControlsCollection;
+        var snapshots = storage
+            ? MongoStorageObservationStore.SnapshotsCollection
+            : MongoResourceDeploymentObservationStore.SnapshotsCollection;
         var prefix = storage ? "StorageObservation" : "Observation";
         var active = storage
             ? new BsonDocument { { "DeploymentTargetId", 1 }, { "ExpiresAtUtc", 1 } }
             : new BsonDocument { { "TenantId", 1 }, { "DeploymentId", 1 }, { "ExpiresAtUtc", 1 } };
 
         await AssertIndex(demands, $"IX_{prefix}Demands_Active", active);
-        await AssertIndex(demands, $"TTL_{prefix}Demands", new("ExpiresAtUtc", 1), expires: true);
-        await AssertIndex(controls, $"IX_{prefix}Controls_Reaping",
+        await AssertIndex(demands, $"TTL_{prefix}Demands", new BsonDocument("ExpiresAtUtc", 1), expires: true);
+        await AssertIndex(
+            controls,
+            $"IX_{prefix}Controls_Reaping",
             new BsonDocument { { "IdleSinceUtc", 1 }, { "UpdatedAtUtc", 1 } });
-        await AssertIndex(snapshots, $"TTL_{prefix}Snapshots", new("ExpiresAtUtc", 1), expires: true);
+        await AssertIndex(snapshots, $"TTL_{prefix}Snapshots", new BsonDocument("ExpiresAtUtc", 1), expires: true);
     }
 
-    private async Task AssertIndex(string collection, string name, BsonDocument keys, bool expires = false)
+    private async Task AssertIndex(
+        string collection,
+        string name,
+        BsonDocument keys,
+        bool expires = false)
     {
         using var cursor = await Fixture.Database.GetCollection<BsonDocument>(collection).Indexes.ListAsync();
         var index = Assert.Single(await cursor.ToListAsync(), item => item["name"].AsString == name);

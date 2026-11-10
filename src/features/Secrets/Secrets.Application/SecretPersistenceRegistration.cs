@@ -7,7 +7,6 @@ using Pole.Features.Secrets.Application.Bootstrap;
 using Pole.Features.Secrets.Application.Declarations;
 using Pole.Features.Secrets.Application.Lifecycle;
 using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
@@ -22,17 +21,17 @@ internal static class SecretPersistenceRegistration
     internal static IServiceCollection AddSecretPersistence(this IServiceCollection services)
     {
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<Secret>("Secrets"));
-        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretVersion>("SecretVersions"));
-        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretProjection>("SecretProjections"));
+        services.AddSingleton(sp =>
+            sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretVersion>("SecretVersions"));
+        services.AddSingleton(sp =>
+            sp.GetRequiredService<IMongoDatabase>().GetCollection<SecretProjection>("SecretProjections"));
         services.AddScoped<SecretPlanningFence>();
         services.AddScoped<ConsumerSecretDeletionGuard>();
         services.AddScoped<EnsureConsumerSecretBindingRemoval>(provider =>
             provider.GetRequiredService<ConsumerSecretDeletionGuard>().InvokeAsync);
         services.AddScoped<ManagedSecretAdoption>();
-        services.AddScoped<ReadManagedSecretAdoption>(sp =>
-            sp.GetRequiredService<ManagedSecretAdoption>().ReadAsync);
-        services.AddScoped<FenceManagedSecretAdoption>(sp =>
-            sp.GetRequiredService<ManagedSecretAdoption>().FenceAsync);
+        services.AddScoped<ReadManagedSecretAdoption>(sp => sp.GetRequiredService<ManagedSecretAdoption>().ReadAsync);
+        services.AddScoped<FenceManagedSecretAdoption>(sp => sp.GetRequiredService<ManagedSecretAdoption>().FenceAsync);
         services.AddScoped<BootstrapSecrets>();
         services.AddScoped<ReadBootstrapSecret>(sp => sp.GetRequiredService<BootstrapSecrets>().ReadAsync);
         services.AddScoped<CreateBootstrapSecret>(sp => sp.GetRequiredService<BootstrapSecrets>().CreateAsync);
@@ -42,17 +41,22 @@ internal static class SecretPersistenceRegistration
         services.AddScoped<FenceConsumerSecretPlanningSnapshot>(sp =>
             sp.GetRequiredService<ConsumerSecretPlanningSnapshots>().FenceAsync);
         services.AddScoped<MongoClaimSecretProjection>();
-        services.AddScoped<ClaimSecretProjection>(sp => sp.GetRequiredService<MongoClaimSecretProjection>().InvokeAsync);
+        services.AddScoped<ClaimSecretProjection>(sp =>
+            sp.GetRequiredService<MongoClaimSecretProjection>().InvokeAsync);
         services.AddScoped<MongoCompleteSecretProjection>();
-        services.AddScoped<CompleteSecretProjection>(sp => sp.GetRequiredService<MongoCompleteSecretProjection>().InvokeAsync);
+        services.AddScoped<CompleteSecretProjection>(sp =>
+            sp.GetRequiredService<MongoCompleteSecretProjection>().InvokeAsync);
         services.AddScoped<MongoLoadSecretProjections>();
-        services.AddScoped<LoadSecretProjections>(sp => sp.GetRequiredService<MongoLoadSecretProjections>().InvokeAsync);
+        services.AddScoped<LoadSecretProjections>(sp =>
+            sp.GetRequiredService<MongoLoadSecretProjections>().InvokeAsync);
         services.AddScoped<MongoLoadSecretVersion>();
         services.AddScoped<LoadSecretVersion>(sp => sp.GetRequiredService<MongoLoadSecretVersion>().InvokeAsync);
         services.AddScoped<MongoLoadSecretProjectionCandidates>();
-        services.AddScoped<LoadSecretProjectionCandidates>(sp => sp.GetRequiredService<MongoLoadSecretProjectionCandidates>().InvokeAsync);
+        services.AddScoped<LoadSecretProjectionCandidates>(sp =>
+            sp.GetRequiredService<MongoLoadSecretProjectionCandidates>().InvokeAsync);
         services.AddScoped<MongoCreateBoundManagedSecret>();
-        services.AddScoped<CreateBoundManagedSecret>(sp => sp.GetRequiredService<MongoCreateBoundManagedSecret>().InvokeAsync);
+        services.AddScoped<CreateBoundManagedSecret>(sp =>
+            sp.GetRequiredService<MongoCreateBoundManagedSecret>().InvokeAsync);
         services.AddScoped<MongoRotateManagedSecret>();
         services.AddScoped<RotateManagedSecret>(sp => sp.GetRequiredService<MongoRotateManagedSecret>().InvokeAsync);
         services.AddScoped<MongoReleaseManagedSecret>();
@@ -74,11 +78,13 @@ internal static class SecretPersistenceRegistration
         services.AddScoped<MongoDeleteStoredSecret>();
         services.AddScoped<DeleteStoredSecret>(sp => sp.GetRequiredService<MongoDeleteStoredSecret>().InvokeAsync);
         services.AddScoped<MongoRemoveConsumerSecretBindings>();
-        services.AddScoped<RemoveConsumerSecretBindings>(sp => sp.GetRequiredService<MongoRemoveConsumerSecretBindings>().InvokeAsync);
+        services.AddScoped<RemoveConsumerSecretBindings>(sp =>
+            sp.GetRequiredService<MongoRemoveConsumerSecretBindings>().InvokeAsync);
         services.AddScoped<OutboxStoreSecretChange>();
         services.AddScoped<StoreSecretChange>(sp => sp.GetRequiredService<OutboxStoreSecretChange>().InvokeAsync);
         services.AddScoped<EnvelopeEncryptSecretVersion>();
-        services.AddScoped<EncryptSecretVersion>(sp => sp.GetRequiredService<EnvelopeEncryptSecretVersion>().InvokeAsync);
+        services.AddScoped<EncryptSecretVersion>(sp =>
+            sp.GetRequiredService<EnvelopeEncryptSecretVersion>().InvokeAsync);
         services.AddScoped<IIsolationScopeReferenceGuard, SecretScopeReferenceGuard>();
         services.AddScoped<IDeclarativeLifecycleDependencyProvider, SecretLifecycleDependencies>();
         services.AddScoped<DeclarativeSecretProvider>();

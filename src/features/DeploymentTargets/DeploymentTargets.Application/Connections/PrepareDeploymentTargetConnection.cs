@@ -10,15 +10,15 @@ public union PrepareDeploymentTargetConnectionOutcome(
     PreparedDeploymentTargetConnection,
     DeploymentTargetConnectionRejected);
 
-public delegate ValueTask<PrepareDeploymentTargetConnectionOutcome>
-    PrepareDeploymentTargetConnection(
-        string deploymentTargetId,
-        long connectionVersion,
-        DeploymentTargetConnectionInput input,
-        CancellationToken cancellationToken = default);
+public delegate ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareDeploymentTargetConnection(
+    string deploymentTargetId,
+    long connectionVersion,
+    DeploymentTargetConnectionInput input,
+    CancellationToken cancellationToken = default);
 
 internal sealed class DeploymentTargetConnectionPreparer(
-    DeploymentTargetConnectionProtector protector)
+    DeploymentTargetConnectionProtector protector
+)
 {
     public async ValueTask<PrepareDeploymentTargetConnectionOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -28,11 +28,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
     {
         EnsureValidOwner(deploymentTargetId, connectionVersion);
         if (input is null)
-        {
-            return ConnectionRejections.Validation(
-                    "connection",
-                    "A deployment-target connection is required.");
-        }
+            return ConnectionRejections.Validation("connection", "A deployment-target connection is required.");
 
         return input switch
         {
@@ -47,9 +43,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
                 connectionVersion,
                 serviceAccount,
                 cancellationToken),
-            _ => ConnectionRejections.Validation(
-                    "connection",
-                    "The deployment-target connection kind is unsupported.")
+            _ => ConnectionRejections.Validation("connection", "The deployment-target connection kind is unsupported."),
         };
     }
 
@@ -63,8 +57,8 @@ internal sealed class DeploymentTargetConnectionPreparer(
         var client = (IKubernetes)clientResult.Value;
 
         return new PreparedDeploymentTargetConnection(
-                DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
-                client);
+            DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
+            client);
     }
 
     private async ValueTask<PrepareDeploymentTargetConnectionOutcome> PrepareKubeconfigAsync(
@@ -81,9 +75,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
             return canonicalFailure;
         var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
 
-        var clientResult = KubernetesClientSecurity.CreateForCandidate(
-            canonical,
-            cancellationToken);
+        var clientResult = KubernetesClientSecurity.CreateForCandidate(canonical, cancellationToken);
         if (clientResult is DeploymentTargetConnectionRejected clientFailure)
             return clientFailure;
         var client = (IKubernetes)clientResult.Value;
@@ -96,9 +88,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             client.Dispose();
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be serialized.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be serialized.", exception);
         }
 
         try
@@ -113,6 +103,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
                 client.Dispose();
                 return encryptionFailure;
             }
+
             var encrypted = (EncryptedValue)encryptedResult.Value;
 
             var persisted = DeploymentTargetConnectionFactory.CreateKubeconfig(
@@ -130,9 +121,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             client.Dispose();
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be protected.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be protected.", exception);
         }
         finally
         {
@@ -155,9 +144,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
             return canonicalFailure;
         var canonical = (CanonicalKubeconfigCredential)canonicalResult.Value;
 
-        var clientResult = KubernetesClientSecurity.CreateForCandidate(
-            canonical,
-            cancellationToken);
+        var clientResult = KubernetesClientSecurity.CreateForCandidate(canonical, cancellationToken);
         if (clientResult is DeploymentTargetConnectionRejected clientFailure)
             return clientFailure;
         var client = (IKubernetes)clientResult.Value;
@@ -170,9 +157,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             client.Dispose();
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be serialized.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be serialized.", exception);
         }
 
         try
@@ -187,6 +172,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
                 client.Dispose();
                 return encryptionFailure;
             }
+
             var encrypted = (EncryptedValue)encryptedResult.Value;
 
             var persisted = DeploymentTargetConnectionFactory.CreateServiceAccount(
@@ -204,9 +190,7 @@ internal sealed class DeploymentTargetConnectionPreparer(
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             client.Dispose();
-            throw new InvalidOperationException(
-                "The deployment-target connection could not be protected.",
-                exception);
+            throw new InvalidOperationException("The deployment-target connection could not be protected.", exception);
         }
         finally
         {
@@ -219,10 +203,8 @@ internal sealed class DeploymentTargetConnectionPreparer(
         if (string.IsNullOrWhiteSpace(deploymentTargetId) ||
             deploymentTargetId.Length > ConnectionPayloadLimits.MaximumDeploymentTargetIdCharacters ||
             connectionVersion < 1)
-        {
             throw new ArgumentException(
                 "The deployment-target connection owner is invalid.",
                 nameof(deploymentTargetId));
-        }
     }
 }

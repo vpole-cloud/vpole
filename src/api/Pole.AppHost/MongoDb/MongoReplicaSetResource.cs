@@ -1,16 +1,18 @@
 ﻿namespace Pole.AppHost.MongoDb;
 
-public class MongoReplicaSetResource(string name, IResourceWithConnectionString parent)
-    : Resource(name), IResourceWithConnectionString, IResourceWithParent<IResourceWithConnectionString>
+public class MongoReplicaSetResource(
+    string name,
+    IResourceWithConnectionString parent
+) : Resource(name), IResourceWithConnectionString, IResourceWithParent<IResourceWithConnectionString>
 {
-    /// <inheritdoc cref="IResourceWithConnectionString.ConnectionStringExpression"/>
+    /// <inheritdoc cref="IResourceWithConnectionString.ConnectionStringExpression" />
     public ReferenceExpression ConnectionStringExpression
     {
         get
         {
-            var connectionStringAnnotation = Annotations
-                .OfType<ConnectionStringRedirectAnnotation>()
-                .FirstOrDefault() ?? throw new InvalidOperationException("Mongo replica set must have connection string redirection.");
+            var connectionStringAnnotation
+                = Annotations.OfType<ConnectionStringRedirectAnnotation>().FirstOrDefault() ??
+                throw new InvalidOperationException("Mongo replica set must have connection string redirection.");
 
             var builder = new ReferenceExpressionBuilder();
 

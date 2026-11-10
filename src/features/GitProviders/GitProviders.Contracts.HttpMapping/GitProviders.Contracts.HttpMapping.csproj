@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
-    <AssemblyName>Pole.Features.GitProviders.Contracts.HttpMapping</AssemblyName>
-    <RootNamespace>Pole.Features.GitProviders.Contracts.HttpMapping</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\GitProviders.Contracts\GitProviders.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <WarningsAsErrors>$(WarningsAsErrors);CS8509</WarningsAsErrors>
+        <AssemblyName>Pole.Features.GitProviders.Contracts.HttpMapping</AssemblyName>
+        <RootNamespace>Pole.Features.GitProviders.Contracts.HttpMapping</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\GitProviders.Contracts\GitProviders.Contracts.csproj"/>
+        <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
+    </ItemGroup>
 </Project>

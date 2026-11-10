@@ -5,8 +5,9 @@ using Xunit;
 namespace Pole.Tests.Integration.Observability;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class HttpObservabilityTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+public sealed class HttpObservabilityTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Request_ReturnsProvidedCorrelationId_AndTraceId()

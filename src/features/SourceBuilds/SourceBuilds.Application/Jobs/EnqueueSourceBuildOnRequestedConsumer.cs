@@ -3,8 +3,9 @@ using Pole.Features.SourceBuilds.Events;
 
 namespace Pole.Features.SourceBuilds.Application.Jobs;
 
-public sealed class EnqueueSourceBuildOnRequestedConsumer(DispatchSourceBuildJob dispatchSourceBuildJob)
-    : IConsumer<SourceBuildRequestedEvent>
+public sealed class EnqueueSourceBuildOnRequestedConsumer(
+    DispatchSourceBuildJob dispatchSourceBuildJob
+) : IConsumer<SourceBuildRequestedEvent>
 {
     public Task Consume(ConsumeContext<SourceBuildRequestedEvent> context)
     {
@@ -19,10 +20,6 @@ public sealed class EnqueueSourceBuildOnRequestedConsumerDefinition
     protected override void ConfigureConsumer(
         IReceiveEndpointConfigurator endpointConfigurator,
         IConsumerConfigurator<EnqueueSourceBuildOnRequestedConsumer> consumerConfigurator,
-        IRegistrationContext context) =>
-        endpointConfigurator.UseMessageRetry(retry =>
-            retry.Intervals(
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(10),
-                TimeSpan.FromSeconds(30)));
+        IRegistrationContext context) => endpointConfigurator.UseMessageRetry(retry =>
+        retry.Intervals(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)));
 }

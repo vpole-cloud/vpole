@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.StorageProfiles.Migrations;
 
@@ -10,37 +10,35 @@ public sealed class StorageProfileMigration : IMigration
 
     public string Name => "Target-aware storage profiles";
 
-    public string Description =>
-        "Creates the single-default and target-aware storage profile indexes.";
+    public string Description => "Creates the single-default and target-aware storage profile indexes.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var profiles = context.GetCollection<BsonDocument>("StorageProfiles");
         await profiles.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("TechnicalName"),
-                new CreateIndexOptions { Unique = true, Name = "UX_StorageProfiles_TechnicalName" }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("IsDefault"),
-                new CreateIndexOptions<BsonDocument>
-                {
-                    Unique = true,
-                    PartialFilterExpression = new BsonDocument("IsDefault", true),
-                    Name = "UX_StorageProfiles_Default"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TargetMappings.DeploymentTargetId")
-                    .Ascending("IsEnabled")
-                    .Descending("IsDefault")
-                    .Ascending("DisplayName"),
-                new CreateIndexOptions
-                {
-                    Name = "IX_StorageProfiles_Target_Availability"
-                })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("TechnicalName"),
+                    new CreateIndexOptions { Unique = true, Name = "UX_StorageProfiles_TechnicalName" }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("IsDefault"),
+                    new CreateIndexOptions<BsonDocument>
+                    {
+                        Unique = true,
+                        PartialFilterExpression = new BsonDocument("IsDefault", true),
+                        Name = "UX_StorageProfiles_Default",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("TargetMappings.DeploymentTargetId")
+                        .Ascending("IsEnabled")
+                        .Descending("IsDefault")
+                        .Ascending("DisplayName"),
+                    new CreateIndexOptions
+                    {
+                        Name = "IX_StorageProfiles_Target_Availability",
+                    }),
+            ],
+            cancellationToken);
     }
 }

@@ -1,39 +1,37 @@
-using JsonContent = System.Net.Http.Json.JsonContent;
 using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Headers;
-using Pole.Tests.Integration.Http;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.ASP.Helpers;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Quotas.Contracts;
 using Pole.Features.Quotas.Domain;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.Tenants.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
 using Pole.ResultType;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Pole.Tests.Integration.ResourceDeployments;
 using Xunit;
+using JsonContent = System.Net.Http.Json.JsonContent;
 
 namespace Pole.Tests.Integration.WebServices;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
-    : IsolatedApiIntegrationTestBase(fixture)
+public sealed class WebServiceDeploymentApiTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
     };
 
     [Fact]
@@ -42,47 +40,49 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var spec = TestData.ValidWebServiceSpec();
 
-        using var response = await Client.PostAsJsonAsync("/api/v1/web-services", new
-        {
-            name = "empty-environment",
-            resourceGroupId = resourceGroup.Id,
-            tags = Array.Empty<string>(),
-            placement = new
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/web-services",
+            new
             {
-                isolationScopeId = (string?)null,
-                targets = new[]
+                name = "empty-environment",
+                resourceGroupId = resourceGroup.Id,
+                tags = Array.Empty<string>(),
+                placement = new
                 {
-                    new
+                    isolationScopeId = (string?)null,
+                    targets = new[]
                     {
-                        deploymentTargetId = TestData.DefaultDeploymentTargetId,
-                        fixedReplicas = 2,
-                        computeProfileId = (string?)null
-                    }
-                }
-            },
-            spec = new
-            {
-                image = spec.Image,
-                config = new
-                {
-                    environmentVariables = new Dictionary<string, string>(),
-                    portMappings = spec.Config.PortMappings
+                        new
+                        {
+                            deploymentTargetId = TestData.DefaultDeploymentTargetId,
+                            fixedReplicas = 2,
+                            computeProfileId = (string?)null,
+                        },
+                    },
                 },
-                spec.Autoscaling,
-                spec.Probes
-            }
-        });
+                spec = new
+                {
+                    image = spec.Image,
+                    config = new
+                    {
+                        environmentVariables = new Dictionary<string, string>(),
+                        portMappings = spec.Config.PortMappings,
+                    },
+                    spec.Autoscaling,
+                    spec.Probes,
+                },
+            });
 
-        Assert.True(
-            response.StatusCode == HttpStatusCode.Accepted,
-            await response.Content.ReadAsStringAsync());
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync());
         var created = await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
         Assert.NotNull(created);
 
-        var webService = await Fixture.Database.WebServices()
+        var webService = await Fixture.Database
+            .WebServices()
             .Find(service => service.Id == created.WebServiceId)
             .SingleAsync();
-        var release = await Fixture.Database.WebServiceReleases()
+        var release = await Fixture.Database
+            .WebServiceReleases()
             .Find(item => item.WebServiceId == created.WebServiceId && item.ResourceRevision == 1)
             .SingleAsync();
 
@@ -98,16 +98,15 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         await Fixture.Database
             .GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies")
             .InsertOneAsync(
-            QuotaDomainFactory.CreatePolicy(
-                Data.TenantId,
-                QuotaDelta.From(CpuQuota.QuotaKey, 500),
-                DateTime.UtcNow));
+                QuotaDomainFactory.CreatePolicy(
+                    Data.TenantId,
+                    QuotaDelta.From(CpuQuota.QuotaKey, 500),
+                    DateTime.UtcNow));
         var secondTargetId = ObjectId.GenerateNewId().ToString();
         var groupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
             Data.CreateResourceGroupRequest("typed-quota-add").Body);
-        var group = await groupResponse.Content
-            .ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
+        var group = await groupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
         Assert.NotNull(group);
         var createResponse = await Client.PostAsJsonAsync(
             "/api/v1/web-services/",
@@ -115,17 +114,14 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.True(
             createResponse.StatusCode == HttpStatusCode.Accepted,
             await createResponse.Content.ReadAsStringAsync());
-        var created = await createResponse.Content
-            .ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
         Assert.NotNull(created);
-        AddEligibleDeploymentTarget(
-            secondTargetId,
-            "apps.second.test.local");
-        await Fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles")
+        AddEligibleDeploymentTarget(secondTargetId, "apps.second.test.local");
+        await Fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
             .ReplaceOneAsync(
                 profile => profile.Id == TestData.DefaultComputeProfileId,
-                TestData.SeedComputeProfile(deploymentTargetIds:
-                    [TestData.DefaultDeploymentTargetId, secondTargetId]));
+                TestData.SeedComputeProfile(deploymentTargetIds: [TestData.DefaultDeploymentTargetId, secondTargetId]));
 
         var addResponse = await Client.PostAsJsonAsync(
             $"/api/v1/web-services/{created.WebServiceId}/deployments",
@@ -133,30 +129,31 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             {
                 deploymentTargetId = secondTargetId,
                 fixedReplicas = 1,
-                computeProfileId = (string?)null
+                computeProfileId = (string?)null,
             });
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, addResponse.StatusCode);
-        using var problem = JsonDocument.Parse(
-            await addResponse.Content.ReadAsStringAsync());
+        using var problem = JsonDocument.Parse(await addResponse.Content.ReadAsStringAsync());
         var root = problem.RootElement;
-        Assert.Equal(
-            "quotas.reservation.exceeded",
-            root.GetProperty("code").GetString());
+        Assert.Equal("quotas.reservation.exceeded", root.GetProperty("code").GetString());
         Assert.Equal("CpuMillis", root.GetProperty("quota").GetString());
         Assert.Equal(500, root.GetProperty("limit").GetInt64());
-        Assert.Single(await Fixture.DbContext.ResourceDeployments
-            .Find(deployment => deployment.ResourceId == created.WebServiceId)
-            .ToListAsync());
-        Assert.Single(await Fixture.Database.WebServiceReleases()
-            .Find(release => release.WebServiceId == created.WebServiceId)
-            .ToListAsync());
-        Assert.Empty(await Fixture.Database
-            .GetCollection<HostnameBinding>("HostnameBindings")
-            .Find(binding =>
-                binding.ResourceId == created.WebServiceId &&
-                binding.DeploymentTargetId == secondTargetId)
-            .ToListAsync());
+        Assert.Single(
+            await Fixture.DbContext
+                .ResourceDeployments
+                .Find(deployment => deployment.ResourceId == created.WebServiceId)
+                .ToListAsync());
+        Assert.Single(
+            await Fixture.Database
+                .WebServiceReleases()
+                .Find(release => release.WebServiceId == created.WebServiceId)
+                .ToListAsync());
+        Assert.Empty(
+            await Fixture.Database
+                .GetCollection<HostnameBinding>("HostnameBindings")
+                .Find(binding =>
+                    binding.ResourceId == created.WebServiceId && binding.DeploymentTargetId == secondTargetId)
+                .ToListAsync());
     }
 
     [Fact]
@@ -166,7 +163,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         await SetCurrentUserRoleAsync(TenantRole.Viewer);
 
         var historyResponse = await Client.GetAsync($"/api/v1/web-services/{webService.Id}/releases");
-        var redeployResponse = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy?expectedRevision={webService.ActiveRevision}", null);
+        var redeployResponse = await Client.PostAsync(
+            $"/api/v1/web-services/{webService.Id}/redeploy?expectedRevision={webService.ActiveRevision}",
+            null);
         var rollbackResponse = await Client.PostAsJsonAsync(
             $"/api/v1/web-services/{webService.Id}/rollback",
             new { targetRevision = 1, expectedRevision = webService.ActiveRevision });
@@ -182,17 +181,16 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var webService = await InsertWebServiceAsync();
         await SetCurrentUserRoleAsync(TenantRole.Member);
 
-        var response = await Client.PostAsync($"/api/v1/web-services/{webService.Id}/redeploy?expectedRevision={webService.ActiveRevision}", null);
+        var response = await Client.PostAsync(
+            $"/api/v1/web-services/{webService.Id}/redeploy?expectedRevision={webService.ActiveRevision}",
+            null);
 
-        Assert.True(
-            response.StatusCode == HttpStatusCode.Accepted,
-            await response.Content.ReadAsStringAsync());
-        var saved = await Fixture.Database.WebServices()
-            .Find(service => service.Id == webService.Id)
-            .SingleAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync());
+        var saved = await Fixture.Database.WebServices().Find(service => service.Id == webService.Id).SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
 
-        var release = await Fixture.Database.WebServiceReleases()
+        var release = await Fixture.Database
+            .WebServiceReleases()
             .Find(r => r.WebServiceId == webService.Id && r.ResourceRevision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Redeploy, release.Action);
@@ -210,13 +208,20 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var before = await Fixture.DbContext.ResourceDeployments.Find(x => x.ResourceId == service.Id).SingleAsync();
         using var response = action == "redeploy"
             ? await Client.PostAsync($"/api/v1/web-services/{service.Id}/redeploy?expectedRevision=2", null)
-            : await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = 1, expectedRevision = 2 });
+            : await Client.PostAsJsonAsync(
+                $"/api/v1/web-services/{service.Id}/rollback",
+                new { targetRevision = 1, expectedRevision = 2 });
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var after = await Fixture.DbContext.ResourceDeployments.Find(x => x.Id == before.Id).SingleAsync();
         Assert.Equal(before.Revision, after.Revision);
-        Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
-        Assert.Single(await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id).ToListAsync());
-        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(
+            1,
+            (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
+        Assert.Single(
+            await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id).ToListAsync());
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
     }
 
     [Theory]
@@ -229,7 +234,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             ? await Client.PostAsync($"/api/v1/web-services/{service.Id}/redeploy", null)
             : await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = 1 });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
+        Assert.Equal(
+            1,
+            (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
     }
 
     [Theory]
@@ -237,14 +244,23 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     [InlineData(WebServiceReleaseOutcome.Succeeded, 2, HttpStatusCode.Conflict)]
     [InlineData(WebServiceReleaseOutcome.Pending, 1, HttpStatusCode.NotFound)]
     [InlineData(WebServiceReleaseOutcome.Failed, 1, HttpStatusCode.NotFound)]
-    public async Task Rollback_requires_a_succeeded_prior_revision(WebServiceReleaseOutcome outcome, long revision, HttpStatusCode expected)
+    public async Task Rollback_requires_a_succeeded_prior_revision(
+        WebServiceReleaseOutcome outcome,
+        long revision,
+        HttpStatusCode expected)
     {
         var service = await InsertWebServiceAsync();
         await InsertReleaseAsync(service, revision, outcome);
-        using var response = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = revision, expectedRevision = 1 });
+        using var response = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{service.Id}/rollback",
+            new { targetRevision = revision, expectedRevision = 1 });
         Assert.Equal(expected, response.StatusCode);
-        Assert.Equal(1, (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
-        Assert.Equal(0, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(
+            1,
+            (await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync()).ActiveRevision);
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
     }
 
     [Fact]
@@ -252,15 +268,22 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     {
         var service = await InsertWebServiceAsync();
         await InsertReleaseAsync(service, 1, WebServiceReleaseOutcome.Succeeded);
-        using var redeployed = await Client.PostAsync($"/api/v1/web-services/{service.Id}/redeploy?expectedRevision=1", null);
+        using var redeployed = await Client.PostAsync(
+            $"/api/v1/web-services/{service.Id}/redeploy?expectedRevision=1",
+            null);
         Assert.Equal(HttpStatusCode.Accepted, redeployed.StatusCode);
-        using var response = await Client.PostAsJsonAsync($"/api/v1/web-services/{service.Id}/rollback", new { targetRevision = 1, expectedRevision = 2 });
+        using var response = await Client.PostAsJsonAsync(
+            $"/api/v1/web-services/{service.Id}/rollback",
+            new { targetRevision = 1, expectedRevision = 2 });
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var saved = await Fixture.Database.WebServices().Find(x => x.Id == service.Id).SingleAsync();
         Assert.Equal(3, saved.ActiveRevision);
         Assert.Equal(service.Spec.Image.ResolvedImage!.Tag, saved.Spec.Image.ResolvedImage!.Tag);
         Assert.Equal(service.Exposure, saved.Exposure);
-        var release = await Fixture.Database.WebServiceReleases().Find(x => x.WebServiceId == service.Id && x.ResourceRevision == 3).SingleAsync();
+        var release = await Fixture.Database
+            .WebServiceReleases()
+            .Find(x => x.WebServiceId == service.Id && x.ResourceRevision == 3)
+            .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Rollback, release.Action);
         Assert.Equal(WebServiceReleaseOutcome.Pending, release.Outcome);
         Assert.NotNull(release.CorrelationId);
@@ -278,13 +301,18 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
     public async Task History_pages_owned_releases_in_revision_order_and_rejects_unbounded_skip()
     {
         var service = await InsertWebServiceAsync();
-        for (var revision = 1; revision <= 3; revision++) await InsertReleaseAsync(service, revision, WebServiceReleaseOutcome.Succeeded);
+        for (var revision = 1; revision <= 3; revision++)
+            await InsertReleaseAsync(service, revision, WebServiceReleaseOutcome.Succeeded);
         var foreign = service with { TenantId = ObjectId.GenerateNewId().ToString() };
         await InsertReleaseAsync(foreign, 4, WebServiceReleaseOutcome.Succeeded);
-        var history = (await Client.GetFromJsonAsync<WebServiceReleaseHistoryDto>($"/api/v1/web-services/{service.Id}/releases?pageNumber=2&pageSize=1"))!;
+        var history = (await Client.GetFromJsonAsync<WebServiceReleaseHistoryDto>(
+            $"/api/v1/web-services/{service.Id}/releases?pageNumber=2&pageSize=1"))!;
         Assert.Equal(3, history.Releases.TotalCount);
         Assert.Equal(2, Assert.Single(history.Releases.Items).ResourceRevision);
-        Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync($"/api/v1/web-services/{service.Id}/releases?pageNumber=2147483647&pageSize=100")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await Client.GetAsync($"/api/v1/web-services/{service.Id}/releases?pageNumber=2147483647&pageSize=100"))
+            .StatusCode);
     }
 
     [Fact]
@@ -304,23 +332,23 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal("github-actions", createdToken.Token.Name);
         Assert.Contains(WebServiceDeploymentTokenOperations.UpdateImageTag, createdToken.Token.AllowedOperations);
 
-        var savedToken = await Fixture.Database.WebServiceDeploymentTokens()
+        var savedToken = await Fixture.Database
+            .WebServiceDeploymentTokens()
             .Find(token => token.Id == createdToken.Token.Id)
             .SingleAsync();
         Assert.Equal(WebServiceDeploymentTokenFactory.Hash(createdToken.RawToken), savedToken.TokenHash);
         Assert.NotEqual(createdToken.RawToken, savedToken.TokenHash);
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Patch,
-            $"/api/v1/web-services/{webService.Id}/image-tag")
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/web-services/{webService.Id}/image-tag")
         {
-            Content = JsonContent.Create(new
-            {
-                tag = "2026.07.09-abc1234",
-                source = "github-actions",
-                commitSha = "abc1234",
-                buildUrl = "https://github.com/lsbV/pole-dotnet-sample/actions/runs/1"
-            })
+            Content = JsonContent.Create(
+                new
+                {
+                    tag = "2026.07.09-abc1234",
+                    source = "github-actions",
+                    commitSha = "abc1234",
+                    buildUrl = "https://github.com/lsbV/pole-dotnet-sample/actions/runs/1",
+                }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", createdToken.RawToken);
 
@@ -334,13 +362,12 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(2, response.ResourceRevision);
         Assert.Equal("2026.07.09-abc1234", response.Tag);
 
-        var saved = await Fixture.Database.WebServices()
-            .Find(service => service.Id == webService.Id)
-            .SingleAsync();
+        var saved = await Fixture.Database.WebServices().Find(service => service.Id == webService.Id).SingleAsync();
         Assert.Equal(2, saved.ActiveRevision);
         Assert.Equal("2026.07.09-abc1234", saved.Spec.Image.ResolvedImage!.Tag);
 
-        var release = await Fixture.Database.WebServiceReleases()
+        var release = await Fixture.Database
+            .WebServiceReleases()
             .Find(r => r.WebServiceId == webService.Id && r.ResourceRevision == 2)
             .SingleAsync();
         Assert.Equal(WebServiceReleaseAction.ImageTagUpdate, release.Action);
@@ -356,13 +383,19 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(createdToken.Token.Id, provenance.DeploymentTokenId);
         Assert.Equal("github-actions", provenance.DeploymentTokenName);
 
-        var usedToken = await Fixture.Database.WebServiceDeploymentTokens()
+        var usedToken = await Fixture.Database
+            .WebServiceDeploymentTokens()
             .Find(token => token.Id == createdToken.Token.Id)
             .SingleAsync();
         Assert.NotNull(usedToken.LastUsedAtUtc);
         Assert.Equal("github-actions", usedToken.LastUsedSource);
-        Assert.Equal(1L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
-        Assert.Equal(1L, await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.resource-deployments/v1/resource-deployment-reconciliation-requested"));
+        Assert.Equal(
+            1L,
+            await Fixture.DbContext.CountAllOutboxMessagesAsync("pole.web-services/v1/web-service-updated"));
+        Assert.Equal(
+            1L,
+            await Fixture.DbContext.CountAllOutboxMessagesAsync(
+                "pole.resource-deployments/v1/resource-deployment-reconciliation-requested"));
     }
 
     [Fact]
@@ -393,11 +426,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(createdToken);
 
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
-        using var request = new HttpRequestMessage(
-            HttpMethod.Patch,
-            $"/api/v1/web-services/{webService.Id}/image-tag")
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/web-services/{webService.Id}/image-tag")
         {
-            Content = JsonContent.Create(new { tag = "2026.07.09-mismatch", source = "github-actions" })
+            Content = JsonContent.Create(new { tag = "2026.07.09-mismatch", source = "github-actions" }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", createdToken.RawToken);
         request.Headers.Add(TenantHeaders.TenantId, "507f1f77bcf86cd799439022");
@@ -419,11 +450,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
         var revokeResponse = await Client.DeleteAsync(
             $"/api/v1/web-services/{webService.Id}/deployment-tokens/{createdToken.Token.Id}");
-        using var request = new HttpRequestMessage(
-            HttpMethod.Patch,
-            $"/api/v1/web-services/{webService.Id}/image-tag")
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/web-services/{webService.Id}/image-tag")
         {
-            Content = JsonContent.Create(new { tag = "2026.07.09-revoked", source = "github-actions" })
+            Content = JsonContent.Create(new { tag = "2026.07.09-revoked", source = "github-actions" }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", createdToken.RawToken);
 
@@ -439,23 +468,22 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         var resourceGroupResponse = await Client.PostAsJsonAsync(
             "/api/v1/resource-groups/",
             Data.CreateResourceGroupRequest("hostname-api").Body);
-        var resourceGroup = await resourceGroupResponse.Content
-            .ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
+        var resourceGroup
+            = await resourceGroupResponse.Content.ReadFromJsonAsync<ResourceGroupCreatedResponse>(JsonOptions);
         Assert.NotNull(resourceGroup);
         var createResponse = await Client.PostAsJsonAsync(
             "/api/v1/web-services/",
             Data.CreateWebServiceRequest(resourceGroup.Id, "hostname-api").Body);
         Assert.Equal(HttpStatusCode.Accepted, createResponse.StatusCode);
-        var created = await createResponse.Content
-            .ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<CreateWebServiceResponse>(JsonOptions);
         Assert.NotNull(created);
         var deployment = Assert.Single(created.Deployments);
 
         var generatedResponse = await Client.GetAsync(
             $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames");
         Assert.Equal(HttpStatusCode.OK, generatedResponse.StatusCode);
-        var generated = Assert.Single((await generatedResponse.Content
-            .ReadFromJsonAsync<List<HostnameBindingSnapshot>>(JsonOptions))!);
+        var generated = Assert.Single(
+            (await generatedResponse.Content.ReadFromJsonAsync<List<HostnameBindingSnapshot>>(JsonOptions))!);
         Assert.Equal(HostnameBindingKinds.Generated, generated.Kind);
 
         var zoneResponse = await Client.PostAsJsonAsync(
@@ -464,11 +492,10 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             {
                 technicalName = "company-zone",
                 deploymentTargetId = deployment.DeploymentTargetId,
-                label = "company"
+                label = "company",
             });
         Assert.Equal(HttpStatusCode.Created, zoneResponse.StatusCode);
-        var zone = await zoneResponse.Content
-            .ReadFromJsonAsync<TenantDomainZoneSnapshot>(JsonOptions);
+        var zone = await zoneResponse.Content.ReadFromJsonAsync<TenantDomainZoneSnapshot>(JsonOptions);
         Assert.NotNull(zone);
         var addResponse = await Client.PostAsJsonAsync(
             $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames",
@@ -477,11 +504,9 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
 
         var listResponse = await Client.GetAsync(
             $"/api/v1/web-services/{created.WebServiceId}/deployments/{deployment.DeploymentId}/hostnames");
-        var bindings = (await listResponse.Content
-            .ReadFromJsonAsync<List<HostnameBindingSnapshot>>(JsonOptions))!;
+        var bindings = (await listResponse.Content.ReadFromJsonAsync<List<HostnameBindingSnapshot>>(JsonOptions))!;
         Assert.Equal(2, bindings.Count);
-        var custom = Assert.Single(bindings, binding =>
-            binding.Kind == HostnameBindingKinds.Custom);
+        var custom = Assert.Single(bindings, binding => binding.Kind == HostnameBindingKinds.Custom);
         Assert.Equal("api.company.apps.test.local", custom.Hostname);
 
         var generatedDelete = await Client.DeleteAsync(
@@ -497,23 +522,45 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HostnameBindingKinds.Generated, finalBindings![0].Kind);
     }
 
-    private async Task InsertReleaseAsync(WebService service, long revision, WebServiceReleaseOutcome outcome)
+    private async Task InsertReleaseAsync(
+        WebService service,
+        long revision,
+        WebServiceReleaseOutcome outcome)
     {
         var placement = await Fixture.DbContext.ResourceDeployments.Find(x => x.ResourceId == service.Id).SingleAsync();
-        var release = WebServiceReleaseFactory.CreatePending(service.TenantId, service.Id, revision, WebServiceReleaseAction.Update,
-            Data.UserId, Data.UserEmail, service.Spec,
-            [new WebServiceReleaseDeployment(placement.Id, placement.ResolvedPlacement.DeploymentTargetId, revision, placement.DesiredGeneration,
-                WebServiceReleaseDeploymentOperation.Apply, WebServiceReleaseDeploymentOutcome.Succeeded, DateTime.UtcNow, null, null)],
-            null, null, new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow), service.Exposure)
-            with
-        { Outcome = outcome, CompletedAtUtc = outcome == WebServiceReleaseOutcome.Pending ? null : DateTime.UtcNow };
+        var release = WebServiceReleaseFactory.CreatePending(
+                service.TenantId,
+                service.Id,
+                revision,
+                WebServiceReleaseAction.Update,
+                Data.UserId,
+                Data.UserEmail,
+                service.Spec,
+                [
+                    new WebServiceReleaseDeployment(
+                        placement.Id,
+                        placement.ResolvedPlacement.DeploymentTargetId,
+                        revision,
+                        placement.DesiredGeneration,
+                        WebServiceReleaseDeploymentOperation.Apply,
+                        WebServiceReleaseDeploymentOutcome.Succeeded,
+                        DateTime.UtcNow,
+                        null,
+                        null),
+                ],
+                null,
+                null,
+                new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
+                service.Exposure) with
+            {
+                Outcome = outcome, CompletedAtUtc = outcome == WebServiceReleaseOutcome.Pending ? null : DateTime.UtcNow,
+            };
         await Fixture.Database.WebServiceReleases().InsertOneAsync(release);
     }
 
     private async Task<WebService> InsertWebServiceAsync()
     {
-        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            Data.SeedResourceGroup());
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var resourceGroupId = resourceGroup.Id;
         var isolationScopeId = resourceGroup.DefaultIsolationScopeId;
         var runtimeCellId = ObjectId.GenerateNewId().ToString();
@@ -525,12 +572,8 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
                 isolationScopeId,
                 TestData.DefaultDeploymentTargetId,
                 "test-api-deployment",
-                new RuntimeCellFactory.CreateOptions(
-                    runtimeCellId,
-                    createdAtUtc))
-            .MarkReady(
-                expectedGeneration: 1,
-                createdAtUtc.AddSeconds(1));
+                new RuntimeCellFactory.CreateOptions(runtimeCellId, createdAtUtc))
+            .MarkReady(expectedGeneration: 1, createdAtUtc.AddSeconds(1));
         var deployment = ResourceDeploymentFactory.Create(
             Data.TenantId,
             WebServiceResourceDeployment.ResourceType,
@@ -543,9 +586,7 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
                 runtimeCell.KubernetesNamespace,
                 runtimeCellGeneration: runtimeCell.DesiredGeneration,
                 targetWorkloadConfigurationRevision: 1,
-                ResolvedIngressConfiguration.Create(
-                    "traefik",
-                    "letsencrypt-prod"),
+                ResolvedIngressConfiguration.Create("traefik", "letsencrypt-prod"),
                 storage: null,
                 compute: ResourceDeploymentTestData.Compute(),
                 resolvedAtUtc: createdAtUtc.AddSeconds(1)),
@@ -554,78 +595,74 @@ public sealed class WebServiceDeploymentApiTests(MongoReplicaSetFixture fixture)
             ResourceDeploymentFactory.DefaultOptions with
             {
                 Id = ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc = createdAtUtc.AddSeconds(1)
+                CreatedAtUtc = createdAtUtc.AddSeconds(1),
             });
-        await Fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(
-            async (transaction, cancellationToken) =>
-            {
-                await Fixture.Database.WebServices().InsertOneAsync(
-                    transaction.Session,
-                    webService,
-                    cancellationToken: cancellationToken);
-                await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(
-                    transaction.Session,
-                    ResourceRegistrationFactory.Create(
-                        webService.TenantId,
-                        resourceGroupId,
-                        WebServiceResourceDeployment.ResourceType,
-                        webService.Id,
-                        webService.Name,
-                        owningPluginId: null,
-                        new ResourceRegistrationFactory.CreateOptions(
-                            ObjectId.GenerateNewId().ToString(),
-                            createdAtUtc)),
-                    cancellationToken: cancellationToken);
-                await Fixture.DbContext.RuntimeCells.InsertOneAsync(
-                    transaction.Session,
-                    runtimeCell,
-                    cancellationToken: cancellationToken);
-                await Fixture.DbContext.ResourceDeployments.InsertOneAsync(
-                    transaction.Session,
-                    deployment,
-                    cancellationToken: cancellationToken);
-                return transaction.Commit(Unit.Value);
-            });
+        await Fixture.DbContext.RunOutcomeInTransactionAsync<Unit>(async (transaction, cancellationToken) =>
+        {
+            await Fixture.Database
+                .WebServices()
+                .InsertOneAsync(transaction.Session, webService, cancellationToken: cancellationToken);
+            await Fixture.DbContext.ResourceRegistrations.InsertOneAsync(
+                transaction.Session,
+                ResourceRegistrationFactory.Create(
+                    webService.TenantId,
+                    resourceGroupId,
+                    WebServiceResourceDeployment.ResourceType,
+                    webService.Id,
+                    webService.Name,
+                    owningPluginId: null,
+                    new ResourceRegistrationFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), createdAtUtc)),
+                cancellationToken: cancellationToken);
+            await Fixture.DbContext.RuntimeCells.InsertOneAsync(
+                transaction.Session,
+                runtimeCell,
+                cancellationToken: cancellationToken);
+            await Fixture.DbContext.ResourceDeployments.InsertOneAsync(
+                transaction.Session,
+                deployment,
+                cancellationToken: cancellationToken);
+            return transaction.Commit(Unit.Value);
+        });
         return webService;
     }
 
     private async Task SetCurrentUserRoleAsync(TenantRole role)
     {
-        var tenant = await Fixture.DbContext.Tenants
-            .Find(t => t.Id == Data.TenantId)
-            .SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(t => t.Id == Data.TenantId).SingleAsync();
 
         var updatedTenant = tenant with
         {
             Members = tenant.Members
                 .Select(member => member.UserId == Data.UserId ? member with { Role = role } : member)
-                .ToImmutableList()
+                .ToImmutableList(),
         };
 
-        await Fixture.DbContext.Tenants.ReplaceOneAsync(
-            t => t.Id == Data.TenantId,
-            updatedTenant);
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(t => t.Id == Data.TenantId, updatedTenant);
     }
 
     private sealed record CreateDeploymentTokenResponse(
         DeploymentTokenDto Token,
-        string RawToken);
+        string RawToken
+    );
 
     private sealed record DeploymentTokenDto(
         string Id,
         string Name,
         string TokenPrefix,
-        string[] AllowedOperations);
+        string[] AllowedOperations
+    );
 
     private sealed record UpdateImageTagResponse(
         string Id,
         long ResourceRevision,
         string ReleaseId,
-        string Tag);
+        string Tag
+    );
 
     private sealed record ResourceGroupCreatedResponse(
         string Id,
         string Name,
         string Description,
-        IReadOnlyCollection<string> Tags);
+        IReadOnlyCollection<string> Tags
+    );
 }

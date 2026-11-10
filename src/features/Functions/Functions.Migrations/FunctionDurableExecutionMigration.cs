@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.Functions.Migrations;
 
@@ -29,8 +29,8 @@ public sealed class FunctionDurableExecutionMigration : IMigration
                     new CreateIndexOptions
                     {
                         Name = "UX_FunctionTimers_Tenant_App_Trigger",
-                        Unique = true
-                    })
+                        Unique = true,
+                    }),
             ],
             cancellationToken);
 
@@ -53,7 +53,7 @@ public sealed class FunctionDurableExecutionMigration : IMigration
                     new CreateIndexOptions
                     {
                         Name = "UX_FunctionInvocations_TimerOccurrence",
-                        Unique = true
+                        Unique = true,
                     }),
                 new CreateIndexModel<BsonDocument>(
                     Builders<BsonDocument>.IndexKeys
@@ -61,7 +61,7 @@ public sealed class FunctionDurableExecutionMigration : IMigration
                         .Ascending("FunctionAppId")
                         .Ascending("RevisionId")
                         .Ascending("State"),
-                    new CreateIndexOptions { Name = "IX_FunctionInvocations_Revision_State" })
+                    new CreateIndexOptions { Name = "IX_FunctionInvocations_Revision_State" }),
             ],
             cancellationToken);
 
@@ -69,26 +69,22 @@ public sealed class FunctionDurableExecutionMigration : IMigration
         await meterEvents.Indexes.CreateManyAsync(
             [
                 new CreateIndexModel<BsonDocument>(
-                    Builders<BsonDocument>.IndexKeys
-                        .Ascending("AggregatedAtUtc")
-                        .Ascending("OccurredAtUtcDateTime"),
+                    Builders<BsonDocument>.IndexKeys.Ascending("AggregatedAtUtc").Ascending("OccurredAtUtcDateTime"),
                     new CreateIndexOptions { Name = "IX_FunctionMeterEvents_Aggregation" }),
                 new CreateIndexModel<BsonDocument>(
                     Builders<BsonDocument>.IndexKeys.Ascending("OccurredAtUtcDateTime"),
                     new CreateIndexOptions
                     {
                         Name = "IX_FunctionMeterEvents_Retention",
-                        ExpireAfter = TimeSpan.FromDays(30)
-                    })
+                        ExpireAfter = TimeSpan.FromDays(30),
+                    }),
             ],
             cancellationToken);
 
         var usage = context.GetCollection<BsonDocument>("FunctionUsageBuckets");
         await usage.Indexes.CreateOneAsync(
             new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Descending("HourUtc"),
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Descending("HourUtc"),
                 new CreateIndexOptions { Name = "IX_FunctionUsage_Tenant_Hour" }),
             cancellationToken: cancellationToken);
     }

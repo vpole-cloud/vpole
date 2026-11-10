@@ -1,55 +1,66 @@
 <Project Sdk="Microsoft.NET.Sdk">
-<PropertyGroup><TargetFramework>net11.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
-<ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
-<ItemGroup>
-<ProjectReference Include="../../features/Domains/Domains.Migrations/Domains.Migrations.csproj" />
-<ProjectReference Include="../../features/GitOps/GitOps.Application/GitOps.Application.csproj" />
-<ProjectReference Include="../../features/Realtime/Realtime.Application/Realtime.Application.csproj" />
-<ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
-<ProjectReference Include="../../features/Domains/Domains.Application/Domains.Application.csproj" />
-<ProjectReference Include="../../features/GitProviders/GitProviders.Application/GitProviders.Application.csproj" />
-<ProjectReference Include="../../features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj" />
-<ProjectReference Include="../../features/Secrets/Secrets.Application/Secrets.Application.csproj" />
-<ProjectReference Include="../../features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj" />
-<ProjectReference Include="../../features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj" />
-<ProjectReference Include="../../features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj" />
-<ProjectReference Include="../../shared/Events/Events.csproj" />
-<ProjectReference Include="../../shared/Encryption/Encryption.csproj" />
-<ProjectReference Include="../../features/Outbox/Outbox.Application/Outbox.Application.csproj" />
-<ProjectReference Include="../../features/Quotas/Quotas.Application/Quotas.Application.csproj" />
-<ProjectReference Include="../../features/Quotas/Quotas.Contracts/Quotas.Contracts.csproj" />
-<ProjectReference Include="../../features/Quotas/Quotas.Domain/Quotas.Domain.csproj" />
-<ProjectReference Include="../../features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj" />
-<ProjectReference Include="../../features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj" />
-<ProjectReference Include="../../features/ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj" />
-<ProjectReference Include="../../features/Search/Search.Application/Search.Application.fsproj" />
-<ProjectReference Include="../../features/StorageProfiles/StorageProfiles.Application/StorageProfiles.Application.csproj" />
-<ProjectReference Include="../../features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj" />
-<ProjectReference Include="../../features/Users/Users.Application/Users.Application.csproj" />
-<ProjectReference Include="../../features/Users/Users.Events/Users.Events.csproj" />
-<ProjectReference Include="../../features/Tenants/Tenants.Application/Tenants.Application.csproj" />
-<ProjectReference Include="../../shared/Observability/Observability.csproj" />
-<ProjectReference Include="../../shared/Multitenancy/Multitenancy.csproj" />
-<ProjectReference Include="../../shared/Mediator.Runtime/Mediator.Runtime.csproj" />
-<ProjectReference Include="../../shared/Mediator.Logging/Mediator.Logging.csproj" />
-<ProjectReference Include="../../shared/Mediator.Validation/Mediator.Validation.csproj" />
-<ProjectReference Include="../../shared/Mediator.Multitenancy/Mediator.Multitenancy.csproj" />
-</ItemGroup>
-<ItemGroup><PackageReference Include="FluentValidation.DependencyInjectionExtensions" /><PackageReference Include="MassTransit.RabbitMQ" /><PackageReference Include="Hangfire" /><PackageReference Include="Hangfire.Mongo" /></ItemGroup>
-<ItemGroup>
-<ProjectReference Include="../../features/GitOps/GitOps.Migrations/GitOps.Migrations.csproj" />
-<ProjectReference Include="../../features/Secrets/Secrets.Migrations/Secrets.Migrations.csproj" />
-<ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Migrations/PrivateAccess.Migrations.csproj" />
-<ProjectReference Include="../../features/Quotas/Quotas.Migrations/Quotas.Migrations.csproj" />
-<ProjectReference Include="../../features/GitProviders/GitProviders.Migrations/GitProviders.Migrations.csproj" />
-<ProjectReference Include="../../features/ContainerRegistries/ContainerRegistries.Migrations/ContainerRegistries.Migrations.csproj" />
-<ProjectReference Include="../../features/ComputeProfiles/ComputeProfiles.Migrations/ComputeProfiles.Migrations.csproj" />
-<ProjectReference Include="../../features/DeploymentTargets/DeploymentTargets.Migrations/DeploymentTargets.Migrations.csproj" />
-<ProjectReference Include="../../features/SourceBuilds/SourceBuilds.Migrations/SourceBuilds.Migrations.csproj" />
-<ProjectReference Include="../../features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj" />
-<ProjectReference Include="../../features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj" />
-<ProjectReference Include="../../features/ResourceDeployments/ResourceDeployments.Migrations/ResourceDeployments.Migrations.csproj" />
-<ProjectReference Include="../../features/Search/Search.Migrations/Search.Migrations.fsproj" />
-<ProjectReference Include="../../features/StorageProfiles/StorageProfiles.Migrations/StorageProfiles.Migrations.csproj" />
-</ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../features/Domains/Domains.Migrations/Domains.Migrations.csproj"/>
+        <ProjectReference Include="../../features/GitOps/GitOps.Application/GitOps.Application.csproj"/>
+        <ProjectReference Include="../../features/Realtime/Realtime.Application/Realtime.Application.csproj"/>
+        <ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj"/>
+        <ProjectReference Include="../../features/Domains/Domains.Application/Domains.Application.csproj"/>
+        <ProjectReference Include="../../features/GitProviders/GitProviders.Application/GitProviders.Application.csproj"/>
+        <ProjectReference Include="../../features/ContainerRegistries/ContainerRegistries.Application/ContainerRegistries.Application.csproj"/>
+        <ProjectReference Include="../../features/Secrets/Secrets.Application/Secrets.Application.csproj"/>
+        <ProjectReference Include="../../features/ComputeProfiles/ComputeProfiles.Application/ComputeProfiles.Application.csproj"/>
+        <ProjectReference Include="../../features/DeploymentTargets/DeploymentTargets.Application/DeploymentTargets.Application.csproj"/>
+        <ProjectReference Include="../../features/SourceBuilds/SourceBuilds.Application/SourceBuilds.Application.csproj"/>
+        <ProjectReference Include="../../shared/Events/Events.csproj"/>
+        <ProjectReference Include="../../shared/Encryption/Encryption.csproj"/>
+        <ProjectReference Include="../../features/Outbox/Outbox.Application/Outbox.Application.csproj"/>
+        <ProjectReference Include="../../features/Quotas/Quotas.Application/Quotas.Application.csproj"/>
+        <ProjectReference Include="../../features/Quotas/Quotas.Contracts/Quotas.Contracts.csproj"/>
+        <ProjectReference Include="../../features/Quotas/Quotas.Domain/Quotas.Domain.csproj"/>
+        <ProjectReference Include="../../features/ResourceDeployments/ResourceDeployments.Application/ResourceDeployments.Application.csproj"/>
+        <ProjectReference Include="../../features/ResourceGroups/ResourceGroups.Application/ResourceGroups.Application.csproj"/>
+        <ProjectReference Include="../../features/ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="../../features/Search/Search.Application/Search.Application.fsproj"/>
+        <ProjectReference Include="../../features/StorageProfiles/StorageProfiles.Application/StorageProfiles.Application.csproj"/>
+        <ProjectReference Include="../../features/StorageProfiles/StorageProfiles.Contracts/StorageProfiles.Contracts.csproj"/>
+        <ProjectReference Include="../../features/Users/Users.Application/Users.Application.csproj"/>
+        <ProjectReference Include="../../features/Users/Users.Events/Users.Events.csproj"/>
+        <ProjectReference Include="../../features/Tenants/Tenants.Application/Tenants.Application.csproj"/>
+        <ProjectReference Include="../../shared/Observability/Observability.csproj"/>
+        <ProjectReference Include="../../shared/Multitenancy/Multitenancy.csproj"/>
+        <ProjectReference Include="../../shared/Mediator.Runtime/Mediator.Runtime.csproj"/>
+        <ProjectReference Include="../../shared/Mediator.Logging/Mediator.Logging.csproj"/>
+        <ProjectReference Include="../../shared/Mediator.Validation/Mediator.Validation.csproj"/>
+        <ProjectReference Include="../../shared/Mediator.Multitenancy/Mediator.Multitenancy.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FluentValidation.DependencyInjectionExtensions"/>
+        <PackageReference Include="MassTransit.RabbitMQ"/>
+        <PackageReference Include="Hangfire"/>
+        <PackageReference Include="Hangfire.Mongo"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../features/GitOps/GitOps.Migrations/GitOps.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Secrets/Secrets.Migrations/Secrets.Migrations.csproj"/>
+        <ProjectReference Include="../../features/PrivateAccess/PrivateAccess.Migrations/PrivateAccess.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Quotas/Quotas.Migrations/Quotas.Migrations.csproj"/>
+        <ProjectReference Include="../../features/GitProviders/GitProviders.Migrations/GitProviders.Migrations.csproj"/>
+        <ProjectReference Include="../../features/ContainerRegistries/ContainerRegistries.Migrations/ContainerRegistries.Migrations.csproj"/>
+        <ProjectReference Include="../../features/ComputeProfiles/ComputeProfiles.Migrations/ComputeProfiles.Migrations.csproj"/>
+        <ProjectReference Include="../../features/DeploymentTargets/DeploymentTargets.Migrations/DeploymentTargets.Migrations.csproj"/>
+        <ProjectReference Include="../../features/SourceBuilds/SourceBuilds.Migrations/SourceBuilds.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj"/>
+        <ProjectReference Include="../../features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj"/>
+        <ProjectReference Include="../../features/ResourceDeployments/ResourceDeployments.Migrations/ResourceDeployments.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Search/Search.Migrations/Search.Migrations.fsproj"/>
+        <ProjectReference Include="../../features/StorageProfiles/StorageProfiles.Migrations/StorageProfiles.Migrations.csproj"/>
+    </ItemGroup>
 </Project>

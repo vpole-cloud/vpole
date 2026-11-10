@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.WebServices.Migrations;
 
@@ -12,18 +12,15 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
 
     public string Name => "Web service document schema validation";
 
-    public string Description =>
-        "Applies strict MongoDB schema validation to tenant-owned web service documents.";
+    public string Description => "Applies strict MongoDB schema validation to tenant-owned web service documents.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var validator = CreateValidator();
         using var collectionNames = await context.ListCollectionNamesAsync(
             new ListCollectionNamesOptions
             {
-                Filter = new BsonDocument("name", CollectionName)
+                Filter = new BsonDocument("name", CollectionName),
             },
             cancellationToken);
         var collectionExists = await collectionNames.AnyAsync(cancellationToken);
@@ -36,7 +33,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 {
                     Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator),
                     ValidationLevel = DocumentValidationLevel.Strict,
-                    ValidationAction = DocumentValidationAction.Error
+                    ValidationAction = DocumentValidationAction.Error,
                 },
                 cancellationToken);
             return;
@@ -48,7 +45,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 ["collMod"] = CollectionName,
                 ["validator"] = validator,
                 ["validationLevel"] = "strict",
-                ["validationAction"] = "error"
+                ["validationAction"] = "error",
             },
             cancellationToken: cancellationToken);
     }
@@ -73,7 +70,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                     "Events",
                     "Revision",
                     "PlanningFence",
-                    "Lifecycle"
+                    "Lifecycle",
                 ],
                 ("_id", Type("objectId")),
                 ("TenantId", StringType(minimumLength: 1)),
@@ -99,10 +96,12 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
         private static BsonDocument ImageSchema() => OneOf(
             DirectImageSchema(),
             ClosedObject(["_t"], ("_t", ImageDiscriminator("UnboundSourceBuildImage"))),
-            ClosedObject(["_t", "ConfigurationId"],
+            ClosedObject(
+                ["_t", "ConfigurationId"],
                 ("_t", ImageDiscriminator("PendingSourceBuildImage")),
                 ("ConfigurationId", StringType(minimumLength: 24, maximumLength: 24))),
-            ClosedObject(["_t", "ConfigurationId", "Image", "Digest", "JobId", "Generation"],
+            ClosedObject(
+                ["_t", "ConfigurationId", "Image", "Digest", "JobId", "Generation"],
                 ("_t", ImageDiscriminator("DeliveredSourceBuildImage")),
                 ("ConfigurationId", StringType(minimumLength: 24, maximumLength: 24)),
                 ("Image", DirectImageSchema()),
@@ -137,10 +136,11 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             ["MinReplicas", "MaxReplicas", "Metric"],
             ("MinReplicas", Type("int")),
             ("MaxReplicas", Type("int")),
-            ("Metric", Object(
-                ["Type", "TargetAverageUtilization"],
-                ("Type", StringType()),
-                ("TargetAverageUtilization", Type("int")))));
+            ("Metric",
+                Object(
+                    ["Type", "TargetAverageUtilization"],
+                    ("Type", StringType()),
+                    ("TargetAverageUtilization", Type("int")))));
 
         private static BsonDocument ProbeSpecSchema() => Object(
             ["Startup", "Liveness", "Readiness"],
@@ -156,7 +156,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
                 "PeriodSeconds",
                 "TimeoutSeconds",
                 "FailureThreshold",
-                "SuccessThreshold"
+                "SuccessThreshold",
             ],
             ("Path", StringType(minimumLength: 1, maximumLength: 200)),
             ("Port", StringType(minimumLength: 1, maximumLength: 10)),
@@ -182,23 +182,15 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             LifecycleVariant("AwaitingFirstArtifactWebServiceLifecycle"),
             LifecycleVariant("DeletingWebServiceLifecycle", "RequestedAtUtc"));
 
-        private static BsonDocument LifecycleVariant(
-            string discriminator,
-            string? dateProperty = null) =>
+        private static BsonDocument LifecycleVariant(string discriminator, string? dateProperty = null) =>
             dateProperty is null
-                ? ClosedObject(
-                    ["_t"],
-                    ("_t", AllowedValue(
-                        new BsonArray { "WebServiceLifecycle", discriminator })))
+                ? ClosedObject(["_t"], ("_t", AllowedValue(new BsonArray { "WebServiceLifecycle", discriminator })))
                 : ClosedObject(
                     ["_t", dateProperty],
-                    ("_t", AllowedValue(
-                        new BsonArray { "WebServiceLifecycle", discriminator })),
+                    ("_t", AllowedValue(new BsonArray { "WebServiceLifecycle", discriminator })),
                     (dateProperty, Type("date")));
 
-        private static BsonDocument Object(
-            BsonArray required,
-            params (string Name, BsonDocument Schema)[] properties)
+        private static BsonDocument Object(BsonArray required, params (string Name, BsonDocument Schema)[] properties)
         {
             var propertySchemas = new BsonDocument();
             foreach (var (name, schema) in properties)
@@ -208,7 +200,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             {
                 ["bsonType"] = "object",
                 ["required"] = required,
-                ["properties"] = propertySchemas
+                ["properties"] = propertySchemas,
             };
         }
 
@@ -223,9 +215,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
 
         private static BsonDocument Type(string bsonType) => new("bsonType", bsonType);
 
-        private static BsonDocument StringType(
-            int? minimumLength = null,
-            int? maximumLength = null)
+        private static BsonDocument StringType(int? minimumLength = null, int? maximumLength = null)
         {
             var schema = Type("string");
             if (minimumLength is not null)
@@ -236,14 +226,12 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             return schema;
         }
 
-        private static BsonDocument ArrayOf(
-            BsonDocument itemSchema,
-            bool uniqueItems = false)
+        private static BsonDocument ArrayOf(BsonDocument itemSchema, bool uniqueItems = false)
         {
             var schema = new BsonDocument
             {
                 ["bsonType"] = "array",
-                ["items"] = itemSchema
+                ["items"] = itemSchema,
             };
             if (uniqueItems)
                 schema["uniqueItems"] = true;
@@ -259,7 +247,7 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             var schema = new BsonDocument
             {
                 ["bsonType"] = bsonType,
-                ["minimum"] = minimum
+                ["minimum"] = minimum,
             };
             if (maximum is not null)
                 schema["maximum"] = maximum.Value;
@@ -267,20 +255,12 @@ public sealed class WebServiceSchemaValidationMigration : IMigration
             return schema;
         }
 
-        private static BsonDocument Nullable(BsonDocument schema) => OneOf(
-            Type("null"),
-            schema);
+        private static BsonDocument Nullable(BsonDocument schema) => OneOf(Type("null"), schema);
 
-        private static BsonDocument AllowedValue(BsonValue value) => new(
-            "enum",
-            new BsonArray { value });
+        private static BsonDocument AllowedValue(BsonValue value) => new("enum", new BsonArray { value });
 
-        private static BsonDocument AllowedValues(params string[] values) => new(
-            "enum",
-            new BsonArray(values));
+        private static BsonDocument AllowedValues(params string[] values) => new("enum", new BsonArray(values));
 
-        private static BsonDocument OneOf(params BsonDocument[] schemas) => new(
-            "oneOf",
-            new BsonArray(schemas));
+        private static BsonDocument OneOf(params BsonDocument[] schemas) => new("oneOf", new BsonArray(schemas));
     }
 }

@@ -1,6 +1,5 @@
 namespace Pole.Features.Postgres.Application.Kubernetes
 
-open System
 open System.Text.Json
 open k8s
 open k8s.Models

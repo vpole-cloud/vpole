@@ -6,18 +6,20 @@ namespace Pole.Features.Domains.Contracts;
 public enum HostnameAttachmentAvailability
 {
     Active,
-    AwaitingArtifact
+    AwaitingArtifact,
 }
 
 public sealed record ReadHostnameAttachmentRequest(
     string TenantId,
     string ResourceId,
     string DeploymentTargetId,
-    string Hostname);
+    string Hostname
+);
 
 public sealed record HostnameAttachmentDocumentVersion(
     string DocumentId,
-    long Version);
+    long Version
+);
 
 public sealed record HostnameAttachmentSnapshot(
     string TenantId,
@@ -28,7 +30,8 @@ public sealed record HostnameAttachmentSnapshot(
     string Hostname,
     IReadOnlyList<string> CurrentHostnames,
     IReadOnlyList<HostnameAttachmentDocumentVersion> DocumentVersions,
-    HostnameAttachmentAvailability Availability);
+    HostnameAttachmentAvailability Availability
+);
 
 public sealed record HostnameAttachmentUnavailable;
 
@@ -52,14 +55,18 @@ public union FenceHostnameAttachmentOutcome(
 public sealed record HostnameAttachmentProvenance(
     string SourceId,
     string RunId,
-    string Commit);
+    string Commit
+);
 
 public sealed record ApplyHostnameAttachmentRequest(
     HostnameAttachmentSnapshot Snapshot,
     string BindingId,
-    HostnameAttachmentProvenance Provenance);
+    HostnameAttachmentProvenance Provenance
+);
 
-public sealed record HostnameAttachmentApplied(bool Changed);
+public sealed record HostnameAttachmentApplied(
+    bool Changed
+);
 
 public sealed record HostnameAttachmentBindingRejected;
 
@@ -71,8 +78,8 @@ public union ApplyHostnameAttachmentOutcome(
     HostnameAttachmentBindingRejected);
 
 /// <summary>
-/// Workload owners implement the narrow hostname-attachment mutation. An attachment does not
-/// transfer resource ownership or authorize changes to the workload's other configuration.
+///     Workload owners implement the narrow hostname-attachment mutation. An attachment does not
+///     transfer resource ownership or authorize changes to the workload's other configuration.
 /// </summary>
 public interface IHostnameBindingWorkloadCapability
 {
@@ -99,7 +106,8 @@ public interface IHostnameBindingWorkloadCapability
 public sealed record RemoveHostnameAttachmentRequest(
     HostnameAttachmentSnapshot Snapshot,
     string BindingId,
-    HostnameAttachmentProvenance Provenance);
+    HostnameAttachmentProvenance Provenance
+);
 
 public sealed record HostnameAttachmentOwnerGone;
 

@@ -28,7 +28,7 @@ public sealed class RealtimeFinalExpiryFenceTests
         await scenario.SubscribeAsync();
         var pause = new Pause();
         scenario.BeforeMember = () => pause.WaitAsync();
-        var pending = scenario.Publisher.PublishAsync(new("fake", Tenant), scenario.Cancellation.Token);
+        var pending = scenario.Publisher.PublishAsync(new RealtimeChange("fake", Tenant), scenario.Cancellation.Token);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await scenario.CrossBoundaryAsync(boundary);
         pause.Release.TrySetResult();
@@ -47,25 +47,36 @@ public sealed class RealtimeFinalExpiryFenceTests
     public async Task Publisher_rechecks_earlier_recipient_after_another_recipient_blocks(string boundary)
     {
         var scenario = await Scenario.CreateAsync();
-        var first = new RealtimeSubscription("first",
+        var first = new RealtimeSubscription(
+            "first",
             "a",
             "viewer",
-            new("fake", Tenant),
+            new RealtimeSubscriptionRequest("fake", Tenant),
             scenario.Clock.Now.AddMinutes(1));
         var otherPrincipal = IdentityFixture.User("other");
-        await scenario.Tickets.StoreAsync(new(otherPrincipal,
-            new()
-            {
-                ExpiresUtc = scenario.Clock.Now.AddMinutes(5)
-            },
-            RealtimeFeature.CookieScheme));
+        await scenario.Tickets.StoreAsync(
+            new AuthenticationTicket(
+                otherPrincipal,
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = scenario.Clock.Now.AddMinutes(5),
+                },
+                RealtimeFeature.CookieScheme));
         await scenario.Subscriptions.ReplaceAsync("a", [first], default);
-        await scenario.Subscriptions.ReplaceAsync("b",
-            [new("second", "b", "other", new("fake", Tenant), scenario.Clock.Now.AddMinutes(5))],
+        await scenario.Subscriptions.ReplaceAsync(
+            "b",
+            [
+                new RealtimeSubscription(
+                    "second",
+                    "b",
+                    "other",
+                    new RealtimeSubscriptionRequest("fake", Tenant),
+                    scenario.Clock.Now.AddMinutes(5)),
+            ],
             default);
         var pause = new Pause();
         scenario.BeforeMemberForUser = user => user == "other" ? pause.WaitAsync() : Task.CompletedTask;
-        var pending = scenario.Publisher.PublishAsync(new("fake", Tenant));
+        var pending = scenario.Publisher.PublishAsync(new RealtimeChange("fake", Tenant));
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await scenario.CrossBoundaryAsync(boundary);
         pause.Release.TrySetResult();
@@ -78,28 +89,48 @@ public sealed class RealtimeFinalExpiryFenceTests
     public async Task Publisher_rechecks_changed_platform_ticket_roles_after_batch_storage_await()
     {
         var scenario = await Scenario.CreateAsync(admin: true);
-        await scenario.Subscriptions.ReplaceAsync("a",
-            [new("first", "a", "viewer", new("platform"), scenario.Deadline)],
+        await scenario.Subscriptions.ReplaceAsync(
+            "a",
+            [
+                new RealtimeSubscription(
+                    "first",
+                    "a",
+                    "viewer",
+                    new RealtimeSubscriptionRequest("platform"),
+                    scenario.Deadline),
+            ],
             default);
-        await scenario.Tickets.StoreAsync(new(IdentityFixture.User("other", admin: true),
-            new()
-            {
-                ExpiresUtc = scenario.Deadline
-            },
-            RealtimeFeature.CookieScheme));
-        await scenario.Subscriptions.ReplaceAsync("b",
-            [new("second", "b", "other", new("platform"), scenario.Deadline)],
+        await scenario.Tickets.StoreAsync(
+            new AuthenticationTicket(
+                IdentityFixture.User("other", admin: true),
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = scenario.Deadline,
+                },
+                RealtimeFeature.CookieScheme));
+        await scenario.Subscriptions.ReplaceAsync(
+            "b",
+            [
+                new RealtimeSubscription(
+                    "second",
+                    "b",
+                    "other",
+                    new RealtimeSubscriptionRequest("platform"),
+                    scenario.Deadline),
+            ],
             default);
         var pause = new Pause();
         scenario.Tickets.BeforeRetrieve = id => id == "other" ? pause.WaitAsync() : Task.CompletedTask;
-        var pending = scenario.Publisher.PublishAsync(new("platform"));
+        var pending = scenario.Publisher.PublishAsync(new RealtimeChange("platform"));
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await scenario.Tickets.StoreAsync(new(IdentityFixture.User(),
-            new()
-            {
-                ExpiresUtc = scenario.Deadline
-            },
-            RealtimeFeature.CookieScheme));
+        await scenario.Tickets.StoreAsync(
+            new AuthenticationTicket(
+                IdentityFixture.User(),
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = scenario.Deadline,
+                },
+                RealtimeFeature.CookieScheme));
         scenario.Tickets.BeforeRetrieve = null;
         pause.Release.TrySetResult();
         await pending;
@@ -118,21 +149,25 @@ public sealed class RealtimeFinalExpiryFenceTests
         await scenario.SubscribeAsync();
         var pause = new Pause();
         scenario.BeforeMember = () => pause.WaitAsync();
-        var pending = scenario.Publisher.PublishAsync(new("fake", Tenant));
+        var pending = scenario.Publisher.PublishAsync(new RealtimeChange("fake", Tenant));
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var claims = new[]
         {
             new Claim("sub", field == "subject" ? "other" : "viewer"),
             new Claim("iss", field == "issuer" ? "https://other.test" : "https://issuer.test"),
-            new Claim(RealtimeFeature.SessionClaim, field == "session" ? "other" : "viewer")
+            new Claim(RealtimeFeature.SessionClaim, field == "session" ? "other" : "viewer"),
         };
-        var principal =
-            new ClaimsPrincipal(new ClaimsIdentity(claims, field == "anonymous" ? null : RealtimeFeature.CookieScheme));
-        await scenario.Tickets.RenewAsync("viewer",
-            new(principal, new()
-            {
-                ExpiresUtc = scenario.Deadline
-            }, RealtimeFeature.CookieScheme));
+        var principal = new ClaimsPrincipal(
+            new ClaimsIdentity(claims, field == "anonymous" ? null : RealtimeFeature.CookieScheme));
+        await scenario.Tickets.RenewAsync(
+            "viewer",
+            new AuthenticationTicket(
+                principal,
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = scenario.Deadline,
+                },
+                RealtimeFeature.CookieScheme));
         pause.Release.TrySetResult();
         await pending;
         Assert.Empty(scenario.Client.Notices);
@@ -145,23 +180,36 @@ public sealed class RealtimeFinalExpiryFenceTests
         Publisher_drops_same_connection_when_an_earlier_interest_expires_during_later_final_authority_work()
     {
         var scenario = await Scenario.CreateAsync();
-        await scenario.Tickets.RenewAsync("viewer",
-            new(IdentityFixture.User(),
-                new()
+        await scenario.Tickets.RenewAsync(
+            "viewer",
+            new AuthenticationTicket(
+                IdentityFixture.User(),
+                new AuthenticationProperties
                 {
-                    ExpiresUtc = scenario.Clock.Now.AddMinutes(5)
+                    ExpiresUtc = scenario.Clock.Now.AddMinutes(5),
                 },
                 RealtimeFeature.CookieScheme));
-        await scenario.Subscriptions.ReplaceAsync("connection",
+        await scenario.Subscriptions.ReplaceAsync(
+            "connection",
             [
-                new("first", "connection", "viewer", new("fake", Tenant), scenario.Deadline),
-                new("second", "connection", "viewer", new("fake", Tenant, "resource"), scenario.Clock.Now.AddMinutes(5))
+                new RealtimeSubscription(
+                    "first",
+                    "connection",
+                    "viewer",
+                    new RealtimeSubscriptionRequest("fake", Tenant),
+                    scenario.Deadline),
+                new RealtimeSubscription(
+                    "second",
+                    "connection",
+                    "viewer",
+                    new RealtimeSubscriptionRequest("fake", Tenant, "resource"),
+                    scenario.Clock.Now.AddMinutes(5)),
             ],
             default);
         var pause = new Pause();
         var calls = 0;
         scenario.BeforeMember = () => ++calls == 4 ? pause.WaitAsync() : Task.CompletedTask;
-        var pending = scenario.Publisher.PublishAsync(new("fake", Tenant));
+        var pending = scenario.Publisher.PublishAsync(new RealtimeChange("fake", Tenant));
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         scenario.Clock.Now = scenario.Deadline.AddSeconds(1);
         pause.Release.TrySetResult();
@@ -176,43 +224,71 @@ public sealed class RealtimeFinalExpiryFenceTests
     {
         var scenario = await Scenario.CreateAsync();
         var longExpiry = scenario.Clock.Now.AddMinutes(5);
-        await scenario.Tickets.RenewAsync("viewer",
-            new(IdentityFixture.User(), new()
-            {
-                ExpiresUtc = longExpiry
-            }, RealtimeFeature.CookieScheme));
-        await scenario.Tickets.StoreAsync(new(IdentityFixture.User("other"),
-            new()
-            {
-                ExpiresUtc = longExpiry
-            },
-            RealtimeFeature.CookieScheme));
-        await scenario.Subscriptions.ReplaceAsync("a",
-            [new("first", "a", "viewer", new("fake", Tenant), longExpiry)],
+        await scenario.Tickets.RenewAsync(
+            "viewer",
+            new AuthenticationTicket(
+                IdentityFixture.User(),
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = longExpiry,
+                },
+                RealtimeFeature.CookieScheme));
+        await scenario.Tickets.StoreAsync(
+            new AuthenticationTicket(
+                IdentityFixture.User("other"),
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = longExpiry,
+                },
+                RealtimeFeature.CookieScheme));
+        await scenario.Subscriptions.ReplaceAsync(
+            "a",
+            [
+                new RealtimeSubscription(
+                    "first",
+                    "a",
+                    "viewer",
+                    new RealtimeSubscriptionRequest("fake", Tenant),
+                    longExpiry),
+            ],
             default);
-        await scenario.Subscriptions.ReplaceAsync("b",
-            [new("second", "b", "other", new("fake", Tenant), longExpiry)],
+        await scenario.Subscriptions.ReplaceAsync(
+            "b",
+            [
+                new RealtimeSubscription(
+                    "second",
+                    "b",
+                    "other",
+                    new RealtimeSubscriptionRequest("fake", Tenant),
+                    longExpiry),
+            ],
             default);
         var first = new Pause();
         var second = new Pause();
         scenario.BeforeMemberForUser = user => user == "viewer" ? first.WaitAsync() : second.WaitAsync();
-        var pending = scenario.Publisher.PublishAsync(new("fake", Tenant));
+        var pending = scenario.Publisher.PublishAsync(new RealtimeChange("fake", Tenant));
         await first.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await scenario.Tickets.RenewAsync("viewer",
-            new(IdentityFixture.User(),
-                new()
+        await scenario.Tickets.RenewAsync(
+            "viewer",
+            new AuthenticationTicket(
+                IdentityFixture.User(),
+                new AuthenticationProperties
                 {
-                    ExpiresUtc = scenario.Clock.Now.AddSeconds(10)
+                    ExpiresUtc = scenario.Clock.Now.AddSeconds(10),
                 },
                 RealtimeFeature.CookieScheme));
         first.Release.TrySetResult();
         await second.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         scenario.Clock.Now = scenario.Clock.Now.AddSeconds(11);
-        await scenario.Tickets.RenewAsync("viewer",
-            new(IdentityFixture.User(), new()
-            {
-                ExpiresUtc = longExpiry
-            }, RealtimeFeature.CookieScheme));
+        await scenario.Tickets.RenewAsync(
+            "viewer",
+            new AuthenticationTicket(
+                IdentityFixture.User(),
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = longExpiry,
+                },
+                RealtimeFeature.CookieScheme));
         second.Release.TrySetResult();
         await pending;
         Assert.DoesNotContain("a", scenario.Client.Notices);
@@ -227,16 +303,23 @@ public sealed class RealtimeFinalExpiryFenceTests
     {
         var scenario = await Scenario.CreateAsync(admin: true);
         if (heartbeat)
-            Assert.True(Assert.Single(await scenario.Hub.Subscribe([new("platform")])).Covered);
+            Assert.True(
+                Assert.Single(await scenario.Hub.Subscribe([new RealtimeSubscriptionRequest("platform")])).Covered);
         var pause = new Pause();
         scenario.Subscriptions.AfterReplace = () => pause.WaitAsync();
-        var pending = heartbeat ? scenario.Hub.Heartbeat() : scenario.Hub.Subscribe([new("platform")]);
+        var pending = heartbeat
+            ? scenario.Hub.Heartbeat()
+            : scenario.Hub.Subscribe([new RealtimeSubscriptionRequest("platform")]);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await scenario.Tickets.RenewAsync("viewer",
-            new(IdentityFixture.User(), new()
-            {
-                ExpiresUtc = scenario.Deadline
-            }, RealtimeFeature.CookieScheme));
+        await scenario.Tickets.RenewAsync(
+            "viewer",
+            new AuthenticationTicket(
+                IdentityFixture.User(),
+                new AuthenticationProperties
+                {
+                    ExpiresUtc = scenario.Deadline,
+                },
+                RealtimeFeature.CookieScheme));
         pause.Release.TrySetResult();
         Assert.Empty(await pending);
         Assert.Equal([null], scenario.Client.AccessRevocations);
@@ -254,7 +337,9 @@ public sealed class RealtimeFinalExpiryFenceTests
             await scenario.SubscribeAsync();
         var pause = new Pause();
         scenario.Subscriptions.AfterReplace = () => pause.WaitAsync();
-        var pending = heartbeat ? scenario.Hub.Heartbeat() : scenario.Hub.Subscribe([new("fake", Tenant)]);
+        var pending = heartbeat
+            ? scenario.Hub.Heartbeat()
+            : scenario.Hub.Subscribe([new RealtimeSubscriptionRequest("fake", Tenant)]);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         scenario.MemberAllowed = false;
         pause.Release.TrySetResult();
@@ -274,7 +359,7 @@ public sealed class RealtimeFinalExpiryFenceTests
         var scenario = await Scenario.CreateAsync();
         var pause = new Pause();
         scenario.Owner.AfterSubscribe = () => pause.WaitAsync();
-        var pending = scenario.Hub.Subscribe([new("fake", Tenant)]);
+        var pending = scenario.Hub.Subscribe([new RealtimeSubscriptionRequest("fake", Tenant)]);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await scenario.CrossBoundaryAsync(boundary);
         pause.Release.TrySetResult();
@@ -295,9 +380,13 @@ public sealed class RealtimeFinalExpiryFenceTests
             scenario.Owner.BeforeRenew = () => pause.WaitAsync();
         }
         else
+        {
             scenario.Owner.BeforeSubscribe = () => pause.WaitAsync();
+        }
 
-        var pending = heartbeat ? scenario.Hub.Heartbeat() : scenario.Hub.Subscribe([new("fake", Tenant)]);
+        var pending = heartbeat
+            ? scenario.Hub.Heartbeat()
+            : scenario.Hub.Subscribe([new RealtimeSubscriptionRequest("fake", Tenant)]);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         scenario.Cancellation.Cancel();
         await scenario.Hub.OnDisconnectedAsync(null);
@@ -325,7 +414,9 @@ public sealed class RealtimeFinalExpiryFenceTests
         // The registry already committed before its response is delayed. A concurrent logout
         // therefore cannot be caught by the existing pre-commit Redis marker check.
         scenario.Subscriptions.AfterReplace = () => pause.WaitAsync();
-        var pending = heartbeat ? scenario.Hub.Heartbeat() : scenario.Hub.Subscribe([new("fake", Tenant)]);
+        var pending = heartbeat
+            ? scenario.Hub.Heartbeat()
+            : scenario.Hub.Subscribe([new RealtimeSubscriptionRequest("fake", Tenant)]);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await scenario.CrossBoundaryAsync(boundary);
         pause.Release.TrySetResult();
@@ -364,14 +455,19 @@ public sealed class RealtimeFinalExpiryFenceTests
         var context = new DefaultHttpContext
         {
             RequestServices = services,
-            User = new ClaimsPrincipal(new ClaimsIdentity([
-                    new Claim("sub", "viewer"), new Claim("iss", "https://issuer.test"),
-                    new Claim("exp", clock.Now.AddSeconds(10).ToUnixTimeSeconds().ToString())
-                ],
-                "Bearer"))
+            User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [
+                        new Claim("sub", "viewer"), new Claim("iss", "https://issuer.test"),
+                        new Claim("exp", clock.Now.AddSeconds(10).ToUnixTimeSeconds().ToString()),
+                    ],
+                    "Bearer")),
         };
-        var handler = new CreateRealtimeSessionHandler(new HttpContextAccessor { HttpContext = context }, new(), clock);
-        var pending = handler.HandleAsync(new(), cancellation.Token);
+        var handler = new CreateRealtimeSessionHandler(
+            new HttpContextAccessor { HttpContext = context },
+            new RealtimeOptions(),
+            clock);
+        var pending = handler.HandleAsync(new CreateRealtimeSessionRequest(), cancellation.Token);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         if (cancelled)
             cancellation.Cancel();
@@ -395,7 +491,7 @@ public sealed class RealtimeFinalExpiryFenceTests
         using var cancellation = new CancellationTokenSource();
         var authentication = new ControlledAuthentication(new Pause())
         {
-            AuthenticationResult = AuthenticateResult.NoResult()
+            AuthenticationResult = AuthenticateResult.NoResult(),
         };
         var pause = new Pause();
         authentication.AfterSignIn = () => pause.WaitAsync();
@@ -404,14 +500,19 @@ public sealed class RealtimeFinalExpiryFenceTests
         var context = new DefaultHttpContext
         {
             RequestServices = services,
-            User = new ClaimsPrincipal(new ClaimsIdentity([
-                    new Claim("sub", "viewer"), new Claim("iss", "https://issuer.test"),
-                    new Claim("exp", clock.Now.AddSeconds(10).ToUnixTimeSeconds().ToString())
-                ],
-                "Bearer"))
+            User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [
+                        new Claim("sub", "viewer"), new Claim("iss", "https://issuer.test"),
+                        new Claim("exp", clock.Now.AddSeconds(10).ToUnixTimeSeconds().ToString()),
+                    ],
+                    "Bearer")),
         };
-        var handler = new CreateRealtimeSessionHandler(new HttpContextAccessor { HttpContext = context }, new(), clock);
-        var pending = handler.HandleAsync(new(), cancellation.Token);
+        var handler = new CreateRealtimeSessionHandler(
+            new HttpContextAccessor { HttpContext = context },
+            new RealtimeOptions(),
+            clock);
+        var pending = handler.HandleAsync(new CreateRealtimeSessionRequest(), cancellation.Token);
         await pause.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         if (cancelled)
             cancellation.Cancel();
@@ -426,7 +527,8 @@ public sealed class RealtimeFinalExpiryFenceTests
         Assert.Equal(1, authentication.SignOuts);
     }
 
-    private static async Task AssertRejectedAsync(Scenario scenario,
+    private static async Task AssertRejectedAsync(
+        Scenario scenario,
         Task<IReadOnlyList<RealtimeSubscriptionAcknowledgement>> pending,
         string boundary)
     {
@@ -474,16 +576,24 @@ public sealed class RealtimeFinalExpiryFenceTests
         {
             var value = new Scenario();
             var principal = IdentityFixture.User(admin: admin);
-            await value.Tickets.StoreAsync(new(principal,
-                new()
-                {
-                    ExpiresUtc = value.Deadline
-                },
-                RealtimeFeature.CookieScheme));
-            var registry =
-                new RealtimeTopicRegistry([new("fake", RealtimeScope.Tenant), new("platform", RealtimeScope.Platform)],
-                    new());
-            var access = new RealtimeAccess(async (request, _, _) =>
+            await value.Tickets.StoreAsync(
+                new AuthenticationTicket(
+                    principal,
+                    new AuthenticationProperties
+                    {
+                        ExpiresUtc = value.Deadline,
+                    },
+                    RealtimeFeature.CookieScheme));
+            var registry = new RealtimeTopicRegistry(
+                [
+                    new RealtimeTopic("fake", RealtimeScope.Tenant),
+                    new RealtimeTopic("platform", RealtimeScope.Platform),
+                ],
+                new RealtimeOptions());
+            var access = new RealtimeAccess(
+                async (
+                    request, _,
+                    _) =>
                 {
                     if (value.BeforeMember is { } before)
                         await before();
@@ -496,12 +606,13 @@ public sealed class RealtimeFinalExpiryFenceTests
                 (tenant, _) => Task.FromResult<LoadTenantIdentityOutcome>(new TenantIdentitySnapshot(tenant, "name")),
                 registry);
             var clients = new RecordingClients(value.Client);
-            value.Hub = new(value.Subscriptions, value.Tickets, access, [value.Owner], value.Clock)
+            value.Hub = new RealtimeHub(value.Subscriptions, value.Tickets, access, [value.Owner], value.Clock)
             {
                 Context = new Caller(principal, value.Cancellation.Token),
-                Clients = clients
+                Clients = clients,
             };
-            value.Publisher = new(value.Subscriptions,
+            value.Publisher = new RealtimePublisher(
+                value.Subscriptions,
                 value.Tickets,
                 access,
                 registry,
@@ -510,20 +621,22 @@ public sealed class RealtimeFinalExpiryFenceTests
             return value;
         }
 
-        public async Task SubscribeAsync() =>
-            Assert.True(Assert.Single(await Hub.Subscribe([new("fake", Tenant)])).Covered);
+        public async Task SubscribeAsync() => Assert.True(
+            Assert.Single(await Hub.Subscribe([new RealtimeSubscriptionRequest("fake", Tenant)])).Covered);
 
         public async Task CrossBoundaryAsync(string boundary)
         {
             if (boundary is "expiry" or "expiry-renewed")
                 Clock.Now = Deadline.AddSeconds(1);
             if (boundary == "expiry-renewed")
-                await Tickets.StoreAsync(new(IdentityFixture.User(),
-                    new()
-                    {
-                        ExpiresUtc = Clock.Now.AddMinutes(5)
-                    },
-                    RealtimeFeature.CookieScheme));
+                await Tickets.StoreAsync(
+                    new AuthenticationTicket(
+                        IdentityFixture.User(),
+                        new AuthenticationProperties
+                        {
+                            ExpiresUtc = Clock.Now.AddMinutes(5),
+                        },
+                        RealtimeFeature.CookieScheme));
             if (boundary is "logout" or "ticket-loss")
                 await Tickets.RemoveAsync("viewer");
             if (boundary == "logout")
@@ -580,7 +693,8 @@ public sealed class RealtimeFinalExpiryFenceTests
 
         public Func<Task>? AfterReplace { get; set; }
 
-        public async Task ReplaceAsync(string connection,
+        public async Task ReplaceAsync(
+            string connection,
             IReadOnlyList<RealtimeSubscription> values,
             CancellationToken ct)
         {
@@ -589,11 +703,15 @@ public sealed class RealtimeFinalExpiryFenceTests
                 await after();
         }
 
-        public Task RemoveAsync(string connection, IReadOnlyCollection<string>? ids, CancellationToken ct) =>
-            Inner.RemoveAsync(connection, ids, ct);
+        public Task RemoveAsync(
+            string connection,
+            IReadOnlyCollection<string>? ids,
+            CancellationToken ct) => Inner.RemoveAsync(connection, ids, ct);
 
-        public Task<IReadOnlyList<RealtimeSubscription>>
-            FindAsync(string topic, string? tenant, CancellationToken ct) => Inner.FindAsync(topic, tenant, ct);
+        public Task<IReadOnlyList<RealtimeSubscription>> FindAsync(
+            string topic,
+            string? tenant,
+            CancellationToken ct) => Inner.FindAsync(topic, tenant, ct);
 
         public Task<IReadOnlyList<RealtimeSubscription>> FindAllAsync(string topic, CancellationToken ct) =>
             Inner.FindAllAsync(topic, ct);
@@ -607,8 +725,6 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class Owner : IRealtimeTopicLifecycle
     {
-        public string Topic => "fake";
-
         public HashSet<string> Interests { get; } = [];
 
         public Func<Task>? BeforeSubscribe { get; set; }
@@ -616,8 +732,10 @@ public sealed class RealtimeFinalExpiryFenceTests
         public Func<Task>? BeforeRenew { get; set; }
 
         public Func<Task>? AfterSubscribe { get; set; }
+        public string Topic => "fake";
 
-        public async Task<bool> SubscribeAsync(RealtimeSubscription value,
+        public async Task<bool> SubscribeAsync(
+            RealtimeSubscription value,
             ClaimsPrincipal principal,
             CancellationToken ct)
         {
@@ -629,7 +747,10 @@ public sealed class RealtimeFinalExpiryFenceTests
             return true;
         }
 
-        public async Task<bool> RenewAsync(RealtimeSubscription value, ClaimsPrincipal principal, CancellationToken ct)
+        public async Task<bool> RenewAsync(
+            RealtimeSubscription value,
+            ClaimsPrincipal principal,
+            CancellationToken ct)
         {
             if (BeforeRenew is { } before)
             {
@@ -649,7 +770,8 @@ public sealed class RealtimeFinalExpiryFenceTests
 
     private sealed class Caller(
         ClaimsPrincipal principal,
-        CancellationToken cancellation) : HubCallerContext
+        CancellationToken cancellation
+    ) : HubCallerContext
     {
         public override string ConnectionId => "connection";
         public override string UserIdentifier => "viewer";
@@ -694,7 +816,10 @@ public sealed class RealtimeFinalExpiryFenceTests
 
         public IRealtimeClient For(IEnumerable<string> connections) => new Receiver(this, connections.ToArray());
 
-        private sealed class Receiver(RecordingClient parent, string[] connections) : IRealtimeClient
+        private sealed class Receiver(
+            RecordingClient parent,
+            string[] connections
+        ) : IRealtimeClient
         {
             public Task Changed(RealtimeChange change)
             {
@@ -707,7 +832,9 @@ public sealed class RealtimeFinalExpiryFenceTests
         }
     }
 
-    private sealed class RecordingClients(RecordingClient client) : IHubCallerClients<IRealtimeClient>
+    private sealed class RecordingClients(
+        RecordingClient client
+    ) : IHubCallerClients<IRealtimeClient>
     {
         public IRealtimeClient Caller => client;
         public IRealtimeClient Others => client;
@@ -723,13 +850,17 @@ public sealed class RealtimeFinalExpiryFenceTests
         public IRealtimeClient Users(IReadOnlyList<string> ids) => client;
     }
 
-    private sealed class HubContext(RecordingClients clients) : IHubContext<RealtimeHub, IRealtimeClient>
+    private sealed class HubContext(
+        RecordingClients clients
+    ) : IHubContext<RealtimeHub, IRealtimeClient>
     {
         public IHubClients<IRealtimeClient> Clients => clients;
         public IGroupManager Groups => throw new NotSupportedException();
     }
 
-    private sealed class ControlledAuthentication(Pause pause) : IAuthenticationService
+    private sealed class ControlledAuthentication(
+        Pause pause
+    ) : IAuthenticationService
     {
         public int SignIns { get; private set; }
 
@@ -747,13 +878,18 @@ public sealed class RealtimeFinalExpiryFenceTests
             return AuthenticateResult.NoResult();
         }
 
-        public Task ChallengeAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) =>
-            throw new NotSupportedException();
+        public Task ChallengeAsync(
+            HttpContext context,
+            string? scheme,
+            AuthenticationProperties? properties) => throw new NotSupportedException();
 
-        public Task ForbidAsync(HttpContext context, string? scheme, AuthenticationProperties? properties) =>
-            throw new NotSupportedException();
+        public Task ForbidAsync(
+            HttpContext context,
+            string? scheme,
+            AuthenticationProperties? properties) => throw new NotSupportedException();
 
-        public async Task SignInAsync(HttpContext context,
+        public async Task SignInAsync(
+            HttpContext context,
             string? scheme,
             ClaimsPrincipal principal,
             AuthenticationProperties? properties)
@@ -763,7 +899,10 @@ public sealed class RealtimeFinalExpiryFenceTests
                 await after();
         }
 
-        public Task SignOutAsync(HttpContext context, string? scheme, AuthenticationProperties? properties)
+        public Task SignOutAsync(
+            HttpContext context,
+            string? scheme,
+            AuthenticationProperties? properties)
         {
             SignOuts++;
             return Task.CompletedTask;

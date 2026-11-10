@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\Models\Models.csproj" />
-      <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj" />
+        <ProjectReference Include="..\..\..\shared\Models\Models.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Multitenancy\Multitenancy.csproj"/>
     </ItemGroup>
 
 </Project>

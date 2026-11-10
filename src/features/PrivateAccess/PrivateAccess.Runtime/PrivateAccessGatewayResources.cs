@@ -12,12 +12,19 @@ namespace Pole.Features.PrivateAccess.Runtime;
 
 public sealed record PrivateAccessGatewayReady(
     string CertificateSha256Pin,
-    DateTimeOffset CertificateNotAfter);
+    DateTimeOffset CertificateNotAfter
+);
+
 public sealed record PrivateAccessGatewayTargetUnavailable;
+
 public sealed record PrivateAccessGatewayIsolationUnavailable;
+
 public sealed record PrivateAccessGatewayOwnershipConflict;
+
 public sealed record PrivateAccessGatewayCredentialMissing;
+
 public sealed record PrivateAccessGatewayDeleted;
+
 public sealed record PrivateAccessGatewayCleanupPending;
 
 public union EnsurePrivateAccessGatewayOutcome(
@@ -35,7 +42,8 @@ public union DeletePrivateAccessGatewayOutcome(
 public sealed class PrivateAccessGatewayResources(
     IKubernetesClientProvider clients,
     LookupDeploymentTarget lookupTarget,
-    EnsureRuntimeCellIngressBaseline ensureBaseline)
+    EnsureRuntimeCellIngressBaseline ensureBaseline
+)
 {
     public async Task<EnsurePrivateAccessGatewayOutcome> EnsureAsync(
         PrivateAccessGatewayIdentity identity,
@@ -46,9 +54,8 @@ public sealed class PrivateAccessGatewayResources(
     {
         var namespaceName = PrivateAccessGatewayManifest.Namespace(identity);
         if (identity.Generation < 1 || string.IsNullOrWhiteSpace(identity.GatewayId) ||
-            endpoints.Select(endpoint => (endpoint.ResourceDeploymentId, endpoint.EndpointId))
-                .Distinct().Count() != endpoints.Count ||
-            endpoints.Any(endpoint => endpoint.KubernetesNamespace == namespaceName))
+            endpoints.Select(endpoint => (endpoint.ResourceDeploymentId, endpoint.EndpointId)).Distinct().Count() !=
+            endpoints.Count || endpoints.Any(endpoint => endpoint.KubernetesNamespace == namespaceName))
             throw new ArgumentException("Invalid gateway identity or endpoint set.");
         if (proposedPfx is not null && ReadCertificate(proposedPfx) is null)
             return new PrivateAccessGatewayCredentialMissing();
@@ -88,14 +95,21 @@ public sealed class PrivateAccessGatewayResources(
         var baselinePolicy = PrivateAccessGatewayManifest.BuildBaseline(identity);
         if (!await EnsureOwnedAsync(
                 () => client.NetworkingV1.CreateNamespacedNetworkPolicyAsync(
-                    baselinePolicy, namespaceName, cancellationToken: cancellationToken),
+                    baselinePolicy,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
-                    baselinePolicy.Metadata.Name, namespaceName, cancellationToken: cancellationToken),
+                    baselinePolicy.Metadata.Name,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 existing =>
                 {
                     baselinePolicy.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
                     return client.NetworkingV1.ReplaceNamespacedNetworkPolicyAsync(
-                        baselinePolicy, baselinePolicy.Metadata.Name, namespaceName, cancellationToken: cancellationToken);
+                        baselinePolicy,
+                        baselinePolicy.Metadata.Name,
+                        namespaceName,
+                        cancellationToken: cancellationToken);
                 },
                 () => baselinePolicy.Metadata.ResourceVersion = null,
                 baselinePolicy.Metadata.Labels,
@@ -107,14 +121,21 @@ public sealed class PrivateAccessGatewayResources(
             var policy = PrivateAccessGatewayManifest.BuildDestinationIngress(identity, endpoint);
             if (!await EnsureOwnedAsync(
                     () => client.NetworkingV1.CreateNamespacedNetworkPolicyAsync(
-                        policy, endpoint.KubernetesNamespace, cancellationToken: cancellationToken),
+                        policy,
+                        endpoint.KubernetesNamespace,
+                        cancellationToken: cancellationToken),
                     () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
-                        policy.Metadata.Name, endpoint.KubernetesNamespace, cancellationToken: cancellationToken),
+                        policy.Metadata.Name,
+                        endpoint.KubernetesNamespace,
+                        cancellationToken: cancellationToken),
                     existing =>
                     {
                         policy.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
                         return client.NetworkingV1.ReplaceNamespacedNetworkPolicyAsync(
-                            policy, policy.Metadata.Name, endpoint.KubernetesNamespace, cancellationToken: cancellationToken);
+                            policy,
+                            policy.Metadata.Name,
+                            endpoint.KubernetesNamespace,
+                            cancellationToken: cancellationToken);
                     },
                     () => policy.Metadata.ResourceVersion = null,
                     policy.Metadata.Labels))
@@ -124,14 +145,21 @@ public sealed class PrivateAccessGatewayResources(
         var egress = PrivateAccessGatewayManifest.BuildGatewayEgress(identity, endpoints, settings);
         if (!await EnsureOwnedAsync(
                 () => client.NetworkingV1.CreateNamespacedNetworkPolicyAsync(
-                    egress, namespaceName, cancellationToken: cancellationToken),
+                    egress,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
-                    egress.Metadata.Name, namespaceName, cancellationToken: cancellationToken),
+                    egress.Metadata.Name,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 existing =>
                 {
                     egress.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
                     return client.NetworkingV1.ReplaceNamespacedNetworkPolicyAsync(
-                        egress, egress.Metadata.Name, namespaceName, cancellationToken: cancellationToken);
+                        egress,
+                        egress.Metadata.Name,
+                        namespaceName,
+                        cancellationToken: cancellationToken);
                 },
                 () => egress.Metadata.ResourceVersion = null,
                 egress.Metadata.Labels))
@@ -150,20 +178,28 @@ public sealed class PrivateAccessGatewayResources(
         var deployment = PrivateAccessGatewayManifest.BuildDeployment(identity, settings);
         if (!await EnsureOwnedAsync(
                 () => client.AppsV1.CreateNamespacedDeploymentAsync(
-                    deployment, namespaceName, cancellationToken: cancellationToken),
+                    deployment,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 () => client.AppsV1.ReadNamespacedDeploymentAsync(
-                    deployment.Metadata.Name, namespaceName, cancellationToken: cancellationToken),
+                    deployment.Metadata.Name,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 existing =>
                 {
                     deployment.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
                     return client.AppsV1.ReplaceNamespacedDeploymentAsync(
-                        deployment, deployment.Metadata.Name, namespaceName, cancellationToken: cancellationToken);
+                        deployment,
+                        deployment.Metadata.Name,
+                        namespaceName,
+                        cancellationToken: cancellationToken);
                 },
                 () => deployment.Metadata.ResourceVersion = null,
                 deployment.Metadata.Labels,
                 existing => existing.Spec.Selector?.MatchLabels is { } selector &&
-                    selector.Count == deployment.Spec.Selector.MatchLabels.Count &&
-                    HasLabels(selector, deployment.Spec.Selector.MatchLabels)))
+                    selector.Count == deployment.Spec.Selector.MatchLabels.Count && HasLabels(
+                        selector,
+                        deployment.Spec.Selector.MatchLabels)))
             return new PrivateAccessGatewayOwnershipConflict();
 
         return ready;
@@ -173,8 +209,7 @@ public sealed class PrivateAccessGatewayResources(
     {
         try
         {
-            using var certificate = X509CertificateLoader.LoadPkcs12(
-                pfx, null, X509KeyStorageFlags.EphemeralKeySet);
+            using var certificate = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.EphemeralKeySet);
             return certificate.HasPrivateKey && certificate.NotAfter.ToUniversalTime() > DateTime.UtcNow
                 ? new PrivateAccessGatewayReady(
                     certificate.GetCertHashString(HashAlgorithmName.SHA256).ToLowerInvariant(),
@@ -194,16 +229,18 @@ public sealed class PrivateAccessGatewayResources(
         CancellationToken cancellationToken)
     {
         var namespaceName = PrivateAccessGatewayManifest.Namespace(identity);
-        var desired = proposedPfx is null ? null :
-            PrivateAccessGatewayManifest.BuildIdentitySecret(identity, proposedPfx);
+        var desired = proposedPfx is null
+            ? null
+            : PrivateAccessGatewayManifest.BuildIdentitySecret(identity, proposedPfx);
         for (var attempt = 0; attempt < 3; attempt++)
         {
             if (desired is not null)
-            {
                 try
                 {
                     await client.CoreV1.CreateNamespacedSecretAsync(
-                        desired, namespaceName, cancellationToken: cancellationToken);
+                        desired,
+                        namespaceName,
+                        cancellationToken: cancellationToken);
                     return proposedPfx;
                 }
                 catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.Conflict)
@@ -215,13 +252,14 @@ public sealed class PrivateAccessGatewayResources(
                     throw new InvalidOperationException(
                         $"Gateway identity Secret write failed with HTTP {(int?)error.Response?.StatusCode}.");
                 }
-            }
 
             V1Secret existing;
             try
             {
                 existing = await client.CoreV1.ReadNamespacedSecretAsync(
-                    PrivateAccessGatewayManifest.GatewayName, namespaceName, cancellationToken: cancellationToken);
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
+                    cancellationToken: cancellationToken);
             }
             catch (HttpOperationException error) when (error.Response?.StatusCode == HttpStatusCode.NotFound)
             {
@@ -242,8 +280,7 @@ public sealed class PrivateAccessGatewayResources(
                 !long.TryParse(text, out var existingGeneration) || existingGeneration > identity.Generation)
                 return null;
             if (existingGeneration == identity.Generation)
-                return existing.Data is { } data && data.TryGetValue("identity.pfx", out var value)
-                    ? value : [];
+                return existing.Data is { } data && data.TryGetValue("identity.pfx", out var value) ? value : [];
             if (desired is null)
                 return [];
 
@@ -251,12 +288,14 @@ public sealed class PrivateAccessGatewayResources(
             try
             {
                 await client.CoreV1.ReplaceNamespacedSecretAsync(
-                    desired, PrivateAccessGatewayManifest.GatewayName, namespaceName,
+                    desired,
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
                     cancellationToken: cancellationToken);
                 return proposedPfx;
             }
-            catch (HttpOperationException error) when (error.Response?.StatusCode is
-                HttpStatusCode.Conflict or HttpStatusCode.NotFound)
+            catch (HttpOperationException error) when (error.Response?.StatusCode is HttpStatusCode.Conflict
+                                                           or HttpStatusCode.NotFound)
             {
                 desired.Metadata.ResourceVersion = null;
             }
@@ -266,6 +305,7 @@ public sealed class PrivateAccessGatewayResources(
                     $"Gateway identity Secret rotation failed with HTTP {(int?)error.Response?.StatusCode}.");
             }
         }
+
         return null;
     }
 
@@ -275,7 +315,8 @@ public sealed class PrivateAccessGatewayResources(
         Func<T, Task<T>> replace,
         Action clearResourceVersion,
         IDictionary<string, string> expectedLabels,
-        Func<T, bool>? verify = null) where T : IKubernetesObject<V1ObjectMeta>
+        Func<T, bool>? verify = null)
+        where T : IKubernetesObject<V1ObjectMeta>
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
@@ -292,11 +333,13 @@ public sealed class PrivateAccessGatewayResources(
                 {
                     existing = await read();
                 }
-                catch (HttpOperationException readError) when (readError.Response?.StatusCode == HttpStatusCode.NotFound)
+                catch (HttpOperationException readError) when
+                    (readError.Response?.StatusCode == HttpStatusCode.NotFound)
                 {
                     continue;
                 }
-                if (!HasLabels(existing.Metadata, expectedLabels) || verify is not null && !verify(existing))
+
+                if (!HasLabels(existing.Metadata, expectedLabels) || (verify is not null && !verify(existing)))
                     return false;
                 try
                 {
@@ -304,12 +347,14 @@ public sealed class PrivateAccessGatewayResources(
                     return true;
                 }
                 catch (HttpOperationException replaceError) when (replaceError.Response?.StatusCode is
-                    HttpStatusCode.Conflict or HttpStatusCode.NotFound)
+                                                                      HttpStatusCode.Conflict
+                                                                      or HttpStatusCode.NotFound)
                 {
                     // Retry against a fresh resource version.
                 }
             }
         }
+
         return false;
     }
 
@@ -317,14 +362,12 @@ public sealed class PrivateAccessGatewayResources(
         metadata is not null && HasLabels(metadata.Labels, expected);
 
     private static bool HasLabels(IDictionary<string, string>? actual, IDictionary<string, string> expected) =>
-        actual is not null && expected.All(pair =>
-            actual.TryGetValue(pair.Key, out var value) && value == pair.Value);
+        actual is not null && expected.All(pair => actual.TryGetValue(pair.Key, out var value) && value == pair.Value);
 
-    private static bool IsDefaultDeny(V1NetworkPolicySpec spec) =>
-        (spec.PodSelector.MatchLabels?.Count ?? 0) == 0 &&
-        (spec.PodSelector.MatchExpressions?.Count ?? 0) == 0 &&
-        spec.PolicyTypes is { Count: 2 } types && types.Contains("Ingress") && types.Contains("Egress") &&
-        (spec.Ingress?.Count ?? 0) == 0 && (spec.Egress?.Count ?? 0) == 0;
+    private static bool IsDefaultDeny(V1NetworkPolicySpec spec) => (spec.PodSelector.MatchLabels?.Count ?? 0) == 0 &&
+        (spec.PodSelector.MatchExpressions?.Count ?? 0) == 0 && spec.PolicyTypes is { Count: 2 } types &&
+        types.Contains("Ingress") && types.Contains("Egress") && (spec.Ingress?.Count ?? 0) == 0 &&
+        (spec.Egress?.Count ?? 0) == 0;
 
     public async Task<DeletePrivateAccessGatewayOutcome> DeleteEndpointAsync(
         PrivateAccessGatewayIdentity identity,
@@ -335,9 +378,13 @@ public sealed class PrivateAccessGatewayResources(
         var policy = PrivateAccessGatewayManifest.BuildDestinationIngress(identity, endpoint);
         var result = await DeleteOwnedAsync(
             () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
-                policy.Metadata.Name, endpoint.KubernetesNamespace, cancellationToken: cancellationToken),
+                policy.Metadata.Name,
+                endpoint.KubernetesNamespace,
+                cancellationToken: cancellationToken),
             options => client.NetworkingV1.DeleteNamespacedNetworkPolicyAsync(
-                policy.Metadata.Name, endpoint.KubernetesNamespace, body: options,
+                policy.Metadata.Name,
+                endpoint.KubernetesNamespace,
+                body: options,
                 cancellationToken: cancellationToken),
             policy.Metadata.Labels);
         return result switch
@@ -345,7 +392,7 @@ public sealed class PrivateAccessGatewayResources(
             DeleteResult.Deleted => new PrivateAccessGatewayDeleted(),
             DeleteResult.Pending => new PrivateAccessGatewayCleanupPending(),
             DeleteResult.OwnershipConflict => new PrivateAccessGatewayOwnershipConflict(),
-            _ => throw new InvalidOperationException("Unknown gateway cleanup result.")
+            _ => throw new InvalidOperationException("Unknown gateway cleanup result."),
         };
     }
 
@@ -361,37 +408,56 @@ public sealed class PrivateAccessGatewayResources(
         {
             await DeleteOwnedAsync(
                 () => client.AppsV1.ReadNamespacedDeploymentAsync(
-                    PrivateAccessGatewayManifest.GatewayName, namespaceName, cancellationToken: cancellationToken),
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
                 options => client.AppsV1.DeleteNamespacedDeploymentAsync(
-                    PrivateAccessGatewayManifest.GatewayName, namespaceName, body: options,
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
+                    body: options,
                     cancellationToken: cancellationToken),
                 labels),
             await DeleteOwnedAsync(
                 () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
-                    PrivateAccessGatewayManifest.GatewayName, namespaceName, cancellationToken: cancellationToken),
-                options => client.NetworkingV1.DeleteNamespacedNetworkPolicyAsync(
-                    PrivateAccessGatewayManifest.GatewayName, namespaceName, body: options,
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
                     cancellationToken: cancellationToken),
-                labels)
+                options => client.NetworkingV1.DeleteNamespacedNetworkPolicyAsync(
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
+                    body: options,
+                    cancellationToken: cancellationToken),
+                labels),
         };
         foreach (var endpoint in knownEndpoints)
         {
             var policy = PrivateAccessGatewayManifest.BuildDestinationIngress(identity, endpoint);
-            results.Add(await DeleteOwnedAsync(
-                () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
-                    policy.Metadata.Name, endpoint.KubernetesNamespace, cancellationToken: cancellationToken),
-                options => client.NetworkingV1.DeleteNamespacedNetworkPolicyAsync(
-                    policy.Metadata.Name, endpoint.KubernetesNamespace, body: options,
-                    cancellationToken: cancellationToken),
-                policy.Metadata.Labels));
+            results.Add(
+                await DeleteOwnedAsync(
+                    () => client.NetworkingV1.ReadNamespacedNetworkPolicyAsync(
+                        policy.Metadata.Name,
+                        endpoint.KubernetesNamespace,
+                        cancellationToken: cancellationToken),
+                    options => client.NetworkingV1.DeleteNamespacedNetworkPolicyAsync(
+                        policy.Metadata.Name,
+                        endpoint.KubernetesNamespace,
+                        body: options,
+                        cancellationToken: cancellationToken),
+                    policy.Metadata.Labels));
         }
-        results.Add(await DeleteOwnedAsync(
-            () => client.CoreV1.ReadNamespacedSecretAsync(
-                PrivateAccessGatewayManifest.GatewayName, namespaceName, cancellationToken: cancellationToken),
-            options => client.CoreV1.DeleteNamespacedSecretAsync(
-                PrivateAccessGatewayManifest.GatewayName, namespaceName, body: options,
-                cancellationToken: cancellationToken),
-            labels));
+
+        results.Add(
+            await DeleteOwnedAsync(
+                () => client.CoreV1.ReadNamespacedSecretAsync(
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
+                    cancellationToken: cancellationToken),
+                options => client.CoreV1.DeleteNamespacedSecretAsync(
+                    PrivateAccessGatewayManifest.GatewayName,
+                    namespaceName,
+                    body: options,
+                    cancellationToken: cancellationToken),
+                labels));
 
         if (results.Contains(DeleteResult.OwnershipConflict))
             return new PrivateAccessGatewayOwnershipConflict();
@@ -400,30 +466,29 @@ public sealed class PrivateAccessGatewayResources(
             : new PrivateAccessGatewayDeleted();
     }
 
-    private enum DeleteResult { Deleted, Pending, OwnershipConflict }
-
     private static async Task<DeleteResult> DeleteOwnedAsync<T>(
         Func<Task<T>> read,
         Func<V1DeleteOptions, Task> delete,
-        IDictionary<string, string> expectedLabels) where T : IKubernetesObject<V1ObjectMeta>
+        IDictionary<string, string> expectedLabels)
+        where T : IKubernetesObject<V1ObjectMeta>
     {
         try
         {
             var existing = await read();
             if (!HasLabels(existing.Metadata, expectedLabels))
                 return DeleteResult.OwnershipConflict;
-            if (string.IsNullOrEmpty(existing.Metadata.Uid) ||
-                string.IsNullOrEmpty(existing.Metadata.ResourceVersion))
+            if (string.IsNullOrEmpty(existing.Metadata.Uid) || string.IsNullOrEmpty(existing.Metadata.ResourceVersion))
                 return DeleteResult.Pending;
-            await delete(new V1DeleteOptions
-            {
-                PropagationPolicy = "Foreground",
-                Preconditions = new V1Preconditions
+            await delete(
+                new V1DeleteOptions
                 {
-                    Uid = existing.Metadata.Uid,
-                    ResourceVersion = existing.Metadata.ResourceVersion
-                }
-            });
+                    PropagationPolicy = "Foreground",
+                    Preconditions = new V1Preconditions
+                    {
+                        Uid = existing.Metadata.Uid,
+                        ResourceVersion = existing.Metadata.ResourceVersion,
+                    },
+                });
             // The delete request may only mark a Deployment for deletion. Keep the
             // target reference until a later read confirms it and its Pods are gone.
             return DeleteResult.Pending;
@@ -437,4 +502,6 @@ public sealed class PrivateAccessGatewayResources(
             return DeleteResult.Pending;
         }
     }
+
+    private enum DeleteResult { Deleted, Pending, OwnershipConflict }
 }

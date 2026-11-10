@@ -16,55 +16,84 @@ open Pole.Features.ResourceConnections.Contracts
 open Pole.Features.Secrets.Contracts
 
 type PostgresClusterDeletionConflict =
-    { ClusterId : string
-      Reason : PostgresMutationConflictReason }
+    { ClusterId: string
+      Reason: PostgresMutationConflictReason }
 
 type BeginPostgresClusterDeletionRequest =
-    { Current : PostgresCluster
-      Replacement : PostgresCluster
-      Authority : GitLifecycleAuthority
-      ReviewedConnections : System.Collections.Generic.IReadOnlyList<ResourceConnectionPlanningVersion> }
+    { Current: PostgresCluster
+      Replacement: PostgresCluster
+      Authority: GitLifecycleAuthority
+      ReviewedConnections: System.Collections.Generic.IReadOnlyList<ResourceConnectionPlanningVersion> }
 
 type BeginPostgresClusterDeletion =
-    delegate of request : BeginPostgresClusterDeletionRequest * session : IClientSessionHandle *
-        cancellationToken : CancellationToken -> Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>
+    delegate of
+        request: BeginPostgresClusterDeletionRequest *
+        session: IClientSessionHandle *
+        cancellationToken: CancellationToken ->
+            Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>
 
-type MongoBeginPostgresClusterDeletion(
-    clusters : IMongoCollection<PostgresCluster>,
-    fenceRegisteredResource : FenceRegisteredResource,
-    cascadeConnections : CascadeConnectionsForResourceDeletion,
-    git : IGitOpsMutations,
-    ensureBindingsRemovable : EnsureConsumerSecretBindingRemoval) =
+type MongoBeginPostgresClusterDeletion
+    (
+        clusters: IMongoCollection<PostgresCluster>,
+        fenceRegisteredResource: FenceRegisteredResource,
+        cascadeConnections: CascadeConnectionsForResourceDeletion,
+        git: IGitOpsMutations,
+        ensureBindingsRemovable: EnsureConsumerSecretBindingRemoval
+    ) =
     let revisionConflict clusterId : PostgresOutcome<unit, PostgresClusterDeletionConflict> =
-        PostgresError { ClusterId = clusterId; Reason = PostgresMutationConflictReason.ExpectedRevisionConflict }
+        PostgresError
+            { ClusterId = clusterId
+              Reason = PostgresMutationConflictReason.ExpectedRevisionConflict }
 
-    member _.InvokeAsync(
-        request : BeginPostgresClusterDeletionRequest, session, cancellationToken : CancellationToken) =
+    member _.InvokeAsync(request: BeginPostgresClusterDeletionRequest, session, cancellationToken: CancellationToken) =
         task {
             let current = request.Current
             let replacement = request.Replacement
             PostgresPersistenceGuards.transaction session "PostgreSQL deletion start"
             PostgresPersistenceGuards.deletionTransition current replacement
+
             let! authorized =
                 if not (isNull request.Authority) && isNull request.ReviewedConnections then
                     Task.FromResult false
                 else
                     git.AuthorizeAsync(
-                        AuthorizeGitResourceMutationRequest(current.TenantId, "PostgresCluster", current.Id,
+                        AuthorizeGitResourceMutationRequest(
+                            current.TenantId,
+                            "PostgresCluster",
+                            current.Id,
                             Lifecycle = request.Authority,
-                            LifecycleEffect = if isNull request.Authority then Nullable()
-                                              else Nullable(GitLifecycleMutationEffect.Remove)),
-                        session, cancellationToken)
+                            LifecycleEffect =
+                                if isNull request.Authority then
+                                    Nullable()
+                                else
+                                    Nullable(GitLifecycleMutationEffect.Remove)
+                        ),
+                        session,
+                        cancellationToken
+                    )
+
             if not authorized then
-                return PostgresError
-                    { ClusterId = current.Id; Reason = PostgresMutationConflictReason.GitOwnedConfiguration }
+                return
+                    PostgresError
+                        { ClusterId = current.Id
+                          Reason = PostgresMutationConflictReason.GitOwnedConfiguration }
             else
-                let! bindings = ensureBindingsRemovable.Invoke(
-                    EnsureConsumerSecretBindingRemovalRequest(current.TenantId,
-                        PostgresResourceDeployment.ResourceType, current.Id), session, cancellationToken)
+                let! bindings =
+                    ensureBindingsRemovable.Invoke(
+                        EnsureConsumerSecretBindingRemovalRequest(
+                            current.TenantId,
+                            PostgresResourceDeployment.ResourceType,
+                            current.Id
+                        ),
+                        session,
+                        cancellationToken
+                    )
+
                 if bindings.Value :? ConsumerSecretBindingsRequireRemoval then
-                    return PostgresError
-                        { ClusterId = current.Id; Reason = PostgresMutationConflictReason.SecretBindingsRequireRemoval }
+                    return
+                        PostgresError
+                            { ClusterId = current.Id
+                              Reason = PostgresMutationConflictReason.SecretBindingsRequireRemoval }
                 elif bindings.Value :? ConsumerSecretBindingDeletionChanged then
                     return revisionConflict current.Id
                 else
@@ -73,9 +102,12 @@ type MongoBeginPostgresClusterDeletion(
                             FenceRegisteredResourceRequest(
                                 current.TenantId,
                                 PostgresResourceDeployment.ResourceType,
-                                current.Id),
+                                current.Id
+                            ),
                             session,
-                            cancellationToken)
+                            cancellationToken
+                        )
+
                     if isNull (box registration) then
                         return revisionConflict current.Id
                     else
@@ -84,29 +116,46 @@ type MongoBeginPostgresClusterDeletion(
                                 CascadeConnectionsForResourceDeletionRequest(
                                     current.TenantId,
                                     PostgresResourceDeployment.ResourceType,
-                                    current.Id, request.ReviewedConnections),
+                                    current.Id,
+                                    request.ReviewedConnections
+                                ),
                                 session,
-                                cancellationToken)
+                                cancellationToken
+                            )
+
                         let onCascaded =
-                            Func<ResourceConnectionsCascaded,
-                                Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>>(
-                                fun _ -> task {
-                                    let! persisted =
-                                        clusters.ReplaceOneAsync(
-                                            session,
-                                            PostgresFilters.activeAtRevision current,
-                                            replacement,
-                                            cancellationToken = cancellationToken)
-                                    return
-                                        if persisted.ModifiedCount = 1L then
-                                            PostgresSuccess ()
-                                        else
-                                            revisionConflict current.Id
-                                })
+                            Func<
+                                ResourceConnectionsCascaded,
+                                Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>
+                             >
+                                (fun _ ->
+                                    task {
+                                        let! persisted =
+                                            clusters.ReplaceOneAsync(
+                                                session,
+                                                PostgresFilters.activeAtRevision current,
+                                                replacement,
+                                                cancellationToken = cancellationToken
+                                            )
+
+                                        return
+                                            if persisted.ModifiedCount = 1L then
+                                                PostgresSuccess()
+                                            else
+                                                revisionConflict current.Id
+                                    })
+
                         let onConflict =
-                            Func<ResourceConnectionCascadeConflict,
-                                    Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>>(
-                                fun _ -> Task.FromResult(revisionConflict current.Id))
-                        return! CascadeConnectionsForResourceDeletionOutcomeExtensions.Match(
-                                cascade, onCascaded, onConflict)
+                            Func<
+                                ResourceConnectionCascadeConflict,
+                                Task<PostgresOutcome<unit, PostgresClusterDeletionConflict>>
+                             >
+                                (fun _ -> Task.FromResult(revisionConflict current.Id))
+
+                        return!
+                            CascadeConnectionsForResourceDeletionOutcomeExtensions.Match(
+                                cascade,
+                                onCascaded,
+                                onConflict
+                            )
         }

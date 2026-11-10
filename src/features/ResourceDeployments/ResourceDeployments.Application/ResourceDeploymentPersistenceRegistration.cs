@@ -7,7 +7,6 @@ using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Creation;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Finalization;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Application.Placements;
 using Pole.Features.ResourceDeployments.Application.Planning;
@@ -23,8 +22,7 @@ namespace Pole.Features.ResourceDeployments.Application;
 
 internal static class ResourceDeploymentPersistenceRegistration
 {
-    internal static IServiceCollection AddResourceDeploymentPersistence(
-        this IServiceCollection services)
+    internal static IServiceCollection AddResourceDeploymentPersistence(this IServiceCollection services)
     {
         services.TryAddScoped<ResourceDeploymentIsolationProjection>();
         services.TryAddScoped<ResourceDeploymentConnectionGuard>();
@@ -34,22 +32,21 @@ internal static class ResourceDeploymentPersistenceRegistration
             .GetCollection<ObservationDemandDocument>(MongoResourceDeploymentObservationStore.DemandsCollection));
         services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<ObservationSnapshotDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceDeployment>("ResourceDeployments"));
         services.TryAddSingleton<RunMongoOutcomeTransaction<long>>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<long>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<Unit>>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<Unit>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome>>(
-            serviceProvider => serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<RetryResourceDeploymentOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<RetryResourceDeploymentOutcome>>(serviceProvider =>
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
 
         AddCapability<MongoResourceDeploymentPlanningSnapshots, LoadResourceDeploymentPlanningSnapshot>(
-            services, implementation => implementation.ReadAsync);
+            services,
+            implementation => implementation.ReadAsync);
         AddCapability<MongoResourceDeploymentPlanningSnapshots, FenceResourceDeploymentPlanningSnapshot>(
-            services, implementation => implementation.FenceAsync);
+            services,
+            implementation => implementation.FenceAsync);
         AddCapability<MongoCreateResourceDeployment, CreateResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);
@@ -62,20 +59,16 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<MongoRequestResourceDeploymentDeletion, RequestResourceDeploymentDeletion>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoRequestExactResourceDeploymentApply,
-            RequestExactResourceDeploymentApply>(
+        AddCapability<MongoRequestExactResourceDeploymentApply, RequestExactResourceDeploymentApply>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoRequestExactResourceDeploymentDeletion,
-            RequestExactResourceDeploymentDeletion>(
+        AddCapability<MongoRequestExactResourceDeploymentDeletion, RequestExactResourceDeploymentDeletion>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoRequestResourceDeploymentSetApply,
-            RequestResourceDeploymentSetApply>(
+        AddCapability<MongoRequestResourceDeploymentSetApply, RequestResourceDeploymentSetApply>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoRequestResourceDeploymentSetDeletion,
-            RequestResourceDeploymentSetDeletion>(
+        AddCapability<MongoRequestResourceDeploymentSetDeletion, RequestResourceDeploymentSetDeletion>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoAdvanceResourceDeploymentRevision, AdvanceResourceDeploymentRevision>(
@@ -94,15 +87,13 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<MongoLoadResourceDeploymentSet, LoadResourceDeploymentSet>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoLoadResourceDeploymentConnectionPlacements,
-            LoadResourceDeploymentConnectionPlacements>(
+        AddCapability<MongoLoadResourceDeploymentConnectionPlacements, LoadResourceDeploymentConnectionPlacements>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadExactResourceDeployment, LoadExactResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoLoadResourceDeploymentAccessPlacement,
-            LoadExactResourceDeploymentAccessPlacement>(
+        AddCapability<MongoLoadResourceDeploymentAccessPlacement, LoadExactResourceDeploymentAccessPlacement>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadIngressPolicyDeployment, LoadIngressPolicyDeployment>(
@@ -110,19 +101,15 @@ internal static class ResourceDeploymentPersistenceRegistration
             implementation => implementation.InvokeAsync);
         services.TryAddSingleton<MongoLoadResourceDeploymentRuntimePlacement>();
         services.TryAddSingleton<LoadExactResourceDeploymentRuntimePlacement>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
-                .LoadExactAsync);
+            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>().LoadExactAsync);
         services.TryAddSingleton<LoadResourceDeploymentRuntimePlacements>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
-                .LoadForResourcesAsync);
+            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>().LoadForResourcesAsync);
         services.TryAddSingleton<LoadResourceDeploymentTargetIds>(serviceProvider =>
-            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>()
-                .LoadTargetIdsAsync);
+            serviceProvider.GetRequiredService<MongoLoadResourceDeploymentRuntimePlacement>().LoadTargetIdsAsync);
         AddCapability<MongoLoadResourceDeploymentSets, LoadResourceDeploymentSets>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoLoadCurrentResourceDeploymentCompute,
-            LoadCurrentResourceDeploymentCompute>(
+        AddCapability<MongoLoadCurrentResourceDeploymentCompute, LoadCurrentResourceDeploymentCompute>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoAdmitResourceDeploymentReferences, AdmitResourceDeploymentReferences>(
@@ -131,27 +118,21 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<MongoEnsureComputeProfileUnreferenced, EnsureComputeProfileUnreferenced>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoEnsureNoUnfinishedResourceGroupDeployments,
-            EnsureNoUnfinishedResourceGroupDeployments>(
+        AddCapability<MongoEnsureNoUnfinishedResourceGroupDeployments, EnsureNoUnfinishedResourceGroupDeployments>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoEnsureNoUnfinishedIsolationScopeDeployments,
-            EnsureNoUnfinishedIsolationScopeDeployments>(
+        AddCapability<MongoEnsureNoUnfinishedIsolationScopeDeployments, EnsureNoUnfinishedIsolationScopeDeployments>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoGetResourceDeploymentFinalizationReadiness,
-            GetResourceDeploymentFinalizationReadiness>(
+        AddCapability<MongoGetResourceDeploymentFinalizationReadiness, GetResourceDeploymentFinalizationReadiness>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoPurgeDeletedResourceDeployments, PurgeDeletedResourceDeployments>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoGetExactResourceDeploymentFinalizationReadiness,
-            GetExactResourceDeploymentFinalizationReadiness>(
-            services,
-            implementation => implementation.InvokeAsync);
-        AddCapability<MongoPurgeExactDeletedResourceDeployment,
-            PurgeExactDeletedResourceDeployment>(
+            GetExactResourceDeploymentFinalizationReadiness>(services, implementation => implementation.InvokeAsync);
+        AddCapability<MongoPurgeExactDeletedResourceDeployment, PurgeExactDeletedResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);
 
@@ -165,8 +146,7 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<PersistResourceDeploymentFailureOperation, PersistResourceDeploymentFailure>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<LoadResourceDeploymentRecoveryCandidatesOperation,
-            LoadResourceDeploymentRecoveryCandidates>(
+        AddCapability<LoadResourceDeploymentRecoveryCandidatesOperation, LoadResourceDeploymentRecoveryCandidates>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<RecoverResourceDeploymentOperation, RecoverResourceDeployment>(
@@ -188,7 +168,6 @@ internal static class ResourceDeploymentPersistenceRegistration
         where TDelegate : Delegate
     {
         services.AddScoped<TImplementation>();
-        services.AddScoped(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.AddScoped(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

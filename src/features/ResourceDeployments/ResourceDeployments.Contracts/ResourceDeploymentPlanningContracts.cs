@@ -6,13 +6,14 @@ namespace Pole.Features.ResourceDeployments.Contracts;
 public sealed record ResourceDeploymentPlanningRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public enum ResourceDeploymentPlanningState
 {
     Prepared,
     Active,
-    Deleting
+    Deleting,
 }
 
 public sealed record ResourceDeploymentPlanningItem(
@@ -28,13 +29,15 @@ public sealed record ResourceDeploymentPlanningItem(
     ResourceDeploymentIngressConfiguration? Ingress,
     long DeploymentTargetConfigurationRevision,
     long DesiredGeneration,
-    long ResourceRevision);
+    long ResourceRevision
+);
 
 public sealed record ResourceDeploymentPlanningSnapshot(
     string TenantId,
     ResourceTypeId ResourceType,
     string ResourceId,
-    IReadOnlyList<ResourceDeploymentPlanningItem> Items);
+    IReadOnlyList<ResourceDeploymentPlanningItem> Items
+);
 
 public sealed record ResourceDeploymentPlanningUnavailable;
 
@@ -56,8 +59,8 @@ public delegate Task<LoadResourceDeploymentPlanningSnapshotOutcome> LoadResource
     CancellationToken cancellationToken);
 
 /// <summary>
-/// Takes real write fences without changing business revisions. A rejected guard requires
-/// the caller to abort the entire transaction, including any preceding guards.
+///     Takes real write fences without changing business revisions. A rejected guard requires
+///     the caller to abort the entire transaction, including any preceding guards.
 /// </summary>
 public delegate Task<FenceResourceDeploymentPlanningSnapshotOutcome> FenceResourceDeploymentPlanningSnapshot(
     ResourceDeploymentPlanningSnapshot request,

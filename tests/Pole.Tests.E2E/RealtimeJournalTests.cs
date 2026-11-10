@@ -14,12 +14,14 @@ public sealed class RealtimeJournalTests
     {
         var journal = Covered();
         Sent(journal, "2", "Heartbeat");
-        Received(journal, next switch
-        {
-            "empty" => """{"type":3,"invocationId":"2","result":[]}""",
-            "error" => """{"type":3,"invocationId":"2","error":"rejected"}""",
-            _ => Ack("2", false)
-        });
+        Received(
+            journal,
+            next switch
+            {
+                "empty" => """{"type":3,"invocationId":"2","result":[]}""",
+                "error" => """{"type":3,"invocationId":"2","error":"rejected"}""",
+                _ => Ack("2", false),
+            });
         Assert.False(HasCoverage(journal));
     }
 
@@ -57,8 +59,10 @@ public sealed class RealtimeJournalTests
         Received(journal, Ack("3", true).Replace("\"resource\"", "\"replacement\"", StringComparison.Ordinal));
         Received(journal, Ack("2", true));
         Assert.False(HasCoverage(journal));
-        Assert.Equal(1, journal.LatestCoveredConnection(values => values.Any(value => value.Covered &&
-            value.ResourceId == "replacement")));
+        Assert.Equal(
+            1,
+            journal.LatestCoveredConnection(values =>
+                values.Any(value => value.Covered && value.ResourceId == "replacement")));
     }
 
     [Theory]
@@ -73,10 +77,18 @@ public sealed class RealtimeJournalTests
         Sent(journal, "2", "Heartbeat");
         switch (transition)
         {
-            case "close": journal.Close(1); break;
-            case "navigate": journal.Navigate(); break;
-            case "new-connection": journal.Open(2, 20); break;
-            default: Received(journal, JsonSerializer.Serialize(new { target = transition })); break;
+            case "close":
+                journal.Close(1);
+                break;
+            case "navigate":
+                journal.Navigate();
+                break;
+            case "new-connection":
+                journal.Open(2, 20);
+                break;
+            default:
+                Received(journal, JsonSerializer.Serialize(new { target = transition }));
+                break;
         }
 
         Received(journal, Ack("2", true));
@@ -104,7 +116,8 @@ public sealed class RealtimeJournalTests
     [InlineData(200, true, false, (int)HttpReadOutcome.TransportFailed)]
     [InlineData(200, true, true, (int)HttpReadOutcome.Cancelled)]
     [InlineData(0, true, false, (int)HttpReadOutcome.TransportFailed)]
-    public void Only_completed_successful_reads_count_as_quiet_evidence(int status,
+    public void Only_completed_successful_reads_count_as_quiet_evidence(
+        int status,
         bool failed,
         bool cancelled,
         int outcome)
@@ -176,12 +189,14 @@ public sealed class RealtimeJournalTests
         journal.Response("old-inventory", outcome == "rejected" ? 503 : 200);
         journal.Finish("old-inventory", cancelled: outcome == "cancelled");
         Assert.True(journal.Quiet(_ => true, TimeSpan.Zero));
-        Assert.Equal(outcome switch
-        {
-            "cancelled" => HttpReadOutcome.Cancelled,
-            "rejected" => HttpReadOutcome.Rejected,
-            _ => HttpReadOutcome.Succeeded
-        }, journal.Snapshot()[0].Outcome);
+        Assert.Equal(
+            outcome switch
+            {
+                "cancelled" => HttpReadOutcome.Cancelled,
+                "rejected" => HttpReadOutcome.Rejected,
+                _ => HttpReadOutcome.Succeeded,
+            },
+            journal.Snapshot()[0].Outcome);
     }
 
     [Theory]
@@ -223,9 +238,13 @@ public sealed class RealtimeJournalTests
         values.Any(value => value.Covered && value.Topic == "operations" && value.TenantId == "tenant" &&
             value.ResourceId == "resource")) > 0;
 
-    private static void Sent(RealtimeCoverageJournal journal, string id, string method)
+    private static void Sent(
+        RealtimeCoverageJournal journal,
+        string id,
+        string method)
     {
-        using var frame = JsonDocument.Parse(JsonSerializer.Serialize(new { type = 1, invocationId = id, target = method }));
+        using var frame
+            = JsonDocument.Parse(JsonSerializer.Serialize(new { type = 1, invocationId = id, target = method }));
         journal.Sent(1, frame.RootElement);
     }
 
@@ -235,10 +254,11 @@ public sealed class RealtimeJournalTests
         journal.Received(1, frame.RootElement, 30);
     }
 
-    private static string Ack(string id, bool covered) => JsonSerializer.Serialize(new
-    {
-        type = 3,
-        invocationId = id,
-        result = new[] { new { topic = "operations", tenantId = "tenant", resourceId = "resource", covered } }
-    });
+    private static string Ack(string id, bool covered) => JsonSerializer.Serialize(
+        new
+        {
+            type = 3,
+            invocationId = id,
+            result = new[] { new { topic = "operations", tenantId = "tenant", resourceId = "resource", covered } },
+        });
 }

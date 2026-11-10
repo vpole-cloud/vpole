@@ -1,20 +1,16 @@
 using MassTransit;
-using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.Jobs;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.ResourceGroups;
+using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Consumers;
 
 public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
     RuntimeCellLifecyclePersistence persistence,
-    EnsureRuntimeCellNamespace ensureRuntimeCellNamespace)
-    : IConsumer<RuntimeCellReconciliationRequestedEvent>
+    EnsureRuntimeCellNamespace ensureRuntimeCellNamespace
+) : IConsumer<RuntimeCellReconciliationRequestedEvent>
 {
     public Task Consume(ConsumeContext<RuntimeCellReconciliationRequestedEvent> context) =>
         HandleAsync(context.Message, context.CancellationToken);
@@ -27,17 +23,12 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
             message.EventCore.TenantId,
             message.RuntimeCellId,
             cancellationToken);
-        if (runtimeCell is null ||
-            runtimeCell.DesiredGeneration != message.Generation ||
+        if (runtimeCell is null || runtimeCell.DesiredGeneration != message.Generation ||
             runtimeCell.State is not ProvisioningRuntimeCellState provisioning ||
             provisioning.Generation != message.Generation)
-        {
             return;
-        }
 
-        var namespaceResult = await ensureRuntimeCellNamespace(
-            runtimeCell,
-            cancellationToken);
+        var namespaceResult = await ensureRuntimeCellNamespace(runtimeCell, cancellationToken);
         await persistence.PersistReconciliationAsync(
             runtimeCell,
             message.Generation,
@@ -48,8 +39,8 @@ public sealed class ReconcileRuntimeCellOnReconciliationRequestedConsumer(
 
 public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
     RuntimeCellDeletionProgress progress,
-    ScheduleRuntimeCellDeletionAt schedule)
-    : IConsumer<RuntimeCellDeletionRequestedEvent>
+    ScheduleRuntimeCellDeletionAt schedule
+) : IConsumer<RuntimeCellDeletionRequestedEvent>
 {
     public Task Consume(ConsumeContext<RuntimeCellDeletionRequestedEvent> context)
     {
@@ -58,6 +49,7 @@ public sealed class DeleteRuntimeCellOnDeletionRequestedConsumer(
             schedule(context.Message, due);
             return Task.CompletedTask;
         }
+
         return progress.HandleAsync(context.Message, context.CancellationToken);
     }
 }
@@ -68,12 +60,8 @@ public sealed class ReconcileRuntimeCellConsumerDefinition
     protected override void ConfigureConsumer(
         IReceiveEndpointConfigurator endpointConfigurator,
         IConsumerConfigurator<ReconcileRuntimeCellOnReconciliationRequestedConsumer> consumerConfigurator,
-        IRegistrationContext context) =>
-        endpointConfigurator.UseMessageRetry(retry =>
-            retry.Intervals(
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(10),
-                TimeSpan.FromSeconds(30)));
+        IRegistrationContext context) => endpointConfigurator.UseMessageRetry(retry =>
+        retry.Intervals(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)));
 }
 
 public sealed class DeleteRuntimeCellConsumerDefinition
@@ -82,10 +70,6 @@ public sealed class DeleteRuntimeCellConsumerDefinition
     protected override void ConfigureConsumer(
         IReceiveEndpointConfigurator endpointConfigurator,
         IConsumerConfigurator<DeleteRuntimeCellOnDeletionRequestedConsumer> consumerConfigurator,
-        IRegistrationContext context) =>
-        endpointConfigurator.UseMessageRetry(retry =>
-            retry.Intervals(
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(10),
-                TimeSpan.FromSeconds(30)));
+        IRegistrationContext context) => endpointConfigurator.UseMessageRetry(retry =>
+        retry.Intervals(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)));
 }

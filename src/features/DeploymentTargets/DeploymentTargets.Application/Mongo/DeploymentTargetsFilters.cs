@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Encryption;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 
@@ -15,87 +13,76 @@ internal static class DeploymentTargetFilters
     public static FilterDefinition<DeploymentTarget> All() => Builders<DeploymentTarget>.Filter.Empty;
 
     public static FilterDefinition<DeploymentTarget> AfterId(string? cursor) => cursor is null
-            ? All()
-            : Builders<DeploymentTarget>.Filter.Gt(target => target.Id, cursor);
+        ? All()
+        : Builders<DeploymentTarget>.Filter.Gt(target => target.Id, cursor);
 
-    public static FilterDefinition<DeploymentTarget> ById(string targetId) => Builders<DeploymentTarget>.Filter.Eq(target => target.Id, targetId);
+    public static FilterDefinition<DeploymentTarget> ById(string targetId) =>
+        Builders<DeploymentTarget>.Filter.Eq(target => target.Id, targetId);
 
     public static FilterDefinition<DeploymentTarget> NotPendingDeletion() => Builders<DeploymentTarget>.Filter.Eq(
-            target => target.DeletionRequestedAtUtc,
-            null);
+        target => target.DeletionRequestedAtUtc,
+        null);
 
-    public static FilterDefinition<DeploymentTarget> AtRevision(
-        DeploymentTarget target) => Builders<DeploymentTarget>.Filter.And(
+    public static FilterDefinition<DeploymentTarget> AtRevision(DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.Eq(item => item.Id, target.Id),
             Builders<DeploymentTarget>.Filter.Eq(item => item.Revision, target.Revision));
 
-    public static FilterDefinition<DeploymentTarget> AtRevisionAndReferenceFence(
-        DeploymentTarget target) => Builders<DeploymentTarget>.Filter.And(
+    public static FilterDefinition<DeploymentTarget> AtRevisionAndReferenceFence(DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
             AtRevision(target),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => item.ReferenceFence,
-                target.ReferenceFence));
+            Builders<DeploymentTarget>.Filter.Eq(item => item.ReferenceFence, target.ReferenceFence));
 
-    public static FilterDefinition<DeploymentTarget> AtRevisionAndConnectionVersion(
-        DeploymentTarget target) => Builders<DeploymentTarget>.Filter.And(
+    public static FilterDefinition<DeploymentTarget> AtRevisionAndConnectionVersion(DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
             AtRevision(target),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => item.Connection.Version,
-                target.Connection.Version));
+            Builders<DeploymentTarget>.Filter.Eq(item => item.Connection.Version, target.Connection.Version));
 
     public static FilterDefinition<DeploymentTarget> AtKubeconfigEnvelope(
         string targetId,
         long connectionVersion,
         EncryptedValue envelope) => Builders<DeploymentTarget>.Filter.And(
-            ById(targetId),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => item.Connection.Version,
-                connectionVersion),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => ((KubeconfigDeploymentTargetConnection)item.Connection).EncryptedKubeconfig,
-                envelope));
+        ById(targetId),
+        Builders<DeploymentTarget>.Filter.Eq(item => item.Connection.Version, connectionVersion),
+        Builders<DeploymentTarget>.Filter.Eq(
+            item => ((KubeconfigDeploymentTargetConnection)item.Connection).EncryptedKubeconfig,
+            envelope));
 
     public static FilterDefinition<DeploymentTarget> AtServiceAccountCredentialEnvelope(
         string targetId,
         long connectionVersion,
         EncryptedValue envelope) => Builders<DeploymentTarget>.Filter.And(
-            ById(targetId),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => item.Connection.Version,
-                connectionVersion),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => ((ServiceAccountDeploymentTargetConnection)item.Connection).EncryptedCredential,
-                envelope));
+        ById(targetId),
+        Builders<DeploymentTarget>.Filter.Eq(item => item.Connection.Version, connectionVersion),
+        Builders<DeploymentTarget>.Filter.Eq(
+            item => ((ServiceAccountDeploymentTargetConnection)item.Connection).EncryptedCredential,
+            envelope));
 
-    public static FilterDefinition<DeploymentTarget> AtRevisionAndNotPendingDeletion(
-        DeploymentTarget target) => Builders<DeploymentTarget>.Filter.And(
-            AtRevision(target),
-            NotPendingDeletion());
+    public static FilterDefinition<DeploymentTarget> AtRevisionAndNotPendingDeletion(DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(AtRevision(target), NotPendingDeletion());
 
-    public static FilterDefinition<DeploymentTarget> AtReferenceFenceBeforeDeletion(
-        DeploymentTarget target) => Builders<DeploymentTarget>.Filter.And(
+    public static FilterDefinition<DeploymentTarget> AtReferenceFenceBeforeDeletion(DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
             AtRevisionAndReferenceFence(target),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => item.DeletionRequestedAtUtc,
-                null));
+            Builders<DeploymentTarget>.Filter.Eq(item => item.DeletionRequestedAtUtc, null));
 
-    public static FilterDefinition<DeploymentTarget> AtDeletionFence(
-        DeploymentTarget target) => Builders<DeploymentTarget>.Filter.And(
+    public static FilterDefinition<DeploymentTarget> AtDeletionFence(DeploymentTarget target) =>
+        Builders<DeploymentTarget>.Filter.And(
             AtRevisionAndReferenceFence(target),
-            Builders<DeploymentTarget>.Filter.Eq(
-                item => item.DeletionRequestedAtUtc,
-                target.DeletionRequestedAtUtc));
+            Builders<DeploymentTarget>.Filter.Eq(item => item.DeletionRequestedAtUtc, target.DeletionRequestedAtUtc));
 
-    private static FilterDefinition<DeploymentTarget> AcceptingConfigurationReferences() => Builders<DeploymentTarget>.Filter.And(
+    private static FilterDefinition<DeploymentTarget> AcceptingConfigurationReferences() =>
+        Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true),
             Builders<DeploymentTarget>.Filter.Eq(target => target.AcceptsWorkloads, true),
             NotPendingDeletion());
 
     public static FilterDefinition<DeploymentTarget> AcceptingNewWorkloads() => Builders<DeploymentTarget>.Filter.And(
-            AcceptingConfigurationReferences(),
-            NetworkPolicyAdmission());
+        AcceptingConfigurationReferences(),
+        NetworkPolicyAdmission());
 
-    private static FilterDefinition<DeploymentTarget> NetworkPolicyAdmission() => Builders<DeploymentTarget>.Filter.Where(target => target.Health.FailureCode != "ClusterIdentityMismatch" &&
+    private static FilterDefinition<DeploymentTarget> NetworkPolicyAdmission() =>
+        Builders<DeploymentTarget>.Filter.Where(target => target.Health.FailureCode != "ClusterIdentityMismatch" &&
             target.Capabilities.NetworkPolicyCapabilities.CanGet &&
             target.Capabilities.NetworkPolicyCapabilities.CanCreate &&
             target.Capabilities.NetworkPolicyCapabilities.CanUpdate &&
@@ -104,18 +91,16 @@ internal static class DeploymentTargetFilters
             target.WorkloadConfiguration.NetworkPolicy is AttestedNetworkPolicy &&
             (((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).Enforcement ==
                 NetworkPolicyEnforcement.Supported ||
-             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).AllowIsolationNotEnforced) &&
+                ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).AllowIsolationNotEnforced) &&
             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ClusterIdentity ==
-                target.ClusterIdentity &&
+            target.ClusterIdentity &&
             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ConnectionVersion ==
-                target.Connection.Version);
+            target.Connection.Version);
 
     // A private access session references an already applied deployment. Pausing new
     // workload admission does not remove access, but enforcement must stay attested.
     private static FilterDefinition<DeploymentTarget> ExistingPrivateAccessAdmission() =>
-        Builders<DeploymentTarget>.Filter.Where(target =>
-            target.Enabled &&
-            target.DeletionRequestedAtUtc == null &&
+        Builders<DeploymentTarget>.Filter.Where(target => target.Enabled && target.DeletionRequestedAtUtc == null &&
             target.Health.FailureCode != "ClusterIdentityMismatch" &&
             target.Capabilities.NetworkPolicyCapabilities.CanGet &&
             target.Capabilities.NetworkPolicyCapabilities.CanCreate &&
@@ -124,25 +109,25 @@ internal static class DeploymentTargetFilters
             target.Capabilities.NetworkPolicyCapabilities.CanDelete &&
             target.WorkloadConfiguration.NetworkPolicy is AttestedNetworkPolicy &&
             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).Enforcement ==
-                NetworkPolicyEnforcement.Supported &&
+            NetworkPolicyEnforcement.Supported &&
             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ClusterIdentity ==
-                target.ClusterIdentity &&
+            target.ClusterIdentity &&
             ((AttestedNetworkPolicy)target.WorkloadConfiguration.NetworkPolicy).ConnectionVersion ==
-                target.Connection.Version);
+            target.Connection.Version);
 
-    public static FilterDefinition<DeploymentTarget> WithConfiguredPublicBaseDomain() => Builders<DeploymentTarget>.Filter.And(
-            Builders<DeploymentTarget>.Filter.Ne(
-                target => target.WorkloadConfiguration.Ingress,
-                null),
+    public static FilterDefinition<DeploymentTarget> WithConfiguredPublicBaseDomain() =>
+        Builders<DeploymentTarget>.Filter.And(
+            Builders<DeploymentTarget>.Filter.Ne(target => target.WorkloadConfiguration.Ingress, null),
             Builders<DeploymentTarget>.Filter.Ne(
                 target => target.WorkloadConfiguration.Ingress!.PublicBaseDomain,
                 null));
 
-    public static FilterDefinition<DeploymentTarget> AtDomainReservationPlanningVersion(
-        DomainReservationTargetPlanningSnapshot snapshot) =>
+    public static FilterDefinition<DeploymentTarget>
+        AtDomainReservationPlanningVersion(DomainReservationTargetPlanningSnapshot snapshot) =>
         ById(snapshot.Request.DeploymentTargetId) &
         Builders<DeploymentTarget>.Filter.Eq(item => item.Revision, snapshot.TargetRevision) &
-        Builders<DeploymentTarget>.Filter.Eq(item => item.WorkloadConfiguration.Revision,
+        Builders<DeploymentTarget>.Filter.Eq(
+            item => item.WorkloadConfiguration.Revision,
             snapshot.PublicIngress.WorkloadConfigurationRevision) &
         Builders<DeploymentTarget>.Filter.Lt(item => item.ReferenceFence, long.MaxValue);
 
@@ -150,19 +135,15 @@ internal static class DeploymentTargetFilters
         IReadOnlyCollection<DeploymentTargetWorkloadConfigurationFenceRequest> requests)
     {
         var expectedConfigurations = requests.Select(request => Builders<DeploymentTarget>.Filter.And(
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.Id,
-                    request.DeploymentTargetId),
-                Builders<DeploymentTarget>.Filter.Eq(
-                    target => target.WorkloadConfiguration.Revision,
-                    request.ExpectedWorkloadConfigurationRevision)));
+            Builders<DeploymentTarget>.Filter.Eq(target => target.Id, request.DeploymentTargetId),
+            Builders<DeploymentTarget>.Filter.Eq(
+                target => target.WorkloadConfiguration.Revision,
+                request.ExpectedWorkloadConfigurationRevision)));
 
         return Builders<DeploymentTarget>.Filter.And(
             Builders<DeploymentTarget>.Filter.Or(expectedConfigurations),
             AcceptingNewWorkloads(),
-            Builders<DeploymentTarget>.Filter.Lt(
-                target => target.ReferenceFence,
-                long.MaxValue));
+            Builders<DeploymentTarget>.Filter.Lt(target => target.ReferenceFence, long.MaxValue));
     }
 
     public static FilterDefinition<DeploymentTarget> FenceableReferences(
@@ -171,12 +152,8 @@ internal static class DeploymentTargetFilters
         DeploymentTargetReferenceOwner owner)
     {
         var filter = Builders<DeploymentTarget>.Filter.And(
-            Builders<DeploymentTarget>.Filter.In(
-                target => target.Id,
-                deploymentTargetIds),
-            Builders<DeploymentTarget>.Filter.Lt(
-                target => target.ReferenceFence,
-                long.MaxValue));
+            Builders<DeploymentTarget>.Filter.In(target => target.Id, deploymentTargetIds),
+            Builders<DeploymentTarget>.Filter.Lt(target => target.ReferenceFence, long.MaxValue));
 
         return requireAdmission
             ? Builders<DeploymentTarget>.Filter.And(
@@ -185,12 +162,10 @@ internal static class DeploymentTargetFilters
                 // can attest a fresh target. Runtime references still fence workload admission.
                 owner.Type switch
                 {
-                    DeploymentTargetReferenceOwnerTypes.ComputeProfile =>
-                        AcceptingConfigurationReferences(),
-                    DeploymentTargetReferenceOwnerTypes.PrivateAccessSession or
-                        DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway =>
-                        ExistingPrivateAccessAdmission(),
-                    _ => AcceptingNewWorkloads()
+                    DeploymentTargetReferenceOwnerTypes.ComputeProfile => AcceptingConfigurationReferences(),
+                    DeploymentTargetReferenceOwnerTypes.PrivateAccessSession
+                        or DeploymentTargetReferenceOwnerTypes.PrivateAccessGateway => ExistingPrivateAccessAdmission(),
+                    _ => AcceptingNewWorkloads(),
                 })
             : filter;
     }
@@ -199,28 +174,28 @@ internal static class DeploymentTargetFilters
 internal static class DeploymentTargetObservationFilters
 {
     internal static FilterDefinition<DeploymentTarget>
-        CurrentEnabledConnection(string targetId, long connectionVersion) =>
-        DeploymentTargetFilters.ById(targetId) & DeploymentTargetFilters.NotPendingDeletion() &
-        Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true) &
-        Builders<DeploymentTarget>.Filter.Eq(target => target.Connection.Version, connectionVersion);
+        CurrentEnabledConnection(string targetId, long connectionVersion) => DeploymentTargetFilters.ById(targetId) &
+        DeploymentTargetFilters.NotPendingDeletion() &
+        Builders<DeploymentTarget>.Filter.Eq(target => target.Enabled, true) & Builders<DeploymentTarget>.Filter.Eq(
+            target => target.Connection.Version,
+            connectionVersion);
 }
 
 internal static class DeploymentTargetPublicBaseDomainAdmissionFenceFilters
 {
-    public static FilterDefinition<DeploymentTargetPublicBaseDomainAdmissionFence> Singleton() => Builders<DeploymentTargetPublicBaseDomainAdmissionFence>.Filter.Eq(
+    public static FilterDefinition<DeploymentTargetPublicBaseDomainAdmissionFence> Singleton() =>
+        Builders<DeploymentTargetPublicBaseDomainAdmissionFence>.Filter.Eq(
             fence => fence.Id,
             DeploymentTargetPublicBaseDomainAdmissionFence.SingletonId);
 }
 
 internal static class DeploymentTargetReferenceFilters
 {
-    public static FilterDefinition<DeploymentTargetReference> ForTarget(
-        string deploymentTargetId) => Builders<DeploymentTargetReference>.Filter.Eq(
-            reference => reference.DeploymentTargetId,
-            deploymentTargetId);
+    public static FilterDefinition<DeploymentTargetReference> ForTarget(string deploymentTargetId) =>
+        Builders<DeploymentTargetReference>.Filter.Eq(reference => reference.DeploymentTargetId, deploymentTargetId);
 
-    public static FilterDefinition<DeploymentTargetReference> DomainZonesForTarget(
-        string deploymentTargetId) => Builders<DeploymentTargetReference>.Filter.And(
+    public static FilterDefinition<DeploymentTargetReference> DomainZonesForTarget(string deploymentTargetId) =>
+        Builders<DeploymentTargetReference>.Filter.And(
             Builders<DeploymentTargetReference>.Filter.Eq(
                 reference => reference.DeploymentTargetId,
                 deploymentTargetId),
@@ -231,33 +206,22 @@ internal static class DeploymentTargetReferenceFilters
     public static FilterDefinition<DeploymentTargetReference> OwnedReferencesForTargets(
         IReadOnlyCollection<string> deploymentTargetIds,
         DeploymentTargetReferenceOwner owner) => Builders<DeploymentTargetReference>.Filter.And(
-            Builders<DeploymentTargetReference>.Filter.In(
-                reference => reference.DeploymentTargetId,
-                deploymentTargetIds),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                reference => reference.OwnerType,
-                owner.Type.Trim()),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                reference => reference.OwnerId,
-                owner.Id.Trim()));
+        Builders<DeploymentTargetReference>.Filter.In(reference => reference.DeploymentTargetId, deploymentTargetIds),
+        Builders<DeploymentTargetReference>.Filter.Eq(reference => reference.OwnerType, owner.Type.Trim()),
+        Builders<DeploymentTargetReference>.Filter.Eq(reference => reference.OwnerId, owner.Id.Trim()));
 
-    public static FilterDefinition<DeploymentTargetReference> ByOwner(
-        string deploymentTargetId,
-        DeploymentTargetReferenceOwner owner) => Builders<DeploymentTargetReference>.Filter.And(
+    public static FilterDefinition<DeploymentTargetReference>
+        ByOwner(string deploymentTargetId, DeploymentTargetReferenceOwner owner) =>
+        Builders<DeploymentTargetReference>.Filter.And(
             Builders<DeploymentTargetReference>.Filter.Eq(
                 reference => reference.DeploymentTargetId,
                 deploymentTargetId),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                reference => reference.OwnerType,
-                owner.Type.Trim()),
-            Builders<DeploymentTargetReference>.Filter.Eq(
-                reference => reference.OwnerId,
-                owner.Id.Trim()));
+            Builders<DeploymentTargetReference>.Filter.Eq(reference => reference.OwnerType, owner.Type.Trim()),
+            Builders<DeploymentTargetReference>.Filter.Eq(reference => reference.OwnerId, owner.Id.Trim()));
 }
 
 internal static class DeploymentTargetSettingsFilters
 {
-    public static FilterDefinition<DeploymentTargetSettings> Singleton() => Builders<DeploymentTargetSettings>.Filter.Eq(
-            settings => settings.Id,
-            DeploymentTargetSettings.SingletonId);
+    public static FilterDefinition<DeploymentTargetSettings> Singleton() =>
+        Builders<DeploymentTargetSettings>.Filter.Eq(settings => settings.Id, DeploymentTargetSettings.SingletonId);
 }

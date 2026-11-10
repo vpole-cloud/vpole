@@ -5,4 +5,5 @@ public sealed record AcceptedDeclaration(
     string Name,
     string Hash,
     string SpecJson,
-    string ResourceId);
+    string ResourceId
+);

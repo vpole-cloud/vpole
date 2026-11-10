@@ -26,31 +26,40 @@ internal sealed class MongoQueueSourceBuildJob(
     FenceSourceRepository fenceRepository,
     MongoRunTransaction transactions,
     AdmitSourceBuildWebService admitWebService,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public Task<QueueSourceBuildJobOutcome> InvokeAsync(
         SourceBuildJob job,
         SourceBuildRequestedEvent requestedEvent,
         CancellationToken cancellationToken = default)
     {
-        if (!string.Equals(job.Id, requestedEvent.BuildJobId, StringComparison.Ordinal) ||
-            !string.Equals(job.TenantId, requestedEvent.EventCore.TenantId, StringComparison.Ordinal))
-        {
+        if (!string.Equals(job.Id, requestedEvent.BuildJobId, StringComparison.Ordinal) || !string.Equals(
+                job.TenantId,
+                requestedEvent.EventCore.TenantId,
+                StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "A source build request event must preserve build-job and tenant identity.");
-        }
 
         return transactions.InvokeOutcomeAsync<QueueSourceBuildJobOutcome>(
             async (transaction, ct) =>
             {
-                if (await fenceRepository(new(job.TenantId, job.SourceRepositoryId,
-                    job.InputVersion.RepositoryRevision), transaction.Session, ct) is not SourceRepositoryFenced)
+                if (await fenceRepository(
+                        new FenceSourceRepositoryRequest(
+                            job.TenantId,
+                            job.SourceRepositoryId,
+                            job.InputVersion.RepositoryRevision),
+                        transaction.Session,
+                        ct) is not SourceRepositoryFenced)
                     return transaction.Abort(new SourceBuildConfigurationRepositoryChanged(job.SourceRepositoryId));
 
-                var updated = await configurations.UpdateOneAsync(transaction.Session,
+                var updated = await configurations.UpdateOneAsync(
+                    transaction.Session,
                     SourceBuildConfigurationFilters.ForQueue(job),
-                    Builders<SourceBuildConfiguration>.Update.Inc(item => item.BuildGeneration, 1)
-                        .Inc(item => item.ReferenceFence, 1), cancellationToken: ct);
+                    Builders<SourceBuildConfiguration>.Update
+                        .Inc(item => item.BuildGeneration, 1)
+                        .Inc(item => item.ReferenceFence, 1),
+                    cancellationToken: ct);
                 if (updated.MatchedCount != 1)
                     return transaction.Abort(new SourceBuildConfigurationUpdateConflict(job.ConfigurationId));
 
@@ -73,7 +82,7 @@ internal sealed class MongoQueueSourceBuildJob(
                     transaction.Session,
                     [
                         OutboxWrite.Create(requestedEvent),
-                        OutboxWrite.Create(job.ToStateChangedEvent() with { EventCore = requestedEvent.EventCore })
+                        OutboxWrite.Create(job.ToStateChangedEvent() with { EventCore = requestedEvent.EventCore }),
                     ],
                     ct);
                 QueueSourceBuildJobOutcome accepted = job;

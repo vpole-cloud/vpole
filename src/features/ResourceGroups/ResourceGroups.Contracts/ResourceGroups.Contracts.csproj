@@ -9,12 +9,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
-      <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
+        <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="MongoDB.Driver" />
+        <PackageReference Include="MongoDB.Driver"/>
     </ItemGroup>
 
 </Project>

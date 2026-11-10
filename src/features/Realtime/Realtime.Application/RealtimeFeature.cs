@@ -19,24 +19,30 @@ public static class RealtimeFeature
     public const string Route = "/api/v1/realtime";
     public const string CorsPolicy = "pole-realtime";
 
-    public static IServiceCollection AddRealtimeFeature(this IServiceCollection services,
+    public static IServiceCollection AddRealtimeFeature(
+        this IServiceCollection services,
         IConfiguration configuration,
         bool development)
     {
-        services.AddOptions<RealtimeOptions>().Bind(configuration.GetSection(RealtimeOptions.Section))
+        services.AddOptions<RealtimeOptions>()
+            .Bind(configuration.GetSection(RealtimeOptions.Section))
             .ValidateOnStart();
-        services.TryAddEnumerable(ServiceDescriptor
-            .Singleton<IValidateOptions<RealtimeOptions>, RealtimeOptionsValidator>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<RealtimeOptions>, RealtimeOptionsValidator>());
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<RealtimeOptions>>().Value);
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<RealtimeTopicRegistry>();
         services.TryAddSingleton<RealtimeMetrics>();
         // Disabled bootstrap still returns a browser-readable 404 with exact-origin CORS.
-        services.AddCors(cors => cors.AddPolicy(CorsPolicy,
+        services.AddCors(cors => cors.AddPolicy(
+            CorsPolicy,
             policy =>
             {
-                var options = configuration.GetSection(RealtimeOptions.Section).Get<RealtimeOptions>() ?? new();
-                policy.WithOrigins(options.AllowedOrigins).AllowAnyHeader().WithMethods("GET", "POST", "DELETE")
+                var options = configuration.GetSection(RealtimeOptions.Section).Get<RealtimeOptions>() ??
+                    new RealtimeOptions();
+                policy.WithOrigins(options.AllowedOrigins)
+                    .AllowAnyHeader()
+                    .WithMethods("GET", "POST", "DELETE")
                     .AllowCredentials();
             }));
         if (!configuration.GetValue<bool>("Realtime:Enabled"))
@@ -48,27 +54,29 @@ public static class RealtimeFeature
 
         services.AddHttpContextAccessor();
         services.AddSignalR(options => options.MaximumReceiveMessageSize = 16 * 1024);
-        services.AddAuthentication().AddCookie(CookieScheme,
-            options =>
-            {
-                options.Cookie.Name = development ? "PoleRealtime.Dev" : "__Secure-PoleRealtime";
-                options.Cookie.Path = Route;
-                options.Cookie.HttpOnly = true;
-                options.Cookie.SameSite = SameSiteMode.Lax;
-                options.Cookie.SecurePolicy =
-                    development ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
-                options.SlidingExpiration = false;
-                options.Events.OnRedirectToLogin = context =>
+        services.AddAuthentication()
+            .AddCookie(
+                CookieScheme,
+                options =>
                 {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    return Task.CompletedTask;
-                };
-                options.Events.OnRedirectToAccessDenied = context =>
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    return Task.CompletedTask;
-                };
-            });
+                    options.Cookie.Name = development ? "PoleRealtime.Dev" : "__Secure-PoleRealtime";
+                    options.Cookie.Path = Route;
+                    options.Cookie.HttpOnly = true;
+                    options.Cookie.SameSite = SameSiteMode.Lax;
+                    options.Cookie.SecurePolicy
+                        = development ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+                    options.SlidingExpiration = false;
+                    options.Events.OnRedirectToLogin = context =>
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return Task.CompletedTask;
+                    };
+                    options.Events.OnRedirectToAccessDenied = context =>
+                    {
+                        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        return Task.CompletedTask;
+                    };
+                });
         services.AddOptions<CookieAuthenticationOptions>(CookieScheme)
             .Configure<IRealtimeTicketStore>((options, tickets) => options.SessionStore = tickets);
         services.AddScoped<RealtimeAccess>();
@@ -80,10 +88,10 @@ public static class RealtimeFeature
         return services;
     }
 
-    public static IServiceCollection AddRealtimeTopic(this IServiceCollection services,
+    public static IServiceCollection AddRealtimeTopic(
+        this IServiceCollection services,
         string topic,
-        RealtimeScope scope) =>
-        services.AddSingleton(new RealtimeTopic(topic, scope));
+        RealtimeScope scope) => services.AddSingleton(new RealtimeTopic(topic, scope));
 
     public static IEndpointRouteBuilder MapRealtimeEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -112,13 +120,15 @@ public static class RealtimeFeature
                 var origin = context.Request.Headers.Origin;
                 // Browser same-origin SSE/long-poll GETs can omit Origin. Negotiation and
                 // cookie changes still require it; fetch metadata admits only safe GETs.
-                var websocket = context.WebSockets.IsWebSocketRequest ||
-                                context.Request.Headers.Upgrade.ToString()
-                                    .Contains("websocket", StringComparison.OrdinalIgnoreCase);
-                var sameOriginRead = HttpMethods.IsGet(context.Request.Method) && !websocket &&
-                                     origin.Count == 0 && context.Request.Headers["Sec-Fetch-Site"] == "same-origin";
+                var websocket = context.WebSockets.IsWebSocketRequest || context.Request
+                    .Headers
+                    .Upgrade
+                    .ToString()
+                    .Contains("websocket", StringComparison.OrdinalIgnoreCase);
+                var sameOriginRead = HttpMethods.IsGet(context.Request.Method) && !websocket && origin.Count == 0 &&
+                    context.Request.Headers["Sec-Fetch-Site"] == "same-origin";
                 if (!sameOriginRead && (origin.Count != 1 ||
-                                        !options.AllowedOrigins.Contains(origin[0], StringComparer.Ordinal)))
+                        !options.AllowedOrigins.Contains(origin[0], StringComparer.Ordinal)))
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;

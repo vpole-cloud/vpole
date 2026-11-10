@@ -13,7 +13,8 @@ public sealed class RealtimePublisher(
     RealtimeTopicRegistry topics,
     IHubContext<RealtimeHub, IRealtimeClient> hub,
     TimeProvider clock,
-    RealtimeMetrics? metrics = null)
+    RealtimeMetrics? metrics = null
+)
 {
     public async Task InvalidateTenantsAsync(string topic, CancellationToken cancellationToken = default)
     {
@@ -23,11 +24,13 @@ public sealed class RealtimePublisher(
             return;
         var recipients = await subscriptions.FindAllAsync(topic, cancellationToken);
         var tenants = recipients.Where(subscription => subscription.ExpiresAtUtc > clock.GetUtcNow())
-            .Select(subscription => subscription.Request.TenantId).OfType<string>().Distinct(StringComparer.Ordinal);
+            .Select(subscription => subscription.Request.TenantId)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal);
         // Publish rechecks every recipient's current ticket and tenant permission. The
         // platform mutation cannot choose recipients or copy privileged identifiers.
         foreach (var tenantId in tenants)
-            await PublishAsync(new(topic, tenantId), cancellationToken);
+            await PublishAsync(new RealtimeChange(topic, tenantId), cancellationToken);
     }
 
     public async Task PublishAsync(RealtimeChange change, CancellationToken cancellationToken = default)
@@ -44,10 +47,10 @@ public sealed class RealtimePublisher(
                 return;
             }
 
-            if (topic.Scope == RealtimeScope.Tenant && change.TenantId is null ||
-                topic.Scope == RealtimeScope.Platform && change.TenantId is not null ||
-                topic.Scope == RealtimeScope.User &&
-                (change.TenantId is not null || string.IsNullOrWhiteSpace(change.ResourceId)))
+            if ((topic.Scope == RealtimeScope.Tenant && change.TenantId is null) ||
+                (topic.Scope == RealtimeScope.Platform && change.TenantId is not null) ||
+                (topic.Scope == RealtimeScope.User &&
+                    (change.TenantId is not null || string.IsNullOrWhiteSpace(change.ResourceId))))
                 throw new InvalidOperationException("A realtime change must preserve its registered topic scope.");
             var recipients = await subscriptions.FindAsync(change.Topic, change.TenantId, cancellationToken);
             var authorized = new HashSet<string>(StringComparer.Ordinal);
@@ -67,8 +70,7 @@ public sealed class RealtimePublisher(
                 // Missing or expired transport state can recover through bootstrap. Only an explicit
                 // logout marker revokes the user's independently authenticated workspace.
                 if (subscription.ExpiresAtUtc <= clock.GetUtcNow() || ticket?.Properties.ExpiresUtc is not { } expiry ||
-                    expiry <= clock.GetUtcNow() ||
-                    ticket.Principal.Identity?.IsAuthenticated != true ||
+                    expiry <= clock.GetUtcNow() || ticket.Principal.Identity?.IsAuthenticated != true ||
                     string.IsNullOrWhiteSpace(ticket.Principal.FindFirst("sub")?.Value) ||
                     ticket.Principal.FindFirst(RealtimeFeature.SessionClaim)?.Value != subscription.SessionId)
                 {
@@ -98,7 +100,8 @@ public sealed class RealtimePublisher(
                     authorized.Remove(subscription.ConnectionId);
                     await subscriptions.RemoveAsync(subscription.ConnectionId, [subscription.Id], cancellationToken);
                     if (topic.Scope != RealtimeScope.User)
-                        await hub.Clients.Client(subscription.ConnectionId)
+                        await hub.Clients
+                            .Client(subscription.ConnectionId)
                             .AccessRevoked(subscription.Request.TenantId);
                     continue;
                 }
@@ -116,12 +119,14 @@ public sealed class RealtimePublisher(
             foreach (var connectionId in authorized)
             {
                 var candidates = recipients
-                    .Where(value => value.ConnectionId == connectionId && deadlines.ContainsKey(value.Id)).ToArray();
+                    .Where(value => value.ConnectionId == connectionId && deadlines.ContainsKey(value.Id))
+                    .ToArray();
                 var valid = true;
                 ClaimsPrincipal? authority = null;
                 foreach (var subscription in candidates)
                 {
-                    var before = await LiveTicketAsync(subscription,
+                    var before = await LiveTicketAsync(
+                        subscription,
                         deadlines[subscription.Id],
                         identities[subscription.Id],
                         cancellationToken);
@@ -132,10 +137,12 @@ public sealed class RealtimePublisher(
                         break;
                     }
 
-                    deadlines[subscription.Id] =
-                        Earlier(deadlines[subscription.Id], before.Properties.ExpiresUtc!.Value);
+                    deadlines[subscription.Id] = Earlier(
+                        deadlines[subscription.Id],
+                        before.Properties.ExpiresUtc!.Value);
                     var allowed = await access.AllowsAsync(before.Principal, subscription.Request, cancellationToken);
-                    var after = await LiveTicketAsync(subscription,
+                    var after = await LiveTicketAsync(
+                        subscription,
                         deadlines[subscription.Id],
                         identities[subscription.Id],
                         cancellationToken);
@@ -146,10 +153,11 @@ public sealed class RealtimePublisher(
                         break;
                     }
 
-                    deadlines[subscription.Id] =
-                        Earlier(deadlines[subscription.Id], after.Properties.ExpiresUtc!.Value);
+                    deadlines[subscription.Id] = Earlier(
+                        deadlines[subscription.Id],
+                        after.Properties.ExpiresUtc!.Value);
                     if (!SameAuthority(before.Principal, after.Principal) ||
-                        authority is not null && !SameAuthority(authority, after.Principal))
+                        (authority is not null && !SameAuthority(authority, after.Principal)))
                     {
                         valid = false;
                         break;
@@ -170,7 +178,8 @@ public sealed class RealtimePublisher(
                 valid &= candidates.All(value => deadlines[value.Id] > clock.GetUtcNow());
                 if (!valid)
                 {
-                    await subscriptions.RemoveAsync(connectionId,
+                    await subscriptions.RemoveAsync(
+                        connectionId,
                         candidates.Select(value => value.Id).ToArray(),
                         cancellationToken);
                     continue;
@@ -194,7 +203,8 @@ public sealed class RealtimePublisher(
         }
     }
 
-    private async Task<AuthenticationTicket?> LiveTicketAsync(RealtimeSubscription subscription,
+    private async Task<AuthenticationTicket?> LiveTicketAsync(
+        RealtimeSubscription subscription,
         DateTimeOffset deadline,
         ClaimsPrincipal identity,
         CancellationToken ct)
@@ -203,12 +213,12 @@ public sealed class RealtimePublisher(
         var revoked = await subscriptions.IsSessionRevokedAsync(subscription.SessionId, ct);
         ct.ThrowIfCancellationRequested();
         return !revoked && deadline > clock.GetUtcNow() && ticket?.Properties.ExpiresUtc > clock.GetUtcNow() &&
-               ticket.Principal.Identity?.IsAuthenticated == true &&
-               ticket.Principal.FindFirst("sub")?.Value == identity.FindFirst("sub")?.Value &&
-               ticket.Principal.FindFirst("iss")?.Value == identity.FindFirst("iss")?.Value &&
-               ticket.Principal.FindFirst(RealtimeFeature.SessionClaim)?.Value == subscription.SessionId
-            ? ticket
-            : null;
+            ticket.Principal.Identity?.IsAuthenticated == true &&
+            ticket.Principal.FindFirst("sub")?.Value == identity.FindFirst("sub")?.Value &&
+            ticket.Principal.FindFirst("iss")?.Value == identity.FindFirst("iss")?.Value &&
+            ticket.Principal.FindFirst(RealtimeFeature.SessionClaim)?.Value == subscription.SessionId
+                ? ticket
+                : null;
     }
 
     private async Task DropSessionAsync(RealtimeSubscription subscription, CancellationToken ct)
@@ -220,7 +230,8 @@ public sealed class RealtimePublisher(
 
     private static DateTimeOffset Earlier(DateTimeOffset left, DateTimeOffset right) => left < right ? left : right;
 
-    private static bool SameAuthority(ClaimsPrincipal left, ClaimsPrincipal right) =>
-        left.Claims.Select(value => (value.Type, value.Value)).Order()
-            .SequenceEqual(right.Claims.Select(value => (value.Type, value.Value)).Order());
+    private static bool SameAuthority(ClaimsPrincipal left, ClaimsPrincipal right) => left.Claims
+        .Select(value => (value.Type, value.Value))
+        .Order()
+        .SequenceEqual(right.Claims.Select(value => (value.Type, value.Value)).Order());
 }

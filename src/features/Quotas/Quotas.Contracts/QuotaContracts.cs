@@ -18,7 +18,8 @@ public abstract class Quota<TInput> : Quota
 public sealed record WorkloadQuotaInput(
     long CpuMillisPerInstance,
     long MemoryMiPerInstance,
-    long Instances);
+    long Instances
+);
 
 public sealed class CpuQuota : Quota<WorkloadQuotaInput>
 {
@@ -27,8 +28,7 @@ public sealed class CpuQuota : Quota<WorkloadQuotaInput>
     public override QuotaKey Key => QuotaKey;
     public override string Unit => "millicores";
 
-    public override long Calculate(WorkloadQuotaInput input) =>
-        checked(input.CpuMillisPerInstance * input.Instances);
+    public override long Calculate(WorkloadQuotaInput input) => checked(input.CpuMillisPerInstance * input.Instances);
 }
 
 public sealed class RamQuota : Quota<WorkloadQuotaInput>
@@ -38,8 +38,7 @@ public sealed class RamQuota : Quota<WorkloadQuotaInput>
     public override QuotaKey Key => QuotaKey;
     public override string Unit => "MiB";
 
-    public override long Calculate(WorkloadQuotaInput input) =>
-        checked(input.MemoryMiPerInstance * input.Instances);
+    public override long Calculate(WorkloadQuotaInput input) => checked(input.MemoryMiPerInstance * input.Instances);
 }
 
 public sealed class WorkloadInstancesQuota : Quota<WorkloadQuotaInput>
@@ -70,60 +69,69 @@ public abstract class QuotaProfile<TSpec> : IQuotaProfile<TSpec>
     public abstract IReadOnlyCollection<QuotaKey> Keys { get; }
     public abstract QuotaDelta Calculate(TSpec spec);
 
-    QuotaDelta IQuotaProfile.Calculate(object spec) =>
-        spec is TSpec typedSpec
-            ? Calculate(typedSpec)
-            : throw new InvalidOperationException(
-                $"Quota profile for {typeof(TSpec).FullName} cannot calculate {spec.GetType().FullName}.");
+    QuotaDelta IQuotaProfile.Calculate(object spec) => spec is TSpec typedSpec
+        ? Calculate(typedSpec)
+        : throw new InvalidOperationException(
+            $"Quota profile for {typeof(TSpec).FullName} cannot calculate {spec.GetType().FullName}.");
 }
 
 public abstract record QuotaMutation<TSpec>;
 
-public sealed record CreateQuotaMutation<TSpec>(TSpec Spec) : QuotaMutation<TSpec>;
+public sealed record CreateQuotaMutation<TSpec>(
+    TSpec Spec
+) : QuotaMutation<TSpec>;
 
 public sealed record UpdateQuotaMutation<TSpec>(
     TSpec PreviousSpec,
-    TSpec NextSpec) : QuotaMutation<TSpec>;
+    TSpec NextSpec
+) : QuotaMutation<TSpec>;
 
-public sealed record DeleteQuotaMutation<TSpec>(TSpec Spec) : QuotaMutation<TSpec>;
+public sealed record DeleteQuotaMutation<TSpec>(
+    TSpec Spec
+) : QuotaMutation<TSpec>;
 
 public sealed record QuotaReservationLease(
     string ReservationId,
     string TenantId,
     QuotaDelta Delta,
     DateTime ExpiresAtUtc,
-    QuotaResourceKey ResourceKey);
+    QuotaResourceKey ResourceKey
+);
 
 public sealed record QuotaExceeded(
     QuotaKey Quota,
     long Limit,
     long Requested,
-    long Current);
+    long Current
+);
 
 public sealed record QuotaReservationConflict(
     string TenantId,
-    QuotaResourceKey ResourceKey);
+    QuotaResourceKey ResourceKey
+);
 
-public union QuotaReservationError(
-    QuotaExceeded,
-    QuotaReservationConflict);
+public union QuotaReservationError(QuotaExceeded, QuotaReservationConflict);
 
 public sealed record QuotaReservationCommitted;
 
-public sealed record QuotaReservationNotFound(string ReservationId);
+public sealed record QuotaReservationNotFound(
+    string ReservationId
+);
 
-public sealed record QuotaReservationCancelled(string ReservationId);
+public sealed record QuotaReservationCancelled(
+    string ReservationId
+);
 
-public sealed record QuotaReservationExpired(string ReservationId);
+public sealed record QuotaReservationExpired(
+    string ReservationId
+);
 
 public union QuotaReservationCommitError(
     QuotaReservationNotFound,
     QuotaReservationCancelled,
     QuotaReservationExpired);
 
-public union QuotaExecutionError(
-    QuotaReservationError,
-    QuotaReservationCommitError);
+public union QuotaExecutionError(QuotaReservationError, QuotaReservationCommitError);
 
 public interface IQuotaAdmissionExecutor
 {
@@ -138,8 +146,7 @@ public sealed record ExecuteQuotaAdmissionRequest<TSpec, TOutcome>(
     QuotaResourceKey ResourceKey,
     QuotaMutation<TSpec> Mutation,
     Func<QuotaExecutionError, TOutcome> QuotaError,
-    Func<
-        QuotaAdmissionTransactionContext<TOutcome>,
-        CancellationToken,
-        Task<QuotaAdmissionTransactionDecision<TOutcome>>> MutationCallback)
+    Func<QuotaAdmissionTransactionContext<TOutcome>, CancellationToken,
+        Task<QuotaAdmissionTransactionDecision<TOutcome>>> MutationCallback
+)
     where TOutcome : notnull;

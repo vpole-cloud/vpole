@@ -1,5 +1,4 @@
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Domain;
@@ -9,7 +8,8 @@ namespace Pole.Features.ResourceGroups.Application.Kubernetes;
 
 internal sealed class KubernetesEnsureRuntimeCellIngressBaseline(
     RuntimeCellLifecyclePersistence persistence,
-    EnsureRuntimeCellNamespace ensureNamespace)
+    EnsureRuntimeCellNamespace ensureNamespace
+)
 {
     public async Task<EnsureRuntimeCellIngressBaselineOutcome> InvokeAsync(
         string tenantId,
@@ -19,12 +19,9 @@ internal sealed class KubernetesEnsureRuntimeCellIngressBaseline(
         CancellationToken cancellationToken = default)
     {
         var cell = await persistence.LoadAsync(tenantId, runtimeCellId, cancellationToken);
-        if (cell is null ||
-            cell.DeploymentTargetId != deploymentTargetId ||
+        if (cell is null || cell.DeploymentTargetId != deploymentTargetId ||
             cell.KubernetesNamespace != kubernetesNamespace)
-        {
             return new RuntimeCellIngressBaselinePlacementMismatch(runtimeCellId);
-        }
 
         if (cell.State is not ReadyRuntimeCellState)
             return new RuntimeCellIngressBaselineNotReady(runtimeCellId);
@@ -33,27 +30,24 @@ internal sealed class KubernetesEnsureRuntimeCellIngressBaseline(
         return result switch
         {
             Unit => new RuntimeCellIngressBaselineReady(),
-            RuntimeCellNamespaceOwnershipConflict =>
-                new RuntimeCellIngressBaselineNamespaceOwnershipConflict(runtimeCellId),
-            RuntimeCellNamespaceUnavailable =>
-                new RuntimeCellIngressBaselineNamespaceUnavailable(runtimeCellId),
-            RuntimeCellDeploymentTargetUnavailable targetUnavailable =>
-                targetUnavailable.Reason switch
-                {
-                    DeploymentTargetUnavailableReason.NotFound =>
-                        new RuntimeCellIngressBaselineTargetNotFound(runtimeCellId),
-                    DeploymentTargetUnavailableReason.Disabled =>
-                        new RuntimeCellIngressBaselineTargetDisabled(runtimeCellId),
-                    DeploymentTargetUnavailableReason.DefaultNotConfigured =>
-                        new RuntimeCellIngressBaselineDefaultTargetNotConfigured(runtimeCellId),
-                    DeploymentTargetUnavailableReason.ConnectionUnavailable =>
-                        new RuntimeCellIngressBaselineTargetConnectionUnavailable(runtimeCellId),
-                    _ => throw new ArgumentOutOfRangeException(nameof(targetUnavailable))
-                },
-            RuntimeCellNetworkPolicyOwnershipConflict =>
-                new RuntimeCellIngressBaselinePolicyOwnershipConflict(runtimeCellId),
-            RuntimeCellNetworkPolicyUnavailable =>
-                new RuntimeCellIngressBaselinePolicyUnavailable(runtimeCellId)
+            RuntimeCellNamespaceOwnershipConflict => new RuntimeCellIngressBaselineNamespaceOwnershipConflict(
+                runtimeCellId),
+            RuntimeCellNamespaceUnavailable => new RuntimeCellIngressBaselineNamespaceUnavailable(runtimeCellId),
+            RuntimeCellDeploymentTargetUnavailable targetUnavailable => targetUnavailable.Reason switch
+            {
+                DeploymentTargetUnavailableReason.NotFound => new RuntimeCellIngressBaselineTargetNotFound(
+                    runtimeCellId),
+                DeploymentTargetUnavailableReason.Disabled => new RuntimeCellIngressBaselineTargetDisabled(
+                    runtimeCellId),
+                DeploymentTargetUnavailableReason.DefaultNotConfigured =>
+                    new RuntimeCellIngressBaselineDefaultTargetNotConfigured(runtimeCellId),
+                DeploymentTargetUnavailableReason.ConnectionUnavailable =>
+                    new RuntimeCellIngressBaselineTargetConnectionUnavailable(runtimeCellId),
+                _ => throw new ArgumentOutOfRangeException(nameof(targetUnavailable)),
+            },
+            RuntimeCellNetworkPolicyOwnershipConflict => new RuntimeCellIngressBaselinePolicyOwnershipConflict(
+                runtimeCellId),
+            RuntimeCellNetworkPolicyUnavailable => new RuntimeCellIngressBaselinePolicyUnavailable(runtimeCellId),
         };
     }
 }

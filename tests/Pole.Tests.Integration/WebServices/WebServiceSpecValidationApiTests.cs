@@ -2,11 +2,10 @@ using System.Net;
 using System.Text.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Outbox.Domain;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Features.WebServices.Migrations;
 using Pole.Features.WebServices.Domain;
+using Pole.Features.WebServices.Migrations;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -14,7 +13,9 @@ using Xunit;
 namespace Pole.Tests.Integration.WebServices;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
+public sealed class WebServiceSpecValidationApiTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Create_and_update_reject_out_of_schema_specs_before_any_persisted_side_effects()
@@ -27,27 +28,35 @@ public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixt
         var created = (await createdResponse.Content.ReadFromJsonAsync<CreateWebServiceResponse>())!;
         var original = await Fixture.Database.WebServices().Find(item => item.Id == created.WebServiceId).SingleAsync();
         var writes = await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty);
-        var releases = await Fixture.Database.WebServiceReleases().CountDocumentsAsync(item =>
-            item.WebServiceId == created.WebServiceId);
+        var releases = await Fixture.Database
+            .WebServiceReleases()
+            .CountDocumentsAsync(item => item.WebServiceId == created.WebServiceId);
 
         foreach (var (spec, field) in InvalidSpecs(body.Spec!))
         {
-            using var create = await Client.PostAsJsonAsync("/api/v1/web-services",
+            using var create = await Client.PostAsJsonAsync(
+                "/api/v1/web-services",
                 body with { Name = "invalid-spec", Spec = spec });
             await AssertValidationError(create, "Body.Spec." + field);
-            using var update = await Client.PutAsJsonAsync($"/api/v1/web-services/{created.WebServiceId}",
+            using var update = await Client.PutAsJsonAsync(
+                $"/api/v1/web-services/{created.WebServiceId}",
                 new UpdateWebServiceRequestBody(spec, body.Tags, body.Exposure, original.Revision));
             await AssertValidationError(update, "Body.Spec." + field);
         }
 
         var current = await Fixture.Database.WebServices().Find(item => item.Id == original.Id).SingleAsync();
         Assert.Equal(original.ToBsonDocument(), current.ToBsonDocument());
-        Assert.Equal(1, await Fixture.Database.WebServices().CountDocumentsAsync(item =>
-            item.TenantId == Data.TenantId));
-        Assert.Equal(writes,
+        Assert.Equal(
+            1,
+            await Fixture.Database.WebServices().CountDocumentsAsync(item => item.TenantId == Data.TenantId));
+        Assert.Equal(
+            writes,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
-        Assert.Equal(releases, await Fixture.Database.WebServiceReleases().CountDocumentsAsync(item =>
-            item.WebServiceId == created.WebServiceId));
+        Assert.Equal(
+            releases,
+            await Fixture.Database
+                .WebServiceReleases()
+                .CountDocumentsAsync(item => item.WebServiceId == created.WebServiceId));
     }
 
     [Fact]
@@ -58,18 +67,19 @@ public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixt
         var probe = new ProbeConfigDto("/" + new string('a', 199), "http", 300, 120, 60, 10, 1);
         var spec = TestData.ValidWebServiceSpec() with
         {
-            Probes = new(probe, probe, probe with { SuccessThreshold = 10 })
+            Probes = new ProbeSpecDto(probe, probe, probe with { SuccessThreshold = 10 }),
         };
         var body = Data.CreateWebServiceRequest(group.Id).Body with
         {
             Spec = spec,
-            Exposure = WebServiceExposureMode.Private
+            Exposure = WebServiceExposureMode.Private,
         };
         using var response = await Client.PostAsJsonAsync("/api/v1/web-services", body);
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var created = (await response.Content.ReadFromJsonAsync<CreateWebServiceResponse>())!;
         var updatedSpec = spec with { Probes = spec.Probes with { Startup = probe with { FailureThreshold = 1 } } };
-        using var updated = await Client.PutAsJsonAsync($"/api/v1/web-services/{created.WebServiceId}",
+        using var updated = await Client.PutAsJsonAsync(
+            $"/api/v1/web-services/{created.WebServiceId}",
             new UpdateWebServiceRequestBody(updatedSpec, body.Tags, body.Exposure, ExpectedRevision: 1));
         Assert.Equal(HttpStatusCode.Accepted, updated.StatusCode);
         var saved = await Fixture.Database.WebServices().Find(item => item.Id == created.WebServiceId).SingleAsync();
@@ -117,18 +127,21 @@ public sealed class WebServiceSpecValidationApiTests(MongoReplicaSetFixture fixt
                      (port with { TargetPort = new string('a', 11) }, "TargetPort"),
                      (port with { Protocol = "tcp" }, "Protocol"),
                      (port with { Protocol = null! }, "Protocol"),
-                     (port with { Name = null! }, "Name")
+                     (port with { Name = null! }, "Name"),
                  })
             yield return (spec with { Config = spec.Config with { PortMappings = [mapping] } },
                 "Config.PortMappings[0]." + field);
     }
 
-    private static ProbeSpecDto ChangeProbe(ProbeSpecDto probes, string phase, ProbeConfigDto value) => phase switch
+    private static ProbeSpecDto ChangeProbe(
+        ProbeSpecDto probes,
+        string phase,
+        ProbeConfigDto value) => phase switch
     {
         "Startup" => probes with { Startup = value },
         "Liveness" => probes with { Liveness = value },
         "Readiness" => probes with { Readiness = value },
-        _ => throw new ArgumentOutOfRangeException(nameof(phase))
+        _ => throw new ArgumentOutOfRangeException(nameof(phase)),
     };
 
     private static IEnumerable<(ProbeConfigDto Probe, string Field)> InvalidProbes(ProbeConfigDto probe)

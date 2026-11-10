@@ -11,11 +11,13 @@ public sealed class GitOpsConsoleFixtureTests
     [InlineData(GitOpsConsoleFixtureNames.RenamedGroup)]
     public void LifecycleGroupIdentitiesSatisfyTheOwnerCreateContract(string name)
     {
-        var result = new CreateResourceGroupValidator().Validate(new CreateResourceGroupRequest(
-            new(name, "Manual console adoption", ImmutableHashSet<string>.Empty),
-            "507f1f77bcf86cd799439011"));
+        var result = new CreateResourceGroupValidator().Validate(
+            new CreateResourceGroupRequest(
+                new CreateResourceGroupRequestBody(name, "Manual console adoption", ImmutableHashSet<string>.Empty),
+                "507f1f77bcf86cd799439011"));
 
-        Assert.True(result.IsValid,
+        Assert.True(
+            result.IsValid,
             string.Join("; ", result.Errors.Select(error => error.PropertyName + ": " + error.ErrorMessage)));
     }
 }

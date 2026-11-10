@@ -8,7 +8,8 @@ public sealed record SearchProjectionChangedEvent(
     string SourceId,
     string ResourceType,
     long ResourceRevision,
-    long? ObservedGeneration = null) : IPoleEvent
+    long? ObservedGeneration = null
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

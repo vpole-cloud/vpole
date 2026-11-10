@@ -1,8 +1,6 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 
@@ -13,19 +11,22 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
     StoreOutboxWrites storeOutboxWrites,
     ResourceDeploymentConnectionGuard connectionGuard,
     TimeProvider timeProvider,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentExactMutationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment mutations");
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
         if (!await connectionGuard.FenceAsync(
-                request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken))
+                request.TenantId,
+                request.ResourceType,
+                request.ResourceId,
+                session,
+                cancellationToken))
             return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
 
         var loaded = await ResourceDeploymentMutationSupport.LoadExactAsync(
@@ -37,10 +38,8 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
             return loadFailure;
         var current = (ResourceDeployment)loaded.Value;
         if (current.Revision != request.ExpectedDeploymentRevision)
-        {
             return new ResourceDeploymentMutationError(
                 new ResourceDeploymentChanged(request.ResourceId, request.ResourceDeploymentId));
-        }
 
         var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
             request.ResourceId,
@@ -48,18 +47,13 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
             current);
         if (computeExpectation is not null)
             return computeExpectation.Value;
-        if (request.ReplacementCompute is not null ||
-            request.ReplacementIngress is not null ||
+        if (request.ReplacementCompute is not null || request.ReplacementIngress is not null ||
             request.FixedReplicas is not null)
-        {
             throw new ArgumentException(
                 "Compute, ingress, and replica updates are not valid for resource deployment deletion.",
                 nameof(request));
-        }
 
-        var updated = current.RequestDeletion(
-            timeProvider.GetUtcNow().UtcDateTime,
-            request.ResourceRevision);
+        var updated = current.RequestDeletion(timeProvider.GetUtcNow().UtcDateTime, request.ResourceRevision);
         var mutation = updated.Revision == current.Revision
             ? await isolation.ProjectAsync(current, cancellationToken)
             : await ResourceDeploymentMutationSupport.ReplaceAndEnqueueAsync(
@@ -73,9 +67,11 @@ internal sealed class MongoRequestExactResourceDeploymentDeletion(
         if (mutation is ResourceDeploymentMutationError)
             return mutation;
         var connectionConflict = await connectionGuard.ReconcileAsync(
-            request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken);
-        return connectionConflict is null
-            ? mutation
-            : new ResourceDeploymentMutationError(connectionConflict);
+            request.TenantId,
+            request.ResourceType,
+            request.ResourceId,
+            session,
+            cancellationToken);
+        return connectionConflict is null ? mutation : new ResourceDeploymentMutationError(connectionConflict);
     }
 }

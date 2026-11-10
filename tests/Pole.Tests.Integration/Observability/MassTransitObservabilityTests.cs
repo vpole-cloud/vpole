@@ -75,7 +75,9 @@ public sealed class MassTransitObservabilityTests
         {
             using var scope = TraceContext.Push(new TraceContextSnapshot(TraceId, CorrelationId));
             await using var serviceScope = provider.CreateAsyncScope();
-            await serviceScope.ServiceProvider.GetRequiredService<IPublishEndpoint>().Publish(new SourceMessage("hello"));
+            await serviceScope.ServiceProvider
+                .GetRequiredService<IPublishEndpoint>()
+                .Publish(new SourceMessage("hello"));
 
             var consumed = await provider.GetRequiredService<DerivedTraceContext>().WaitAsync();
 
@@ -88,14 +90,21 @@ public sealed class MassTransitObservabilityTests
         }
     }
 
-    private sealed record TestMessage(string Value);
+    private sealed record TestMessage(
+        string Value
+    );
 
-    private sealed record SourceMessage(string Value);
+    private sealed record SourceMessage(
+        string Value
+    );
 
-    private sealed record DerivedMessage(string Value);
+    private sealed record DerivedMessage(
+        string Value
+    );
 
-    private sealed class TestMessageConsumer(ConsumedTraceContext consumedTraceContext)
-        : IConsumer<TestMessage>
+    private sealed class TestMessageConsumer(
+        ConsumedTraceContext consumedTraceContext
+    ) : IConsumer<TestMessage>
     {
         public Task Consume(ConsumeContext<TestMessage> context)
         {
@@ -106,12 +115,13 @@ public sealed class MassTransitObservabilityTests
 
     private sealed class SourceMessageConsumer : IConsumer<SourceMessage>
     {
-        public Task Consume(ConsumeContext<SourceMessage> context)
-            => context.Publish(new DerivedMessage(context.Message.Value));
+        public Task Consume(ConsumeContext<SourceMessage> context) =>
+            context.Publish(new DerivedMessage(context.Message.Value));
     }
 
-    private sealed class DerivedMessageConsumer(DerivedTraceContext derivedTraceContext)
-        : IConsumer<DerivedMessage>
+    private sealed class DerivedMessageConsumer(
+        DerivedTraceContext derivedTraceContext
+    ) : IConsumer<DerivedMessage>
     {
         public Task Consume(ConsumeContext<DerivedMessage> context)
         {
@@ -130,15 +140,13 @@ public sealed class MassTransitObservabilityTests
 
     private abstract class TraceContextCapture
     {
-        private readonly TaskCompletionSource<TraceContextSnapshot> _source =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<TraceContextSnapshot> _source = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Set(TraceContextSnapshot? traceContext)
         {
             if (traceContext is not null)
-            {
                 _source.TrySetResult(traceContext);
-            }
         }
 
         public async Task<TraceContextSnapshot> WaitAsync()

@@ -8,15 +8,21 @@ public sealed record SourceBuildLogIdentity(
     string TenantId,
     string WebServiceId,
     string JobId,
-    string WriterToken);
+    string WriterToken
+);
 
-public sealed record SourceBuildLogWriteAccepted(SourceBuildLog Log);
+public sealed record SourceBuildLogWriteAccepted(
+    SourceBuildLog Log
+);
+
 public sealed record SourceBuildLogWriteFenced;
-public union SourceBuildLogWriteOutcome(
-    SourceBuildLogWriteAccepted,
-    SourceBuildLogWriteFenced);
 
-internal sealed class SourceBuildLogPersistence(IMongoCollection<SourceBuildLog> logs, TimeProvider timeProvider)
+public union SourceBuildLogWriteOutcome(SourceBuildLogWriteAccepted, SourceBuildLogWriteFenced);
+
+internal sealed class SourceBuildLogPersistence(
+    IMongoCollection<SourceBuildLog> logs,
+    TimeProvider timeProvider
+)
 {
     public async Task<SourceBuildLogWriteOutcome> StartAsync(SourceBuildLog log, CancellationToken ct = default)
     {
@@ -28,21 +34,47 @@ internal sealed class SourceBuildLogPersistence(IMongoCollection<SourceBuildLog>
         catch (MongoWriteException exception) when (exception.WriteError.Category == ServerErrorCategory.DuplicateKey)
         {
             var current = await LoadAsync(log.TenantId, log.WebServiceId, log.Id, ct);
-            return current?.WriterToken == log.WriterToken ? new SourceBuildLogWriteAccepted(current) : new SourceBuildLogWriteFenced();
+            return current?.WriterToken == log.WriterToken
+                ? new SourceBuildLogWriteAccepted(current)
+                : new SourceBuildLogWriteFenced();
         }
     }
 
-    public Task<SourceBuildLog?> LoadAsync(string tenantId, string webServiceId, string jobId, CancellationToken ct = default) =>
+    public Task<SourceBuildLog?> LoadAsync(
+        string tenantId,
+        string webServiceId,
+        string jobId,
+        CancellationToken ct = default) =>
         logs.Find(SourceBuildLogFilters.Owned(tenantId, webServiceId, jobId)).FirstOrDefaultAsync(ct)!;
 
-    public Task<SourceBuildLogWriteOutcome> AppendAsync(SourceBuildLogIdentity identity, long sequence, SourceBuildLogStream stream, string text, CancellationToken ct = default) =>
-        MutateAsync(identity, log => log.Append(sequence, stream, text, timeProvider.GetUtcNow().UtcDateTime), ct);
-    public Task<SourceBuildLogWriteOutcome> RenewAsync(SourceBuildLogIdentity identity, CancellationToken ct = default) =>
-        MutateAsync(identity, log => log.Renew(timeProvider.GetUtcNow().UtcDateTime), ct);
-    public Task<SourceBuildLogWriteOutcome> SealAsync(SourceBuildLogIdentity identity, bool unavailable, CancellationToken ct = default) =>
-        MutateAsync(identity, log => log.Seal(timeProvider.GetUtcNow().UtcDateTime, unavailable), ct);
+    public Task<SourceBuildLogWriteOutcome> AppendAsync(
+        SourceBuildLogIdentity identity,
+        long sequence,
+        SourceBuildLogStream stream,
+        string text,
+        CancellationToken ct = default) => MutateAsync(
+        identity,
+        log => log.Append(sequence, stream, text, timeProvider.GetUtcNow().UtcDateTime),
+        ct);
 
-    private async Task<SourceBuildLogWriteOutcome> MutateAsync(SourceBuildLogIdentity identity, Func<SourceBuildLog, SourceBuildLog> mutation, CancellationToken ct)
+    public Task<SourceBuildLogWriteOutcome>
+        RenewAsync(SourceBuildLogIdentity identity, CancellationToken ct = default) => MutateAsync(
+        identity,
+        log => log.Renew(timeProvider.GetUtcNow().UtcDateTime),
+        ct);
+
+    public Task<SourceBuildLogWriteOutcome> SealAsync(
+        SourceBuildLogIdentity identity,
+        bool unavailable,
+        CancellationToken ct = default) => MutateAsync(
+        identity,
+        log => log.Seal(timeProvider.GetUtcNow().UtcDateTime, unavailable),
+        ct);
+
+    private async Task<SourceBuildLogWriteOutcome> MutateAsync(
+        SourceBuildLogIdentity identity,
+        Func<SourceBuildLog, SourceBuildLog> mutation,
+        CancellationToken ct)
     {
         // Heartbeats, appends and cleanup contend on one document. Retry only a changed CAS;
         // an acknowledged duplicate append returns the same range, never appends twice.
@@ -50,15 +82,29 @@ internal sealed class SourceBuildLogPersistence(IMongoCollection<SourceBuildLog>
         {
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var current = await logs.Find(SourceBuildLogFilters.Writer(identity)).FirstOrDefaultAsync(ct);
-            if (current is null || current.State is not OpenSourceBuildLog open || now >= open.LeaseExpiresAtUtc || now >= current.ExpiresAtUtc)
+            if (current is null || current.State is not OpenSourceBuildLog open || now >= open.LeaseExpiresAtUtc ||
+                now >= current.ExpiresAtUtc)
                 return new SourceBuildLogWriteFenced();
             SourceBuildLog replacement;
-            try { replacement = mutation(current); }
-            catch (InvalidOperationException) { return new SourceBuildLogWriteFenced(); }
-            if (ReferenceEquals(current, replacement)) return new SourceBuildLogWriteAccepted(current);
-            var result = await logs.ReplaceOneAsync(SourceBuildLogFilters.WritableAtRevision(current, now), replacement, cancellationToken: ct);
-            if (result.ModifiedCount == 1) return new SourceBuildLogWriteAccepted(replacement);
+            try
+            {
+                replacement = mutation(current);
+            }
+            catch (InvalidOperationException)
+            {
+                return new SourceBuildLogWriteFenced();
+            }
+
+            if (ReferenceEquals(current, replacement))
+                return new SourceBuildLogWriteAccepted(current);
+            var result = await logs.ReplaceOneAsync(
+                SourceBuildLogFilters.WritableAtRevision(current, now),
+                replacement,
+                cancellationToken: ct);
+            if (result.ModifiedCount == 1)
+                return new SourceBuildLogWriteAccepted(replacement);
         }
+
         return new SourceBuildLogWriteFenced();
     }
 

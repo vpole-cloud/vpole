@@ -6,7 +6,8 @@ using Pole.Features.GitProviders.Domain;
 namespace Pole.Features.GitProviders.Application.Connections;
 
 internal sealed class MongoFindNamedGitProviderConnection(
-    IMongoCollection<GitProviderConnection> gitProviderConnections)
+    IMongoCollection<GitProviderConnection> gitProviderConnections
+)
 {
     public async Task<FindNamedGitProviderConnectionOutcome> InvokeAsync(
         NamedGitProviderConnectionRequest request,

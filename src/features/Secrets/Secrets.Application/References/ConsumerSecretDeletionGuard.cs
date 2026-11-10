@@ -1,15 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
 using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 
@@ -18,7 +9,8 @@ namespace Pole.Features.Secrets.Application.References;
 internal sealed class ConsumerSecretDeletionGuard(
     IMongoCollection<Secret> secrets,
     IGitOpsMutations git,
-    SecretPlanningFence fence)
+    SecretPlanningFence fence
+)
 {
     public async Task<EnsureConsumerSecretBindingRemovalOutcome> InvokeAsync(
         EnsureConsumerSecretBindingRemovalRequest request,
@@ -28,29 +20,27 @@ internal sealed class ConsumerSecretDeletionGuard(
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Consumer Secret binding deletion requires a transaction.");
 
-        var current = await secrets.Find(session, SecretFilters.Consumer(request.TenantId,
-            request.ConsumerType.Value, request.ConsumerId)).ToListAsync(cancellationToken);
+        var current = await secrets.Find(
+                session,
+                SecretFilters.Consumer(request.TenantId, request.ConsumerType.Value, request.ConsumerId))
+            .ToListAsync(cancellationToken);
         var owned = 0;
         foreach (var secret in current)
-        {
-            foreach (var binding in secret.Bindings.Where(item =>
-                         item.Consumer.ResourceType == request.ConsumerType.Value &&
-                         item.Consumer.ResourceId == request.ConsumerId))
-            {
-                if (!await git.AuthorizeAsync(new(request.TenantId, "SecretBinding", binding.Id),
-                        session, cancellationToken))
-                    owned++;
-            }
-        }
+        foreach (var binding in secret.Bindings.Where(item =>
+                     item.Consumer.ResourceType == request.ConsumerType.Value &&
+                     item.Consumer.ResourceId == request.ConsumerId))
+            if (!await git.AuthorizeAsync(
+                    new AuthorizeGitResourceMutationRequest(request.TenantId, "SecretBinding", binding.Id),
+                    session,
+                    cancellationToken))
+                owned++;
 
         if (owned > 0)
             return new ConsumerSecretBindingsRequireRemoval(owned);
 
         foreach (var secret in current)
-        {
             if (!await fence.FenceAsync(secret, session, cancellationToken))
                 return new ConsumerSecretBindingDeletionChanged();
-        }
 
         return new ConsumerSecretBindingsRemovable();
     }

@@ -1,19 +1,10 @@
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
 using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
-using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
 using Pole.Workloads;
@@ -27,17 +18,15 @@ internal sealed class SecretBindingExecution(
     AdmitResourceScopeReference admitScope,
     AdmitResourceDeploymentReferences admitDeployments,
     StoreSecretChange publish,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     private ResourceTypeId ConsumerType(SecretBindingDeclaration spec) =>
         consumers.Get(spec.Consumer.Kind).ResourceType;
 
-    public Task<GitOperationResult> ApplyAsync(
-        GitOperation operation,
-        CancellationToken ct) => git.ExecuteAsync(operation,
-        async (
-            session,
-            token) =>
+    public Task<GitOperationResult> ApplyAsync(GitOperation operation, CancellationToken ct) => git.ExecuteAsync(
+        operation,
+        async (session, token) =>
         {
             var context = operation.Context;
             var spec = DeclarationJson.Read<SecretBindingDeclaration>(operation.Declaration.Spec);
@@ -45,7 +34,7 @@ internal sealed class SecretBindingExecution(
                 new ResolveAcceptedGitReferenceRequest(
                     Context: context,
                     ConsumerResourceId: operation.ResourceId,
-                    Address: new("Secret", spec.Secret)),
+                    Address: new ResourceAddress("Secret", spec.Secret)),
                 session: session,
                 ct: token);
             var consumerId = await git.ResolveAcceptedAsync(
@@ -57,39 +46,38 @@ internal sealed class SecretBindingExecution(
                 ct: token);
 
             if (id is null || consumerId is null)
-                return new(
+                return new GitOperationResult(
                     operation.ResourceId,
-                    new SecretBindingDeclarationRejected(
-                        SecretBindingDeclarationError.BindingPrerequisiteUnavailable));
+                    new SecretBindingDeclarationRejected(SecretBindingDeclarationError.BindingPrerequisiteUnavailable));
 
-            var secret = await secrets.Find(
-                session,
-                SecretFilters.Identity(context.TenantId, id)).FirstOrDefaultAsync(token);
+            var secret = await secrets.Find(session, SecretFilters.Identity(context.TenantId, id))
+                .FirstOrDefaultAsync(token);
 
             if (secret is null)
-                return new(
+                return new GitOperationResult(
                     operation.ResourceId,
                     new SecretBindingDeclarationRejected(SecretBindingDeclarationError.SecretUnavailable));
 
             var namedSecret = await secrets.Find(
-                session,
-                SecretFilters.DeclarationBindingName(
-                    context.TenantId,
-                    operation.Declaration.Address.Name)).FirstOrDefaultAsync(token);
+                    session,
+                    SecretFilters.DeclarationBindingName(context.TenantId, operation.Declaration.Address.Name))
+                .FirstOrDefaultAsync(token);
 
             if (namedSecret is not null && namedSecret.Id != id)
-                return new(
+                return new GitOperationResult(
                     operation.ResourceId,
                     new SecretBindingDeclarationRejected(SecretBindingDeclarationError.ImmutableBindingChange));
 
-            var binding = SecretBinding.Create(operation.ResourceId,
+            var binding = SecretBinding.Create(
+                    operation.ResourceId,
                     ConsumerType(spec).Value,
                     consumerId,
                     new AllSecretDeployments(),
-                    spec.KeyMappings, spec.Usage) with
-            {
-                DeclarationName = operation.Declaration.Address.Name
-            };
+                    spec.KeyMappings,
+                    spec.Usage) with
+                {
+                    DeclarationName = operation.Declaration.Address.Name,
+                };
             var transition = secret.DeclareBinding(binding, clock.GetUtcNow().UtcDateTime);
 
             return transition switch
@@ -100,11 +88,12 @@ internal sealed class SecretBindingExecution(
                 SecretBindingConsumerConflict => Rejected(SecretBindingDeclarationError.ExplicitAdoptionRequired),
                 UnknownSecretBindingKeys => Rejected(SecretBindingDeclarationError.SecretKeyUnavailable),
                 SecretBindingCapacityExceeded => Rejected(SecretBindingDeclarationError.SecretBindingLimitReached),
-                SecretBindingKeysInUse => Rejected(SecretBindingDeclarationError.SecretKeysInUse)
+                SecretBindingKeysInUse => Rejected(SecretBindingDeclarationError.SecretKeysInUse),
             };
 
-            GitOperationResult Rejected(SecretBindingDeclarationError reason) =>
-                new(operation.ResourceId, new SecretBindingDeclarationRejected(reason));
+            GitOperationResult Rejected(SecretBindingDeclarationError reason) => new(
+                operation.ResourceId,
+                new SecretBindingDeclarationRejected(reason));
 
             async Task<GitOperationResult> PersistAsync(Secret updated)
             {
@@ -115,8 +104,7 @@ internal sealed class SecretBindingExecution(
                             IsolationScopeId: secret.IsolationScopeId,
                             Consumer: new ResourceScopeConsumerReference(ConsumerType(spec), consumerId)),
                         session: session,
-                        cancellationToken: token) is ResourceScopeReferenceUnavailable ||
-                    await admitDeployments(
+                        cancellationToken: token) is ResourceScopeReferenceUnavailable || await admitDeployments(
                         new AdmitResourceDeploymentReferencesRequest(
                             TenantId: context.TenantId,
                             ResourceGroupId: secret.ResourceGroupId,
@@ -127,13 +115,12 @@ internal sealed class SecretBindingExecution(
                             DeploymentIds: []),
                         session: session,
                         cancellationToken: token) is ResourceDeploymentReferenceUnavailable)
-                    return new(
+                    return new GitOperationResult(
                         operation.ResourceId,
-                        new SecretBindingDeclarationRejected(
-                            SecretBindingDeclarationError.BindingScopeUnavailable));
+                        new SecretBindingDeclarationRejected(SecretBindingDeclarationError.BindingScopeUnavailable));
 
                 if (updated == secret)
-                    return new(operation.ResourceId);
+                    return new GitOperationResult(operation.ResourceId);
 
                 await secrets.ReplaceOneAsync(
                     session,
@@ -142,7 +129,7 @@ internal sealed class SecretBindingExecution(
                     cancellationToken: token);
                 await publish(session, updated, new SecretBindingAdded(binding.Id), token);
 
-                return new(operation.ResourceId, Changed: true);
+                return new GitOperationResult(operation.ResourceId, Changed: true);
             }
         },
         ct);

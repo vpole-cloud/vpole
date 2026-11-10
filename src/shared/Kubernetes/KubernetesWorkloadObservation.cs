@@ -19,17 +19,20 @@ public static class KubernetesWorkloadObservation
         "ContainerCreating", "PodInitializing", "FailedScheduling", "FailedMount",
         "FailedAttachVolume", "BackOff", "Unhealthy", "Failed", "FailedCreate", "FailedUpdate",
         "ProgressDeadlineExceeded", "ReplicaFailure", "Evicted", "Unschedulable", "ContainersNotReady",
-        "FailedCreatePodSandBox", "FailedToRetrieveImagePullSecret", "InvalidImageName", "NodeLost", "DeadlineExceeded"
+        "FailedCreatePodSandBox", "FailedToRetrieveImagePullSecret", "InvalidImageName", "NodeLost", "DeadlineExceeded",
     };
 
     public static string SafeReason(string? reason) =>
         reason is not null && SafeReasons.Contains(reason) ? reason : "Other";
 
     public static bool Owns(V1ObjectMeta metadata, WorkloadIdentityLabels identity) =>
-        !string.IsNullOrEmpty(metadata.Uid) && identity.ToDictionary().All(pair =>
-            metadata.Labels?.TryGetValue(pair.Key, out var value) == true && value == pair.Value);
+        !string.IsNullOrEmpty(metadata.Uid) && identity.ToDictionary()
+            .All(pair => metadata.Labels?.TryGetValue(pair.Key, out var value) == true && value == pair.Value);
 
-    public static long Generation(V1ObjectMeta metadata, string key, bool label = false) =>
+    public static long Generation(
+        V1ObjectMeta metadata,
+        string key,
+        bool label = false) =>
         (label ? metadata.Labels : metadata.Annotations)?.TryGetValue(key, out var value) == true &&
         long.TryParse(value, out var generation)
             ? generation
@@ -43,22 +46,25 @@ public static class KubernetesWorkloadObservation
         long generation,
         CancellationToken cancellationToken)
     {
-        var controller =
-            await client.AppsV1.ReadNamespacedDeploymentAsync(name,
-                namespaceName,
-                cancellationToken: cancellationToken);
+        var controller = await client.AppsV1.ReadNamespacedDeploymentAsync(
+            name,
+            namespaceName,
+            cancellationToken: cancellationToken);
         if (!Owns(controller.Metadata, identity))
             return new UnavailableWorkloadObservation("OwnershipMismatch");
-        var replicas = await client.AppsV1.ListNamespacedReplicaSetAsync(namespaceName,
+        var replicas = await client.AppsV1.ListNamespacedReplicaSetAsync(
+            namespaceName,
             labelSelector: Selector(identity),
             limit: MaximumPods,
             cancellationToken: cancellationToken);
-        var controllerUids = replicas.Items.Where(replica =>
-                replica.Metadata.NamespaceProperty == namespaceName && Owns(replica.Metadata, identity) &&
+        var controllerUids = replicas.Items
+            .Where(replica => replica.Metadata.NamespaceProperty == namespaceName && Owns(replica.Metadata, identity) &&
                 ControlledBy(replica.Metadata, new HashSet<string>([controller.Metadata.Uid], StringComparer.Ordinal)))
-            .Select(replica => replica.Metadata.Uid).ToHashSet(StringComparer.Ordinal);
+            .Select(replica => replica.Metadata.Uid)
+            .ToHashSet(StringComparer.Ordinal);
         var status = controller.Status;
-        return await PodsAsync(client,
+        return await PodsAsync(
+            client,
             namespaceName,
             identity,
             controller.Metadata,
@@ -86,13 +92,12 @@ public static class KubernetesWorkloadObservation
         string expectedUid,
         CancellationToken cancellationToken)
     {
-        var controller =
-            await client.AppsV1.ReadNamespacedDeploymentAsync(name,
-                namespaceName,
-                cancellationToken: cancellationToken);
+        var controller = await client.AppsV1.ReadNamespacedDeploymentAsync(
+            name,
+            namespaceName,
+            cancellationToken: cancellationToken);
         return controller.Metadata is { } metadata && metadata.Name == name &&
-               metadata.NamespaceProperty == namespaceName &&
-               metadata.Uid == expectedUid && Owns(metadata, identity);
+            metadata.NamespaceProperty == namespaceName && metadata.Uid == expectedUid && Owns(metadata, identity);
     }
 
     public static async Task<bool> MatchesStatefulSetBindingAsync(
@@ -103,13 +108,12 @@ public static class KubernetesWorkloadObservation
         string expectedUid,
         CancellationToken cancellationToken)
     {
-        var controller =
-            await client.AppsV1.ReadNamespacedStatefulSetAsync(name,
-                namespaceName,
-                cancellationToken: cancellationToken);
+        var controller = await client.AppsV1.ReadNamespacedStatefulSetAsync(
+            name,
+            namespaceName,
+            cancellationToken: cancellationToken);
         return controller.Metadata is { } metadata && metadata.Name == name &&
-               metadata.NamespaceProperty == namespaceName &&
-               metadata.Uid == expectedUid && Owns(metadata, identity);
+            metadata.NamespaceProperty == namespaceName && metadata.Uid == expectedUid && Owns(metadata, identity);
     }
 
     public static async Task<WorkloadObservation> StatefulSetAsync(
@@ -122,14 +126,15 @@ public static class KubernetesWorkloadObservation
         bool generationLabel,
         CancellationToken cancellationToken)
     {
-        var controller =
-            await client.AppsV1.ReadNamespacedStatefulSetAsync(name,
-                namespaceName,
-                cancellationToken: cancellationToken);
+        var controller = await client.AppsV1.ReadNamespacedStatefulSetAsync(
+            name,
+            namespaceName,
+            cancellationToken: cancellationToken);
         if (!Owns(controller.Metadata, identity))
             return new UnavailableWorkloadObservation("OwnershipMismatch");
         var status = controller.Status;
-        return await PodsAsync(client,
+        return await PodsAsync(
+            client,
             namespaceName,
             identity,
             controller.Metadata,
@@ -167,22 +172,24 @@ public static class KubernetesWorkloadObservation
     {
         if (!Owns(controller, identity))
             return new UnavailableWorkloadObservation("OwnershipMismatch");
-        var listed = await client.CoreV1.ListNamespacedPodAsync(namespaceName,
+        var listed = await client.CoreV1.ListNamespacedPodAsync(
+            namespaceName,
             labelSelector: Selector(identity),
             limit: MaximumPods,
             cancellationToken: cancellationToken);
-        var pods = listed.Items.Where(pod =>
-                pod.Metadata.NamespaceProperty == namespaceName && Owns(pod.Metadata, identity) &&
+        var pods = listed.Items
+            .Where(pod => pod.Metadata.NamespaceProperty == namespaceName && Owns(pod.Metadata, identity) &&
                 ControlledBy(pod.Metadata, controllerUids))
-            .OrderBy(pod => pod.Metadata.Name, StringComparer.Ordinal).ToArray();
+            .OrderBy(pod => pod.Metadata.Name, StringComparer.Ordinal)
+            .ToArray();
         var summary = pods.Select(pod => SummarizePod(pod, generation, generationKey, generationLabel)).ToArray();
         var truncated = !string.IsNullOrEmpty(listed.Metadata.ContinueProperty);
         var currentPods = pods.Where(pod => pod.Metadata.DeletionTimestamp is null).ToArray();
         var rolloutCurrent = controllerCurrent && !truncated && current == desired && updated == desired &&
-                             currentPods.Length == desired && currentPods.All(pod =>
-                                 Generation(pod.Metadata, generationKey, generationLabel) == generation);
+            currentPods.Length == desired && currentPods.All(pod =>
+                Generation(pod.Metadata, generationKey, generationLabel) == generation);
         var isReady = desired > 0 && rolloutCurrent && ready >= desired && available >= desired &&
-                      currentPods.All(pod => SummarizePod(pod, generation, generationKey, generationLabel).Ready);
+            currentPods.All(pod => SummarizePod(pod, generation, generationKey, generationLabel).Ready);
         var events = new List<ObservedWorkloadEvent>();
         string? eventsUnavailable = null;
         try
@@ -190,16 +197,21 @@ public static class KubernetesWorkloadObservation
             // Eight verified UIDs, four events each: never scan or return another resource's namespace events.
             foreach (var uid in new[] { controller.Uid }.Concat(controllerUids.Order(StringComparer.Ordinal))
                          .Concat(pods.Select(pod => pod.Metadata.Uid).Order(StringComparer.Ordinal))
-                         .Distinct(StringComparer.Ordinal).Take(8))
+                         .Distinct(StringComparer.Ordinal)
+                         .Take(8))
             {
-                var recent = await client.CoreV1.ListNamespacedEventAsync(namespaceName,
+                var recent = await client.CoreV1.ListNamespacedEventAsync(
+                    namespaceName,
                     fieldSelector: $"involvedObject.uid={uid},type=Warning",
                     limit: 4,
                     cancellationToken: cancellationToken);
-                events.AddRange(recent.Items.Where(item => item.InvolvedObject.Uid == uid && item.Type == "Warning")
-                    .Select(item => new ObservedWorkloadEvent(SafeReason(item.Reason),
-                        item.Count ?? 1,
-                        item.LastTimestamp ?? item.EventTime)));
+                events.AddRange(
+                    recent.Items
+                        .Where(item => item.InvolvedObject.Uid == uid && item.Type == "Warning")
+                        .Select(item => new ObservedWorkloadEvent(
+                            SafeReason(item.Reason),
+                            item.Count ?? 1,
+                            item.LastTimestamp ?? item.EventTime)));
             }
         }
         catch (HttpOperationException exception) when (exception.Response?.StatusCode is HttpStatusCode.Forbidden
@@ -216,7 +228,8 @@ public static class KubernetesWorkloadObservation
             eventsUnavailable = "Unavailable";
         }
 
-        return new ObservedWorkload(isReady,
+        return new ObservedWorkload(
+            isReady,
             rolloutCurrent,
             desired,
             current,
@@ -229,7 +242,8 @@ public static class KubernetesWorkloadObservation
             eventsUnavailable);
     }
 
-    public static ObservedWorkloadPod SummarizePod(V1Pod pod,
+    public static ObservedWorkloadPod SummarizePod(
+        V1Pod pod,
         long generation,
         string generationKey,
         bool generationLabel)
@@ -237,17 +251,21 @@ public static class KubernetesWorkloadObservation
         var containers = (pod.Status?.ContainerStatuses ?? []).Concat(pod.Status?.InitContainerStatuses ?? [])
             .ToArray();
         var ready = pod.Metadata.DeletionTimestamp is null && pod.Status?.Phase == "Running" &&
-                    pod.Status.Conditions?.Any(condition => condition.Type == "Ready" && condition.Status == "True") ==
-                    true &&
-                    pod.Status.ContainerStatuses?.Count > 0 &&
-                    pod.Status.ContainerStatuses.All(container => container.Ready);
-        var reasons = containers.Select(container =>
-                container.State?.Waiting?.Reason ??
+            pod.Status.Conditions?.Any(condition => condition.Type == "Ready" && condition.Status == "True") == true &&
+            pod.Status.ContainerStatuses?.Count > 0 && pod.Status.ContainerStatuses.All(container => container.Ready);
+        var reasons = containers
+            .Select(container => container.State?.Waiting?.Reason ??
                 container.State?.Terminated?.Reason ?? container.LastState?.Terminated?.Reason)
-            .Concat(pod.Status?.Conditions?.Where(condition => condition.Status == "False")
-                .Select(condition => condition.Reason) ?? [])
-            .Where(reason => !string.IsNullOrWhiteSpace(reason)).Select(SafeReason).Distinct(StringComparer.Ordinal)
-            .Take(8).ToArray();
+            .Concat(
+                pod.Status
+                    ?.Conditions
+                    ?.Where(condition => condition.Status == "False")
+                    .Select(condition => condition.Reason) ?? [])
+            .Where(reason => !string.IsNullOrWhiteSpace(reason))
+            .Select(SafeReason)
+            .Distinct(StringComparer.Ordinal)
+            .Take(8)
+            .ToArray();
         var phase = pod.Metadata.DeletionTimestamp is not null
             ? "Terminating"
             : pod.Status?.Phase switch
@@ -256,9 +274,10 @@ public static class KubernetesWorkloadObservation
                 "Running" => "Running",
                 "Succeeded" => "Succeeded",
                 "Failed" => "Failed",
-                _ => "Unknown"
+                _ => "Unknown",
             };
-        return new ObservedWorkloadPod(pod.Metadata.Name,
+        return new ObservedWorkloadPod(
+            pod.Metadata.Name,
             phase,
             ready,
             Generation(pod.Metadata, generationKey, generationLabel) == generation,
@@ -266,8 +285,9 @@ public static class KubernetesWorkloadObservation
             reasons);
     }
 
-    private static string Selector(WorkloadIdentityLabels identity) =>
-        string.Join(',', identity.ToDictionary().Select(pair => $"{pair.Key}={pair.Value}"));
+    private static string Selector(WorkloadIdentityLabels identity) => string.Join(
+        ',',
+        identity.ToDictionary().Select(pair => $"{pair.Key}={pair.Value}"));
 
     private static bool ControlledBy(V1ObjectMeta metadata, IReadOnlySet<string> uids) =>
         metadata.OwnerReferences?.Any(owner => owner.Controller == true && uids.Contains(owner.Uid)) == true;

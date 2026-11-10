@@ -9,23 +9,28 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Application.Sources;
+using Pole.Features.GitOps.Domain;
 using Pole.Mediator;
 using Pole.Validation;
 
 namespace Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record ConfirmLifecyclePreviewBody(long ExpectedRevision);
+public sealed record ConfirmLifecyclePreviewBody(
+    long ExpectedRevision
+);
 
 public sealed record ConfirmLifecyclePreviewRequest(
     [FromRoute] string Id,
     [FromRoute] string PreviewId,
     [FromBody] ConfirmLifecyclePreviewBody Body,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
-    : IMediatorRequest<ConfirmLifecyclePreviewOutcome>, ITenantWriteOperation;
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
+) : IMediatorRequest<ConfirmLifecyclePreviewOutcome>, ITenantWriteOperation;
 
-public sealed record ConfirmLifecyclePreviewResponse(string RunId);
+public sealed record ConfirmLifecyclePreviewResponse(
+    string RunId
+);
 
 public union ConfirmLifecyclePreviewOutcome(
     ConfirmLifecyclePreviewResponse,
@@ -46,15 +51,23 @@ public sealed class ConfirmLifecyclePreviewValidator : AbstractValidator<Confirm
     }
 }
 
-public sealed class ConfirmLifecyclePreviewHandler(GitLifecyclePreviews previews)
-    : IMediatorOutcomeHandler<ConfirmLifecyclePreviewRequest, ConfirmLifecyclePreviewOutcome>
+public sealed class ConfirmLifecyclePreviewHandler(
+    GitLifecyclePreviews previews
+) : IMediatorOutcomeHandler<ConfirmLifecyclePreviewRequest, ConfirmLifecyclePreviewOutcome>
 {
-    public async Task<ConfirmLifecyclePreviewOutcome> HandleAsync(ConfirmLifecyclePreviewRequest request,
+    public async Task<ConfirmLifecyclePreviewOutcome> HandleAsync(
+        ConfirmLifecyclePreviewRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await previews.ConfirmAsync(new(new(ObjectId.Parse(request.TenantId).ToString(),
-            ObjectId.Parse(request.Id).ToString()), ObjectId.Parse(request.PreviewId).ToString(),
-            request.Body.ExpectedRevision, request.CurrentUserId.Value), cancellationToken);
+        var result = await previews.ConfirmAsync(
+            new ConfirmLifecyclePreview(
+                new GitSourceIdentity(
+                    ObjectId.Parse(request.TenantId).ToString(),
+                    ObjectId.Parse(request.Id).ToString()),
+                ObjectId.Parse(request.PreviewId).ToString(),
+                request.Body.ExpectedRevision,
+                request.CurrentUserId.Value),
+            cancellationToken);
         return result switch
         {
             GitLifecycleScheduled scheduled => new ConfirmLifecyclePreviewResponse(scheduled.RunId),
@@ -62,7 +75,7 @@ public sealed class ConfirmLifecyclePreviewHandler(GitLifecyclePreviews previews
             GitSourceBusy busy => busy,
             GitPreviewNotFound missing => missing,
             GitPreviewStale stale => stale,
-            GitPreviewReadFailed failed => failed
+            GitPreviewReadFailed failed => failed,
         };
     }
 }
@@ -71,18 +84,22 @@ public static class ConfirmLifecyclePreviewEndpoint
 {
     public static IEndpointRouteBuilder MapConfirmLifecyclePreviewEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{Id}/previews/{PreviewId}/confirm", async (IMediator mediator,
-                [AsParameters] ConfirmLifecyclePreviewRequest request, CancellationToken ct) =>
-                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/{Id}/previews/{PreviewId}/confirm",
+                async (
+                    IMediator mediator, [AsParameters] ConfirmLifecyclePreviewRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     ConfirmLifecyclePreviewResponse scheduled => Results.Accepted(
-                        $"/api/v1/gitops/sources/{request.Id}/runs/{scheduled.RunId}", scheduled),
+                        $"/api/v1/gitops/sources/{request.Id}/runs/{scheduled.RunId}",
+                        scheduled),
                     GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
                     GitSourceBusy busy => RepositoryHttpMappings.Map(busy),
                     GitPreviewNotFound missing => LifecycleHttpMappings.Map(missing),
                     GitPreviewStale stale => LifecycleHttpMappings.Map(stale),
-                    GitPreviewReadFailed failed => LifecycleHttpMappings.Map(failed)
-                })).WithName("ConfirmGitLifecyclePreview");
+                    GitPreviewReadFailed failed => LifecycleHttpMappings.Map(failed),
+                }))
+            .WithName("ConfirmGitLifecyclePreview");
         return app;
     }
 }

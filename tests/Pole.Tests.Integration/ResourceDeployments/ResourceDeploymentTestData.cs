@@ -14,18 +14,13 @@ internal static class ResourceDeploymentTestData
         long requestsCpuMillis = 250,
         long requestsMemoryMi = 256,
         long limitsCpuMillis = 1000,
-        long limitsMemoryMi = 1024) =>
-        ResolvedComputeConfiguration.Create(
-            ComputeProfileId,
-            revision,
-            "General purpose",
-            ResolvedComputeResourceValues.Create(
-                requestsCpuMillis,
-                requestsMemoryMi),
-            ResolvedComputeResourceValues.Create(
-                limitsCpuMillis,
-                limitsMemoryMi),
-            ComputeArchitecture.Any);
+        long limitsMemoryMi = 1024) => ResolvedComputeConfiguration.Create(
+        ComputeProfileId,
+        revision,
+        "General purpose",
+        ResolvedComputeResourceValues.Create(requestsCpuMillis, requestsMemoryMi),
+        ResolvedComputeResourceValues.Create(limitsCpuMillis, limitsMemoryMi),
+        ComputeArchitecture.Any);
 
     public static ResolvedComputeProfile ResolvedComputeProfile(
         string deploymentTargetId,
@@ -33,25 +28,20 @@ internal static class ResourceDeploymentTestData
         long requestsCpuMillis = 250,
         long requestsMemoryMi = 256,
         long limitsCpuMillis = 1000,
-        long limitsMemoryMi = 1024) =>
-        new(
-            ComputeProfileId,
-            revision,
-            deploymentTargetId,
-            "General purpose",
-            new ComputeResourceValues(
-                requestsCpuMillis,
-                requestsMemoryMi),
-            new ComputeResourceValues(
-                limitsCpuMillis,
-                limitsMemoryMi),
-            ComputeArchitecture.Any,
-            ImmutableList<ComputeExtendedResourceValue>.Empty,
-            ImmutableList<ComputeNodeSelectorValue>.Empty,
-            ImmutableList<ComputeNodeAffinityTermValue>.Empty,
-            ImmutableList<ComputePreferredNodeAffinityTermValue>.Empty,
-            ImmutableList<ComputeTolerationValue>.Empty,
-            RuntimeClassName: null);
+        long limitsMemoryMi = 1024) => new(
+        ComputeProfileId,
+        revision,
+        deploymentTargetId,
+        "General purpose",
+        new ComputeResourceValues(requestsCpuMillis, requestsMemoryMi),
+        new ComputeResourceValues(limitsCpuMillis, limitsMemoryMi),
+        ComputeArchitecture.Any,
+        ImmutableList<ComputeExtendedResourceValue>.Empty,
+        ImmutableList<ComputeNodeSelectorValue>.Empty,
+        ImmutableList<ComputeNodeAffinityTermValue>.Empty,
+        ImmutableList<ComputePreferredNodeAffinityTermValue>.Empty,
+        ImmutableList<ComputeTolerationValue>.Empty,
+        RuntimeClassName: null);
 
     public static ResourceDeploymentComputeConfiguration ContractCompute(
         string deploymentTargetId,
@@ -59,23 +49,18 @@ internal static class ResourceDeploymentTestData
         long requestsCpuMillis = 250,
         long requestsMemoryMi = 256,
         long limitsCpuMillis = 1000,
-        long limitsMemoryMi = 1024) =>
-        new(
-            ComputeProfileId,
-            revision,
-            deploymentTargetId,
-            "General purpose",
-            new ResourceDeploymentComputeResourceValues(
-                requestsCpuMillis,
-                requestsMemoryMi),
-            new ResourceDeploymentComputeResourceValues(
-                limitsCpuMillis,
-                limitsMemoryMi),
-            ComputeArchitecture.Any,
-            ImmutableList<ResourceDeploymentExtendedResource>.Empty,
-            ImmutableList<ResourceDeploymentNodeSelector>.Empty,
-            ImmutableList<ResourceDeploymentNodeAffinityTerm>.Empty,
-            ImmutableList<ResourceDeploymentPreferredNodeAffinityTerm>.Empty,
-            ImmutableList<ResourceDeploymentToleration>.Empty,
-            RuntimeClassName: null);
+        long limitsMemoryMi = 1024) => new(
+        ComputeProfileId,
+        revision,
+        deploymentTargetId,
+        "General purpose",
+        new ResourceDeploymentComputeResourceValues(requestsCpuMillis, requestsMemoryMi),
+        new ResourceDeploymentComputeResourceValues(limitsCpuMillis, limitsMemoryMi),
+        ComputeArchitecture.Any,
+        ImmutableList<ResourceDeploymentExtendedResource>.Empty,
+        ImmutableList<ResourceDeploymentNodeSelector>.Empty,
+        ImmutableList<ResourceDeploymentNodeAffinityTerm>.Empty,
+        ImmutableList<ResourceDeploymentPreferredNodeAffinityTerm>.Empty,
+        ImmutableList<ResourceDeploymentToleration>.Empty,
+        RuntimeClassName: null);
 }

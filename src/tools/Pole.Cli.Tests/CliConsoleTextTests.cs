@@ -1,4 +1,3 @@
-using Pole.Cli;
 using Xunit;
 
 namespace Pole.Cli.Tests;

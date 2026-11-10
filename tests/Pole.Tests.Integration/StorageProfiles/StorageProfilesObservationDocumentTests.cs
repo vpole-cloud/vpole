@@ -21,7 +21,8 @@ public sealed class StorageProfilesObservationDocumentTests
         Assert.Equal(document, restored.ToBsonDocument(type));
         Assert.DoesNotContain("_t", document.Names);
         Assert.Equal(kind == "demand" ? BsonType.String : BsonType.ObjectId, document["_id"].BsonType);
-        Assert.All(document.Elements.Where(element => element.Name.EndsWith("AtUtc", StringComparison.Ordinal)),
+        Assert.All(
+            document.Elements.Where(element => element.Name.EndsWith("AtUtc", StringComparison.Ordinal)),
             element => Assert.True(element.Value.IsBsonNull || element.Value.BsonType == BsonType.DateTime));
     }
 
@@ -30,20 +31,56 @@ public sealed class StorageProfilesObservationDocumentTests
         var id = ObjectId.GenerateNewId().ToString();
         var utc = DateTime.UnixEpoch;
         var inventory = new StoredStorageInventory(
-            [new("local", "rancher.io/local-path", true, "Delete", "WaitForFirstConsumer", true)],
-            [new("volume", "1Gi", StoredVolumeStatus.Bound, "local", "namespace", "claim", "Delete",
-                new(null, null, null, null, null))],
-            [new("claim", "namespace", "1Gi", "1Gi", StoredClaimStatus.Bound, "local", "volume",
-                new(null, null, null, null, null))], true);
+            [new StoredStorageClass("local", "rancher.io/local-path", true, "Delete", "WaitForFirstConsumer", true)],
+            [
+                new StoredPersistentVolume(
+                    "volume",
+                    "1Gi",
+                    StoredVolumeStatus.Bound,
+                    "local",
+                    "namespace",
+                    "claim",
+                    "Delete",
+                    new StoredStorageOwner(null, null, null, null, null)),
+            ],
+            [
+                new StoredPersistentVolumeClaim(
+                    "claim",
+                    "namespace",
+                    "1Gi",
+                    "1Gi",
+                    StoredClaimStatus.Bound,
+                    "local",
+                    "volume",
+                    new StoredStorageOwner(null, null, null, null, null)),
+            ],
+            true);
         return kind switch
         {
-            "control" => new StorageObservationControlDocument(id, 1, 6, 7, 8, 9,
-                "replica", "lease-token", utc.AddMinutes(1), true, "source", null, utc),
-            "demand" => new StorageObservationDemandDocument($"{id}/interest", id,
-                "interest", "connection", "session", utc.AddMinutes(5), utc.AddMinutes(1)),
+            "control" => new StorageObservationControlDocument(
+                id,
+                1,
+                6,
+                7,
+                8,
+                9,
+                "replica",
+                "lease-token",
+                utc.AddMinutes(1),
+                true,
+                "source",
+                null,
+                utc),
+            "demand" => new StorageObservationDemandDocument(
+                $"{id}/interest",
+                id,
+                "interest",
+                "connection",
+                "session",
+                utc.AddMinutes(5),
+                utc.AddMinutes(1)),
             "snapshot" => new StorageObservationSnapshotDocument(id, 1, "source", 7, 8, utc, inventory, null),
-            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
     }
-
 }

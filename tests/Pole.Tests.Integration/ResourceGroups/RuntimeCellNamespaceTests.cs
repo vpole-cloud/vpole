@@ -11,21 +11,27 @@ using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.ResultType;
-using Pole.Server.Extensions;
-using Pole.Platform.Hosting;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
 public sealed class RuntimeCellNamespaceTests
 {
+    private const string TenantId = "507f1f77bcf86cd799439011";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439012";
+    private const string ScopeId = "507f1f77bcf86cd799439013";
+    private const string DeploymentTargetId = "507f1f77bcf86cd799439014";
+    private const string RuntimeCellId = "507f1f77bcf86cd799439015";
+
     [Fact]
     public void NameGenerator_NormalizesAndBoundsPrefix_AndIsStableForScope()
     {
-        var subject = new RuntimeCellNamespaceNameGenerator(new KubernetesOptions
-        {
-            NamespaceNamePrefix = " --POLE__Control-Plane-With-A-Very-Long-Prefix!!-- "
-        });
+        var subject = new RuntimeCellNamespaceNameGenerator(
+            new KubernetesOptions
+            {
+                NamespaceNamePrefix = " --POLE__Control-Plane-With-A-Very-Long-Prefix!!-- ",
+            });
 
         var first = subject.Invoke(TenantId, ScopeId);
         var repeated = subject.Invoke(TenantId, ScopeId);
@@ -39,10 +45,11 @@ public sealed class RuntimeCellNamespaceTests
     [Fact]
     public void NameGenerator_UsesFullScopeId_AndSeparatesScopes()
     {
-        var subject = new RuntimeCellNamespaceNameGenerator(new KubernetesOptions
-        {
-            NamespaceNamePrefix = "pole"
-        });
+        var subject = new RuntimeCellNamespaceNameGenerator(
+            new KubernetesOptions
+            {
+                NamespaceNamePrefix = "pole",
+            });
         const string otherScopeId = "507f1f77bcf86cd799439099";
 
         var first = subject.Invoke(TenantId, ScopeId);
@@ -59,10 +66,10 @@ public sealed class RuntimeCellNamespaceTests
     [InlineData("___!!!")]
     public void NameGenerator_RejectsPrefixWithoutDnsLabelContent(string prefix)
     {
-        var error = Assert.Throws<ArgumentException>(() =>
-            new RuntimeCellNamespaceNameGenerator(new KubernetesOptions
+        var error = Assert.Throws<ArgumentException>(() => new RuntimeCellNamespaceNameGenerator(
+            new KubernetesOptions
             {
-                NamespaceNamePrefix = prefix
+                NamespaceNamePrefix = prefix,
             }));
 
         Assert.DoesNotContain("token", error.Message, StringComparison.OrdinalIgnoreCase);
@@ -71,11 +78,11 @@ public sealed class RuntimeCellNamespaceTests
     [Fact]
     public async Task InvalidNamespacePrefix_PreventsHostStartup()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["kubernetes:NamespaceNamePrefix"] = "---"
-            })
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["kubernetes:NamespaceNamePrefix"] = "---",
+                })
             .Build();
         using var host = new HostBuilder()
             .ConfigureServices(services => services.AddResourceGroupsFeature(configuration))
@@ -97,9 +104,13 @@ public sealed class RuntimeCellNamespaceTests
         Assert.Equal(5, manifest.Metadata.Labels.Count);
         Assert.Equal(runtimeCell.TenantId, manifest.Metadata.Labels[RuntimeCellNamespaceLabels.TenantId]);
         Assert.Equal(runtimeCell.ResourceGroupId, manifest.Metadata.Labels[RuntimeCellNamespaceLabels.ResourceGroupId]);
-        Assert.Equal(runtimeCell.IsolationScopeId, manifest.Metadata.Labels[RuntimeCellNamespaceLabels.IsolationScopeId]);
+        Assert.Equal(
+            runtimeCell.IsolationScopeId,
+            manifest.Metadata.Labels[RuntimeCellNamespaceLabels.IsolationScopeId]);
         Assert.Equal(runtimeCell.Id, manifest.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId]);
-        Assert.Equal(runtimeCell.DeploymentTargetId, manifest.Metadata.Labels[RuntimeCellNamespaceLabels.DeploymentTargetId]);
+        Assert.Equal(
+            runtimeCell.DeploymentTargetId,
+            manifest.Metadata.Labels[RuntimeCellNamespaceLabels.DeploymentTargetId]);
     }
 
     [Fact]
@@ -128,7 +139,7 @@ public sealed class RuntimeCellNamespaceTests
             new Dictionary<string, string>
             {
                 ["pole.dev/owned-by"] = "pole-tests",
-                ["pole.dev/test-run-id"] = "run-123"
+                ["pole.dev/test-run-id"] = "run-123",
             });
 
         Assert.Equal(7, manifest.Metadata.Labels.Count);
@@ -143,12 +154,12 @@ public sealed class RuntimeCellNamespaceTests
     [InlineData(RuntimeCellNamespaceLabels.RuntimeCellId, "replacement")]
     public async Task InvalidAdditionalNamespaceLabels_PreventHostStartup(string key, string value)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["kubernetes:NamespaceNamePrefix"] = "pole",
-                [$"kubernetes:AdditionalNamespaceLabels:{key}"] = value
-            })
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["kubernetes:NamespaceNamePrefix"] = "pole",
+                    [$"kubernetes:AdditionalNamespaceLabels:{key}"] = value,
+                })
             .Build();
         using var host = new HostBuilder()
             .ConfigureServices(services => services.AddResourceGroupsFeature(configuration))
@@ -168,8 +179,8 @@ public sealed class RuntimeCellNamespaceTests
             NamespaceNamePrefix = "pole",
             AdditionalNamespaceLabels = new Dictionary<string, string>
             {
-                ["pole.dev/owned-by"] = "pole-tests"
-            }
+                ["pole.dev/owned-by"] = "pole-tests",
+            },
         };
         var subject = new KubernetesRuntimeCellNamespaceManager(
             new RecordingKubernetesClientProvider(kubernetes),
@@ -197,7 +208,9 @@ public sealed class RuntimeCellNamespaceTests
         Assert.Equal(1, handler.CreateRequests);
         Assert.NotNull(handler.CreatedNamespace);
         Assert.Equal(runtimeCell.KubernetesNamespace, handler.CreatedNamespace.Metadata.Name);
-        Assert.Equal(runtimeCell.Id, handler.CreatedNamespace.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId]);
+        Assert.Equal(
+            runtimeCell.Id,
+            handler.CreatedNamespace.Metadata.Labels[RuntimeCellNamespaceLabels.RuntimeCellId]);
         Assert.Equal(1, handler.PolicyCreateRequests);
         Assert.Equal(runtimeCell.KubernetesNamespace, handler.CreatedPolicy!.Metadata.NamespaceProperty);
     }
@@ -209,11 +222,10 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             CreateStatusCode = HttpStatusCode.Conflict,
-            ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell)
+            ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
@@ -233,11 +245,10 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             PolicyCreateStatusCode = HttpStatusCode.Conflict,
-            ExistingPolicy = permissive
+            ExistingPolicy = permissive,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
@@ -257,11 +268,10 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             PolicyCreateStatusCode = HttpStatusCode.Conflict,
-            ExistingPolicy = foreign
+            ExistingPolicy = foreign,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
@@ -274,11 +284,10 @@ public sealed class RuntimeCellNamespaceTests
     {
         using var handler = new NamespaceApiHandler
         {
-            PolicyCreateStatusCode = HttpStatusCode.Forbidden
+            PolicyCreateStatusCode = HttpStatusCode.Forbidden,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.EnsureCreatedAsync(CreateRuntimeCell());
 
@@ -296,11 +305,10 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             CreateStatusCode = HttpStatusCode.Conflict,
-            ExistingNamespace = existing
+            ExistingNamespace = existing,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.EnsureCreatedAsync(runtimeCell);
 
@@ -313,11 +321,10 @@ public sealed class RuntimeCellNamespaceTests
         var runtimeCell = CreateRuntimeCell();
         using var handler = new NamespaceApiHandler
         {
-            ReadStatusCode = HttpStatusCode.NotFound
+            ReadStatusCode = HttpStatusCode.NotFound,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.DeleteAsync(runtimeCell);
 
@@ -333,7 +340,7 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
-            DeleteStatusCode = HttpStatusCode.NotFound
+            DeleteStatusCode = HttpStatusCode.NotFound,
         };
         using var kubernetes = CreateKubernetes(handler);
         var provider = new RecordingKubernetesClientProvider(kubernetes);
@@ -353,11 +360,10 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
-            ReadStatusCodes = [HttpStatusCode.OK, HttpStatusCode.NotFound]
+            ReadStatusCodes = [HttpStatusCode.OK, HttpStatusCode.NotFound],
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.DeleteAsync(runtimeCell);
 
@@ -373,11 +379,10 @@ public sealed class RuntimeCellNamespaceTests
         using var handler = new NamespaceApiHandler
         {
             ExistingNamespace = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell),
-            ReadStatusCodes = [HttpStatusCode.OK, HttpStatusCode.OK]
+            ReadStatusCodes = [HttpStatusCode.OK, HttpStatusCode.OK],
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.DeleteAsync(runtimeCell);
 
@@ -391,15 +396,13 @@ public sealed class RuntimeCellNamespaceTests
     {
         var runtimeCell = CreateRuntimeCell();
         var existing = RuntimeCellNamespaceManifestBuilder.Build(runtimeCell);
-        existing.Metadata.Labels[RuntimeCellNamespaceLabels.DeploymentTargetId] =
-            "507f1f77bcf86cd799439099";
+        existing.Metadata.Labels[RuntimeCellNamespaceLabels.DeploymentTargetId] = "507f1f77bcf86cd799439099";
         using var handler = new NamespaceApiHandler
         {
-            ExistingNamespace = existing
+            ExistingNamespace = existing,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.DeleteAsync(runtimeCell);
 
@@ -412,25 +415,23 @@ public sealed class RuntimeCellNamespaceTests
     {
         using var handler = new NamespaceApiHandler
         {
-            CreateStatusCode = HttpStatusCode.InternalServerError
+            CreateStatusCode = HttpStatusCode.InternalServerError,
         };
         using var kubernetes = CreateKubernetes(handler);
-        var subject = new KubernetesRuntimeCellNamespaceManager(
-            new RecordingKubernetesClientProvider(kubernetes));
+        var subject = new KubernetesRuntimeCellNamespaceManager(new RecordingKubernetesClientProvider(kubernetes));
 
         var result = await subject.EnsureCreatedAsync(CreateRuntimeCell());
 
         var unavailable = result switch
         {
             RuntimeCellNamespaceUnavailable failure => failure,
-            RuntimeCellNamespaceOwnershipConflict => throw new Xunit.Sdk.XunitException(
+            RuntimeCellNamespaceOwnershipConflict => throw new XunitException(
                 "Expected a sanitized namespace-provider failure, got an ownership conflict."),
-            RuntimeCellDeploymentTargetUnavailable => throw new Xunit.Sdk.XunitException(
+            RuntimeCellDeploymentTargetUnavailable => throw new XunitException(
                 "Expected a Kubernetes API failure, got a deployment target failure."),
-            RuntimeCellNetworkPolicyOwnershipConflict or RuntimeCellNetworkPolicyUnavailable =>
-                throw new Xunit.Sdk.XunitException("Network policy must not be attempted when namespace creation fails."),
-            Unit => throw new Xunit.Sdk.XunitException(
-                "Expected a sanitized namespace-provider failure, got success.")
+            RuntimeCellNetworkPolicyOwnershipConflict or RuntimeCellNetworkPolicyUnavailable => throw
+                new XunitException("Network policy must not be attempted when namespace creation fails."),
+            Unit => throw new XunitException("Expected a sanitized namespace-provider failure, got success."),
         };
         Assert.DoesNotContain("provider-secret-token", unavailable.KubernetesNamespace, StringComparison.Ordinal);
     }
@@ -443,8 +444,7 @@ public sealed class RuntimeCellNamespaceTests
         DeploymentTargetUnavailableReason reason)
     {
         var subject = new KubernetesRuntimeCellNamespaceManager(
-            new ThrowingKubernetesClientProvider(
-                new DeploymentTargetUnavailableException(DeploymentTargetId, reason)));
+            new ThrowingKubernetesClientProvider(new DeploymentTargetUnavailableException(DeploymentTargetId, reason)));
 
         var outcome = await subject.EnsureCreatedAsync(CreateRuntimeCell());
 
@@ -456,51 +456,41 @@ public sealed class RuntimeCellNamespaceTests
     public async Task UnexpectedProviderFailure_IsNotMasked()
     {
         var subject = new KubernetesRuntimeCellNamespaceManager(
-            new ThrowingKubernetesClientProvider(
-                new InvalidOperationException("unexpected-provider-bug")));
+            new ThrowingKubernetesClientProvider(new InvalidOperationException("unexpected-provider-bug")));
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => subject.EnsureCreatedAsync(CreateRuntimeCell()));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            subject.EnsureCreatedAsync(CreateRuntimeCell()));
 
         Assert.Equal("unexpected-provider-bug", error.Message);
     }
 
-    private static Kubernetes CreateKubernetes(DelegatingHandler handler) =>
-        new(
-            new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
-            handler);
+    private static Kubernetes CreateKubernetes(DelegatingHandler handler) => new(
+        new KubernetesClientConfiguration { Host = "http://kubernetes.test" },
+        handler);
 
     private static RuntimeCell CreateRuntimeCell()
     {
-        var namespaceName = new RuntimeCellNamespaceNameGenerator(new KubernetesOptions
-        {
-            NamespaceNamePrefix = "pole"
-        }).Invoke(TenantId, ScopeId);
+        var namespaceName = new RuntimeCellNamespaceNameGenerator(
+            new KubernetesOptions
+            {
+                NamespaceNamePrefix = "pole",
+            }).Invoke(TenantId, ScopeId);
         return RuntimeCellFactory.Create(
             TenantId,
             ResourceGroupId,
             ScopeId,
             DeploymentTargetId,
             namespaceName,
-            new RuntimeCellFactory.CreateOptions(
-                RuntimeCellId,
-                new DateTime(2026, 7, 27, 10, 0, 0, DateTimeKind.Utc)));
+            new RuntimeCellFactory.CreateOptions(RuntimeCellId, new DateTime(2026, 7, 27, 10, 0, 0, DateTimeKind.Utc)));
     }
 
-    private const string TenantId = "507f1f77bcf86cd799439011";
-    private const string ResourceGroupId = "507f1f77bcf86cd799439012";
-    private const string ScopeId = "507f1f77bcf86cd799439013";
-    private const string DeploymentTargetId = "507f1f77bcf86cd799439014";
-    private const string RuntimeCellId = "507f1f77bcf86cd799439015";
-
-    private sealed class RecordingKubernetesClientProvider(IKubernetes kubernetes)
-        : IKubernetesClientProvider
+    private sealed class RecordingKubernetesClientProvider(
+        IKubernetes kubernetes
+    ) : IKubernetesClientProvider
     {
         public List<string> RequestedTargetIds { get; } = [];
 
-        public Task<IKubernetes> GetAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default)
+        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default)
         {
             RequestedTargetIds.Add(deploymentTargetId);
             return Task.FromResult(kubernetes);
@@ -508,25 +498,22 @@ public sealed class RuntimeCellNamespaceTests
 
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("The default Kubernetes client must not be used.");
     }
 
-    private sealed class ThrowingKubernetesClientProvider(Exception exception)
-        : IKubernetesClientProvider
+    private sealed class ThrowingKubernetesClientProvider(
+        Exception exception
+    ) : IKubernetesClientProvider
     {
-        public Task<IKubernetes> GetAsync(
-            string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
+        public Task<IKubernetes> GetAsync(string deploymentTargetId, CancellationToken cancellationToken = default) =>
             Task.FromException<IKubernetes>(exception);
 
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
         public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             Task.FromException<IKubernetes>(exception);
@@ -539,7 +526,7 @@ public sealed class RuntimeCellNamespaceTests
         public IReadOnlyList<HttpStatusCode>? ReadStatusCodes { get; init; }
         public HttpStatusCode DeleteStatusCode { get; init; } = HttpStatusCode.OK;
         public HttpStatusCode PolicyCreateStatusCode { get; init; } = HttpStatusCode.Created;
-        public HttpStatusCode PolicyReplaceStatusCode { get; init; } = HttpStatusCode.OK;
+        public HttpStatusCode PolicyReplaceStatusCode { get; } = HttpStatusCode.OK;
         public V1Namespace? ExistingNamespace { get; init; }
         public V1NetworkPolicy? ExistingPolicy { get; init; }
         public V1Namespace? CreatedNamespace { get; private set; }
@@ -585,6 +572,7 @@ public sealed class RuntimeCellNamespaceTests
                         : Response(request, PolicyReplaceStatusCode, SerializeStatus(PolicyReplaceStatusCode));
                 }
             }
+
             if (request.Method == HttpMethod.Post && path == "/api/v1/namespaces")
             {
                 CreateRequests++;
@@ -594,13 +582,13 @@ public sealed class RuntimeCellNamespaceTests
                     ? Response(
                         request,
                         CreateStatusCode,
-                        SerializeNamespace(CreatedNamespace ??
-                                           throw new InvalidOperationException("The namespace request body is required.")))
+                        SerializeNamespace(
+                            CreatedNamespace ??
+                            throw new InvalidOperationException("The namespace request body is required.")))
                     : Response(request, CreateStatusCode, SerializeStatus(CreateStatusCode));
             }
 
-            if (request.Method == HttpMethod.Get &&
-                path.StartsWith("/api/v1/namespaces/", StringComparison.Ordinal))
+            if (request.Method == HttpMethod.Get && path.StartsWith("/api/v1/namespaces/", StringComparison.Ordinal))
             {
                 var requestIndex = ReadRequests;
                 ReadRequests++;
@@ -611,13 +599,13 @@ public sealed class RuntimeCellNamespaceTests
                     ? Response(
                         request,
                         HttpStatusCode.OK,
-                        SerializeNamespace(ExistingNamespace ??
-                                           throw new InvalidOperationException("An existing namespace is required.")))
+                        SerializeNamespace(
+                            ExistingNamespace ??
+                            throw new InvalidOperationException("An existing namespace is required.")))
                     : Response(request, readStatusCode, SerializeStatus(readStatusCode));
             }
 
-            if (request.Method == HttpMethod.Delete &&
-                path.StartsWith("/api/v1/namespaces/", StringComparison.Ordinal))
+            if (request.Method == HttpMethod.Delete && path.StartsWith("/api/v1/namespaces/", StringComparison.Ordinal))
             {
                 DeleteRequests++;
                 return Response(request, DeleteStatusCode, SerializeStatus(DeleteStatusCode));
@@ -629,27 +617,26 @@ public sealed class RuntimeCellNamespaceTests
         private static HttpResponseMessage Response(
             HttpRequestMessage request,
             HttpStatusCode statusCode,
-            string body) =>
-            new(statusCode)
-            {
-                RequestMessage = request,
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
+            string body) => new(statusCode)
+        {
+            RequestMessage = request,
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
 
-        private static string SerializeNamespace(V1Namespace value) =>
-            JsonSerializer.Serialize(new
+        private static string SerializeNamespace(V1Namespace value) => JsonSerializer.Serialize(
+            new
             {
                 apiVersion = value.ApiVersion,
                 kind = value.Kind,
                 metadata = new
                 {
                     name = value.Metadata.Name,
-                    labels = value.Metadata.Labels
-                }
+                    labels = value.Metadata.Labels,
+                },
             });
 
-        private static string SerializePolicy(V1NetworkPolicy value) =>
-            JsonSerializer.Serialize(new
+        private static string SerializePolicy(V1NetworkPolicy value) => JsonSerializer.Serialize(
+            new
             {
                 apiVersion = value.ApiVersion,
                 kind = value.Kind,
@@ -658,25 +645,25 @@ public sealed class RuntimeCellNamespaceTests
                     name = value.Metadata.Name,
                     @namespace = value.Metadata.NamespaceProperty,
                     labels = value.Metadata.Labels,
-                    resourceVersion = value.Metadata.ResourceVersion
+                    resourceVersion = value.Metadata.ResourceVersion,
                 },
                 spec = new
                 {
                     podSelector = new { matchLabels = value.Spec.PodSelector.MatchLabels },
                     policyTypes = value.Spec.PolicyTypes,
-                    ingress = value.Spec.Ingress
-                }
+                    ingress = value.Spec.Ingress,
+                },
             });
 
-        private static string SerializeStatus(HttpStatusCode statusCode) =>
-            JsonSerializer.Serialize(new
+        private static string SerializeStatus(HttpStatusCode statusCode) => JsonSerializer.Serialize(
+            new
             {
                 apiVersion = "v1",
                 kind = "Status",
                 status = (int)statusCode < 400 ? "Success" : "Failure",
                 reason = statusCode.ToString(),
                 code = (int)statusCode,
-                message = "provider-secret-token"
+                message = "provider-secret-token",
             });
     }
 }

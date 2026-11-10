@@ -2,16 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Workloads;
@@ -29,32 +21,74 @@ public sealed class ConsumerSecretProjectionResolverTests
     {
         var type = ResourceTypeId.Create("pole/web-service");
         var binding = SecretBinding.Create("binding", type.Value, "consumer", new AllSecretDeployments(), []);
-        var current = SecretFactory.Create("secret", "tenant", "group", "scope", "name", "purpose", ["token"],
-            DateTime.UtcNow)
+        var current = SecretFactory.Create(
+                "secret",
+                "tenant",
+                "group",
+                "scope",
+                "name",
+                "purpose",
+                ["token"],
+                DateTime.UtcNow)
             .Bind(binding, DateTime.UtcNow);
-        var placement = new ResourceDeploymentRuntimePlacementDto("deployment", "consumer", "cell", "target",
+        var placement = new ResourceDeploymentRuntimePlacementDto(
+            "deployment",
+            "consumer",
+            "cell",
+            "target",
             "namespace",
-            1, 1, null!, ResourceDeploymentStatus.Applied, ResourceDeploymentDesiredOperation.Apply, "scope");
-        LoadExactResourceDeploymentRuntimePlacement loadPlacement = (request,
-            _) => Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(placement);
-        LoadSecretById loadSecret = (_, _, _) => Task.FromResult<Secret?>(current);
-        LoadSecretProjections loadProjections = (_, _, _) => Task.FromResult<IReadOnlyList<SecretProjection>>([]);
+            1,
+            1,
+            null!,
+            ResourceDeploymentStatus.Applied,
+            ResourceDeploymentDesiredOperation.Apply,
+            "scope");
+        LoadExactResourceDeploymentRuntimePlacement loadPlacement = (request, _) =>
+            Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(placement);
+        LoadSecretById loadSecret = (
+            _, _,
+            _) => Task.FromResult<Secret?>(current);
+        LoadSecretProjections loadProjections = (
+            _, _,
+            _) => Task.FromResult<IReadOnlyList<SecretProjection>>([]);
         var reconciled = 0;
-        var reconciler = new SecretProjectionReconciler(loadSecret, (_, _, _,
-            _) => throw new InvalidOperationException(),
-            loadProjections, (request, _) =>
+        var reconciler = new SecretProjectionReconciler(
+            loadSecret,
+            (
+                _, _,
+                _, _) => throw new InvalidOperationException(),
+            loadProjections,
+            (request, _) =>
             {
                 reconciled++;
-                if (change == "binding") current = current.Detach(binding.Id, DateTime.UtcNow);
-                if (change == "placement") placement = placement with { IsolationScopeId = "foreign" };
-                if (change == "values") current = current with { KeyNames = [] };
+                if (change == "binding")
+                    current = current.Detach(binding.Id, DateTime.UtcNow);
+                if (change == "placement")
+                    placement = placement with { IsolationScopeId = "foreign" };
+                if (change == "values")
+                    current = current with { KeyNames = [] };
                 return Task.FromResult<IReadOnlyList<PlacementSummaryDto>>([]);
-            }, loadPlacement, (_, _, _, _) => throw new InvalidOperationException(),
-            (_, _) => throw new InvalidOperationException(), null!, null!, TimeProvider.System);
+            },
+            loadPlacement,
+            (
+                _, _,
+                _, _) => throw new InvalidOperationException(),
+            (_, _) => throw new InvalidOperationException(),
+            null!,
+            null!,
+            TimeProvider.System);
         var services = new ServiceCollection();
         services.AddSecretsFeature();
         services.AddSingleton<LoadRegisteredResource>((request, _) => Task.FromResult<RegisteredResource?>(
-            new("registration", "tenant", "group", type, "consumer", "consumer", null, DateTime.UtcNow,
+            new RegisteredResource(
+                "registration",
+                "tenant",
+                "group",
+                type,
+                "consumer",
+                "consumer",
+                null,
+                DateTime.UtcNow,
                 DateTime.UtcNow)));
         services.AddSingleton(loadPlacement);
         services.AddSingleton(loadSecret);
@@ -69,7 +103,7 @@ public sealed class ConsumerSecretProjectionResolverTests
                 ConsumerType: type,
                 ConsumerId: "consumer",
                 DeploymentId: "deployment",
-                References: [new("secret", "token")]),
+                References: [new ConsumerSecretKeyReference("secret", "token")]),
             ct: default);
 
         Assert.Equal(1, reconciled);

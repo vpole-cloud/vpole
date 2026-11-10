@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.References;
@@ -12,11 +10,11 @@ using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.DeploymentTargets.Application.Catalog;
 
-public sealed record DeploymentTargetDeleted(string DeploymentTargetId);
+public sealed record DeploymentTargetDeleted(
+    string DeploymentTargetId
+);
 
-internal union PersistDeploymentTargetDeletionFenceOutcome(
-    DeploymentTarget,
-    DeploymentTargetRevisionConflict);
+internal union PersistDeploymentTargetDeletionFenceOutcome(DeploymentTarget, DeploymentTargetRevisionConflict);
 
 public union DeleteDeploymentTargetError(
     DeploymentTargetNotFound,
@@ -24,9 +22,7 @@ public union DeleteDeploymentTargetError(
     DefaultDeploymentTargetDeletionRejected,
     DeploymentTargetHasDurableReferences);
 
-public union DeleteDeploymentTargetPersistenceOutcome(
-    DeploymentTargetDeleted,
-    DeleteDeploymentTargetError);
+public union DeleteDeploymentTargetPersistenceOutcome(DeploymentTargetDeleted, DeleteDeploymentTargetError);
 
 public delegate Task<DeleteDeploymentTargetPersistenceOutcome> DeleteDeploymentTarget(
     string deploymentTargetId,
@@ -39,20 +35,19 @@ internal sealed class MongoDeleteDeploymentTarget(
     RunMongoOutcomeTransaction<DeleteDeploymentTargetPersistenceOutcome> runMongoTransaction,
     TimeProvider timeProvider,
     RunMongoOutcomeTransaction<PersistDeploymentTargetDeletionFenceOutcome> runFenceTransaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<DeleteDeploymentTargetPersistenceOutcome> InvokeAsync(
         string deploymentTargetId,
         CancellationToken cancellationToken = default)
     {
-        var target = await deploymentTargets
-            .Find(DeploymentTargetFilters.ById(deploymentTargetId))
+        var target = await deploymentTargets.Find(DeploymentTargetFilters.ById(deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
         if (target is null)
             return Error(new DeploymentTargetNotFound(deploymentTargetId));
 
-        var defaultId = await settings
-            .Find(DeploymentTargetSettingsFilters.Singleton())
+        var defaultId = await settings.Find(DeploymentTargetSettingsFilters.Singleton())
             .Project(item => item.DefaultDeploymentTargetId)
             .FirstOrDefaultAsync(cancellationToken);
         if (target.Id == defaultId)
@@ -63,27 +58,32 @@ internal sealed class MongoDeleteDeploymentTarget(
         {
             var deletionRequested = target.RequestDeletion(
                 DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc));
-            var fenceOutcome = await runFenceTransaction(async (transaction, ct) =>
+            var fenceOutcome = await runFenceTransaction(
+                async (transaction, ct) =>
                 {
                     var persistedFence = await deploymentTargets.FindOneAndUpdateAsync(
                         transaction.Session,
                         DeploymentTargetFilters.AtReferenceFenceBeforeDeletion(target),
                         Builders<DeploymentTarget>.Update.Combine(
-                            Builders<DeploymentTarget>.Update.Set(item => item.AcceptsWorkloads,
+                            Builders<DeploymentTarget>.Update.Set(
+                                item => item.AcceptsWorkloads,
                                 deletionRequested.AcceptsWorkloads),
-                            Builders<DeploymentTarget>.Update.Set(item => item.DeletionRequestedAtUtc,
+                            Builders<DeploymentTarget>.Update.Set(
+                                item => item.DeletionRequestedAtUtc,
                                 deletionRequested.DeletionRequestedAtUtc),
                             Builders<DeploymentTarget>.Update.Set(item => item.Revision, deletionRequested.Revision),
-                            Builders<DeploymentTarget>.Update.Set(item => item.UpdatedAtUtc,
+                            Builders<DeploymentTarget>.Update.Set(
+                                item => item.UpdatedAtUtc,
                                 deletionRequested.UpdatedAtUtc)),
                         new FindOneAndUpdateOptions<DeploymentTarget> { ReturnDocument = ReturnDocument.After },
                         ct);
                     if (persistedFence is null)
                         return transaction.Abort(new DeploymentTargetRevisionConflict(target.Id));
-                    await storeOutboxWrites(transaction.Session,
+                    await storeOutboxWrites(
+                        transaction.Session,
                         [
                             OutboxWrite.Create(
-                                new DeploymentTargetCatalogChangedEvent(persistedFence.Id, persistedFence.Revision))
+                                new DeploymentTargetCatalogChangedEvent(persistedFence.Id, persistedFence.Revision)),
                         ],
                         ct);
                     return transaction.Commit(persistedFence);
@@ -94,16 +94,16 @@ internal sealed class MongoDeleteDeploymentTarget(
             fencedTarget = (DeploymentTarget)fenceOutcome.Value;
         }
 
-        var references = await ensureNoDeploymentTargetReferences(
-            fencedTarget.Id,
-            cancellationToken);
+        var references = await ensureNoDeploymentTargetReferences(fencedTarget.Id, cancellationToken);
         if (references is DeploymentTargetHasDurableReferences referenceError)
             return Error(referenceError);
 
-        return await runMongoTransaction(async (transaction, ct) =>
+        return await runMongoTransaction(
+            async (transaction, ct) =>
             {
-                var current = await deploymentTargets
-                    .Find(transaction.Session, DeploymentTargetFilters.AtDeletionFence(fencedTarget))
+                var current = await deploymentTargets.Find(
+                        transaction.Session,
+                        DeploymentTargetFilters.AtDeletionFence(fencedTarget))
                     .FirstOrDefaultAsync(ct);
                 if (current is null)
                     return transaction.Abort(Error(new DeploymentTargetRevisionConflict(fencedTarget.Id)));
@@ -113,10 +113,7 @@ internal sealed class MongoDeleteDeploymentTarget(
                     .Project(item => item.DefaultDeploymentTargetId)
                     .FirstOrDefaultAsync(ct);
                 if (current.Id == currentDefaultId)
-                {
-                    return transaction.Abort(
-                        Error(new DefaultDeploymentTargetDeletionRejected(current.Id)));
-                }
+                    return transaction.Abort(Error(new DefaultDeploymentTargetDeletionRejected(current.Id)));
 
                 var deletion = await deploymentTargets.DeleteOneAsync(
                     transaction.Session,
@@ -124,7 +121,8 @@ internal sealed class MongoDeleteDeploymentTarget(
                     cancellationToken: ct);
                 if (deletion.DeletedCount != 1)
                     return transaction.Abort(Error(new DeploymentTargetRevisionConflict(current.Id)));
-                await storeOutboxWrites(transaction.Session,
+                await storeOutboxWrites(
+                    transaction.Session,
                     [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(current.Id, current.Revision))],
                     ct);
                 return transaction.Commit(new DeploymentTargetDeleted(current.Id));

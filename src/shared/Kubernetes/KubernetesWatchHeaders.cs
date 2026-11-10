@@ -14,7 +14,8 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
         return registration;
     }
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
         // Capture before await. Concurrent watches on a cached client have separate async flows.
@@ -25,28 +26,50 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
         return response;
     }
 
-    private static bool IsWatch(Uri? uri) => uri?.Query.TrimStart('?').Split('&').Any(parameter =>
-    {
-        var parts = parameter.Split('=', 2);
-        return parts.Length == 2 && Uri.UnescapeDataString(parts[0]) == "watch" &&
-               string.Equals(Uri.UnescapeDataString(parts[1]), "true", StringComparison.OrdinalIgnoreCase);
-    }) == true;
+    private static bool IsWatch(Uri? uri) => uri?.Query
+        .TrimStart('?')
+        .Split('&')
+        .Any(parameter =>
+        {
+            var parts = parameter.Split('=', 2);
+            return parts.Length == 2 && Uri.UnescapeDataString(parts[0]) == "watch" && string.Equals(
+                Uri.UnescapeDataString(parts[1]),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+        }) == true;
 
     public sealed class Registration : IDisposable
     {
+        private readonly CancellationTokenRegistration _cancellation;
         private readonly object _gate = new();
         private readonly Action _opened;
         private readonly Registration? _previous;
-        private readonly CancellationTokenRegistration _cancellation;
-        private HttpResponseMessage? _response;
-        private HttpContent? _originalContent;
         private bool _closed;
+        private HttpContent? _originalContent;
+        private HttpResponseMessage? _response;
 
-        internal Registration(Action opened, Registration? previous, CancellationToken cancellationToken)
+        internal Registration(
+            Action opened,
+            Registration? previous,
+            CancellationToken cancellationToken)
         {
             _opened = opened;
             _previous = previous;
             _cancellation = cancellationToken.Register(CloseResponse);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                CloseResponse();
+            }
+            finally
+            {
+                _cancellation.Dispose();
+                if (ReferenceEquals(Current.Value, this))
+                    Current.Value = _previous;
+            }
         }
 
         internal void Capture(HttpResponseMessage response)
@@ -97,20 +120,6 @@ public sealed class KubernetesWatchHeaders : DelegatingHandler
                 {
                     response?.RequestMessage?.Dispose();
                 }
-            }
-        }
-
-        public void Dispose()
-        {
-            try
-            {
-                CloseResponse();
-            }
-            finally
-            {
-                _cancellation.Dispose();
-                if (ReferenceEquals(Current.Value, this))
-                    Current.Value = _previous;
             }
         }
     }

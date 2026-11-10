@@ -5,8 +5,8 @@ using System.Text.RegularExpressions;
 namespace Pole.Dns;
 
 /// <summary>
-/// Canonical ASCII DNS name. Unicode input is deliberately not converted in this layer:
-/// callers must supply an already encoded punycode label when IDNA is required.
+///     Canonical ASCII DNS name. Unicode input is deliberately not converted in this layer:
+///     callers must supply an already encoded punycode label when IDNA is required.
 /// </summary>
 public sealed record DnsName
 {
@@ -25,13 +25,10 @@ public sealed record DnsName
         if (normalized.EndsWith(".", StringComparison.Ordinal))
             normalized = normalized[..^1];
         if (normalized.Length == 0 || normalized.Length > MaximumLength ||
-            normalized.Any(character => character > 0x7f) ||
-            IPAddress.TryParse(normalized, out _))
-        {
+            normalized.Any(character => character > 0x7f) || IPAddress.TryParse(normalized, out _))
             throw new ArgumentException("The value is not a valid ASCII DNS name.", nameof(value));
-        }
 
-        var labels = normalized.Split('.', StringSplitOptions.None);
+        var labels = normalized.Split('.');
         if (labels.Any(label => !DnsLabel.IsValid(label)))
             throw new ArgumentException("The value is not a valid ASCII DNS name.", nameof(value));
 
@@ -63,7 +60,7 @@ public sealed record DnsName
     {
         ArgumentNullException.ThrowIfNull(ancestor);
         return string.Equals(Value, ancestor.Value, StringComparison.Ordinal) ||
-               Value.EndsWith($".{ancestor.Value}", StringComparison.Ordinal);
+            Value.EndsWith($".{ancestor.Value}", StringComparison.Ordinal);
     }
 
     public bool IsAncestorOf(DnsName name)
@@ -91,10 +88,8 @@ public sealed partial record DnsLabel
         return new DnsLabel(value.Trim().ToLowerInvariant());
     }
 
-    public static bool IsValid(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        value.Trim().Length <= MaximumLength &&
-        value.Trim().All(character => character <= 0x7f) &&
+    public static bool IsValid(string? value) => !string.IsNullOrWhiteSpace(value) &&
+        value.Trim().Length <= MaximumLength && value.Trim().All(character => character <= 0x7f) &&
         LabelPattern().IsMatch(value.Trim());
 
     public override string ToString() => Value;
@@ -122,16 +117,13 @@ public sealed record RelativeDnsName
             return new RelativeDnsName(Apex);
         if (normalized.Length > DnsName.MaximumLength || normalized.EndsWith(".", StringComparison.Ordinal) ||
             normalized.Any(character => character > 0x7f) ||
-            normalized.Split('.', StringSplitOptions.None).Any(label => !DnsLabel.IsValid(label)))
-        {
+            normalized.Split('.').Any(label => !DnsLabel.IsValid(label)))
             throw new ArgumentException("The value is not a valid relative ASCII DNS name.", nameof(value));
-        }
 
         return new RelativeDnsName(normalized.ToLowerInvariant());
     }
 
-    public DnsName Under(DnsName zone) =>
-        IsApex ? zone : DnsName.Create($"{Value}.{zone.Value}");
+    public DnsName Under(DnsName zone) => IsApex ? zone : DnsName.Create($"{Value}.{zone.Value}");
 
     public override string ToString() => Value;
 }

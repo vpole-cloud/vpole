@@ -11,16 +11,19 @@ public sealed record ConsumerSecretPlanningRequest(
     string ConsumerId,
     IReadOnlyCollection<ConsumerSecretKeyReference> PreviousReferences,
     IReadOnlyCollection<ConsumerSecretKeyReference> DesiredReferences,
-    IReadOnlyCollection<string> DeploymentIds);
+    IReadOnlyCollection<string> DeploymentIds
+);
 
 public sealed record SecretPlanningVersion(
     string SecretId,
     long Revision,
-    long ReferenceFence);
+    long ReferenceFence
+);
 
 public sealed record ConsumerSecretPlanningSnapshot(
     ConsumerSecretPlanningRequest Request,
-    IReadOnlyList<SecretPlanningVersion> Secrets);
+    IReadOnlyList<SecretPlanningVersion> Secrets
+);
 
 public sealed record ConsumerSecretPlanningFenced;
 

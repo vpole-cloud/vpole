@@ -8,8 +8,7 @@ internal static class ComputeProfileTargetReferences
 {
     public const string OwnerType = DeploymentTargetReferenceOwnerTypes.ComputeProfile;
 
-    public static Task<ApplyDeploymentTargetReferenceChangesOutcome>
-        ApplyChangesAsync(
+    public static Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesAsync(
         ApplyDeploymentTargetReferenceChanges applyChanges,
         ComputeProfile profile,
         IEnumerable<string> addedDeploymentTargetIds,

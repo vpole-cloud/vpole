@@ -1,5 +1,3 @@
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 namespace Pole.Features.DeploymentTargets.Application.Mongo;
 
 internal static class DeploymentTargetIndexes

@@ -5,7 +5,8 @@ using Pole.Observation;
 namespace Pole.Features.StorageProfiles.Domain.Observation;
 
 public sealed record StorageObservationControlDocument(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     long ConnectionVersion,
     long Epoch,
@@ -21,7 +22,8 @@ public sealed record StorageObservationControlDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime? IdleSinceUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime UpdatedAtUtc) : IObservationControl;
+    DateTime UpdatedAtUtc
+) : IObservationControl;
 
 public sealed record StorageObservationDemandDocument(
     [property: BsonId] string Id,
@@ -33,11 +35,13 @@ public sealed record StorageObservationDemandDocument(
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     DateTime OriginalExpiresAtUtc,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime ExpiresAtUtc) : IObservationDemand;
+    DateTime ExpiresAtUtc
+) : IObservationDemand;
 
 // Only closed concrete metadata arrays are serialized; no Kubernetes model is stored.
 public sealed record StorageObservationSnapshotDocument(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    [property: BsonId]
+    [property: BsonRepresentation(BsonType.ObjectId)]
     string Id,
     long ConnectionVersion,
     string SourceId,
@@ -47,4 +51,5 @@ public sealed record StorageObservationSnapshotDocument(
     DateTime CheckedAtUtc,
     StoredStorageInventory Inventory,
     [property: BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    DateTime? ExpiresAtUtc) : IObservationSnapshot;
+    DateTime? ExpiresAtUtc
+) : IObservationSnapshot;

@@ -7,4 +7,5 @@ namespace Pole.Features.Secrets.Contracts;
 public sealed record SecretDeclarationConsumer(
     string Kind,
     ResourceTypeId ResourceType,
-    SecretBindingUsage Usage);
+    SecretBindingUsage Usage
+);

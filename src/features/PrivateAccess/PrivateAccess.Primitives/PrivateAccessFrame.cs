@@ -9,12 +9,13 @@ public enum PrivateAccessFrameKind : byte
     Closed = 3,
     LeaseChallenge = 4,
     LeaseAccepted = 5,
-    Ready = 6
+    Ready = 6,
 }
 
 public sealed record PrivateAccessFrame(
     PrivateAccessFrameKind Kind,
-    ReadOnlyMemory<byte> Payload);
+    ReadOnlyMemory<byte> Payload
+);
 
 /// <summary>One bounded binary WebSocket message per frame. Callers serialize sends.</summary>
 public static class PrivateAccessFrames
@@ -32,8 +33,7 @@ public static class PrivateAccessFrames
         var message = new byte[payload.Length + 1];
         message[0] = (byte)kind;
         payload.CopyTo(message.AsMemory(1));
-        await socket.SendAsync(message.AsMemory(), WebSocketMessageType.Binary, true,
-            cancellationToken);
+        await socket.SendAsync(message.AsMemory(), WebSocketMessageType.Binary, true, cancellationToken);
     }
 
     public static async ValueTask<PrivateAccessFrame> ReceiveAsync(
@@ -68,10 +68,10 @@ public static class PrivateAccessFrames
         var valid = kind switch
         {
             PrivateAccessFrameKind.Data => length is > 0 and <= MaximumPayloadLength,
-            PrivateAccessFrameKind.HalfClose or PrivateAccessFrameKind.Closed or PrivateAccessFrameKind.Ready => length == 0,
-            PrivateAccessFrameKind.LeaseChallenge or PrivateAccessFrameKind.LeaseAccepted =>
-                length == ChallengeLength,
-            _ => false
+            PrivateAccessFrameKind.HalfClose or PrivateAccessFrameKind.Closed
+                or PrivateAccessFrameKind.Ready => length == 0,
+            PrivateAccessFrameKind.LeaseChallenge or PrivateAccessFrameKind.LeaseAccepted => length == ChallengeLength,
+            _ => false,
         };
         if (!valid)
             throw new InvalidDataException("Invalid Private Access frame shape.");

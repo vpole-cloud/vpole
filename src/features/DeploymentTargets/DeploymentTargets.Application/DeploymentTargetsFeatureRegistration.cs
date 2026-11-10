@@ -3,11 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pole.ASP.Helpers;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Contracts.HttpMapping;
@@ -27,9 +25,7 @@ public static class DeploymentTargetsFeatureRegistration
         services.AddSingleton(new RealtimeTopic("deployment-targets", RealtimeScope.Platform));
         services.AddSingleton(new RealtimeTopic("deployment-target-eligibility", RealtimeScope.Tenant));
         services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<
-                IValidateOptions<DeploymentTargetOptions>,
-                DeploymentTargetOptionsValidator>());
+            ServiceDescriptor.Singleton<IValidateOptions<DeploymentTargetOptions>, DeploymentTargetOptionsValidator>());
         services.AddOptions<DeploymentTargetOptions>()
             .Bind(configuration.GetSection(DeploymentTargetOptions.SectionName))
             .ValidateOnStart();

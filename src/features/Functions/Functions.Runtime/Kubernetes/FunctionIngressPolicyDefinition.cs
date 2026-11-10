@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Workloads;
 

@@ -2,12 +2,12 @@ namespace Pole.Testing;
 
 public sealed record RepositoryExampleFile(
     string Path,
-    string Content);
+    string Content
+);
 
 public static class RepositoryExampleFiles
 {
-    public static IReadOnlyList<RepositoryExampleFile> Read(string repositoryDirectory,
-        string pathPrefix = "manifests")
+    public static IReadOnlyList<RepositoryExampleFile> Read(string repositoryDirectory, string pathPrefix = "manifests")
     {
         var directory = Path.Combine(RepositoryPaths.FindRoot(), repositoryDirectory);
         if (!Directory.Exists(directory))

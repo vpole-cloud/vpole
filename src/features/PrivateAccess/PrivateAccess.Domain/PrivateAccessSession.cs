@@ -17,7 +17,8 @@ public sealed record PrivateAccessSession(
     DateTime CreatedAtUtc,
     long Revision,
     PrivateAccessSessionState State,
-    DateTime? CleanupLastAttemptAtUtc) : ITenantOwned;
+    DateTime? CleanupLastAttemptAtUtc
+) : ITenantOwned;
 
 public sealed record PrivateAccessSessionGrantSnapshot(
     string Id,
@@ -25,11 +26,13 @@ public sealed record PrivateAccessSessionGrantSnapshot(
     string ResourceType,
     string ResourceId,
     string ResourceDeploymentId,
-    string EndpointId);
+    string EndpointId
+);
 
 public sealed record PrivateAccessSessionTicket(
     string Hash,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc
+);
 
 public sealed record PrivateAccessSessionRouteSnapshot(
     string DeploymentTargetId,
@@ -40,7 +43,8 @@ public sealed record PrivateAccessSessionRouteSnapshot(
     int ServicePort,
     int TargetPort,
     long DeploymentRevision,
-    long DesiredGeneration);
+    long DesiredGeneration
+);
 
 public static class PrivateAccessSessionFactory
 {
@@ -58,10 +62,8 @@ public static class PrivateAccessSessionFactory
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(ticket);
         ArgumentNullException.ThrowIfNull(route);
-        if (createdAtUtc.Kind != DateTimeKind.Utc ||
-            sessionDeadlineUtc.Kind != DateTimeKind.Utc ||
-            ticket.ExpiresAtUtc.Kind != DateTimeKind.Utc ||
-            createdAtUtc >= ticket.ExpiresAtUtc ||
+        if (createdAtUtc.Kind != DateTimeKind.Utc || sessionDeadlineUtc.Kind != DateTimeKind.Utc ||
+            ticket.ExpiresAtUtc.Kind != DateTimeKind.Utc || createdAtUtc >= ticket.ExpiresAtUtc ||
             ticket.ExpiresAtUtc > sessionDeadlineUtc)
             throw new ArgumentException("Private access session times must form a valid UTC window.");
         if (grant.Revision < 1 || route.DeploymentRevision < 1 || route.DesiredGeneration < 1)
@@ -100,25 +102,30 @@ public sealed record PrivateAccessTicketPending : PrivateAccessSessionState;
 [BsonDiscriminator("TicketRedeemed")]
 public sealed record PrivateAccessTicketRedeemed(
     DateTime RedeemedAtUtc,
-    DateTime? LastAuthorizationExpiresAtUtc) : PrivateAccessSessionState;
+    DateTime? LastAuthorizationExpiresAtUtc
+) : PrivateAccessSessionState;
 
 [BsonDiscriminator("Active")]
 public sealed record PrivateAccessSessionActive(
     DateTime RedeemedAtUtc,
     DateTime StartedAtUtc,
-    DateTime LastLeaseExpiresAtUtc) : PrivateAccessSessionState;
+    DateTime LastLeaseExpiresAtUtc
+) : PrivateAccessSessionState;
 
 [BsonDiscriminator("Terminated")]
 public sealed record PrivateAccessSessionTerminated(
     DateTime ClosedAtUtc,
-    string Reason) : PrivateAccessSessionState;
+    string Reason
+) : PrivateAccessSessionState;
 
 [BsonDiscriminator("Cleaning")]
 public sealed record PrivateAccessSessionCleaning(
     DateTime ClaimedAtUtc,
-    string Reason) : PrivateAccessSessionState;
+    string Reason
+) : PrivateAccessSessionState;
 
 [BsonDiscriminator("Cleaned")]
 public sealed record PrivateAccessSessionCleaned(
     DateTime CleanedAtUtc,
-    string Reason) : PrivateAccessSessionState;
+    string Reason
+) : PrivateAccessSessionState;

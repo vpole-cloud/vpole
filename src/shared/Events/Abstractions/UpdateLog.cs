@@ -10,33 +10,41 @@ public sealed record UpdateLog<T>(
     bool AreEqual
 ) : IUpdateLog<T>
 {
-    public static UpdateLog<T> Of(T previous, T @new,
-        IEqualityComparer<T>? comparer = null)
-        => new UpdateLog<T>(previous, @new,
-            comparer?.Equals(previous, @new) ??
-            DeepEqualityComparer.AreEqual(previous, @new));
+    public static UpdateLog<T> Of(
+        T previous,
+        T @new,
+        IEqualityComparer<T>? comparer = null) => new(
+        previous,
+        @new,
+        comparer?.Equals(previous, @new) ?? DeepEqualityComparer.AreEqual(previous, @new));
 }
 
 public interface IUpdateLog<out T>
 {
-    public T Previous { get; }
-    public T New { get; }
-    public bool AreEqual { get; }
+    T Previous { get; }
+    T New { get; }
+    bool AreEqual { get; }
 }
 
 internal static class DeepEqualityComparer
 {
-    public static bool AreEqual<T>(T previous, T @new) =>
-        AreEqual(previous, @new, new HashSet<ReferencePair>());
+    public static bool AreEqual<T>(T previous, T @new) => AreEqual(previous, @new, new HashSet<ReferencePair>());
 
-    private static bool AreEqual(object? previous, object? @new, HashSet<ReferencePair> visited)
+    private static bool AreEqual(
+        object? previous,
+        object? @new,
+        HashSet<ReferencePair> visited)
     {
-        if (ReferenceEquals(previous, @new)) return true;
-        if (previous is null || @new is null) return false;
+        if (ReferenceEquals(previous, @new))
+            return true;
+        if (previous is null || @new is null)
+            return false;
 
         var type = previous.GetType();
-        if (type != @new.GetType()) return false;
-        if (IsScalar(type)) return previous.Equals(@new);
+        if (type != @new.GetType())
+            return false;
+        if (IsScalar(type))
+            return previous.Equals(@new);
 
         if (!type.IsValueType && !visited.Add(new ReferencePair(previous, @new)))
             return true;
@@ -52,40 +60,55 @@ internal static class DeepEqualityComparer
 
         foreach (var property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
-            if (property.GetIndexParameters().Length > 0 || !property.CanRead) continue;
-            if (!AreEqual(property.GetValue(previous), property.GetValue(@new), visited)) return false;
+            if (property.GetIndexParameters().Length > 0 || !property.CanRead)
+                continue;
+            if (!AreEqual(property.GetValue(previous), property.GetValue(@new), visited))
+                return false;
         }
 
         return true;
     }
 
-    private static bool DictionaryEquals(IDictionary previous, IDictionary @new, HashSet<ReferencePair> visited)
+    private static bool DictionaryEquals(
+        IDictionary previous,
+        IDictionary @new,
+        HashSet<ReferencePair> visited)
     {
-        if (previous.Count != @new.Count) return false;
+        if (previous.Count != @new.Count)
+            return false;
 
         foreach (DictionaryEntry entry in previous)
         {
-            if (!@new.Contains(entry.Key)) return false;
-            if (!AreEqual(entry.Value, @new[entry.Key], visited)) return false;
+            if (!@new.Contains(entry.Key))
+                return false;
+            if (!AreEqual(entry.Value, @new[entry.Key], visited))
+                return false;
         }
 
         return true;
     }
 
-    private static bool SetEquals(IEnumerable previous, IEnumerable @new, HashSet<ReferencePair> visited)
+    private static bool SetEquals(
+        IEnumerable previous,
+        IEnumerable @new,
+        HashSet<ReferencePair> visited)
     {
         var remaining = @new.Cast<object?>().ToList();
         foreach (var previousItem in previous.Cast<object?>())
         {
             var index = remaining.FindIndex(newItem => AreEqual(previousItem, newItem, visited));
-            if (index < 0) return false;
+            if (index < 0)
+                return false;
             remaining.RemoveAt(index);
         }
 
         return remaining.Count == 0;
     }
 
-    private static bool SequenceEquals(IEnumerable previous, IEnumerable @new, HashSet<ReferencePair> visited)
+    private static bool SequenceEquals(
+        IEnumerable previous,
+        IEnumerable @new,
+        HashSet<ReferencePair> visited)
     {
         var previousEnumerator = previous.GetEnumerator();
         var newEnumerator = @new.GetEnumerator();
@@ -95,9 +118,12 @@ internal static class DeepEqualityComparer
             {
                 var hasPrevious = previousEnumerator.MoveNext();
                 var hasNew = newEnumerator.MoveNext();
-                if (hasPrevious != hasNew) return false;
-                if (!hasPrevious) return true;
-                if (!AreEqual(previousEnumerator.Current, newEnumerator.Current, visited)) return false;
+                if (hasPrevious != hasNew)
+                    return false;
+                if (!hasPrevious)
+                    return true;
+                if (!AreEqual(previousEnumerator.Current, newEnumerator.Current, visited))
+                    return false;
             }
         }
         finally
@@ -107,30 +133,24 @@ internal static class DeepEqualityComparer
         }
     }
 
-    private static bool IsScalar(Type type) =>
-        type.IsPrimitive
-        || type.IsEnum
-        || type == typeof(string)
-        || type == typeof(decimal)
-        || type == typeof(DateTime)
-        || type == typeof(DateTimeOffset)
-        || type == typeof(TimeSpan)
-        || type == typeof(Guid);
+    private static bool IsScalar(Type type) => type.IsPrimitive || type.IsEnum || type == typeof(string) ||
+        type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset) ||
+        type == typeof(TimeSpan) || type == typeof(Guid);
 
-    private static bool IsSet(Type type) =>
-        type.GetInterfaces().Any(i =>
-            i.IsGenericType &&
-            (i.GetGenericTypeDefinition() == typeof(ISet<>) ||
-             i.GetGenericTypeDefinition().FullName == "System.Collections.Immutable.IImmutableSet`1"));
+    private static bool IsSet(Type type) => type.GetInterfaces()
+        .Any(i => i.IsGenericType && (i.GetGenericTypeDefinition() == typeof(ISet<>) ||
+            i.GetGenericTypeDefinition().FullName == "System.Collections.Immutable.IImmutableSet`1"));
 
     private readonly record struct ReferencePair(
         object Previous,
-        object New)
+        object New
+    )
     {
         public bool Equals(ReferencePair other) =>
             ReferenceEquals(Previous, other.Previous) && ReferenceEquals(New, other.New);
 
-        public override int GetHashCode() =>
-            HashCode.Combine(RuntimeHelpers.GetHashCode(Previous), RuntimeHelpers.GetHashCode(New));
+        public override int GetHashCode() => HashCode.Combine(
+            RuntimeHelpers.GetHashCode(Previous),
+            RuntimeHelpers.GetHashCode(New));
     }
 }

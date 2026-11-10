@@ -3,33 +3,30 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
 using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceConnections;
 
 [Collection(IntegrationTestCollection.Tenant3)]
-public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class ResourceConnectionLifecycleTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     private const string DeletionEvent = "pole.resource-connections/v1/resource-connection-deletion-requested";
     private ReviewedAuthority? _authorization;
-    private ReviewedAuthority authorization => _authorization ??= new(Data.TenantId);
-    private IMongoCollection<ResourceConnection> Connections => Fixture.Database
-        .GetCollection<ResourceConnection>("ResourceConnections");
-    private IDeclarativeResourceLifecycleProvider Provider => Services
-        .GetServices<IDeclarativeResourceLifecycleProvider>().Single(item => item.Kind == "ResourceConnection");
+    private ReviewedAuthority authorization => _authorization ??= new ReviewedAuthority(Data.TenantId);
+
+    private IMongoCollection<ResourceConnection> Connections =>
+        Fixture.Database.GetCollection<ResourceConnection>("ResourceConnections");
+
+    private IDeclarativeResourceLifecycleProvider Provider =>
+        Services.GetServices<IDeclarativeResourceLifecycleProvider>().Single(item => item.Kind == "ResourceConnection");
 
     protected override void ConfigureServices(IServiceCollection services) =>
         services.AddSingleton<IGitOpsMutations>(authorization);
@@ -46,19 +43,28 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
             (await Provider.ReadLifecycleAsync(request, session, default)).Value);
         Assert.Equal(GitLifecyclePresence.Active, current.Presence);
         Assert.Equal(GitLifecycleProtection.ConfigurationOnly, current.Protection);
-        Assert.Equal(new(connection.Id, connection.Revision, connection.ReferenceFence),
-            ResourceConnectionPlanningVersion.FromDocuments(connection.Id,
+        Assert.Equal(
+            new ResourceConnectionPlanningVersion(connection.Id, connection.Revision, connection.ReferenceFence),
+            ResourceConnectionPlanningVersion.FromDocuments(
+                connection.Id,
                 current.Version.Documents.ToDictionary(item => item.DocumentId, item => item.Revision)));
-        Assert.IsType<GitLifecycleResourceAbsent>((await Provider.ReadLifecycleAsync(request with
-        {
-            TenantId = ObjectId.GenerateNewId().ToString()
-        }, session, default)).Value);
+        Assert.IsType<GitLifecycleResourceAbsent>(
+            (await Provider.ReadLifecycleAsync(
+                request with
+                {
+                    TenantId = ObjectId.GenerateNewId().ToString(),
+                },
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
 
         await Connections.ReplaceOneAsync(item => item.Id == connection.Id, connection.BeginDeletion(DateTime.UtcNow));
         session.StartTransaction();
-        Assert.Equal(GitLifecyclePresence.Deleting, Assert.IsType<GitLifecycleResourceSnapshot>(
-            (await Provider.ReadLifecycleAsync(request, session, default)).Value).Presence);
+        Assert.Equal(
+            GitLifecyclePresence.Deleting,
+            Assert.IsType<GitLifecycleResourceSnapshot>(
+                    (await Provider.ReadLifecycleAsync(request, session, default)).Value)
+                .Presence);
         await session.AbortTransactionAsync();
     }
 
@@ -98,14 +104,20 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         var snapshot = Assert.IsType<GitLifecycleResourceSnapshot>(
             (await Provider.ReadLifecycleAsync(Read(connection), session, default)).Value);
         if (change != "authority")
-            await Connections.UpdateOneAsync(item => item.Id == connection.Id,
-                change == "revision" ? Builders<ResourceConnection>.Update.Inc(item => item.Revision, 1) :
-                Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1));
+            await Connections.UpdateOneAsync(
+                item => item.Id == connection.Id,
+                change == "revision"
+                    ? Builders<ResourceConnection>.Update.Inc(item => item.Revision, 1)
+                    : Builders<ResourceConnection>.Update.Inc(item => item.ReferenceFence, 1));
 
-        var authority = change == "authority" ? authorization.Authority with { ActionId = "unreviewed" } :
-            authorization.Authority;
+        var authority = change == "authority"
+            ? authorization.Authority with { ActionId = "unreviewed" }
+            : authorization.Authority;
         session.StartTransaction();
-        var outcome = await Provider.RemoveAsync(new(authority, snapshot.Resource, snapshot.Version), session, default);
+        var outcome = await Provider.RemoveAsync(
+            new RemoveLifecycleResourceRequest(authority, snapshot.Resource, snapshot.Version),
+            session,
+            default);
         if (change == "authority")
             Assert.IsType<StaleGitExecution>(outcome.Value);
         else
@@ -126,8 +138,11 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
             session.StartTransaction();
             var snapshot = Assert.IsType<GitLifecycleResourceSnapshot>(
                 (await Provider.ReadLifecycleAsync(Read(connection), session, default)).Value);
-            Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(
-                new(authorization.Authority, snapshot.Resource, snapshot.Version), session, default)).Value);
+            Assert.IsType<GitLifecycleRemovalRequested>(
+                (await Provider.RemoveAsync(
+                    new RemoveLifecycleResourceRequest(authorization.Authority, snapshot.Resource, snapshot.Version),
+                    session,
+                    default)).Value);
             await session.CommitTransactionAsync();
         }
 
@@ -135,17 +150,18 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         var deleting = await Load(connection.Id);
         var location = Assert.Single(Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle).Targets)
             .Snapshot.PolicyLocation;
-        var completed = Assert.IsType<ConnectionCleanupRecorded>(deleting.RecordCleanupCompleted(location,
-            deleting.Generation, DateTime.UtcNow).Value).Connection;
+        var completed = Assert.IsType<ConnectionCleanupRecorded>(
+                deleting.RecordCleanupCompleted(location, deleting.Generation, DateTime.UtcNow).Value)
+            .Connection;
         await Connections.ReplaceOneAsync(item => item.Id == completed.Id, completed);
         await Services.GetRequiredService<PurgeResourceConnectionIfComplete>()(completed);
-        Assert.NotNull(await Services.GetRequiredService<LoadResourceConnectionTombstone>()(
-            completed.TenantId, completed.Id));
+        Assert.NotNull(
+            await Services.GetRequiredService<LoadResourceConnectionTombstone>()(completed.TenantId, completed.Id));
 
         // A new same-name connection must not be mistaken for the removed accepted identity.
         await Connections.InsertOneAsync(Connection());
-        Assert.IsType<GitLifecycleResourceAbsent>((await Provider.ReadLifecycleAsync(Read(connection), session,
-            default)).Value);
+        Assert.IsType<GitLifecycleResourceAbsent>(
+            (await Provider.ReadLifecycleAsync(Read(connection), session, default)).Value);
     }
 
     [Fact]
@@ -153,14 +169,19 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
     {
         var connection = Connection();
         var dependencyProvider = Assert.IsAssignableFrom<IDeclarativeLifecycleDependencyProvider>(Provider);
-        var resource = new GitLifecycleResourceReference(new("WebService", "caller"), connection.SourceResourceId);
+        var resource = new GitLifecycleResourceReference(
+            new ResourceAddress("WebService", "caller"),
+            connection.SourceResourceId);
         using var session = await Fixture.Client.StartSessionAsync();
         var request = new ReadLifecycleDependenciesRequest(connection.TenantId, resource);
         Assert.Empty(await dependencyProvider.ReadDependenciesAsync(request, session, default));
         await Connections.InsertOneAsync(connection);
         session.StartTransaction();
-        Assert.IsType<DeclarationPreconditionsChanged>((await dependencyProvider.FenceDependenciesAsync(
-            new(connection.TenantId, resource, []), session, default)).Value);
+        Assert.IsType<DeclarationPreconditionsChanged>(
+            (await dependencyProvider.FenceDependenciesAsync(
+                new FenceLifecycleDependenciesRequest(connection.TenantId, resource, []),
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
     }
 
@@ -175,7 +196,9 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
     {
         var connection = Connection();
         await Connections.InsertOneAsync(connection);
-        var reviewed = new ResourceConnectionPlanningVersion(connection.Id, connection.Revision,
+        var reviewed = new ResourceConnectionPlanningVersion(
+            connection.Id,
+            connection.Revision,
             connection.ReferenceFence);
         IReadOnlyList<ResourceConnectionPlanningVersion> expected = change switch
         {
@@ -185,7 +208,7 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
             "revision" => [reviewed with { Revision = reviewed.Revision + 1 }],
             "reference-fence" => [reviewed with { ReferenceFence = reviewed.ReferenceFence + 1 }],
             "deleting-unreviewed" => [reviewed],
-            _ => throw new ArgumentOutOfRangeException(nameof(change))
+            _ => throw new ArgumentOutOfRangeException(nameof(change)),
         };
         if (change == "deleting-unreviewed")
         {
@@ -196,8 +219,12 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var result = await Services.GetRequiredService<CascadeConnectionsForResourceDeletion>()(
-            new(connection.TenantId, ResourceTypeId.Create(connection.SourceResourceTypeId),
-                connection.SourceResourceId, expected), session);
+            new CascadeConnectionsForResourceDeletionRequest(
+                connection.TenantId,
+                ResourceTypeId.Create(connection.SourceResourceTypeId),
+                connection.SourceResourceId,
+                expected),
+            session);
         Assert.IsType<ResourceConnectionCascadeConflict>(result.Value);
         await session.AbortTransactionAsync();
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
@@ -212,22 +239,39 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         deleting = deleting.BeginDeletion(DateTime.UtcNow);
         await Connections.InsertManyAsync([connection, deleting]);
         var reviewed = new[] { connection, deleting }.Select(item =>
-            new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence)).ToArray();
-        var request = new CascadeConnectionsForResourceDeletionRequest(connection.TenantId,
-            ResourceTypeId.Create(connection.SourceResourceTypeId), connection.SourceResourceId, reviewed);
+                new ResourceConnectionPlanningVersion(item.Id, item.Revision, item.ReferenceFence))
+            .ToArray();
+        var request = new CascadeConnectionsForResourceDeletionRequest(
+            connection.TenantId,
+            ResourceTypeId.Create(connection.SourceResourceTypeId),
+            connection.SourceResourceId,
+            reviewed);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var observed = await Services.GetRequiredService<LoadResourceConnectionCascadePlanning>()(
-            new(connection.TenantId, request.ResourceType, request.ResourceId), session, default);
+            new LoadResourceConnectionCascadePlanningRequest(
+                connection.TenantId,
+                request.ResourceType,
+                request.ResourceId),
+            session,
+            default);
         Assert.Equal(reviewed.OrderBy(item => item.ConnectionId, StringComparer.Ordinal), observed);
-        Assert.Equal(1, Assert.IsType<ResourceConnectionsCascaded>((await Services
-            .GetRequiredService<CascadeConnectionsForResourceDeletion>()(request, session)).Value).Count);
+        Assert.Equal(
+            1,
+            Assert.IsType<ResourceConnectionsCascaded>(
+                    (await Services.GetRequiredService<CascadeConnectionsForResourceDeletion>()(request, session))
+                    .Value)
+                .Count);
         await session.AbortTransactionAsync();
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, DeletionEvent));
         session.StartTransaction();
-        Assert.Equal(1, Assert.IsType<ResourceConnectionsCascaded>((await Services
-            .GetRequiredService<CascadeConnectionsForResourceDeletion>()(request, session)).Value).Count);
+        Assert.Equal(
+            1,
+            Assert.IsType<ResourceConnectionsCascaded>(
+                    (await Services.GetRequiredService<CascadeConnectionsForResourceDeletion>()(request, session))
+                    .Value)
+                .Count);
         await session.CommitTransactionAsync();
         Assert.IsType<DeletingResourceConnection>((await Load(connection.Id)).Lifecycle);
         var retained = await Load(deleting.Id);
@@ -244,73 +288,134 @@ public sealed class ResourceConnectionLifecycleTests(MongoReplicaSetFixture fixt
         var resourceType = ResourceTypeId.Create(connection.SourceResourceTypeId);
         using var seed = await Fixture.Client.StartSessionAsync();
         seed.StartTransaction();
-        Assert.IsType<RegisteredResource>((await Services.GetRequiredService<IResourceRegistrar>().RegisterAsync(
-            new(connection.TenantId, group.Id, new(resourceType, connection.SourceResourceId, "caller")), seed)).Value);
+        Assert.IsType<RegisteredResource>(
+            (await Services.GetRequiredService<IResourceRegistrar>()
+                .RegisterAsync(
+                    new RegisterResourceRequest(
+                        connection.TenantId,
+                        group.Id,
+                        new ResourceRegistrationDescriptor(resourceType, connection.SourceResourceId, "caller")),
+                    seed)).Value);
         await seed.CommitTransactionAsync();
-        var resource = new GitLifecycleResourceReference(new("WebService", "caller"), connection.SourceResourceId);
+        var resource = new GitLifecycleResourceReference(
+            new ResourceAddress("WebService", "caller"),
+            connection.SourceResourceId);
         var dependencies = Assert.IsAssignableFrom<IDeclarativeLifecycleDependencyProvider>(Provider);
         using var stale = await Fixture.Client.StartSessionAsync();
         stale.StartTransaction();
-        Assert.Empty(await dependencies.ReadDependenciesAsync(new(connection.TenantId, resource), stale, default));
+        Assert.Empty(
+            await dependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(connection.TenantId, resource),
+                stale,
+                default));
         using var admission = await Fixture.Client.StartSessionAsync();
         admission.StartTransaction();
-        Assert.NotNull(await Services.GetRequiredService<FenceRegisteredResource>()(
-            new(connection.TenantId, resourceType, connection.SourceResourceId), admission));
+        Assert.NotNull(
+            await Services.GetRequiredService<FenceRegisteredResource>()(
+                new FenceRegisteredResourceRequest(connection.TenantId, resourceType, connection.SourceResourceId),
+                admission));
         await Connections.InsertOneAsync(admission, connection);
         await admission.CommitTransactionAsync();
 
         await Assert.ThrowsAsync<MongoCommandException>(() => dependencies.FenceDependenciesAsync(
-            new(connection.TenantId, resource, []), stale, default));
+            new FenceLifecycleDependenciesRequest(connection.TenantId, resource, []),
+            stale,
+            default));
         await stale.AbortTransactionAsync();
         Assert.IsType<ActiveResourceConnection>((await Load(connection.Id)).Lifecycle);
     }
 
     private Task<ResourceConnection> Load(string id) => Connections.Find(item => item.Id == id).SingleAsync();
 
-    private static ReadLifecycleResourceRequest Read(ResourceConnection connection) => new(connection.TenantId,
-        new(new("ResourceConnection", connection.Name), connection.Id));
+    private static ReadLifecycleResourceRequest Read(ResourceConnection connection) => new(
+        connection.TenantId,
+        new GitLifecycleResourceReference(new ResourceAddress("ResourceConnection", connection.Name), connection.Id));
 
     private ResourceConnection Connection() => ResourceConnectionFactory.Create(
-        ObjectId.GenerateNewId().ToString(), Data.TenantId, "reviewed-connection",
-        ResourceTypeId.Create("pole/web-service"), ObjectId.GenerateNewId().ToString(),
-        ResourceTypeId.Create("pole/redis"), ObjectId.GenerateNewId().ToString(), "redis",
-        [ConnectionTargetSnapshot.Create("target", "destination-deployment", "cell", "namespace", "service", 6379,
-            6379, [new("source-deployment", "cell", "namespace")])]);
+        ObjectId.GenerateNewId().ToString(),
+        Data.TenantId,
+        "reviewed-connection",
+        ResourceTypeId.Create("pole/web-service"),
+        ObjectId.GenerateNewId().ToString(),
+        ResourceTypeId.Create("pole/redis"),
+        ObjectId.GenerateNewId().ToString(),
+        "redis",
+        [
+            ConnectionTargetSnapshot.Create(
+                "target",
+                "destination-deployment",
+                "cell",
+                "namespace",
+                "service",
+                6379,
+                6379,
+                [new ConnectionSourcePlacement("source-deployment", "cell", "namespace")]),
+        ]);
 
     // Isolate the owning feature's transaction boundary; the GitOps suite exercises real admission.
-    private sealed class ReviewedAuthority(string tenantId) : IGitOpsMutations
+    private sealed class ReviewedAuthority(
+        string tenantId
+    ) : IGitOpsMutations
     {
-        public GitLifecycleAuthority Authority { get; } = new(tenantId, "source", "run", 1, 1, 1,
-            "worker", 1, "preview", "reviewed");
+        public GitLifecycleAuthority Authority { get; } = new(
+            tenantId,
+            "source",
+            "run",
+            1,
+            1,
+            1,
+            "worker",
+            1,
+            "preview",
+            "reviewed");
+
         public GitLifecycleAuthority? Observed { get; private set; }
         public GitLifecycleMutationEffect? Effect { get; private set; }
 
-        public Task<bool> AuthorizeAsync(AuthorizeGitResourceMutationRequest request,
-            IClientSessionHandle session, CancellationToken ct)
+        public Task<bool> AuthorizeAsync(
+            AuthorizeGitResourceMutationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct)
         {
             Observed = request.Lifecycle;
             Effect = request.LifecycleEffect;
-            return Task.FromResult(request.Lifecycle == Authority &&
-                request.LifecycleEffect == GitLifecycleMutationEffect.Remove);
+            return Task.FromResult(
+                request.Lifecycle == Authority && request.LifecycleEffect == GitLifecycleMutationEffect.Remove);
         }
 
-        public Task<GitOperationResult> ExecuteAsync(GitOperation operation,
-            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation, CancellationToken ct) =>
-            throw new NotSupportedException();
-        public Task<GitOperationResult?> BeginAsync(GitOperation operation, IClientSessionHandle session,
+        public Task<GitOperationResult> ExecuteAsync(
+            GitOperation operation,
+            Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation,
             CancellationToken ct) => throw new NotSupportedException();
-        public Task<GitOperationResult> CompleteAsync(CompleteGitOperationRequest request,
-            IClientSessionHandle session, CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> ResolveAsync(ResolveGitResourceRequest request, IClientSessionHandle session,
+
+        public Task<GitOperationResult?> BeginAsync(
+            GitOperation operation,
+            IClientSessionHandle session,
             CancellationToken ct) => throw new NotSupportedException();
-        public Task<string?> ResolveAcceptedAsync(ResolveAcceptedGitReferenceRequest request,
-            IClientSessionHandle session, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<GitOperationResult> CompleteAsync(
+            CompleteGitOperationRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<string?> ResolveAsync(
+            ResolveGitResourceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<string?> ResolveAcceptedAsync(
+            ResolveAcceptedGitReferenceRequest request,
+            IClientSessionHandle session,
+            CancellationToken ct) => throw new NotSupportedException();
+
         public Task<PinGitReferenceOutcome> PinReferenceAsync(PinGitReferenceRequest request, CancellationToken ct) =>
             throw new NotSupportedException();
+
         public Task<IReadOnlyDictionary<string, GitResourceStatus>> StatusesAsync(
             LoadGitResourceStatusesRequest request,
             CancellationToken ct) => throw new NotSupportedException();
-        public Task<GitResourceStatus?> StatusAsync(LoadGitResourceStatusRequest request,
-            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<GitResourceStatus?> StatusAsync(LoadGitResourceStatusRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 }

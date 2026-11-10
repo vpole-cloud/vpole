@@ -9,4 +9,5 @@ public sealed record SourceRepositoryChangedEvent(
     string ConnectionId,
     string TechnicalName,
     long Revision,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;

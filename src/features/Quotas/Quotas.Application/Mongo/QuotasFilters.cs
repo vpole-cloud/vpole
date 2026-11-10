@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Domain;
 
 namespace Pole.Features.Quotas.Application.Mongo;
@@ -15,13 +14,9 @@ internal static class QuotaReservationFilters
     public static FilterDefinition<QuotaReservation> ById(string reservationId) =>
         Builders<QuotaReservation>.Filter.Eq(reservation => reservation.Id, reservationId);
 
-    public static FilterDefinition<QuotaReservation> ActiveForTenant(
-        string tenantId,
-        DateTime nowUtc) =>
+    public static FilterDefinition<QuotaReservation> ActiveForTenant(string tenantId, DateTime nowUtc) =>
         Builders<QuotaReservation>.Filter.And(
-            Builders<QuotaReservation>.Filter.Eq(
-                reservation => reservation.TenantId,
-                tenantId),
+            Builders<QuotaReservation>.Filter.Eq(reservation => reservation.TenantId, tenantId),
             Active(nowUtc));
 
     public static FilterDefinition<QuotaReservation> Active(string reservationId) =>
@@ -31,23 +26,18 @@ internal static class QuotaReservationFilters
                 reservation => reservation.State.Kind,
                 QuotaReservationStateKinds.Active));
 
-    public static FilterDefinition<QuotaReservation> Active(
-        string reservationId,
-        DateTime nowUtc) =>
+    public static FilterDefinition<QuotaReservation> Active(string reservationId, DateTime nowUtc) =>
         Builders<QuotaReservation>.Filter.And(
             Active(reservationId),
             Builders<QuotaReservation>.Filter.Gt(
                 reservation => ((ActiveQuotaReservationState)reservation.State).ExpiresAtUtc,
                 nowUtc));
 
-    private static FilterDefinition<QuotaReservation> Active(DateTime nowUtc) =>
-        Builders<QuotaReservation>.Filter.And(
-            Builders<QuotaReservation>.Filter.Eq(
-                reservation => reservation.State.Kind,
-                QuotaReservationStateKinds.Active),
-            Builders<QuotaReservation>.Filter.Gt(
-                reservation => ((ActiveQuotaReservationState)reservation.State).ExpiresAtUtc,
-                nowUtc));
+    private static FilterDefinition<QuotaReservation> Active(DateTime nowUtc) => Builders<QuotaReservation>.Filter.And(
+        Builders<QuotaReservation>.Filter.Eq(reservation => reservation.State.Kind, QuotaReservationStateKinds.Active),
+        Builders<QuotaReservation>.Filter.Gt(
+            reservation => ((ActiveQuotaReservationState)reservation.State).ExpiresAtUtc,
+            nowUtc));
 }
 
 internal static class QuotaUsageFilters

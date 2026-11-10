@@ -37,16 +37,22 @@ public sealed class GitOpsCompilerBoundaryTests
             "MongoDB",
             "Microsoft.AspNetCore",
             "Microsoft.Extensions.DependencyInjection",
-            "System.Net"
+            "System.Net",
         ];
 
         var violations = ArchitectureSources.ProductionCSharp()
             .Where(source => source.RelativePath.StartsWith(CompilerDirectory, StringComparison.Ordinal))
-            .SelectMany(source => source.Root.DescendantNodes().OfType<NameSyntax>()
-                .Where(name => forbiddenNamespaces.Any(prefix =>
-                    name.ToString() == prefix || name.ToString().StartsWith(prefix + ".", StringComparison.Ordinal)))
-                .Select(name => ArchitectureSources.Describe(source, name,
-                    "Manifest compilation must not depend on runtime, database or transport APIs")))
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<NameSyntax>()
+                    .Where(name => forbiddenNamespaces.Any(prefix =>
+                        name.ToString() == prefix ||
+                        name.ToString().StartsWith(prefix + ".", StringComparison.Ordinal)))
+                    .Select(name => ArchitectureSources.Describe(
+                        source,
+                        name,
+                        "Manifest compilation must not depend on runtime, database or transport APIs")))
             .ToArray();
 
         Assert.Empty(violations);

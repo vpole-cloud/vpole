@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.Functions.Migrations;
 
@@ -10,8 +10,10 @@ public sealed class FunctionScalingIndexesMigration : IMigration
     public string Name => "Function scaling indexes";
     public string Description => "Creates the revision lifecycle index used by the Function scaler.";
 
-    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) =>
-        context.GetCollection<BsonDocument>("FunctionRevisions").Indexes.CreateOneAsync(
+    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) => context
+        .GetCollection<BsonDocument>("FunctionRevisions")
+        .Indexes
+        .CreateOneAsync(
             new CreateIndexModel<BsonDocument>(
                 Builders<BsonDocument>.IndexKeys
                     .Ascending("Status._t")

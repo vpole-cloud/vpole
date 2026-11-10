@@ -9,10 +9,7 @@ open Pole.Workloads
 [<RequireQualifiedAccess>]
 module PostgresSearchProjection =
     let SourceType =
-        SearchSourceType(
-            ResourceTypeId.Create("pole/postgresql"),
-            "PostgresCluster",
-            4)
+        SearchSourceType(ResourceTypeId.Create("pole/postgresql"), "PostgresCluster", 4)
 
     let snapshot tenantId clusterId name groupId resourceRevision =
         SearchProjectionSnapshot(
@@ -22,12 +19,12 @@ module PostgresSearchProjection =
             null,
             [| SearchProjectionField(SearchProjectionFieldType.SourceId, clusterId)
                SearchProjectionField(SearchProjectionFieldType.Name, name) |],
-            resourceRevision)
+            resourceRevision
+        )
 
-type AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(
-    createSearchProjection : CreateSearchProjection) =
+type AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(createSearchProjection: CreateSearchProjection) =
 
-    member _.Handle(event : PostgresClusterCreatedEvent, cancellationToken : CancellationToken) =
+    member _.Handle(event: PostgresClusterCreatedEvent, cancellationToken: CancellationToken) =
         createSearchProjection.Invoke(
             PostgresSearchProjection.snapshot
                 event.EventCore.TenantId
@@ -35,16 +32,16 @@ type AddPostgresClusterToSearchOnPostgresClusterCreatedConsumer(
                 event.Name
                 event.GroupId
                 event.ResourceRevision,
-            cancellationToken)
+            cancellationToken
+        )
 
     interface IConsumer<PostgresClusterCreatedEvent> with
-        member this.Consume(context : ConsumeContext<PostgresClusterCreatedEvent>) =
+        member this.Consume(context: ConsumeContext<PostgresClusterCreatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type UpdatePostgresClusterInSearchOnPostgresClusterUpdatedConsumer(
-    updateSearchProjection : UpdateSearchProjection) =
+type UpdatePostgresClusterInSearchOnPostgresClusterUpdatedConsumer(updateSearchProjection: UpdateSearchProjection) =
 
-    member _.Handle(event : PostgresClusterUpdatedEvent, cancellationToken : CancellationToken) =
+    member _.Handle(event: PostgresClusterUpdatedEvent, cancellationToken: CancellationToken) =
         updateSearchProjection.Invoke(
             PostgresSearchProjection.snapshot
                 event.EventCore.TenantId
@@ -52,28 +49,29 @@ type UpdatePostgresClusterInSearchOnPostgresClusterUpdatedConsumer(
                 event.Name
                 event.GroupId
                 event.ResourceRevision,
-            cancellationToken)
+            cancellationToken
+        )
 
     interface IConsumer<PostgresClusterUpdatedEvent> with
-        member this.Consume(context : ConsumeContext<PostgresClusterUpdatedEvent>) =
+        member this.Consume(context: ConsumeContext<PostgresClusterUpdatedEvent>) =
             this.Handle(context.Message, context.CancellationToken)
 
-type RemovePostgresClusterFromSearchOnPostgresClusterDeletedConsumer(
-    deleteSearchProjection : DeleteSearchProjection) =
+type RemovePostgresClusterFromSearchOnPostgresClusterDeletedConsumer(deleteSearchProjection: DeleteSearchProjection) =
 
-    member _.Handle(tenantId : string, clusterId : string, resourceRevision : int64, cancellationToken : CancellationToken) =
+    member _.Handle
+        (tenantId: string, clusterId: string, resourceRevision: int64, cancellationToken: CancellationToken)
+        =
         deleteSearchProjection.Invoke(
-            SearchProjectionIdentity(
-                tenantId,
-                PostgresSearchProjection.SourceType.ResourceTypeId,
-                clusterId),
+            SearchProjectionIdentity(tenantId, PostgresSearchProjection.SourceType.ResourceTypeId, clusterId),
             resourceRevision,
-            cancellationToken)
+            cancellationToken
+        )
 
     interface IConsumer<PostgresClusterDeletedEvent> with
-        member this.Consume(context : ConsumeContext<PostgresClusterDeletedEvent>) =
+        member this.Consume(context: ConsumeContext<PostgresClusterDeletedEvent>) =
             this.Handle(
                 context.Message.EventCore.TenantId,
                 context.Message.ClusterId,
                 context.Message.ResourceRevision,
-                context.CancellationToken)
+                context.CancellationToken
+            )

@@ -12,22 +12,28 @@ public sealed class GitPruneAuthorizationTests
     private static readonly GitRepositoryLocation Repository = new("Example", "connection", "repository", "main", "");
     private static readonly GitResourceIdentity Removed = new("Widget", "old", "old-id");
     private static readonly GitResourceIdentity Kept = new("Widget", "kept", "kept-id");
-    private static readonly GitAcceptedSnapshot Snapshot = new(new string('a', 40), "desired", "v1",
-        [new("Widget", "kept", "hash", "{}", "kept-id")], [new("Widget", "kept", "kept-id", DeclarationPhase.Prepare)]);
+
+    private static readonly GitAcceptedSnapshot Snapshot = new(
+        new string('a', 40),
+        "desired",
+        "v1",
+        [new AcceptedDeclaration("Widget", "kept", "hash", "{}", "kept-id")],
+        [new GitAcceptedOperation("Widget", "kept", "kept-id", DeclarationPhase.Prepare)]);
 
     [Fact]
     public void Policy_authority_is_typed_bound_to_the_same_run_and_round_trips_without_a_user()
     {
         var preview = Preview();
         Assert.True(preview.CanAuthorizePrune());
-        var authorized = preview.AuthorizePrune(new(1, Now, "run"));
+        var authorized = preview.AuthorizePrune(new GitPreviewPolicyAuthorizationContext(1, Now, "run"));
         var policy = Assert.IsType<GitPreviewPolicyAuthorized>(authorized.State);
         Assert.Equal("run", policy.RunId);
         var run = Run().AuthorizePrune(authorized);
         Assert.IsType<GitInputLifecycle>(run.Input);
         RoundTrip(run);
         Assert.Throws<InvalidOperationException>(() => (Run() with { Id = "other" }).AuthorizePrune(authorized));
-        Assert.Throws<InvalidOperationException>(() => preview.AuthorizePrune(new(2, Now, "run")));
+        Assert.Throws<InvalidOperationException>(() =>
+            preview.AuthorizePrune(new GitPreviewPolicyAuthorizationContext(2, Now, "run")));
     }
 
     [Theory]
@@ -45,45 +51,48 @@ public sealed class GitPruneAuthorizationTests
         {
             "retained-removals" => preview with
             {
-                Intent = new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Retain)
+                Intent = new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Retain),
             },
             "protected" => preview with
             {
-                Operations = preview.Operations.SetItem(0,
-                preview.Operations[0] with { Protection = GitLifecycleProtection.ProtectedData })
+                Operations = preview.Operations.SetItem(
+                    0,
+                    preview.Operations[0] with { Protection = GitLifecycleProtection.ProtectedData }),
             },
             "missing-created" => preview with
             {
-                Operations = preview.Operations.SetItem(0,
-                preview.Operations[0] with { Expected = null })
+                Operations = preview.Operations.SetItem(0, preview.Operations[0] with { Expected = null }),
             },
             "empty" => preview with
             {
                 Source = preview.Source with
                 {
-                    Input = new GitPreviewRepositoryInput(Repository,
-                    Snapshot with { Resources = [], Operations = [] })
-                }
+                    Input = new GitPreviewRepositoryInput(
+                        Repository,
+                        Snapshot with { Resources = [], Operations = [] }),
+                },
             },
             "ambiguous-rename" => preview with
             {
-                Operations = preview.Operations.SetItem(1,
-                preview.Operations[1] with { Expected = null })
+                Operations = preview.Operations.SetItem(1, preview.Operations[1] with { Expected = null }),
             },
             "adoption" => preview with
             {
-                Operations = preview.Operations.SetItem(1,
-                preview.Operations[1] with { Action = GitLifecycleAction.Adopt })
+                Operations = preview.Operations.SetItem(
+                    1,
+                    preview.Operations[1] with { Action = GitLifecycleAction.Adopt }),
             },
             "replacement" => preview with
             {
-                Operations = preview.Operations.SetItem(0,
-                preview.Operations[0] with { Action = GitLifecycleAction.Replace, Replacement = Kept })
+                Operations = preview.Operations.SetItem(
+                    0,
+                    preview.Operations[0] with { Action = GitLifecycleAction.Replace, Replacement = Kept }),
             },
-            _ => throw new ArgumentOutOfRangeException(nameof(danger))
+            _ => throw new ArgumentOutOfRangeException(nameof(danger)),
         };
         Assert.False(preview.CanAuthorizePrune());
-        Assert.Throws<InvalidOperationException>(() => preview.AuthorizePrune(new(1, Now, "run")));
+        Assert.Throws<InvalidOperationException>(() =>
+            preview.AuthorizePrune(new GitPreviewPolicyAuthorizationContext(1, Now, "run")));
     }
 
     [Fact]
@@ -101,26 +110,67 @@ public sealed class GitPruneAuthorizationTests
     public void Retain_completion_requires_its_own_receipt_and_never_counts_a_delete_request()
     {
         var operation = Preview().Operations[0] with { Action = GitLifecycleAction.Retain };
-        GitOperationReceipt Receipt(GitLifecycleStep step) => new("receipt", "tenant", "source", "run", 1,
-            "Widget", "old", "Lifecycle", "old-id", "hash", null, false, 1,
-            new(1, operation.Id, step, operation.Expected, 1, [], operation.Resource));
+
+        GitOperationReceipt Receipt(GitLifecycleStep step) => new(
+            "receipt",
+            "tenant",
+            "source",
+            "run",
+            1,
+            "Widget",
+            "old",
+            "Lifecycle",
+            "old-id",
+            "hash",
+            null,
+            false,
+            1,
+            new GitLifecycleEffect(1, operation.Id, step, operation.Expected, 1, [], operation.Resource));
+
         Assert.False(GitLifecycleReceiptCompletion.IsComplete(operation, [Receipt(GitLifecycleStep.BeginRemoval)]));
         Assert.True(GitLifecycleReceiptCompletion.IsComplete(operation, [Receipt(GitLifecycleStep.Retain)]));
     }
 
     private static GitReconciliationRun Run() => GitReconciliationRunFactory.Create(
-        new(new("tenant", "source"), "run", 1, 1, 1), Repository, new(GitRunTrigger.Poll, null), Now,
-        new GitInputPinned(Snapshot.Commit), null).Accept(Snapshot);
+            new GitRunStamp(new GitSourceIdentity("tenant", "source"), "run", 1, 1, 1),
+            Repository,
+            new GitRunInitiator(GitRunTrigger.Poll, null),
+            Now,
+            new GitInputPinned(Snapshot.Commit),
+            null)
+        .Accept(Snapshot);
 
-    private static GitOperationPreview Preview() => GitOperationPreviewFactory.Create("preview",
-        new(new("tenant", "source"), 1, 1, new GitPreviewRepositoryInput(Repository, Snapshot)),
+    private static GitOperationPreview Preview() => GitOperationPreviewFactory.Create(
+        "preview",
+        new GitPreviewSourceStamp(
+            new GitSourceIdentity("tenant", "source"),
+            1,
+            1,
+            new GitPreviewRepositoryInput(Repository, Snapshot)),
         new GitPreviewResourceChanges(GitPreviewRemovalDisposition.Remove),
         [
-            new("remove", Removed, GitLifecycleAction.Remove, new(Removed, "source", [new("Widget/old-id", 1)], "old"),
-                null, [], [], [], GitLifecycleProtection.ConfigurationOnly),
-            new("apply", Kept, GitLifecycleAction.Apply, new(Kept, "source", [new("Widget/kept-id", 1)], "kept"),
-                null, [], [], [], GitLifecycleProtection.ConfigurationOnly)
-        ], Now);
+            new GitPreviewOperation(
+                "remove",
+                Removed,
+                GitLifecycleAction.Remove,
+                new GitResourcePreconditions(Removed, "source", [new GitResourceVersion("Widget/old-id", 1)], "old"),
+                null,
+                [],
+                [],
+                [],
+                GitLifecycleProtection.ConfigurationOnly),
+            new GitPreviewOperation(
+                "apply",
+                Kept,
+                GitLifecycleAction.Apply,
+                new GitResourcePreconditions(Kept, "source", [new GitResourceVersion("Widget/kept-id", 1)], "kept"),
+                null,
+                [],
+                [],
+                [],
+                GitLifecycleProtection.ConfigurationOnly),
+        ],
+        Now);
 
     private static void RoundTrip(GitReconciliationRun run)
     {

@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.RedisServices.Migrations;
 
@@ -12,18 +12,15 @@ public sealed class RedisSchemaValidationMigration : IMigration
 
     public string Name => "Redis document schema validation";
 
-    public string Description =>
-        "Applies strict MongoDB schema validation to tenant-owned Redis service documents.";
+    public string Description => "Applies strict MongoDB schema validation to tenant-owned Redis service documents.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var validator = RedisDocumentSchema.CreateValidator();
         using var collectionNames = await context.ListCollectionNamesAsync(
             new ListCollectionNamesOptions
             {
-                Filter = new BsonDocument("name", CollectionName)
+                Filter = new BsonDocument("name", CollectionName),
             },
             cancellationToken);
         var collectionExists = await collectionNames.AnyAsync(cancellationToken);
@@ -36,7 +33,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
                 {
                     Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator),
                     ValidationLevel = DocumentValidationLevel.Strict,
-                    ValidationAction = DocumentValidationAction.Error
+                    ValidationAction = DocumentValidationAction.Error,
                 },
                 cancellationToken);
             return;
@@ -48,7 +45,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
                 ["collMod"] = CollectionName,
                 ["validator"] = validator,
                 ["validationLevel"] = "strict",
-                ["validationAction"] = "error"
+                ["validationAction"] = "error",
             },
             cancellationToken: cancellationToken);
     }
@@ -68,14 +65,11 @@ public sealed class RedisSchemaValidationMigration : IMigration
                     "Events",
                     "Revision",
                     "PlanningFence",
-                    "Lifecycle"
+                    "Lifecycle",
                 ],
                 ("_id", Type("objectId")),
                 ("TenantId", StringType(minimumLength: 1)),
-                ("Name", StringType(
-                    minimumLength: 1,
-                    maximumLength: 30,
-                    pattern: "^[a-z0-9-]+$")),
+                ("Name", StringType(minimumLength: 1, maximumLength: 30, pattern: "^[a-z0-9-]+$")),
                 ("ResourceGroupId", StringType(minimumLength: 1)),
                 ("Spec", RedisSpecSchema()),
                 ("Tags", ArrayOf(StringType(), uniqueItems: true)),
@@ -86,10 +80,11 @@ public sealed class RedisSchemaValidationMigration : IMigration
 
         private static BsonDocument RedisSpecSchema() => ClosedObject(
             ["Storage"],
-            ("Storage", ClosedObject(
-                ["SizeGb", "StorageProfileId"],
-                ("SizeGb", IntegerType("int", minimum: 1, maximum: 1000)),
-                ("StorageProfileId", StringType(minimumLength: 1, maximumLength: 100)))));
+            ("Storage",
+                ClosedObject(
+                    ["SizeGb", "StorageProfileId"],
+                    ("SizeGb", IntegerType("int", minimum: 1, maximum: 1000)),
+                    ("StorageProfileId", StringType(minimumLength: 1, maximumLength: 100)))));
 
         private static BsonDocument ServiceEventSchema() => Object(
             ["OccurredOn", "Message"],
@@ -101,23 +96,15 @@ public sealed class RedisSchemaValidationMigration : IMigration
             LifecycleVariant("ActiveRedisLifecycle"),
             LifecycleVariant("DeletingRedisLifecycle", "RequestedAtUtc"));
 
-        private static BsonDocument LifecycleVariant(
-            string discriminator,
-            string? dateProperty = null) =>
+        private static BsonDocument LifecycleVariant(string discriminator, string? dateProperty = null) =>
             dateProperty is null
-                ? ClosedObject(
-                    ["_t"],
-                    ("_t", AllowedValue(
-                        new BsonArray { "RedisLifecycle", discriminator })))
+                ? ClosedObject(["_t"], ("_t", AllowedValue(new BsonArray { "RedisLifecycle", discriminator })))
                 : ClosedObject(
                     ["_t", dateProperty],
-                    ("_t", AllowedValue(
-                        new BsonArray { "RedisLifecycle", discriminator })),
+                    ("_t", AllowedValue(new BsonArray { "RedisLifecycle", discriminator })),
                     (dateProperty, Type("date")));
 
-        private static BsonDocument Object(
-            BsonArray required,
-            params (string Name, BsonDocument Schema)[] properties)
+        private static BsonDocument Object(BsonArray required, params (string Name, BsonDocument Schema)[] properties)
         {
             var propertySchemas = new BsonDocument();
             foreach (var (name, schema) in properties)
@@ -127,7 +114,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
             {
                 ["bsonType"] = "object",
                 ["required"] = required,
-                ["properties"] = propertySchemas
+                ["properties"] = propertySchemas,
             };
         }
 
@@ -158,14 +145,12 @@ public sealed class RedisSchemaValidationMigration : IMigration
             return schema;
         }
 
-        private static BsonDocument ArrayOf(
-            BsonDocument itemSchema,
-            bool uniqueItems = false)
+        private static BsonDocument ArrayOf(BsonDocument itemSchema, bool uniqueItems = false)
         {
             var schema = new BsonDocument
             {
                 ["bsonType"] = "array",
-                ["items"] = itemSchema
+                ["items"] = itemSchema,
             };
             if (uniqueItems)
                 schema["uniqueItems"] = true;
@@ -181,7 +166,7 @@ public sealed class RedisSchemaValidationMigration : IMigration
             var schema = new BsonDocument
             {
                 ["bsonType"] = bsonType,
-                ["minimum"] = minimum
+                ["minimum"] = minimum,
             };
             if (maximum is not null)
                 schema["maximum"] = maximum.Value;
@@ -189,12 +174,8 @@ public sealed class RedisSchemaValidationMigration : IMigration
             return schema;
         }
 
-        private static BsonDocument AllowedValue(BsonValue value) => new(
-            "enum",
-            new BsonArray { value });
+        private static BsonDocument AllowedValue(BsonValue value) => new("enum", new BsonArray { value });
 
-        private static BsonDocument OneOf(params BsonDocument[] schemas) => new(
-            "oneOf",
-            new BsonArray(schemas));
+        private static BsonDocument OneOf(params BsonDocument[] schemas) => new("oneOf", new BsonArray(schemas));
     }
 }

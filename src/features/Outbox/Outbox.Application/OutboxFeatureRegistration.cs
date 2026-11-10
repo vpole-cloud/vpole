@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Pole.Features.Outbox.Application.Mongo;
+using Pole.Features.Outbox.Application.Delivery;
 
 namespace Pole.Features.Outbox.Application;
 
@@ -21,9 +21,7 @@ public static class OutboxFeatureRegistration
         ArgumentNullException.ThrowIfNull(eventAssemblies);
 
         services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<
-                IValidateOptions<OutboxSettings>,
-                OutboxSettingsValidator>());
+            ServiceDescriptor.Singleton<IValidateOptions<OutboxSettings>, OutboxSettingsValidator>());
         services.AddOptions<OutboxSettings>()
             .Bind(configuration.GetSection(OutboxSettings.SectionName))
             .ValidateOnStart();
@@ -32,7 +30,7 @@ public static class OutboxFeatureRegistration
             .Value);
         services.TryAddSingleton(new OutboxEventAssemblyCatalog(eventAssemblies));
         services.AddOutboxPersistence();
-        services.TryAddSingleton<Delivery.EnsurePendingOutboxEventsRegistered>();
+        services.TryAddSingleton<EnsurePendingOutboxEventsRegistered>();
         services.TryAddScoped<OutboxProcessorJob>();
         services.TryAddScoped<IOutboxPublisher, MassTransitOutboxPublisher>();
         services.TryAddSingleton<OutboxMetrics>();
@@ -47,8 +45,7 @@ public static class OutboxFeatureRegistration
         return services;
     }
 
-    public static IServiceProvider ScheduleOutboxRecurringJobs(
-        this IServiceProvider services)
+    public static IServiceProvider ScheduleOutboxRecurringJobs(this IServiceProvider services)
     {
         var settings = services.GetRequiredService<OutboxSettings>();
         RecurringJob.AddOrUpdate<OutboxProcessorJob>(

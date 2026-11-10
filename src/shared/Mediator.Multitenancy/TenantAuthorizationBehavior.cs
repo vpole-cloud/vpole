@@ -7,8 +7,8 @@ namespace Pole.Mediator;
 
 public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
     ITenantContextAccessor tenantContextAccessor,
-    IHttpContextAccessor httpContextAccessor)
-    : IPipelineBehavior<TRequest, TResponse>
+    IHttpContextAccessor httpContextAccessor
+) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : IMediatorRequest<TResponse>
     where TResponse : notnull
 {
@@ -18,12 +18,9 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
         CancellationToken cancellationToken)
     {
         var user = httpContextAccessor.HttpContext?.User;
-        if (request is IPlatformTenantOperation &&
-            (user?.Identity?.IsAuthenticated != true ||
-             user.Claims.Any(claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin) != true))
-        {
+        if (request is IPlatformTenantOperation && (user?.Identity?.IsAuthenticated != true ||
+                !user.Claims.Any(claim => claim.Type == Claims.Roles && claim.Value == Roles.Admin)))
             return new PipelineRejected(new TenantPlatformAdminRequired());
-        }
 
         var isRead = request is ITenantReadOperation;
         var isWrite = request is ITenantWriteOperation;
@@ -40,30 +37,27 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
 
     private IMediatorRejection? Authorize(TRequest request)
     {
-        if (request is ITenantOperation operation &&
-            string.IsNullOrWhiteSpace(operation.TenantId))
-        {
-            return new RequestValidationRejected(new Dictionary<string, string[]>
-            {
-                [TenantHeaders.TenantId] =
-                [
-                    $"{TenantHeaders.TenantId} is required for tenant-scoped operations."
-                ]
-            });
-        }
+        if (request is ITenantOperation operation && string.IsNullOrWhiteSpace(operation.TenantId))
+            return new RequestValidationRejected(
+                new Dictionary<string, string[]>
+                {
+                    [TenantHeaders.TenantId] =
+                    [
+                        $"{TenantHeaders.TenantId} is required for tenant-scoped operations.",
+                    ],
+                });
 
         var tenantContext = tenantContextAccessor.Current;
         if (tenantContext is null)
             return new TenantContextRequired();
 
-        if (request is ITenantOperation scoped &&
-            !string.Equals(scoped.TenantId, tenantContext.TenantId, StringComparison.Ordinal))
-        {
+        if (request is ITenantOperation scoped && !string.Equals(
+                scoped.TenantId,
+                tenantContext.TenantId,
+                StringComparison.Ordinal))
             return new TenantContextMismatch();
-        }
 
         if (!tenantContext.IsPlatformAdmin)
-        {
             switch (request)
             {
                 case ITenantWriteOperation when !tenantContext.Role.CanWrite():
@@ -71,7 +65,6 @@ public sealed class TenantAuthorizationBehavior<TRequest, TResponse>(
                 case ITenantReadOperation when !tenantContext.Role.CanRead():
                     return new TenantRoleRequired(TenantRole.Viewer);
             }
-        }
 
         return null;
     }
@@ -81,6 +74,7 @@ public static class ClaimPrincipalExtensions
 {
     extension(ClaimsPrincipal claimsPrincipal)
     {
-        public IEnumerable<string> Roles => claimsPrincipal.Claims.Where(c => c.Type == Claims.Roles).Select(c => c.Value);
+        public IEnumerable<string> Roles =>
+            claimsPrincipal.Claims.Where(c => c.Type == Claims.Roles).Select(c => c.Value);
     }
 }

@@ -8,12 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.PrivateAccess.Application.Admission;
-using Pole.Features.PrivateAccess.Application.Catalog;
 using Pole.Features.PrivateAccess.Application.Gateway;
-using Pole.Features.PrivateAccess.Application.Grants;
-using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
@@ -33,7 +28,7 @@ public enum PrivateAccessGatewayAvailability
     Disconnected,
     CredentialExpired,
     Removing,
-    Connected
+    Connected,
 }
 
 public sealed record PrivateAccessGatewayStatusDto(
@@ -46,26 +41,23 @@ public sealed record PrivateAccessGatewayStatusDto(
     string? ProtocolVersion,
     IReadOnlyList<string> Capabilities,
     long? CredentialGeneration,
-    DateTime? CredentialExpiresAtUtc);
+    DateTime? CredentialExpiresAtUtc
+);
 
 public sealed record GetPrivateAccessGatewayStatusRequest(
     [FromRoute] string TenantId,
-    [FromRoute] string DeploymentTargetId)
-    : IMediatorRequest<GetPrivateAccessGatewayStatusOutcome>, IPlatformTenantOperation;
+    [FromRoute] string DeploymentTargetId
+) : IMediatorRequest<GetPrivateAccessGatewayStatusOutcome>, IPlatformTenantOperation;
 
-public union GetPrivateAccessGatewayStatusOutcome(
-    PrivateAccessGatewayStatusDto,
-    DeploymentTargetNotFound);
+public union GetPrivateAccessGatewayStatusOutcome(PrivateAccessGatewayStatusDto, DeploymentTargetNotFound);
 
 public sealed class GetPrivateAccessGatewayStatusHandler(
     LookupDeploymentTarget lookupTarget,
     LoadPrivateAccessGatewayDesiredStatesForTenant loadDesired,
     LoadPrivateAccessGatewayObservation loadObservation,
     IConfiguration configuration,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<
-        GetPrivateAccessGatewayStatusRequest,
-        GetPrivateAccessGatewayStatusOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<GetPrivateAccessGatewayStatusRequest, GetPrivateAccessGatewayStatusOutcome>
 {
     public async Task<GetPrivateAccessGatewayStatusOutcome> HandleAsync(
         GetPrivateAccessGatewayStatusRequest request,
@@ -77,11 +69,9 @@ public sealed class GetPrivateAccessGatewayStatusHandler(
 
         var desired = await loadDesired(request.TenantId, cancellationToken);
         var required = desired.Any(state =>
-            state.TenantId == request.TenantId &&
-            state.DeploymentTargetId == request.DeploymentTargetId &&
+            state.TenantId == request.TenantId && state.DeploymentTargetId == request.DeploymentTargetId &&
             state.Endpoints.Count > 0);
-        var observation = await loadObservation(
-            request.TenantId, request.DeploymentTargetId, cancellationToken);
+        var observation = await loadObservation(request.TenantId, request.DeploymentTargetId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var enabled = configuration.GetValue<bool>("PrivateAccess:Enabled");
         var availability = Availability(found, enabled, required, observation, now);
@@ -132,8 +122,7 @@ public sealed class GetPrivateAccessGatewayStatusHandler(
     }
 }
 
-public sealed class GetPrivateAccessGatewayStatusValidator
-    : AbstractValidator<GetPrivateAccessGatewayStatusRequest>
+public sealed class GetPrivateAccessGatewayStatusValidator : AbstractValidator<GetPrivateAccessGatewayStatusRequest>
 {
     public GetPrivateAccessGatewayStatusValidator()
     {
@@ -144,18 +133,18 @@ public sealed class GetPrivateAccessGatewayStatusValidator
 
 public static class GetPrivateAccessGatewayStatusEndpoint
 {
-    public static IEndpointRouteBuilder MapGetPrivateAccessGatewayStatusEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapGetPrivateAccessGatewayStatusEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{TenantId}/{DeploymentTargetId}", async (
-                IMediator mediator,
-                [AsParameters] GetPrivateAccessGatewayStatusRequest request,
-                CancellationToken cancellationToken) =>
-            (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
-            {
-                PrivateAccessGatewayStatusDto status => Results.Ok(status),
-                DeploymentTargetNotFound missing => Results.NotFound(missing)
-            }))
+        app.MapGet(
+                "/{TenantId}/{DeploymentTargetId}",
+                async (
+                        IMediator mediator, [AsParameters] GetPrivateAccessGatewayStatusRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        PrivateAccessGatewayStatusDto status => Results.Ok(status),
+                        DeploymentTargetNotFound missing => Results.NotFound(missing),
+                    }))
             .WithName("GetPrivateAccessGatewayStatus")
             .Produces<PrivateAccessGatewayStatusDto>()
             .Produces<DeploymentTargetNotFound>(StatusCodes.Status404NotFound);

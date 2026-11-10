@@ -19,6 +19,7 @@ using Pole.Features.PrivateAccess.Runtime;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 using Xunit;
+using PrivateAccessGatewayRegistration = Pole.Features.PrivateAccess.Contracts.PrivateAccessGatewayRegistration;
 
 namespace Pole.Features.PrivateAccess.Tests.Integration;
 
@@ -26,23 +27,22 @@ namespace Pole.Features.PrivateAccess.Tests.Integration;
 internal sealed class DatabaseBrokerFixture : IAsyncDisposable
 {
     private readonly WebApplication app;
-    private readonly X509Certificate2 serverCertificate;
-    private readonly X509Certificate2 gatewayCertificate;
-    private readonly string peerCertificatePath;
-    private readonly ClientWebSocket control;
-    private readonly CancellationTokenSource lifetime = new(TimeSpan.FromSeconds(60));
-    private readonly ConcurrentDictionary<string, PrivateAccessLeaseSnapshot> sessions = new();
-    private readonly ConcurrentQueue<PrivateAccessSessionCloseReason> closeReasons = new();
-    private readonly Channel<string> gatewayTickets = Channel.CreateUnbounded<string>();
     private readonly ConcurrentQueue<byte[]> challenges = new();
-    private readonly int backendPort;
-    private readonly Uri publicOrigin;
+    private readonly ConcurrentQueue<PrivateAccessSessionCloseReason> closeReasons = new();
+    private readonly ClientWebSocket control;
+    private readonly X509Certificate2 gatewayCertificate;
     private readonly Uri gatewayOrigin;
+    private readonly Channel<string> gatewayTickets = Channel.CreateUnbounded<string>();
+    private readonly CancellationTokenSource lifetime = new(TimeSpan.FromSeconds(60));
+    private readonly string peerCertificatePath;
+    private readonly Uri publicOrigin;
+    private readonly X509Certificate2 serverCertificate;
+    private readonly ConcurrentDictionary<string, PrivateAccessLeaseSnapshot> sessions = new();
     private Task controlReader = Task.CompletedTask;
     private Task controlRenewal = Task.CompletedTask;
+    private int renewed;
     private int sessionSequence;
     private int started;
-    private int renewed;
 
     private DatabaseBrokerFixture(
         WebApplication app,
@@ -61,52 +61,79 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         this.control = control;
         this.publicOrigin = publicOrigin;
         this.gatewayOrigin = gatewayOrigin;
-        this.backendPort = backendPort;
+        this.BackendPort = backendPort;
     }
 
     public int StartedSessions => Volatile.Read(ref started);
     public int RenewedSessions => Volatile.Read(ref renewed);
     public string CloseReasons => string.Join(",", closeReasons);
 
+    internal Uri StreamUri => new(publicOrigin, "/private-access/streams");
+    internal Uri GatewayStreamUri => new(gatewayOrigin, "/private-access/gateway-streams");
+    internal ChannelReader<string> GatewayTickets => gatewayTickets.Reader;
+    internal int BackendPort { get; }
+
+    internal CancellationToken Token => lifetime.Token;
+
+    public async ValueTask DisposeAsync()
+    {
+        await lifetime.CancelAsync();
+        control.Abort();
+        try
+        {
+            await Task.WhenAll(controlReader, controlRenewal);
+        }
+        catch (Exception error) when (error is IOException or WebSocketException or OperationCanceledException
+                                          or ObjectDisposedException or InvalidDataException)
+        {
+        }
+
+        control.Dispose();
+        await app.StopAsync();
+        await app.DisposeAsync();
+        serverCertificate.Dispose();
+        gatewayCertificate.Dispose();
+        File.Delete(peerCertificatePath);
+        lifetime.Dispose();
+    }
+
     public static async Task<DatabaseBrokerFixture> StartAsync(int backendPort)
     {
         var serverCertificate = Certificate("localhost", true);
         var gatewayCertificate = Certificate("gateway", false);
-        var pin = Convert.ToHexString(SHA256.HashData(gatewayCertificate.RawData))
-            .ToLowerInvariant();
+        var pin = Convert.ToHexString(SHA256.HashData(gatewayCertificate.RawData)).ToLowerInvariant();
         var gatewayPort = FreePort();
         var publicPort = FreePort();
         var internalPort = FreePort();
         var internalOrigin = $"https://127.0.0.1:{internalPort}";
-        var peerCertificatePath = Path.Combine(Path.GetTempPath(),
-            $"pole-peer-{Guid.NewGuid():N}.pfx");
+        var peerCertificatePath = Path.Combine(Path.GetTempPath(), $"pole-peer-{Guid.NewGuid():N}.pfx");
         File.WriteAllBytes(peerCertificatePath, serverCertificate.Export(X509ContentType.Pfx));
         var ownerSync = new object();
         PrivateAccessBrokerOwnerLease? owner = null;
         long ownerEpoch = 0;
-        var gatewayIdentity = new PrivateAccessGatewayIdentity(
-            "tenant-a", "target-a", "gateway-a", 1, 1);
-        var builder = WebApplication.CreateBuilder(
-            new WebApplicationOptions { EnvironmentName = "Testing" });
+        var gatewayIdentity = new PrivateAccessGatewayIdentity("tenant-a", "target-a", "gateway-a", 1, 1);
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["PrivateAccess:Enabled"] = "true",
-            ["PrivateAccess:GatewayPort"] = gatewayPort.ToString(CultureInfo.InvariantCulture),
-            ["PrivateAccess:GatewayImage"] = "test/gateway:1",
-            ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{publicPort}",
-            ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
-            ["PrivateAccess:InternalPort"] = internalPort.ToString(CultureInfo.InvariantCulture),
-            ["PrivateAccess:InstanceId"] = "test-instance",
-            ["PrivateAccess:InternalOrigin"] = internalOrigin,
-            ["PrivateAccess:InternalPeerOrigins:0"] = internalOrigin,
-            ["PrivateAccess:InternalCertificatePath"] = peerCertificatePath,
-            ["PrivateAccess:InternalCertificateSha256Pin"] = Convert.ToHexString(
-                SHA256.HashData(serverCertificate.RawData)).ToLowerInvariant(),
-            ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{gatewayPort}",
-            ["Kestrel:Endpoints:PrivateAccessInternal:Url"] = internalOrigin,
-            ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{publicPort}"
-        });
+        builder.Configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["PrivateAccess:Enabled"] = "true",
+                ["PrivateAccess:GatewayPort"] = gatewayPort.ToString(CultureInfo.InvariantCulture),
+                ["PrivateAccess:GatewayImage"] = "test/gateway:1",
+                ["PrivateAccess:BrokerUri"] = $"https://127.0.0.1:{publicPort}",
+                ["PrivateAccess:BrokerAddresses:0"] = "192.0.2.8",
+                ["PrivateAccess:InternalPort"] = internalPort.ToString(CultureInfo.InvariantCulture),
+                ["PrivateAccess:InstanceId"] = "test-instance",
+                ["PrivateAccess:InternalOrigin"] = internalOrigin,
+                ["PrivateAccess:InternalPeerOrigins:0"] = internalOrigin,
+                ["PrivateAccess:InternalCertificatePath"] = peerCertificatePath,
+                ["PrivateAccess:InternalCertificateSha256Pin"] = Convert.ToHexString(
+                        SHA256.HashData(serverCertificate.RawData))
+                    .ToLowerInvariant(),
+                ["Kestrel:Endpoints:PrivateAccessGateway:Url"] = $"https://127.0.0.1:{gatewayPort}",
+                ["Kestrel:Endpoints:PrivateAccessInternal:Url"] = internalOrigin,
+                ["Kestrel:Endpoints:Public:Url"] = $"https://127.0.0.1:{publicPort}",
+            });
         builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
             https.ServerCertificate = serverCertificate));
         builder.ConfigurePrivateAccessListener();
@@ -115,8 +142,12 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         {
             lock (ownerSync)
             {
-                owner = new PrivateAccessBrokerOwnerLease(request.Gateway, request.InstanceId, request.InternalOrigin,
-                    ++ownerEpoch, DateTime.UtcNow.AddSeconds(10));
+                owner = new PrivateAccessBrokerOwnerLease(
+                    request.Gateway,
+                    request.InstanceId,
+                    request.InternalOrigin,
+                    ++ownerEpoch,
+                    DateTime.UtcNow.AddSeconds(10));
                 return Task.FromResult<ClaimPrivateAccessBrokerOwnerOutcome>(owner);
             }
         });
@@ -139,13 +170,18 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
                 return Task.CompletedTask;
             }
         });
-        builder.Services.AddSingleton<LoadPrivateAccessBrokerOwner>((tenant, target, _) =>
+        builder.Services.AddSingleton<LoadPrivateAccessBrokerOwner>((
+            tenant, target,
+            _) =>
         {
             lock (ownerSync)
-                return Task.FromResult(owner is { } current &&
-                    current.Gateway.TenantId == tenant &&
-                    current.Gateway.DeploymentTargetId == target &&
-                    current.ExpiresAtUtc > DateTime.UtcNow ? current : null);
+            {
+                return Task.FromResult(
+                    owner is { } current && current.Gateway.TenantId == tenant &&
+                    current.Gateway.DeploymentTargetId == target && current.ExpiresAtUtc > DateTime.UtcNow
+                        ? current
+                        : null);
+            }
         });
         builder.Services.AddSingleton<IKubernetesClientProvider>(new UnusedKubernetesProvider());
         builder.Services.AddSingleton<LookupDeploymentTarget>((_, _) =>
@@ -155,20 +191,20 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         builder.Services.AddSingleton<LoadPrivateAccessGatewayDesiredStates>(_ =>
             Task.FromResult<IReadOnlyList<PrivateAccessGatewayDesiredState>>([]));
         builder.Services.AddSingleton<LoadPrivateAccessGatewayRegistrations>(_ =>
-            Task.FromResult<IReadOnlyList<
-                Pole.Features.PrivateAccess.Contracts.PrivateAccessGatewayRegistration>>([]));
+            Task.FromResult<IReadOnlyList<PrivateAccessGatewayRegistration>>([]));
         builder.Services.AddSingleton<SavePrivateAccessGatewayRegistration>((request, _) =>
             throw new InvalidOperationException("Gateway registration is not used in transport tests."));
         builder.Services.AddSingleton<RemovePrivateAccessGatewayRegistration>((_, _) =>
             throw new InvalidOperationException("Gateway registration is not used in transport tests."));
         builder.Services.AddSingleton<ResolvePrivateAccessGatewayIdentity>((fingerprint, _) =>
             Task.FromResult(fingerprint == pin ? gatewayIdentity : null));
-        builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((_, _, _) =>
-            Task.FromResult(true));
+        builder.Services.AddSingleton<RecordPrivateAccessGatewayContact>((
+            _, _,
+            _) => Task.FromResult(true));
 
         DatabaseBrokerFixture? fixture = null;
-        builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) =>
-            Task.FromResult(fixture!.sessions.TryGetValue(ticket, out var session)
+        builder.Services.AddSingleton<LocatePrivateAccessTicket>((ticket, _) => Task.FromResult(
+            fixture!.sessions.TryGetValue(ticket, out var session)
                 ? new PrivateAccessTicketRoute(session.TenantId, session.DeploymentTargetId)
                 : null));
         builder.Services.AddSingleton<RedeemPrivateAccessSession>((ticket, _) =>
@@ -176,36 +212,32 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             var found = fixture!.sessions.TryRemove(ticket, out var lease);
             if (found)
                 fixture.sessions[lease!.SessionId] = lease;
-            return Task.FromResult<RedeemPrivateAccessSessionOutcome>(found
-                ? lease!
-                : new PrivateAccessTicketUsed());
+            return Task.FromResult<RedeemPrivateAccessSessionOutcome>(found ? lease! : new PrivateAccessTicketUsed());
         });
         builder.Services.AddSingleton<RenewPrivateAccessSession>((sessionId, _) =>
         {
             Interlocked.Increment(ref fixture!.renewed);
             return Task.FromResult<RenewPrivateAccessSessionOutcome>(
-                fixture.sessions.TryGetValue(sessionId, out var lease)
-                    ? lease
-                    : new PrivateAccessSessionUnavailable());
+                fixture.sessions.TryGetValue(sessionId, out var lease) ? lease : new PrivateAccessSessionUnavailable());
         });
         builder.Services.AddSingleton<MarkPrivateAccessSessionStarted>((_, _) =>
         {
             Interlocked.Increment(ref fixture!.started);
-            return Task.FromResult<MarkPrivateAccessSessionStartedOutcome>(
-                new PrivateAccessSessionStarted());
+            return Task.FromResult<MarkPrivateAccessSessionStartedOutcome>(new PrivateAccessSessionStarted());
         });
-        builder.Services.AddSingleton<ClosePrivateAccessSession>((sessionId, reason, cancellationToken) =>
+        builder.Services.AddSingleton<ClosePrivateAccessSession>((
+            sessionId, reason,
+            cancellationToken) =>
         {
             fixture!.sessions.TryRemove(sessionId, out _);
             fixture.closeReasons.Enqueue(reason);
-            return Task.FromResult<ClosePrivateAccessSessionOutcome>(
-                new PrivateAccessSessionClosed());
+            return Task.FromResult<ClosePrivateAccessSessionOutcome>(new PrivateAccessSessionClosed());
         });
-        builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((_, _, _) =>
-            Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
+        builder.Services.AddSingleton<LoadExpiredPrivateAccessSessionCleanupPage>((
+            _, _,
+            _) => Task.FromResult<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>>([]));
         builder.Services.AddSingleton<MarkPrivateAccessSessionCleaned>((_, _) =>
-            Task.FromResult<MarkPrivateAccessSessionCleanedOutcome>(
-                new PrivateAccessSessionCleaned()));
+            Task.FromResult<MarkPrivateAccessSessionCleanedOutcome>(new PrivateAccessSessionCleaned()));
         var app = builder.Build();
         app.UsePrivateAccessRuntime();
         app.MapPrivateAccessGatewayControlEndpoint();
@@ -219,13 +251,20 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             CancellationToken.None);
         var initial = RandomNumberGenerator.GetBytes(32);
         await PrivateAccessFrames.SendAsync(
-            control, PrivateAccessFrameKind.LeaseChallenge, initial, CancellationToken.None);
+            control,
+            PrivateAccessFrameKind.LeaseChallenge,
+            initial,
+            CancellationToken.None);
         var accepted = await PrivateAccessFrames.ReceiveAsync(control, CancellationToken.None);
         Assert.Equal(PrivateAccessFrameKind.LeaseAccepted, accepted.Kind);
         Assert.Equal(initial, accepted.Payload.ToArray());
 
         fixture = new DatabaseBrokerFixture(
-            app, serverCertificate, gatewayCertificate, peerCertificatePath, control,
+            app,
+            serverCertificate,
+            gatewayCertificate,
+            peerCertificatePath,
+            control,
             new Uri($"wss://127.0.0.1:{publicPort}"),
             new Uri($"wss://127.0.0.1:{gatewayPort}"),
             backendPort);
@@ -257,8 +296,8 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
                 }
             }
         }
-        catch (Exception error) when (error is OperationCanceledException or
-            IOException or WebSocketException or ObjectDisposedException or InvalidDataException)
+        catch (Exception error) when (error is OperationCanceledException or IOException or WebSocketException
+                                          or ObjectDisposedException or InvalidDataException)
         {
             gatewayTickets.Writer.TryComplete(error);
         }
@@ -274,12 +313,11 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             {
                 var challenge = RandomNumberGenerator.GetBytes(32);
                 challenges.Enqueue(challenge);
-                await writer.SendAsync(
-                    PrivateAccessFrameKind.LeaseChallenge, challenge, lifetime.Token);
+                await writer.SendAsync(PrivateAccessFrameKind.LeaseChallenge, challenge, lifetime.Token);
             }
         }
-        catch (Exception error) when (error is OperationCanceledException or
-            IOException or WebSocketException or ObjectDisposedException or InvalidDataException)
+        catch (Exception error) when (error is OperationCanceledException or IOException or WebSocketException
+                                          or ObjectDisposedException or InvalidDataException)
         {
             gatewayTickets.Writer.TryComplete(error);
         }
@@ -297,10 +335,24 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         var id = Interlocked.Increment(ref sessionSequence).ToString(CultureInfo.InvariantCulture);
         var ticket = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         sessions[ticket] = new PrivateAccessLeaseSnapshot(
-            "tenant-a", "user-a", "grant-a", $"session-{id}", "postgresql", "resource-a",
-            "deployment-a", "endpoint-a", "target-a", "cell-a", "scope-a", "runtime-a",
-            "database", NetworkPort.Create(backendPort), NetworkPort.Create(backendPort), 1,
-            DateTime.UtcNow.AddMinutes(1), DateTime.UtcNow.AddMinutes(2));
+            "tenant-a",
+            "user-a",
+            "grant-a",
+            $"session-{id}",
+            "postgresql",
+            "resource-a",
+            "deployment-a",
+            "endpoint-a",
+            "target-a",
+            "cell-a",
+            "scope-a",
+            "runtime-a",
+            "database",
+            NetworkPort.Create(BackendPort),
+            NetworkPort.Create(BackendPort),
+            1,
+            DateTime.UtcNow.AddMinutes(1),
+            DateTime.UtcNow.AddMinutes(2));
         return ticket;
     }
 
@@ -318,40 +370,16 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         return socket;
     }
 
-    internal Uri StreamUri => new(publicOrigin, "/private-access/streams");
-    internal Uri GatewayStreamUri => new(gatewayOrigin, "/private-access/gateway-streams");
-    internal ChannelReader<string> GatewayTickets => gatewayTickets.Reader;
-    internal int BackendPort => backendPort;
-    internal CancellationToken Token => lifetime.Token;
-
-    public async ValueTask DisposeAsync()
-    {
-        await lifetime.CancelAsync();
-        control.Abort();
-        try { await Task.WhenAll(controlReader, controlRenewal); }
-        catch (Exception error) when (error is IOException or WebSocketException or
-            OperationCanceledException or ObjectDisposedException or InvalidDataException)
-        { }
-        control.Dispose();
-        await app.StopAsync();
-        await app.DisposeAsync();
-        serverCertificate.Dispose();
-        gatewayCertificate.Dispose();
-        File.Delete(peerCertificatePath);
-        lifetime.Dispose();
-    }
-
-    private static ClientWebSocket Socket(
-        X509Certificate2 server,
-        X509Certificate2? client = null)
+    private static ClientWebSocket Socket(X509Certificate2 server, X509Certificate2? client = null)
     {
         var socket = new ClientWebSocket();
         if (client is not null)
             socket.Options.ClientCertificates.Add(client);
-        socket.Options.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
-            certificate is not null && CryptographicOperations.FixedTimeEquals(
-                SHA256.HashData(certificate.GetRawCertData()),
-                SHA256.HashData(server.RawData));
+        socket.Options.RemoteCertificateValidationCallback = (
+            _, certificate,
+            _, _) => certificate is not null && CryptographicOperations.FixedTimeEquals(
+            SHA256.HashData(certificate.GetRawCertData()),
+            SHA256.HashData(server.RawData));
         return socket;
     }
 
@@ -360,23 +388,25 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var request = new CertificateRequest($"CN={name}", key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(
-            X509KeyUsageFlags.DigitalSignature, true));
-        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-            new OidCollection
-            {
-                new(server ? "1.3.6.1.5.5.7.3.1" : "1.3.6.1.5.5.7.3.2")
-            }, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        request.CertificateExtensions.Add(
+            new X509EnhancedKeyUsageExtension(
+                new OidCollection
+                {
+                    new Oid(server ? "1.3.6.1.5.5.7.3.1" : "1.3.6.1.5.5.7.3.2"),
+                },
+                false));
         if (server)
         {
             var names = new SubjectAlternativeNameBuilder();
             names.AddIpAddress(IPAddress.Loopback);
             request.CertificateExtensions.Add(names.Build());
         }
+
         using var certificate = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
-        return X509CertificateLoader.LoadPkcs12(
-            certificate.Export(X509ContentType.Pfx), null);
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow.AddHours(1));
+        return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx), null);
     }
 
     private static int FreePort()
@@ -388,32 +418,41 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
 
     private sealed class UnusedKubernetesProvider : IKubernetesClientProvider
     {
-        public Task<IKubernetes> GetAsync(
-            string id,
-            CancellationToken cancellationToken = default) =>
+        public Task<IKubernetes> GetAsync(string id, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("No gateway resources are reconciled in transport tests.");
 
         public Task<IKubernetes> GetForCleanupAsync(
             string deploymentTargetId,
-            CancellationToken cancellationToken = default) =>
-            GetAsync(deploymentTargetId, cancellationToken);
+            CancellationToken cancellationToken = default) => GetAsync(deploymentTargetId, cancellationToken);
 
-        public Task<IKubernetes> GetDefaultAsync(
-            CancellationToken cancellationToken = default) =>
+        public Task<IKubernetes> GetDefaultAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("No default gateway target is used.");
     }
 }
 
-internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyncDisposable
+internal sealed class DatabaseLocalForward(
+    DatabaseBrokerFixture broker
+) : IAsyncDisposable
 {
-    private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-    private readonly CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(broker.Token);
-    private readonly SemaphoreSlim setupGate = new(1, 1);
-    private readonly ConcurrentBag<Task> sessions = [];
     private readonly ConcurrentQueue<string> errors = new();
+    private readonly CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(broker.Token);
+    private readonly TcpListener listener = new(IPAddress.Loopback, 0);
+    private readonly ConcurrentBag<Task> sessions = [];
+    private readonly SemaphoreSlim setupGate = new(1, 1);
     private Task? accepting;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     public string Diagnostics => string.Join(",", errors);
+
+    public async ValueTask DisposeAsync()
+    {
+        await lifetime.CancelAsync();
+        listener.Stop();
+        if (accepting is not null)
+            await accepting;
+        await Task.WhenAll(sessions.ToArray());
+        setupGate.Dispose();
+        lifetime.Dispose();
+    }
 
     public Task StartAsync()
     {
@@ -432,8 +471,12 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
                 sessions.Add(RunSessionAsync(client));
             }
         }
-        catch (OperationCanceledException) { }
-        catch (SocketException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (SocketException) when (lifetime.IsCancellationRequested)
+        {
+        }
     }
 
     private async Task RunSessionAsync(TcpClient local)
@@ -471,11 +514,15 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
                 {
                     setupGate.Release();
                 }
+
                 using (gateway)
                 {
                     stage = "pumping";
-                    var gatewayRun = new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(gateway,
-                        "127.0.0.1", broker.BackendPort, lifetime.Token);
+                    var gatewayRun = new PrivateAccessTcpRelay(TimeProvider.System).RunAsync(
+                        gateway,
+                        "127.0.0.1",
+                        broker.BackendPort,
+                        lifetime.Token);
                     var localStream = local.GetStream();
                     var outgoing = PumpToBrokerAsync(localStream, client, lifetime.Token);
                     var incoming = PumpFromBrokerAsync(localStream, local, client, lifetime.Token);
@@ -487,9 +534,8 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
                     await ObserveAsync(gatewayRun);
                 }
             }
-            catch (Exception error) when (error is IOException or WebSocketException or
-                OperationCanceledException or SocketException or ObjectDisposedException or
-                InvalidDataException)
+            catch (Exception error) when (error is IOException or WebSocketException or OperationCanceledException
+                                              or SocketException or ObjectDisposedException or InvalidDataException)
             {
                 if (!lifetime.IsCancellationRequested)
                     errors.Enqueue($"{stage}:{error.GetType().Name}");
@@ -498,7 +544,10 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
         }
     }
 
-    private static async Task PumpToBrokerAsync(NetworkStream local, WebSocket socket, CancellationToken ct)
+    private static async Task PumpToBrokerAsync(
+        NetworkStream local,
+        WebSocket socket,
+        CancellationToken ct)
     {
         var buffer = new byte[PrivateAccessFrames.MaximumPayloadLength];
         while (true)
@@ -506,12 +555,15 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
             var count = await local.ReadAsync(buffer, ct);
             if (count == 0)
             {
-                await PrivateAccessFrames.SendAsync(socket, PrivateAccessFrameKind.HalfClose,
-                    ReadOnlyMemory<byte>.Empty, ct);
+                await PrivateAccessFrames.SendAsync(
+                    socket,
+                    PrivateAccessFrameKind.HalfClose,
+                    ReadOnlyMemory<byte>.Empty,
+                    ct);
                 return;
             }
-            await PrivateAccessFrames.SendAsync(socket, PrivateAccessFrameKind.Data,
-                buffer.AsMemory(0, count), ct);
+
+            await PrivateAccessFrames.SendAsync(socket, PrivateAccessFrameKind.Data, buffer.AsMemory(0, count), ct);
         }
     }
 
@@ -542,24 +594,15 @@ internal sealed class DatabaseLocalForward(DatabaseBrokerFixture broker) : IAsyn
 
     private async Task ObserveAsync(Task task)
     {
-        try { await task; }
-        catch (Exception error) when (error is IOException or WebSocketException or
-            OperationCanceledException or SocketException or ObjectDisposedException or
-            InvalidDataException)
+        try
+        {
+            await task;
+        }
+        catch (Exception error) when (error is IOException or WebSocketException or OperationCanceledException
+                                          or SocketException or ObjectDisposedException or InvalidDataException)
         {
             if (!lifetime.IsCancellationRequested)
                 errors.Enqueue($"pump:{error.GetType().Name}");
         }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await lifetime.CancelAsync();
-        listener.Stop();
-        if (accepting is not null)
-            await accepting;
-        await Task.WhenAll(sessions.ToArray());
-        setupGate.Dispose();
-        lifetime.Dispose();
     }
 }

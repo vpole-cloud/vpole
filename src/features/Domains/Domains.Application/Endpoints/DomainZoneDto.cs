@@ -14,10 +14,19 @@ public sealed record DomainZoneDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     string? TechnicalName,
-    GitResourceStatus? GitOps)
+    GitResourceStatus? GitOps
+)
 {
-    public static DomainZoneDto FromSnapshot(TenantDomainZoneSnapshot snapshot, GitResourceStatus? ownership) =>
-        new(snapshot.Id, snapshot.TenantId, snapshot.DeploymentTargetId, snapshot.Label, snapshot.Domain,
-            snapshot.Kind, snapshot.Revision, snapshot.CreatedAtUtc, snapshot.UpdatedAtUtc,
-            snapshot.TechnicalName, ownership);
+    public static DomainZoneDto FromSnapshot(TenantDomainZoneSnapshot snapshot, GitResourceStatus? ownership) => new(
+        snapshot.Id,
+        snapshot.TenantId,
+        snapshot.DeploymentTargetId,
+        snapshot.Label,
+        snapshot.Domain,
+        snapshot.Kind,
+        snapshot.Revision,
+        snapshot.CreatedAtUtc,
+        snapshot.UpdatedAtUtc,
+        snapshot.TechnicalName,
+        ownership);
 }

@@ -5,12 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.PrivateAccess.Application.Admission;
-using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
 using Pole.Features.PrivateAccess.Application.Grants;
-using Pole.Features.PrivateAccess.Application.Mongo;
-using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Mediator;
 using Pole.Validation;
 
@@ -19,28 +14,28 @@ namespace Pole.Features.PrivateAccess.Application.Endpoints;
 public sealed record RevokePrivateAccessGrantRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue ActorUserId)
-    : IMediatorRequest<RevokePrivateAccessGrantOutcome>, ITenantWriteOperation;
+    [FromClaim(Claims.UserId)] ClaimValue ActorUserId
+) : IMediatorRequest<RevokePrivateAccessGrantOutcome>, ITenantWriteOperation;
 
 public union RevokePrivateAccessGrantOutcome(
     PrivateAccessGrantRevoked,
     PrivateAccessManageRoleRequired,
     PrivateAccessGrantMissing);
 
-public sealed class RevokePrivateAccessGrantHandler(RevokePrivateAccessGrant revoke)
-    : IMediatorOutcomeHandler<RevokePrivateAccessGrantRequest, RevokePrivateAccessGrantOutcome>
+public sealed class RevokePrivateAccessGrantHandler(
+    RevokePrivateAccessGrant revoke
+) : IMediatorOutcomeHandler<RevokePrivateAccessGrantRequest, RevokePrivateAccessGrantOutcome>
 {
     public async Task<RevokePrivateAccessGrantOutcome> HandleAsync(
         RevokePrivateAccessGrantRequest request,
         CancellationToken cancellationToken = default)
     {
-        var outcome = await revoke(request.TenantId, request.Id,
-            request.ActorUserId.Value, cancellationToken);
+        var outcome = await revoke(request.TenantId, request.Id, request.ActorUserId.Value, cancellationToken);
         return outcome switch
         {
             PrivateAccessGrantRevoked revoked => revoked,
             PrivateAccessManageRoleRequired error => error,
-            PrivateAccessGrantMissing error => error
+            PrivateAccessGrantMissing error => error,
         };
     }
 }
@@ -55,19 +50,19 @@ public sealed class RevokePrivateAccessGrantValidator : AbstractValidator<Revoke
 
 public static class RevokePrivateAccessGrantEndpoint
 {
-    public static IEndpointRouteBuilder MapRevokePrivateAccessGrantEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapRevokePrivateAccessGrantEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] RevokePrivateAccessGrantRequest request,
-                CancellationToken cancellationToken) =>
-            (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
-            {
-                PrivateAccessGrantRevoked => Results.NoContent(),
-                PrivateAccessManageRoleRequired error => PrivateAccessHttpProblemMappings.Map(error),
-                PrivateAccessGrantMissing error => PrivateAccessHttpProblemMappings.Map(error)
-            }))
+        app.MapDelete(
+                "/{Id}",
+                async (
+                        IMediator mediator, [AsParameters] RevokePrivateAccessGrantRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        PrivateAccessGrantRevoked => Results.NoContent(),
+                        PrivateAccessManageRoleRequired error => PrivateAccessHttpProblemMappings.Map(error),
+                        PrivateAccessGrantMissing error => PrivateAccessHttpProblemMappings.Map(error),
+                    }))
             .WithName("RevokePrivateAccessGrant")
             .Produces(StatusCodes.Status204NoContent);
         return app;

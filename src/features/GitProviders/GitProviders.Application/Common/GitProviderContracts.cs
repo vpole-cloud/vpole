@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
-using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
@@ -12,11 +12,13 @@ public sealed record GitProviderConnectionDto(
     string AccountType,
     string RepositorySelection,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc
+);
 
 public sealed record BeginGitHubInstallationResponse(
     string InstallUrl,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc
+);
 
 public sealed record ProviderRepositoryDto(
     string Id,
@@ -25,24 +27,30 @@ public sealed record ProviderRepositoryDto(
     string HtmlUrl,
     bool IsPrivate,
     string DefaultBranch,
-    DateTime? UpdatedAtUtc);
+    DateTime? UpdatedAtUtc
+);
 
 public sealed record ProviderBranchDto(
     string Name,
     string CommitSha,
-    bool IsProtected);
+    bool IsProtected
+);
 
 public sealed record ProviderPage<T>(
     IReadOnlyList<T> Items,
     int Page,
     int PageSize,
-    bool HasMore);
+    bool HasMore
+);
 
-public sealed record AnalyzeRepositoryRequestBody(string Branch);
+public sealed record AnalyzeRepositoryRequestBody(
+    string Branch
+);
 
 public sealed record LinkSourceRepositoryRequestBody(
     string TechnicalName,
-    string Branch);
+    string Branch
+);
 
 public sealed record RepositoryAnalysisDto(
     string RepositoryId,
@@ -51,7 +59,8 @@ public sealed record RepositoryAnalysisDto(
     string CommitSha,
     DateTime AnalyzedAtUtc,
     IReadOnlyList<string> DetectedFiles,
-    IReadOnlyList<SourceBuildPlanDto> Candidates);
+    IReadOnlyList<SourceBuildPlanDto> Candidates
+);
 
 public sealed record SourceBuildPlanDto(
     string CandidateKey,
@@ -64,7 +73,8 @@ public sealed record SourceBuildPlanDto(
     IReadOnlyList<string> Warnings,
     IReadOnlyList<string> Commands,
     string? StartCommand,
-    string DockerfilePreview);
+    string DockerfilePreview
+);
 
 public sealed record SourceRepositoryDto(
     string Id,
@@ -78,53 +88,49 @@ public sealed record SourceRepositoryDto(
     long Revision,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    GitResourceStatus? GitOps);
+    GitResourceStatus? GitOps
+);
 
 public static class GitProviderDtoExtensions
 {
-    public static GitProviderConnectionDto ToDto(this GitProviderConnection connection) =>
-        new(
-            connection.Id,
-            connection.TechnicalName,
-            connection.Provider.ToString(),
-            connection.AccountLogin,
-            connection.AccountType.ToString(),
-            connection.RepositorySelection.ToString(),
-            connection.CreatedAtUtc,
-            connection.UpdatedAtUtc);
+    public static GitProviderConnectionDto ToDto(this GitProviderConnection connection) => new(
+        connection.Id,
+        connection.TechnicalName,
+        connection.Provider.ToString(),
+        connection.AccountLogin,
+        connection.AccountType.ToString(),
+        connection.RepositorySelection.ToString(),
+        connection.CreatedAtUtc,
+        connection.UpdatedAtUtc);
 
-    public static SourceBuildPlanDto ToDto(this SourceBuildPlan plan) =>
-        new(
-            plan.CandidateKey,
-            plan.Kind.ToString(),
-            plan.DisplayName,
-            plan.SourceRoot,
-            plan.ManifestPath,
-            plan.Confidence.ToString(),
-            plan.Signals,
-            plan.Warnings,
-            plan.Commands,
-            plan.StartCommand,
-            plan.DockerfilePreview);
+    public static SourceBuildPlanDto ToDto(this SourceBuildPlan plan) => new(
+        plan.CandidateKey,
+        plan.Kind.ToString(),
+        plan.DisplayName,
+        plan.SourceRoot,
+        plan.ManifestPath,
+        plan.Confidence.ToString(),
+        plan.Signals,
+        plan.Warnings,
+        plan.Commands,
+        plan.StartCommand,
+        plan.DockerfilePreview);
 
-    public static SourceRepositoryDto ToDto(this SourceRepository repository) =>
-        new(
-            repository.Id,
-            repository.TechnicalName,
-            repository.ConnectionId,
-            repository.ExternalRepositoryId,
-            repository.RepositoryFullName,
-            repository.RepositoryUrl,
-            repository.IsPrivate,
-            repository.Branch,
-            repository.Revision,
-            repository.CreatedAtUtc,
-            repository.UpdatedAtUtc,
-            null);
+    public static SourceRepositoryDto ToDto(this SourceRepository repository) => new(
+        repository.Id,
+        repository.TechnicalName,
+        repository.ConnectionId,
+        repository.ExternalRepositoryId,
+        repository.RepositoryFullName,
+        repository.RepositoryUrl,
+        repository.IsPrivate,
+        repository.Branch,
+        repository.Revision,
+        repository.CreatedAtUtc,
+        repository.UpdatedAtUtc,
+        null);
 
-    public static RepositoryAnalysisDto ToDto(
-        this SourceRepositoryAnalysis analysis,
-        ProviderRepository repository) =>
+    public static RepositoryAnalysisDto ToDto(this SourceRepositoryAnalysis analysis, ProviderRepository repository) =>
         new(
             repository.Id,
             repository.FullName,
@@ -142,12 +148,14 @@ public sealed record ProviderRepository(
     string HtmlUrl,
     bool IsPrivate,
     string DefaultBranch,
-    DateTime? UpdatedAtUtc);
+    DateTime? UpdatedAtUtc
+);
 
 public sealed record ProviderBranch(
     string Name,
     string CommitSha,
-    bool IsProtected);
+    bool IsProtected
+);
 
 public sealed record RepositorySourceSnapshot(
     ProviderRepository Repository,
@@ -155,4 +163,5 @@ public sealed record RepositorySourceSnapshot(
     string CommitSha,
     ImmutableList<string> Paths,
     ImmutableDictionary<string, string> FileContents,
-    bool IsTruncated);
+    bool IsTruncated
+);

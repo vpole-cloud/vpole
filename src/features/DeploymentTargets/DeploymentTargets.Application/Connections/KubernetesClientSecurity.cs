@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -9,13 +8,9 @@ using Pole.Features.DeploymentTargets.Application.Common;
 
 namespace Pole.Features.DeploymentTargets.Application.Connections;
 
-internal union CreateCandidateKubernetesClientOutcome(
-    IKubernetes,
-    DeploymentTargetConnectionRejected);
+internal union CreateCandidateKubernetesClientOutcome(IKubernetes, DeploymentTargetConnectionRejected);
 
-public union CreateStoredKubernetesClientOutcome(
-    IKubernetes,
-    StoredDeploymentTargetConnectionUnavailable);
+public union CreateStoredKubernetesClientOutcome(IKubernetes, StoredDeploymentTargetConnectionUnavailable);
 
 internal static class KubernetesClientSecurity
 {
@@ -32,9 +27,7 @@ internal static class KubernetesClientSecurity
         }
         catch (InvalidKubernetesClientConfigurationException)
         {
-            return ConnectionRejections.Validation(
-                "connection",
-                "The Kubernetes connection configuration is invalid.");
+            return ConnectionRejections.Validation("connection", "The Kubernetes connection configuration is invalid.");
         }
     }
 
@@ -61,14 +54,11 @@ internal static class KubernetesClientSecurity
         }
         catch (InvalidKubernetesClientConfigurationException)
         {
-            return ConnectionRejections.Validation(
-                "connection",
-                "The Kubernetes connection configuration is invalid.");
+            return ConnectionRejections.Validation("connection", "The Kubernetes connection configuration is invalid.");
         }
     }
 
-    public static CreateStoredKubernetesClientOutcome CreateInClusterForStored(
-        CancellationToken cancellationToken)
+    public static CreateStoredKubernetesClientOutcome CreateInClusterForStored(CancellationToken cancellationToken)
     {
         try
         {
@@ -95,15 +85,12 @@ internal static class KubernetesClientSecurity
                 credential.ContextName);
             if (configuration.SkipTlsVerify ||
                 !ConnectionValueValidation.TryNormalizeServerUrl(configuration.Host, out var builtHost) ||
-                !string.Equals(builtHost, credential.ServerUrl, StringComparison.Ordinal) ||
-                !TryDetachStrictTrust(
+                !string.Equals(builtHost, credential.ServerUrl, StringComparison.Ordinal) || !TryDetachStrictTrust(
                     configuration,
                     credential.CertificateAuthorityData,
                     out var expectedHost,
                     out var trustedAuthorities))
-            {
                 throw new InvalidKubernetesClientConfigurationException();
-            }
 
             ApplyTransportHardening(configuration, expectedHost, trustedAuthorities);
             cancellationToken.ThrowIfCancellationRequested();
@@ -130,11 +117,11 @@ internal static class KubernetesClientSecurity
         {
             var configuration = KubernetesClientConfiguration.InClusterConfig();
             if (configuration.SkipTlsVerify ||
-                !ConnectionValueValidation.TryNormalizeServerUrl(configuration.Host, out _) ||
-                !TryDetachStrictTrust(configuration, out var expectedHost, out var trustedAuthorities))
-            {
+                !ConnectionValueValidation.TryNormalizeServerUrl(configuration.Host, out _) || !TryDetachStrictTrust(
+                    configuration,
+                    out var expectedHost,
+                    out var trustedAuthorities))
                 throw new InvalidKubernetesClientConfigurationException();
-            }
 
             ApplyTransportHardening(configuration, expectedHost, trustedAuthorities);
             cancellationToken.ThrowIfCancellationRequested();
@@ -154,30 +141,24 @@ internal static class KubernetesClientSecurity
         }
     }
 
-    private sealed class InvalidKubernetesClientConfigurationException(Exception? innerException = null)
-        : Exception("The Kubernetes connection configuration is invalid.", innerException);
-
     private static bool TryDetachStrictTrust(
         KubernetesClientConfiguration configuration,
         out string expectedHost,
         out byte[][] trustedAuthorities)
     {
-        expectedHost = string.Empty;
+        expectedHost = "";
         trustedAuthorities = [];
         if (!Uri.TryCreate(configuration.Host, UriKind.Absolute, out var serverUri) ||
             configuration.SslCaCerts is not { Count: > 0 } authorities)
-        {
             return false;
-        }
 
         expectedHost = string.IsNullOrWhiteSpace(configuration.TlsServerName)
             ? serverUri.IdnHost
             : configuration.TlsServerName;
-        var authorityCertificates = authorities.Cast<X509Certificate2>().ToArray();
+        var authorityCertificates = authorities.ToArray();
         try
         {
-            trustedAuthorities = authorityCertificates
-                .Select(certificate => certificate.Export(X509ContentType.Cert))
+            trustedAuthorities = authorityCertificates.Select(certificate => certificate.Export(X509ContentType.Cert))
                 .ToArray();
         }
         catch (CryptographicException)
@@ -205,7 +186,7 @@ internal static class KubernetesClientSecurity
         out string expectedHost,
         out byte[][] trustedAuthorities)
     {
-        expectedHost = string.Empty;
+        expectedHost = "";
         trustedAuthorities = [];
         if (!Uri.TryCreate(configuration.Host, UriKind.Absolute, out var serverUri) ||
             !TryLoadTrustedAuthorities(certificateAuthorityData, out trustedAuthorities))
@@ -221,9 +202,7 @@ internal static class KubernetesClientSecurity
         return true;
     }
 
-    private static bool TryLoadTrustedAuthorities(
-        string certificateAuthorityData,
-        out byte[][] trustedAuthorities)
+    private static bool TryLoadTrustedAuthorities(string certificateAuthorityData, out byte[][] trustedAuthorities)
     {
         trustedAuthorities = [];
         byte[] decoded;
@@ -241,23 +220,14 @@ internal static class KubernetesClientSecurity
         {
             var pem = Encoding.UTF8.GetString(decoded);
             if (pem.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal))
-            {
                 certificates.ImportFromPem(pem);
-            }
             else
-            {
                 certificates.Add(X509CertificateLoader.LoadCertificate(decoded));
-            }
 
-            trustedAuthorities = certificates
-                .Cast<X509Certificate2>()
-                .Select(certificate => certificate.Export(X509ContentType.Cert))
-                .ToArray();
-            return trustedAuthorities.Length > 0 &&
-                   trustedAuthorities.All(authority => authority.Length > 0);
+            trustedAuthorities = certificates.Select(certificate => certificate.Export(X509ContentType.Cert)).ToArray();
+            return trustedAuthorities.Length > 0 && trustedAuthorities.All(authority => authority.Length > 0);
         }
-        catch (Exception exception) when (
-            exception is CryptographicException or ArgumentException)
+        catch (Exception exception) when (exception is CryptographicException or ArgumentException)
         {
             trustedAuthorities = [];
             return false;
@@ -269,14 +239,11 @@ internal static class KubernetesClientSecurity
         }
     }
 
-    private static void DisposeConfigurationAuthorities(
-        KubernetesClientConfiguration configuration)
+    private static void DisposeConfigurationAuthorities(KubernetesClientConfiguration configuration)
     {
         if (configuration.SslCaCerts is { } authorities)
-        {
             foreach (var authority in authorities)
                 authority.Dispose();
-        }
 
         configuration.SslCaCerts = null!;
     }
@@ -294,15 +261,17 @@ internal static class KubernetesClientSecurity
             handler.ConnectTimeout = ConnectTimeout;
             handler.UseProxy = false;
             handler.SslOptions.TargetHost = expectedHost;
-            handler.SslOptions.RemoteCertificateValidationCallback =
-                CreateStrictCertificateValidator(expectedHost, trustedAuthorities);
+            handler.SslOptions.RemoteCertificateValidationCallback
+                = CreateStrictCertificateValidator(expectedHost, trustedAuthorities);
         };
         configuration.HttpClientTimeout = HttpClientTimeout;
     }
 
     private static RemoteCertificateValidationCallback CreateStrictCertificateValidator(
         string expectedHost,
-        IReadOnlyList<byte[]> trustedAuthorities) => (_, certificate, presentedChain, _) =>
+        IReadOnlyList<byte[]> trustedAuthorities) => (
+        _, certificate,
+        presentedChain, _) =>
     {
         if (certificate is null)
             return false;
@@ -310,16 +279,10 @@ internal static class KubernetesClientSecurity
         var ownedCertificates = new List<X509Certificate2>();
         try
         {
-            var leaf = X509CertificateLoader.LoadCertificate(
-                certificate.Export(X509ContentType.Cert));
+            var leaf = X509CertificateLoader.LoadCertificate(certificate.Export(X509ContentType.Cert));
             ownedCertificates.Add(leaf);
-            if (!leaf.MatchesHostname(
-                    expectedHost,
-                    allowWildcards: true,
-                    allowCommonName: false))
-            {
+            if (!leaf.MatchesHostname(expectedHost, allowWildcards: true, allowCommonName: false))
                 return false;
-            }
 
             using var strictChain = new X509Chain();
             var policy = strictChain.ChainPolicy;
@@ -338,25 +301,23 @@ internal static class KubernetesClientSecurity
             }
 
             if (presentedChain is not null)
-            {
-                foreach (var element in presentedChain.ChainElements.Cast<X509ChainElement>().Skip(1))
+                foreach (var element in presentedChain.ChainElements.Skip(1))
                 {
                     var intermediate = X509CertificateLoader.LoadCertificate(
                         element.Certificate.Export(X509ContentType.Cert));
                     ownedCertificates.Add(intermediate);
                     policy.ExtraStore.Add(intermediate);
                 }
-            }
 
             if (!strictChain.Build(leaf) || strictChain.ChainElements.Count == 0)
                 return false;
 
             var terminal = strictChain.ChainElements[^1].Certificate.RawData;
             return trustedAuthorities.Any(authority => authority.Length == terminal.Length &&
-                                                       CryptographicOperations.FixedTimeEquals(authority, terminal));
+                CryptographicOperations.FixedTimeEquals(authority, terminal));
         }
-        catch (Exception exception) when (
-            exception is CryptographicException or ArgumentException or InvalidOperationException)
+        catch (Exception exception) when (exception is CryptographicException or ArgumentException
+                                              or InvalidOperationException)
         {
             return false;
         }
@@ -366,4 +327,8 @@ internal static class KubernetesClientSecurity
                 ownedCertificate.Dispose();
         }
     };
+
+    private sealed class InvalidKubernetesClientConfigurationException(
+        Exception? innerException = null
+    ) : Exception("The Kubernetes connection configuration is invalid.", innerException);
 }

@@ -13,7 +13,8 @@ public sealed record PrivateAccessAudit(
     string? SessionId,
     string ActorUserId,
     DateTime AtUtc,
-    PrivateAccessAuditState State) : ITenantOwned;
+    PrivateAccessAuditState State
+) : ITenantOwned;
 
 public static class PrivateAccessAuditFactory
 {
@@ -31,15 +32,20 @@ public static class PrivateAccessAuditFactory
         ArgumentNullException.ThrowIfNull(state);
         if (atUtc.Kind != DateTimeKind.Utc)
             throw new ArgumentException("Audit time must be UTC.", nameof(atUtc));
-        var requiresSession = state is PrivateAccessSessionIssuedAudit or
-            PrivateAccessSessionRedeemedAudit or PrivateAccessSessionDeniedAudit or
-            PrivateAccessSessionStartedAudit or PrivateAccessSessionClosedAudit or
-            PrivateAccessCleanupClaimedAudit or PrivateAccessCleanupCompletedAudit;
+        var requiresSession = state is PrivateAccessSessionIssuedAudit or PrivateAccessSessionRedeemedAudit
+            or PrivateAccessSessionDeniedAudit or PrivateAccessSessionStartedAudit or PrivateAccessSessionClosedAudit
+            or PrivateAccessCleanupClaimedAudit or PrivateAccessCleanupCompletedAudit;
         if (requiresSession == string.IsNullOrWhiteSpace(sessionId))
             throw new ArgumentException("Audit session identity does not match its state.", nameof(sessionId));
 
-        return new PrivateAccessAudit(ObjectId.GenerateNewId().ToString(),
-            tenantId, grantId, sessionId, actorUserId, atUtc, state);
+        return new PrivateAccessAudit(
+            ObjectId.GenerateNewId().ToString(),
+            tenantId,
+            grantId,
+            sessionId,
+            actorUserId,
+            atUtc,
+            state);
     }
 }
 
@@ -69,7 +75,8 @@ public sealed record PrivateAccessSessionIssuedAudit : PrivateAccessAuditState;
 [BsonDiscriminator("SessionIssueDenied")]
 public sealed record PrivateAccessSessionIssueDeniedAudit(
     [property: BsonRepresentation(BsonType.String)]
-    PrivateAccessAuditReason Reason) : PrivateAccessAuditState;
+    PrivateAccessAuditReason Reason
+) : PrivateAccessAuditState;
 
 [BsonDiscriminator("SessionRedeemed")]
 public sealed record PrivateAccessSessionRedeemedAudit : PrivateAccessAuditState;
@@ -96,5 +103,5 @@ public enum PrivateAccessAuditReason
     MembershipRequired,
     DeploymentUnavailable,
     EndpointUnavailable,
-    BindingChanged
+    BindingChanged,
 }

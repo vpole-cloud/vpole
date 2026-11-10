@@ -17,21 +17,25 @@ public sealed class E2eApiClientTests
         var renewed = Token("alpha", clock.GetUtcNow().AddHours(1));
         var renewals = 0;
         var sends = 0;
-        using var api = Client(clock, async (request, ct) =>
-        {
-            sends++;
-            Assert.Equal(renewed, request.Headers.Authorization?.Parameter);
-            Assert.Equal("tenant-alpha", Assert.Single(request.Headers.GetValues("X-Pole-Tenant-ID")));
-            Assert.Equal("/operation", request.RequestUri?.AbsolutePath);
-            Assert.Equal(HttpMethod.Post, request.Method);
-            Assert.Equal("unchanged body", await request.Content!.ReadAsStringAsync(ct));
-            return new HttpResponseMessage(HttpStatusCode.NoContent);
-        });
-        api.RegisterToken(initial, _ =>
-        {
-            renewals++;
-            return Task.FromResult(renewed);
-        });
+        using var api = Client(
+            clock,
+            async (request, ct) =>
+            {
+                sends++;
+                Assert.Equal(renewed, request.Headers.Authorization?.Parameter);
+                Assert.Equal("tenant-alpha", Assert.Single(request.Headers.GetValues("X-Pole-Tenant-ID")));
+                Assert.Equal("/operation", request.RequestUri?.AbsolutePath);
+                Assert.Equal(HttpMethod.Post, request.Method);
+                Assert.Equal("unchanged body", await request.Content!.ReadAsStringAsync(ct));
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            });
+        api.RegisterToken(
+            initial,
+            _ =>
+            {
+                renewals++;
+                return Task.FromResult(renewed);
+            });
         using var request = Authenticated(initial, HttpMethod.Post);
         request.Headers.Add("X-Pole-Tenant-ID", "tenant-alpha");
         request.Content = new StringContent("unchanged body");
@@ -51,25 +55,31 @@ public sealed class E2eApiClientTests
         var renewed = Token("alpha", clock.GetUtcNow().AddHours(1));
         var renewals = 0;
         var sends = 0;
-        using var api = Client(clock, (request, _) =>
-        {
-            Interlocked.Increment(ref sends);
-            Assert.Equal(renewed, request.Headers.Authorization?.Parameter);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
-        });
-        api.RegisterToken(initial, async _ =>
-        {
-            Interlocked.Increment(ref renewals);
-            await Task.Yield();
-            return renewed;
-        });
+        using var api = Client(
+            clock,
+            (request, _) =>
+            {
+                Interlocked.Increment(ref sends);
+                Assert.Equal(renewed, request.Headers.Authorization?.Parameter);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+            });
+        api.RegisterToken(
+            initial,
+            async _ =>
+            {
+                Interlocked.Increment(ref renewals);
+                await Task.Yield();
+                return renewed;
+            });
 
-        await Task.WhenAll(Enumerable.Range(0, 8).Select(async _ =>
-        {
-            using var request = Authenticated(initial);
-            using var response = await api.SendAsync(request);
-            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        }));
+        await Task.WhenAll(
+            Enumerable.Range(0, 8)
+                .Select(async _ =>
+                {
+                    using var request = Authenticated(initial);
+                    using var response = await api.SendAsync(request);
+                    Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+                }));
         using var subsequent = Authenticated(initial);
         using var subsequentResponse = await api.SendAsync(subsequent);
 
@@ -85,12 +95,14 @@ public sealed class E2eApiClientTests
         var clock = new TestClock();
         var initial = Token("alpha", clock.GetUtcNow().AddHours(1));
         var sends = 0;
-        using var api = Client(clock, (request, _) =>
-        {
-            sends++;
-            Assert.Equal(initial, request.Headers.Authorization?.Parameter);
-            return Task.FromResult(new HttpResponseMessage(status));
-        });
+        using var api = Client(
+            clock,
+            (request, _) =>
+            {
+                sends++;
+                Assert.Equal(initial, request.Headers.Authorization?.Parameter);
+                return Task.FromResult(new HttpResponseMessage(status));
+            });
         api.RegisterToken(initial, _ => throw new InvalidOperationException("Unexpected renewal."));
         using var request = Authenticated(initial);
 
@@ -106,11 +118,13 @@ public sealed class E2eApiClientTests
         var clock = new TestClock();
         var expired = Token("alpha", clock.GetUtcNow().AddHours(-1));
         var seen = new List<AuthenticationHeaderValue?>();
-        using var api = Client(clock, (request, _) =>
-        {
-            seen.Add(request.Headers.Authorization);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
-        });
+        using var api = Client(
+            clock,
+            (request, _) =>
+            {
+                seen.Add(request.Headers.Authorization);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+            });
         api.RegisterToken(expired, _ => throw new InvalidOperationException("Unexpected renewal."));
         using var anonymous = await api.GetAsync("/operation");
         using var unknown = Authenticated("unregistered-token");
@@ -154,12 +168,14 @@ public sealed class E2eApiClientTests
         var initial = Token("alpha", clock.GetUtcNow().AddHours(-1));
         using var cancellation = new CancellationTokenSource();
         using var api = Client(clock, (_, _) => throw new InvalidOperationException("Unexpected API request."));
-        api.RegisterToken(initial, async ct =>
-        {
-            await cancellation.CancelAsync();
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            return initial;
-        });
+        api.RegisterToken(
+            initial,
+            async ct =>
+            {
+                await cancellation.CancelAsync();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                return initial;
+            });
         using var request = Authenticated(initial);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => api.SendAsync(request, cancellation.Token));
@@ -169,10 +185,13 @@ public sealed class E2eApiClientTests
     public async Task Response_headers_read_preserves_streaming_without_buffering_the_content()
     {
         var clock = new TestClock();
-        using var api = Client(clock, (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new UnbufferedContent()
-        }));
+        using var api = Client(
+            clock,
+            (_, _) => Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new UnbufferedContent(),
+                }));
         using var request = new HttpRequestMessage(HttpMethod.Get, "/operation");
 
         using var response = await api.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
@@ -182,13 +201,14 @@ public sealed class E2eApiClientTests
 
     private static E2eApiClient Client(
         TimeProvider clock,
-        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) =>
-        new(new HttpClient(new Handler(send)) { BaseAddress = new Uri("http://e2e.invalid") }, clock);
+        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) => new(
+        new HttpClient(new Handler(send)) { BaseAddress = new Uri("http://e2e.invalid") },
+        clock);
 
     private static HttpRequestMessage Authenticated(string token, HttpMethod? method = null) =>
         new(method ?? HttpMethod.Get, "/operation")
         {
-            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) }
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },
         };
 
     private static string Token(string subject, DateTimeOffset expires)
@@ -206,10 +226,13 @@ public sealed class E2eApiClientTests
         public void Advance(TimeSpan duration) => _now += duration;
     }
 
-    private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
+    private sealed class Handler(
+        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send
+    ) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            send(request, cancellationToken);
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) => send(request, cancellationToken);
     }
 
     private sealed class UnbufferedContent : HttpContent

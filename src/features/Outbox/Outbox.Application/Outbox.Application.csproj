@@ -9,20 +9,20 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <InternalsVisibleTo Include="Pole.Tests.Integration" />
+        <InternalsVisibleTo Include="Pole.Tests.Integration"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\shared\Database\Database.csproj" />
-      <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
-      <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj" />
-      <ProjectReference Include="..\Outbox.Contracts\Outbox.Contracts.csproj" />
-      <ProjectReference Include="..\Outbox.Domain\Outbox.Domain.csproj" />
+        <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj"/>
+        <ProjectReference Include="..\Outbox.Contracts\Outbox.Contracts.csproj"/>
+        <ProjectReference Include="..\Outbox.Domain\Outbox.Domain.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Hangfire.Core" />
-      <PackageReference Include="MongoDB.Driver" />
-      <PackageReference Include="Newtonsoft.Json" />
+        <PackageReference Include="Hangfire.Core"/>
+        <PackageReference Include="MongoDB.Driver"/>
+        <PackageReference Include="Newtonsoft.Json"/>
     </ItemGroup>
 </Project>

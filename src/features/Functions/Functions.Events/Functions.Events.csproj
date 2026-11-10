@@ -9,11 +9,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="MassTransit.Abstractions" />
+        <PackageReference Include="MassTransit.Abstractions"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
     </ItemGroup>
 
 </Project>

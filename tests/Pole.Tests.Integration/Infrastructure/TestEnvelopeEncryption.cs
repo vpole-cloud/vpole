@@ -25,26 +25,27 @@ internal static class TestEnvelopeEncryption
         }
 
         var provider = new LocalKeyFileKeyEncryptionProvider(
-            Options.Create(new LocalKeyFileOptions
-            {
-                ActiveKeyId = "platform-integration",
-                ActiveKeyVersion = 1,
-                Keys =
-                [
-                    new LocalKeyFileKeyOptions
-                    {
-                        Id = "platform-integration",
-                        Version = 1,
-                        Path = path
-                    }
-                ]
-            }));
+            Options.Create(
+                new LocalKeyFileOptions
+                {
+                    ActiveKeyId = "platform-integration",
+                    ActiveKeyVersion = 1,
+                    Keys =
+                    [
+                        new LocalKeyFileKeyOptions
+                        {
+                            Id = "platform-integration",
+                            Version = 1,
+                            Path = path,
+                        },
+                    ],
+                }));
         return new EnvelopeEncryptionService(
             [provider],
-            Options.Create(new EnvelopeEncryptionOptions
-            {
-                ActiveProviderId =
-                    LocalKeyFileKeyEncryptionProvider.StableProviderId
-            }));
+            Options.Create(
+                new EnvelopeEncryptionOptions
+                {
+                    ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId,
+                }));
     }
 }

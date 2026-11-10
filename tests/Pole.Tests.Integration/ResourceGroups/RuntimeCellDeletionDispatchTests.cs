@@ -22,16 +22,21 @@ public sealed class RuntimeCellDeletionDispatchTests
     public async Task ScheduledMessage_RetainsDueSequenceAndTenant_AndSchedulingFailurePropagates()
     {
         var due = DateTime.UtcNow.AddSeconds(5);
-        var request = new RuntimeCellDeletionRequestedEvent("cell", 7, due, 3) { EventCore = EventCore.Create("tenant") };
+        var request = new RuntimeCellDeletionRequestedEvent("cell", 7, due, 3)
+            { EventCore = EventCore.Create("tenant") };
         var scheduled = new List<(RuntimeCellDeletionRequestedEvent Request, DateTime Due)>();
-        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(null!, (message, at) => scheduled.Add((message, at)));
+        var consumer = new DeleteRuntimeCellOnDeletionRequestedConsumer(
+            null!,
+            (message, at) => scheduled.Add((message, at)));
 
         await consumer.Consume(Context(request));
 
         Assert.Equal((request, due), Assert.Single(scheduled));
         var failure = new InvalidOperationException("Controlled scheduler failure.");
         var failing = new DeleteRuntimeCellOnDeletionRequestedConsumer(null!, (_, _) => throw failure);
-        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => failing.Consume(Context(request))));
+        Assert.Same(
+            failure,
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.Consume(Context(request))));
     }
 
     [Theory]
@@ -43,10 +48,12 @@ public sealed class RuntimeCellDeletionDispatchTests
     {
         var jobs = new RecordingJobs();
         using var provider = new ServiceCollection().AddSingleton<IBackgroundJobClient>(jobs)
-            .AddResourceGroupsFeature(new ConfigurationBuilder().Build()).BuildServiceProvider();
+            .AddResourceGroupsFeature(new ConfigurationBuilder().Build())
+            .BuildServiceProvider();
         var wholeSecond = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
         var due = wholeSecond.AddTicks(fractionalTicks);
-        var request = new RuntimeCellDeletionRequestedEvent("cell", 7, due, 3) { EventCore = EventCore.Create("tenant") };
+        var request = new RuntimeCellDeletionRequestedEvent("cell", 7, due, 3)
+            { EventCore = EventCore.Create("tenant") };
 
         provider.GetRequiredService<ScheduleRuntimeCellDeletionAt>()(request, due);
 
@@ -69,7 +76,9 @@ public sealed class RuntimeCellDeletionDispatchTests
     public void HangfirePolling_BindsValidatedDefaultsAndBounds(string? configured, int expected)
     {
         using var provider = SchedulingProvider(configured);
-        Assert.Equal(expected, provider.GetRequiredService<IOptions<HangfireSchedulingOptions>>().Value.SchedulePollingIntervalSeconds);
+        Assert.Equal(
+            expected,
+            provider.GetRequiredService<IOptions<HangfireSchedulingOptions>>().Value.SchedulePollingIntervalSeconds);
     }
 
     [Theory]
@@ -78,7 +87,8 @@ public sealed class RuntimeCellDeletionDispatchTests
     public void HangfirePolling_RejectsInvalidBounds(string configured)
     {
         using var provider = SchedulingProvider(configured);
-        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<HangfireSchedulingOptions>>().Value);
+        Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<HangfireSchedulingOptions>>().Value);
     }
 
     private static ServiceProvider SchedulingProvider(string? configured)
@@ -87,19 +97,21 @@ public sealed class RuntimeCellDeletionDispatchTests
         if (configured is not null)
             values["Hangfire:SchedulePollingIntervalSeconds"] = configured;
         return new ServiceCollection().AddHangfireWithMongo(
-            new ConfigurationBuilder().AddInMemoryCollection(values).Build()).BuildServiceProvider();
+                new ConfigurationBuilder().AddInMemoryCollection(values).Build())
+            .BuildServiceProvider();
     }
 
     private static ConsumeContext<RuntimeCellDeletionRequestedEvent> Context(RuntimeCellDeletionRequestedEvent message)
     {
         var context = DispatchProxy.Create<ConsumeContext<RuntimeCellDeletionRequestedEvent>, RequestContext>();
-        ((RequestContext)(object)context).Message = message;
+        ((RequestContext)context).Message = message;
         return context;
     }
 
     public class RequestContext : DispatchProxy
     {
         public RuntimeCellDeletionRequestedEvent Message { get; set; } = null!;
+
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
             targetMethod?.Name == "get_Message" ? Message : throw new NotSupportedException(targetMethod?.Name);
     }
@@ -107,7 +119,16 @@ public sealed class RuntimeCellDeletionDispatchTests
     private sealed class RecordingJobs : IBackgroundJobClient
     {
         public List<(Job Job, IState State)> Recorded { get; } = [];
-        public string Create(Job job, IState state) { Recorded.Add((job, state)); return Recorded.Count.ToString(); }
-        public bool ChangeState(string jobId, IState state, string expectedState) => throw new NotSupportedException();
+
+        public string Create(Job job, IState state)
+        {
+            Recorded.Add((job, state));
+            return Recorded.Count.ToString();
+        }
+
+        public bool ChangeState(
+            string jobId,
+            IState state,
+            string expectedState) => throw new NotSupportedException();
     }
 }

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Metering;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Metering;
@@ -11,8 +10,9 @@ using Xunit;
 namespace Pole.Tests.Integration.FunctionApps;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class FunctionUsageAggregatorTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed class FunctionUsageAggregatorTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-18T12:10:00Z");
 
@@ -42,8 +42,8 @@ public sealed class FunctionUsageAggregatorTests(MongoReplicaSetFixture fixture)
         await DbContext.FunctionMeterEvents.InsertManyAsync([admitted, started, completed]);
         var options = new FunctionTimerOptions { BatchSize = 10 };
         var time = new FixedTimeProvider(Now.AddSeconds(5));
-        LoadUnaggregatedFunctionMeterEvents loadUnaggregated = new MongoLoadUnaggregatedFunctionMeterEvents(
-            DbContext.FunctionMeterEvents).InvokeAsync;
+        LoadUnaggregatedFunctionMeterEvents loadUnaggregated
+            = new MongoLoadUnaggregatedFunctionMeterEvents(DbContext.FunctionMeterEvents).InvokeAsync;
         AggregateFunctionMeterEvent aggregateMeter = new MongoAggregateFunctionMeterEvent(
             Fixture.Client,
             DbContext.FunctionMeterEvents,
@@ -52,17 +52,15 @@ public sealed class FunctionUsageAggregatorTests(MongoReplicaSetFixture fixture)
 
         await Task.WhenAll(
             new FunctionUsageAggregator(
-                    loadUnaggregated,
-                    aggregateMeter,
-                    options,
-                    NullLogger<FunctionUsageAggregator>.Instance)
-                .RunOnceAsync(CancellationToken.None),
+                loadUnaggregated,
+                aggregateMeter,
+                options,
+                NullLogger<FunctionUsageAggregator>.Instance).RunOnceAsync(CancellationToken.None),
             new FunctionUsageAggregator(
-                    loadUnaggregated,
-                    aggregateMeter,
-                    options,
-                    NullLogger<FunctionUsageAggregator>.Instance)
-                .RunOnceAsync(CancellationToken.None));
+                loadUnaggregated,
+                aggregateMeter,
+                options,
+                NullLogger<FunctionUsageAggregator>.Instance).RunOnceAsync(CancellationToken.None));
 
         var bucket = await DbContext.FunctionUsageBuckets
             .Find(FilterDefinition<FunctionUsageBucket>.Empty)
@@ -71,22 +69,24 @@ public sealed class FunctionUsageAggregatorTests(MongoReplicaSetFixture fixture)
         Assert.Equal(1, bucket.AttemptCount);
         Assert.Equal(1, bucket.SucceededAttemptCount);
         Assert.Equal(2_000, bucket.ExecutionDurationMilliseconds);
-        Assert.Equal(3, await DbContext.FunctionMeterEvents.CountDocumentsAsync(
-            meter => meter.AggregatedAtUtc != null));
+        Assert.Equal(
+            3,
+            await DbContext.FunctionMeterEvents.CountDocumentsAsync(meter => meter.AggregatedAtUtc != null));
 
         await new FunctionUsageAggregator(
-                loadUnaggregated,
-                aggregateMeter,
-                options,
-                NullLogger<FunctionUsageAggregator>.Instance)
-            .RunOnceAsync(CancellationToken.None);
+            loadUnaggregated,
+            aggregateMeter,
+            options,
+            NullLogger<FunctionUsageAggregator>.Instance).RunOnceAsync(CancellationToken.None);
         var unchanged = await DbContext.FunctionUsageBuckets
             .Find(FilterDefinition<FunctionUsageBucket>.Empty)
             .SingleAsync();
         Assert.Equal(bucket, unchanged);
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset now
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
     }

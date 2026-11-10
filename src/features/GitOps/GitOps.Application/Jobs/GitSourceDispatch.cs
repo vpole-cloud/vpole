@@ -9,14 +9,13 @@ namespace Pole.Features.GitOps.Application.Jobs;
 
 public delegate void DispatchGitSource(GitSourceIdentity source);
 
-public delegate void ScheduleGitSourceAt(
-    GitSourceIdentity source,
-    DateTime notBeforeUtc);
+public delegate void ScheduleGitSourceAt(GitSourceIdentity source, DateTime notBeforeUtc);
 
 public sealed class EnqueueGitSourceOnRequested(
     DispatchGitSource dispatch,
     ScheduleGitSourceAt schedule,
-    ILogger<EnqueueGitSourceOnRequested> logger) : IConsumer<GitSourceWorkRequested>
+    ILogger<EnqueueGitSourceOnRequested> logger
+) : IConsumer<GitSourceWorkRequested>
 {
     public Task Consume(ConsumeContext<GitSourceWorkRequested> context)
     {
@@ -26,28 +25,35 @@ public sealed class EnqueueGitSourceOnRequested(
             schedule(source, notBeforeUtc);
             logger.LogInformation(
                 "GitOps work scheduled for source {SourceId}; notBeforeUtc={NotBeforeUtc:O}, scheduledAtUtc={ScheduledAtUtc:O}",
-                source.SourceId, notBeforeUtc, DateTime.UtcNow);
+                source.SourceId,
+                notBeforeUtc,
+                DateTime.UtcNow);
         }
         else
+        {
             dispatch(source);
+        }
+
         return Task.CompletedTask;
     }
 }
 
 public sealed class EnqueueGitSourceOnRequestedDefinition : ConsumerDefinition<EnqueueGitSourceOnRequested>
 {
-    protected override void ConfigureConsumer(IReceiveEndpointConfigurator endpoint,
+    protected override void ConfigureConsumer(
+        IReceiveEndpointConfigurator endpoint,
         IConsumerConfigurator<EnqueueGitSourceOnRequested> consumer,
-        IRegistrationContext context) =>
-        endpoint.UseMessageRetry(retry => retry.Intervals(TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(30)));
+        IRegistrationContext context) => endpoint.UseMessageRetry(retry => retry.Intervals(
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(30)));
 }
 
 public sealed class GitSourceRecoveryScanner(
     GitSourceScheduling scheduling,
     DispatchGitSource dispatch,
-    ILogger<GitSourceRecoveryScanner> logger)
+    ILogger<GitSourceRecoveryScanner> logger
+)
 {
     [DisableConcurrentExecution(timeoutInSeconds: 300)]
     public async Task ScanAsync(CancellationToken ct)

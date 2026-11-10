@@ -6,23 +6,24 @@ open System.Threading.Tasks
 open MongoDB.Bson
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application
-open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Secrets.Contracts
 
 type CreatePostgresCredential =
     delegate of
-        tenantId : string *
-        clusterId : string *
-        username : string *
-        password : string *
-        cancellationToken : CancellationToken -> Task<PostgresOutcome<PreparedManagedSecret, PostgresCredentialError>>
+        tenantId: string *
+        clusterId: string *
+        username: string *
+        password: string *
+        cancellationToken: CancellationToken ->
+            Task<PostgresOutcome<PreparedManagedSecret, PostgresCredentialError>>
 
-type PostgresCredentialCreator(prepareSecret : PrepareManagedSecret) =
-    member _.InvokeAsync(tenantId, clusterId, username, password, cancellationToken : CancellationToken) =
+type PostgresCredentialCreator(prepareSecret: PrepareManagedSecret) =
+    member _.InvokeAsync(tenantId, clusterId, username, password, cancellationToken: CancellationToken) =
         task {
             let values = Dictionary<string, string>()
             values[PostgresManagedSecret.usernameKey] <- username
             values[PostgresManagedSecret.passwordKey] <- password
+
             let! prepared =
                 prepareSecret.Invoke(
                     PrepareManagedSecretRequest(
@@ -32,8 +33,11 @@ type PostgresCredentialCreator(prepareSecret : PrepareManagedSecret) =
                         PostgresManagedSecret.name clusterId,
                         1L,
                         values,
-                        ManagedSecretKubernetesType.BasicAuthentication),
-                    cancellationToken)
+                        ManagedSecretKubernetesType.BasicAuthentication
+                    ),
+                    cancellationToken
+                )
+
             match prepared.Value with
             | :? PreparedManagedSecret as value -> return PostgresSuccess value
             | :? ManagedSecretEncryptionUnavailable ->

@@ -24,7 +24,10 @@ internal static class CompleteGitHubInstallationSetup
         CancellationToken cancellationToken)
     {
         var redirect = await setupService.HandleInstallationCallbackAsync(
-            installationId, state, setupAction, cancellationToken);
+            installationId,
+            state,
+            setupAction,
+            cancellationToken);
         return Results.Redirect(redirect);
     }
 }

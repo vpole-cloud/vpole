@@ -9,14 +9,14 @@ public delegate Task<ComputeProfile?> LoadComputeProfileById(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadComputeProfileById(
-    IMongoCollection<ComputeProfile> computeProfiles)
+    IMongoCollection<ComputeProfile> computeProfiles
+)
 {
     public async Task<ComputeProfile?> InvokeAsync(
         string computeProfileId,
         CancellationToken cancellationToken = default)
     {
-        ComputeProfile? profile = await computeProfiles
-            .Find(ComputeProfileFilters.ById(computeProfileId))
+        var profile = await computeProfiles.Find(ComputeProfileFilters.ById(computeProfileId))
             .FirstOrDefaultAsync(cancellationToken);
         return profile;
     }

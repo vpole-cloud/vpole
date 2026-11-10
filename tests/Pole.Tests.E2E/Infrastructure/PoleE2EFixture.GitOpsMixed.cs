@@ -15,14 +15,14 @@ namespace Pole.Tests.E2E.Infrastructure;
 
 public sealed partial class PoleE2EFixture
 {
-    private bool _gitOpsNamespaceCleanup;
     private readonly List<FunctionSdkTestImage> _gitOpsImages = [];
+    private bool _gitOpsNamespaceCleanup;
 
     public void EnableGitOpsNamespaceCleanup() => _gitOpsNamespaceCleanup = true;
 
     public async Task<FunctionSdkTestImage> CreateGitOpsFunctionImageAsync(CancellationToken ct)
     {
-        var image = await FunctionSdkTestImage.CreateAsync(_lab, _identity, ct);
+        var image = await FunctionSdkTestImage.CreateAsync(_lab, Identity, ct);
         _gitOpsImages.Add(image);
         return image;
     }
@@ -32,35 +32,46 @@ public sealed partial class PoleE2EFixture
     {
         var database = await GitOpsDatabaseAsync(ct);
         using var session = await database.Client.StartSessionAsync(cancellationToken: ct);
-        await session.WithTransactionAsync(async (transaction, token) =>
-        {
-            foreach (var (kind, collection, fence) in new[]
-                     {
-                         ("WebService", "WebServices", "Revision"),
-                         ("RedisService", "RedisServices", "Revision")
-                     })
+        await session.WithTransactionAsync(
+            async (transaction, token) =>
             {
-                var filter = new BsonDocument { { "_id", ObjectId.Parse(ids[kind]) },
-                    { "TenantId", MixedResourceTenant(kind) } };
-                var update = new BsonDocument
+                foreach (var (kind, collection, fence) in new[]
+                         {
+                             ("WebService", "WebServices", "Revision"),
+                             ("RedisService", "RedisServices", "Revision"),
+                         })
                 {
-                    { "$set", new BsonDocument("Tags", new BsonArray { "controlled-drift" }) },
-                    { "$inc", new BsonDocument(fence, 1L) }
-                };
-                var changed = await database.GetCollection<BsonDocument>(collection)
-                    .UpdateOneAsync(transaction, filter, update, cancellationToken: token);
-                Assert.Equal(1, changed.ModifiedCount);
-            }
+                    var filter = new BsonDocument
+                    {
+                        { "_id", ObjectId.Parse(ids[kind]) },
+                        { "TenantId", MixedResourceTenant(kind) },
+                    };
+                    var update = new BsonDocument
+                    {
+                        { "$set", new BsonDocument("Tags", new BsonArray { "controlled-drift" }) },
+                        { "$inc", new BsonDocument(fence, 1L) },
+                    };
+                    var changed = await database.GetCollection<BsonDocument>(collection)
+                        .UpdateOneAsync(transaction, filter, update, cancellationToken: token);
+                    Assert.Equal(1, changed.ModifiedCount);
+                }
 
-            var placement = new BsonDocument { { "ResourceId", ObjectId.Parse(ids["PostgresCluster"]) },
-                { "TenantId", ObjectId.Parse(Alpha.DefaultTenantId) } };
-            var drift = new BsonDocument { { "$set", new BsonDocument("FixedReplicas", 2) },
-                { "$inc", new BsonDocument("Revision", 1L) } };
-            var result = await database.GetCollection<BsonDocument>("ResourceDeployments")
-                .UpdateOneAsync(transaction, placement, drift, cancellationToken: token);
-            Assert.Equal(1, result.ModifiedCount);
-            return true;
-        }, cancellationToken: ct);
+                var placement = new BsonDocument
+                {
+                    { "ResourceId", ObjectId.Parse(ids["PostgresCluster"]) },
+                    { "TenantId", ObjectId.Parse(Alpha.DefaultTenantId) },
+                };
+                var drift = new BsonDocument
+                {
+                    { "$set", new BsonDocument("FixedReplicas", 2) },
+                    { "$inc", new BsonDocument("Revision", 1L) },
+                };
+                var result = await database.GetCollection<BsonDocument>("ResourceDeployments")
+                    .UpdateOneAsync(transaction, placement, drift, cancellationToken: token);
+                Assert.Equal(1, result.ModifiedCount);
+                return true;
+            },
+            cancellationToken: ct);
     }
 
     public async Task<string[]> ReadMixedGitOpsBusinessVersionsAsync(
@@ -74,13 +85,18 @@ public sealed partial class PoleE2EFixture
                      ("WebService", "WebServices", "ActiveRevision"),
                      ("RedisService", "RedisServices", "Revision"),
                      ("PostgresCluster", "Postgres", "Revision"),
-                     ("FunctionApp", "FunctionApps", "NextRevisionNumber")
+                     ("FunctionApp", "FunctionApps", "NextRevisionNumber"),
                  })
         {
-            var filter = new BsonDocument { { "_id", ObjectId.Parse(ids[kind]) },
-                { "TenantId", MixedResourceTenant(kind) } };
-            var document = await database.GetCollection<BsonDocument>(collection).Find(filter)
-                .Project(new BsonDocument(field, 1)).SingleAsync(ct);
+            var filter = new BsonDocument
+            {
+                { "_id", ObjectId.Parse(ids[kind]) },
+                { "TenantId", MixedResourceTenant(kind) },
+            };
+            var document = await database.GetCollection<BsonDocument>(collection)
+                .Find(filter)
+                .Project(new BsonDocument(field, 1))
+                .SingleAsync(ct);
             versions.Add($"{kind}:{document[field].ToInt64()}");
         }
 
@@ -92,17 +108,27 @@ public sealed partial class PoleE2EFixture
         CancellationToken ct)
     {
         var database = await GitOpsDatabaseAsync(ct);
-        foreach (var (kind, collection) in new[] { ("WebService", "WebServices"),
-                     ("PostgresCluster", "Postgres"), ("FunctionApp", "FunctionApps") })
+        foreach (var (kind, collection) in new[]
+                 {
+                     ("WebService", "WebServices"),
+                     ("PostgresCluster", "Postgres"), ("FunctionApp", "FunctionApps"),
+                 })
         {
-            var filter = new BsonDocument { { "_id", ObjectId.Parse(ids[kind]) },
-                { "TenantId", MixedResourceTenant(kind) } };
-            Assert.Equal(1, await database.GetCollection<BsonDocument>(collection).CountDocumentsAsync(filter,
-                cancellationToken: ct));
+            var filter = new BsonDocument
+            {
+                { "_id", ObjectId.Parse(ids[kind]) },
+                { "TenantId", MixedResourceTenant(kind) },
+            };
+            Assert.Equal(
+                1,
+                await database.GetCollection<BsonDocument>(collection)
+                    .CountDocumentsAsync(filter, cancellationToken: ct));
             var placement = await GitOpsPlacementAsync(ids[kind], ct);
             var ns = await GitOpsNamespaceAsync(placement, ct);
-            var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(ns,
-                labelSelector: $"pole.io/resource-deployment-id={placement["_id"].AsObjectId}", cancellationToken: ct);
+            var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(
+                ns,
+                labelSelector: $"pole.io/resource-deployment-id={placement["_id"].AsObjectId}",
+                cancellationToken: ct);
             Assert.Empty(pods.Items);
         }
     }
@@ -117,54 +143,62 @@ public sealed partial class PoleE2EFixture
         VerifyOwnedNamespace(await _kubernetes.CoreV1.ReadNamespaceAsync(ns, cancellationToken: ct));
         var name = $"pg-{clusterId}";
         V1StatefulSet? statefulSet = null;
-        await TestWait.UntilAsync(async phase =>
-        {
-            try
+        await TestWait.UntilAsync(
+            async phase =>
             {
-                statefulSet = await _kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
-                    name, ns, cancellationToken: phase);
-                var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(ns,
-                    labelSelector: $"pole.io/resource-deployment-id={placement["_id"].AsObjectId}",
-                    cancellationToken: phase);
-                var pod = pods.Items.SingleOrDefault(item => item.Metadata.Name == name + "-0");
-                if (pod?.Status?.Phase != "Running" || string.IsNullOrWhiteSpace(pod.Status.PodIP))
-                    return false;
+                try
+                {
+                    statefulSet = await _kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
+                        name,
+                        ns,
+                        cancellationToken: phase);
+                    var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(
+                        ns,
+                        labelSelector: $"pole.io/resource-deployment-id={placement["_id"].AsObjectId}",
+                        cancellationToken: phase);
+                    var pod = pods.Items.SingleOrDefault(item => item.Metadata.Name == name + "-0");
+                    if (pod?.Status?.Phase != "Running" || string.IsNullOrWhiteSpace(pod.Status.PodIP))
+                        return false;
 
-                var valid = new PostgresLoginProbe(ns, pod.Metadata.Name, pod.Status.PodIP, expectedPassword);
-                if (await VerifyPostgresLoginAsync(valid, phase) != PostgresLoginResult.Authenticated)
-                    return false;
+                    var valid = new PostgresLoginProbe(ns, pod.Metadata.Name, pod.Status.PodIP, expectedPassword);
+                    if (await VerifyPostgresLoginAsync(valid, phase) != PostgresLoginResult.Authenticated)
+                        return false;
 
-                var invalid = valid with { Password = "invalid-stage-five-bootstrap-password" };
-                Assert.Equal(PostgresLoginResult.PasswordRejected, await VerifyPostgresLoginAsync(invalid, phase));
-                Assert.Equal(PostgresLoginResult.Authenticated, await VerifyPostgresLoginAsync(valid, phase));
-                return true;
-            }
-            catch (HttpOperationException failure) when (failure.Response.StatusCode == HttpStatusCode.NotFound)
-            {
-                return false;
-            }
-        }, TimeSpan.FromMinutes(3), "The GitOps PostgreSQL workload did not accept its bootstrap credential.", ct,
+                    var invalid = valid with { Password = "invalid-stage-five-bootstrap-password" };
+                    Assert.Equal(PostgresLoginResult.PasswordRejected, await VerifyPostgresLoginAsync(invalid, phase));
+                    Assert.Equal(PostgresLoginResult.Authenticated, await VerifyPostgresLoginAsync(valid, phase));
+                    return true;
+                }
+                catch (HttpOperationException failure) when (failure.Response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return false;
+                }
+            },
+            TimeSpan.FromMinutes(3),
+            "The GitOps PostgreSQL workload did not accept its bootstrap credential.",
+            ct,
             TimeSpan.FromSeconds(2));
 
-        var reference = statefulSet!.Spec.Template.Spec.Containers.Single(container => container.Name == "postgres")
-            .Env.Single(variable => variable.Name == "POSTGRES_PASSWORD").ValueFrom.SecretKeyRef;
+        var reference = statefulSet!.Spec
+            .Template
+            .Spec
+            .Containers
+            .Single(container => container.Name == "postgres")
+            .Env
+            .Single(variable => variable.Name == "POSTGRES_PASSWORD")
+            .ValueFrom
+            .SecretKeyRef;
         var secret = await _kubernetes.CoreV1.ReadNamespacedSecretAsync(reference.Name, ns, cancellationToken: ct);
-        Assert.True(CryptographicOperations.FixedTimeEquals(SHA256.HashData(secret.Data[reference.Key]),
-            SHA256.HashData(Encoding.UTF8.GetBytes(expectedPassword))),
+        Assert.True(
+            CryptographicOperations.FixedTimeEquals(
+                SHA256.HashData(secret.Data[reference.Key]),
+                SHA256.HashData(Encoding.UTF8.GetBytes(expectedPassword))),
             "The native credential does not match bootstrap.");
     }
 
     private BsonValue MixedResourceTenant(string kind) => kind == "PostgresCluster"
         ? new BsonObjectId(ObjectId.Parse(Alpha.DefaultTenantId))
         : new BsonString(Alpha.DefaultTenantId);
-
-    private sealed record PostgresLoginProbe(
-        string Namespace,
-        string Pod,
-        string Host,
-        string Password);
-
-    private enum PostgresLoginResult { Authenticated, PasswordRejected, Unavailable }
 
     private async Task<PostgresLoginResult> VerifyPostgresLoginAsync(PostgresLoginProbe probe, CancellationToken ct)
     {
@@ -176,15 +210,18 @@ public sealed partial class PoleE2EFixture
                 CreateNoWindow = true,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
-            }
+                RedirectStandardError = true,
+            },
         };
         foreach (var argument in _kubernetesTarget.KubectlSelectionArguments)
             process.StartInfo.ArgumentList.Add(argument);
-        foreach (var argument in new[] { "exec", "-i", "-n", probe.Namespace, probe.Pod, "--", "sh", "-c",
+        foreach (var argument in new[]
+                 {
+                     "exec", "-i", "-n", probe.Namespace, probe.Pod, "--", "sh", "-c",
                      "IFS= read -r PGPASSWORD; export PGPASSWORD; " +
                      "exec psql -h \"$1\" -U app -d postgres -tAc 'select current_user'",
-                     "bootstrap-check", probe.Host })
+                     "bootstrap-check", probe.Host,
+                 })
             process.StartInfo.ArgumentList.Add(argument);
         process.Start();
         try
@@ -220,18 +257,26 @@ public sealed partial class PoleE2EFixture
     private async Task<BsonDocument> GitOpsPlacementAsync(string resourceId, CancellationToken ct)
     {
         var database = await GitOpsDatabaseAsync(ct);
-        var filter = new BsonDocument { { "ResourceId", ObjectId.Parse(resourceId) },
-            { "TenantId", ObjectId.Parse(Alpha.DefaultTenantId) } };
+        var filter = new BsonDocument
+        {
+            { "ResourceId", ObjectId.Parse(resourceId) },
+            { "TenantId", ObjectId.Parse(Alpha.DefaultTenantId) },
+        };
         return await database.GetCollection<BsonDocument>("ResourceDeployments").Find(filter).SingleAsync(ct);
     }
 
     private async Task<string> GitOpsNamespaceAsync(BsonDocument placement, CancellationToken ct)
     {
         var database = await GitOpsDatabaseAsync(ct);
-        var filter = new BsonDocument { { "_id", placement["RuntimeCellId"] },
-            { "TenantId", ObjectId.Parse(Alpha.DefaultTenantId) } };
-        var cell = await database.GetCollection<BsonDocument>("RuntimeCells").Find(filter)
-            .Project(new BsonDocument("KubernetesNamespace", 1)).SingleAsync(ct);
+        var filter = new BsonDocument
+        {
+            { "_id", placement["RuntimeCellId"] },
+            { "TenantId", ObjectId.Parse(Alpha.DefaultTenantId) },
+        };
+        var cell = await database.GetCollection<BsonDocument>("RuntimeCells")
+            .Find(filter)
+            .Project(new BsonDocument("KubernetesNamespace", 1))
+            .SingleAsync(ct);
         return cell["KubernetesNamespace"].AsString;
     }
 
@@ -243,34 +288,38 @@ public sealed partial class PoleE2EFixture
         // Failure cleanup stops controllers first, then deletes only this exact fixture's labelled namespaces
         // with UID preconditions. Successful lifecycle scenarios use the production reviewed deletion flow.
         var selector = $"{TestRunIdentity.OwnerLabel}={TestRunIdentity.Owner}," +
-            $"{TestRunIdentity.WorktreeLabel}={_identity.WorktreeId},{TestRunIdentity.RunLabel}={_identity.RunId}";
+            $"{TestRunIdentity.WorktreeLabel}={Identity.WorktreeId},{TestRunIdentity.RunLabel}={Identity.RunId}";
         var namespaces = await _kubernetes.CoreV1.ListNamespaceAsync(labelSelector: selector, cancellationToken: ct);
         await using var cleanup = new TestResourceScope("GitOps fixture namespaces", timings: _timings);
         foreach (var ns in namespaces.Items)
-        {
-            cleanup.Defer(ns.Metadata.Name, async token =>
-            {
-                var current = await ReadNamespaceIfPresentAsync(ns.Metadata.Name, token);
-                if (current is null)
-                    return;
-
-                VerifyOwnedNamespace(current, ns.Metadata.Uid);
-                try
+            cleanup.Defer(
+                ns.Metadata.Name,
+                async token =>
                 {
-                    await _kubernetes.CoreV1.DeleteNamespaceAsync(ns.Metadata.Name,
-                        body: new V1DeleteOptions { Preconditions = new V1Preconditions { Uid = ns.Metadata.Uid } },
-                        cancellationToken: token);
-                }
-                catch (HttpOperationException failure) when (failure.Response.StatusCode == HttpStatusCode.NotFound)
-                {
-                    return;
-                }
+                    var current = await ReadNamespaceIfPresentAsync(ns.Metadata.Name, token);
+                    if (current is null)
+                        return;
 
-                await TestWait.UntilAsync(async phase =>
-                    await ReadNamespaceIfPresentAsync(ns.Metadata.Name, phase) is null,
-                    TimeSpan.FromMinutes(2), "The owned GitOps namespace did not terminate.", token);
-            }, "fixture.e2e.cleanup.gitops.namespace");
-        }
+                    VerifyOwnedNamespace(current, ns.Metadata.Uid);
+                    try
+                    {
+                        await _kubernetes.CoreV1.DeleteNamespaceAsync(
+                            ns.Metadata.Name,
+                            body: new V1DeleteOptions { Preconditions = new V1Preconditions { Uid = ns.Metadata.Uid } },
+                            cancellationToken: token);
+                    }
+                    catch (HttpOperationException failure) when (failure.Response.StatusCode == HttpStatusCode.NotFound)
+                    {
+                        return;
+                    }
+
+                    await TestWait.UntilAsync(
+                        async phase => await ReadNamespaceIfPresentAsync(ns.Metadata.Name, phase) is null,
+                        TimeSpan.FromMinutes(2),
+                        "The owned GitOps namespace did not terminate.",
+                        token);
+                },
+                "fixture.e2e.cleanup.gitops.namespace");
     }
 
     private async Task DisposeGitOpsImagesAsync()
@@ -280,4 +329,13 @@ public sealed partial class PoleE2EFixture
             cleanup.Defer(image.Repository, _ => image.DisposeAsync().AsTask(), "fixture.e2e.cleanup.gitops.image");
         _gitOpsImages.Clear();
     }
+
+    private sealed record PostgresLoginProbe(
+        string Namespace,
+        string Pod,
+        string Host,
+        string Password
+    );
+
+    private enum PostgresLoginResult { Authenticated, PasswordRejected, Unavailable }
 }

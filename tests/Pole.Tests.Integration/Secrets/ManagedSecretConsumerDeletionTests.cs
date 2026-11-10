@@ -3,22 +3,9 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
@@ -40,15 +27,25 @@ public sealed partial class ManagedSecretIntegrationTests
         var guard = Services.GetRequiredService<EnsureConsumerSecretBindingRemoval>();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var result = await guard(new(group.TenantId, type, consumer), session, default);
+        var result = await guard(
+            new EnsureConsumerSecretBindingRemovalRequest(group.TenantId, type, consumer),
+            session,
+            default);
         Assert.Equal(1, Assert.IsType<ConsumerSecretBindingsRequireRemoval>(result.Value).BindingCount);
-        Assert.IsType<ConsumerSecretBindingsRemovable>((await guard(new(Id(), type, consumer),
-            session, default)).Value);
-        Assert.IsType<ConsumerSecretBindingsRemovable>((await guard(new(group.TenantId,
-            ResourceTypeId.Create("other/type"), consumer), session, default)).Value);
+        Assert.IsType<ConsumerSecretBindingsRemovable>(
+            (await guard(new EnsureConsumerSecretBindingRemovalRequest(Id(), type, consumer), session, default)).Value);
+        Assert.IsType<ConsumerSecretBindingsRemovable>(
+            (await guard(
+                new EnsureConsumerSecretBindingRemovalRequest(
+                    group.TenantId,
+                    ResourceTypeId.Create("other/type"),
+                    consumer),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         var stored = await Services.GetRequiredService<IMongoCollection<Secret>>()
-            .Find(item => item.Id == secret.Id).SingleAsync();
+            .Find(item => item.Id == secret.Id)
+            .SingleAsync();
         Assert.Equal(secret.ToBsonDocument(), stored.ToBsonDocument());
         Assert.Equal(0, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.secrets/v1/secret-changed"));
     }
@@ -62,8 +59,11 @@ public sealed partial class ManagedSecretIntegrationTests
         var secret = await ConsumerSecretDeletionTestData.InsertAsync(Fixture.Database, group, type, consumer);
         secret = secret with
         {
-            Management = new ProviderManagedSecret(type.Value, consumer,
-            secret.Bindings.Single().Id, KubernetesSecretType.BasicAuthentication)
+            Management = new ProviderManagedSecret(
+                type.Value,
+                consumer,
+                secret.Bindings.Single().Id,
+                KubernetesSecretType.BasicAuthentication),
         };
         var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
         await secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret);
@@ -71,14 +71,21 @@ public sealed partial class ManagedSecretIntegrationTests
         var guard = Services.GetRequiredService<EnsureConsumerSecretBindingRemoval>();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        Assert.IsType<ConsumerSecretBindingsRemovable>((await guard(new(group.TenantId, type, consumer),
-            session, default)).Value);
+        Assert.IsType<ConsumerSecretBindingsRemovable>(
+            (await guard(
+                new EnsureConsumerSecretBindingRemovalRequest(group.TenantId, type, consumer),
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(secret.ReferenceFence, (await secrets.Find(item => item.Id == secret.Id).SingleAsync())
-            .ReferenceFence);
+        Assert.Equal(
+            secret.ReferenceFence,
+            (await secrets.Find(item => item.Id == secret.Id).SingleAsync()).ReferenceFence);
         session.StartTransaction();
-        Assert.IsType<ConsumerSecretBindingsRemovable>((await guard(new(group.TenantId, type, consumer),
-            session, default)).Value);
+        Assert.IsType<ConsumerSecretBindingsRemovable>(
+            (await guard(
+                new EnsureConsumerSecretBindingRemovalRequest(group.TenantId, type, consumer),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         var stored = await secrets.Find(item => item.Id == secret.Id).SingleAsync();
         Assert.Equal(secret.ReferenceFence + 1, stored.ReferenceFence);
@@ -88,8 +95,23 @@ public sealed partial class ManagedSecretIntegrationTests
     }
 
     private Task OwnBinding(string tenant, SecretBinding binding) => Fixture.Database
-        .GetCollection<ManagedDeclaration>("ManagedDeclarations").InsertOneAsync(new(
-            $"{tenant}/SecretBinding/{binding.DeclarationName}", tenant, "SecretBinding", binding.DeclarationName!,
-            Id(), "https://example.test/another-source", binding.Id, "hash", "hash", null, false, Id(), "Bind", 0,
-            GitResourceMaterialization.Created, GitManagedProjectionsFactory.Empty()));
+        .GetCollection<ManagedDeclaration>("ManagedDeclarations")
+        .InsertOneAsync(
+            new ManagedDeclaration(
+                $"{tenant}/SecretBinding/{binding.DeclarationName}",
+                tenant,
+                "SecretBinding",
+                binding.DeclarationName!,
+                Id(),
+                "https://example.test/another-source",
+                binding.Id,
+                "hash",
+                "hash",
+                null,
+                false,
+                Id(),
+                "Bind",
+                0,
+                GitResourceMaterialization.Created,
+                GitManagedProjectionsFactory.Empty()));
 }

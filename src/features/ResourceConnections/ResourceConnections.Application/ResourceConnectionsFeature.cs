@@ -9,13 +9,11 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Realtime.Contracts;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
 using Pole.Features.ResourceConnections.Application.Declarations;
 using Pole.Features.ResourceConnections.Application.Endpoints;
 using Pole.Features.ResourceConnections.Application.Jobs;
 using Pole.Features.ResourceConnections.Application.Kubernetes;
-using Pole.Features.ResourceConnections.Application.Mongo;
 using Pole.Features.ResourceConnections.Application.Reconciliation;
 using Pole.Features.ResourceConnections.Application.Recovery;
 using Pole.Features.ResourceConnections.Application.References;
@@ -27,8 +25,7 @@ namespace Pole.Features.ResourceConnections.Application;
 
 public static class ResourceConnectionsFeature
 {
-    public static IServiceCollection AddResourceConnectionsFeature(
-        this IServiceCollection services)
+    public static IServiceCollection AddResourceConnectionsFeature(this IServiceCollection services)
     {
         services.AddSingleton(new RealtimeTopic("resource-connections", RealtimeScope.Tenant));
         services.TryAddSingleton(provider => provider
@@ -36,8 +33,7 @@ public static class ResourceConnectionsFeature
             .GetCollection<ResourceConnection>("ResourceConnections"));
         services.TryAddSingleton(provider => provider
             .GetRequiredService<IMongoDatabase>()
-            .GetCollection<ResourceConnectionCleanupTombstone>(
-                "ResourceConnectionCleanupTombstones"));
+            .GetCollection<ResourceConnectionCleanupTombstone>("ResourceConnectionCleanupTombstones"));
         services.TryAddScoped<MongoCreateResourceConnection>();
         services.TryAddScoped<ResourceConnectionTopologyAdmission>();
         services.AddScoped<DeclarativeResourceConnectionProvider>();
@@ -60,21 +56,20 @@ public static class ResourceConnectionsFeature
             provider.GetRequiredService<ResourceConnectionReferenceProvider>().AdmitAsync);
         services.AddScoped<ResolveResourceConnectionReferences>(provider =>
             provider.GetRequiredService<ResourceConnectionReferenceProvider>().ResolveAsync);
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService,
-            ResourceConnectionCapabilityStartupValidator>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IHostedService, ResourceConnectionCapabilityStartupValidator>());
         services.TryAddScoped<MongoResourceConnectionMutationProvider>();
         services.TryAddScoped<ReconcileConnectionsForResource>(provider => provider
             .GetRequiredService<MongoResourceConnectionMutationProvider>()
             .ReconcileAsync);
         services.TryAddScoped<LoadResourceConnectionCascadePlanning>(provider => provider
-            .GetRequiredService<MongoResourceConnectionMutationProvider>().ReadCascadePlanningAsync);
+            .GetRequiredService<MongoResourceConnectionMutationProvider>()
+            .ReadCascadePlanningAsync);
         services.TryAddScoped<CascadeConnectionsForResourceDeletion>(provider => provider
             .GetRequiredService<MongoResourceConnectionMutationProvider>()
             .CascadeAsync);
-        services.TryAddScoped<RunMongoOutcomeTransaction<
-            CreateResourceConnectionPersistenceOutcome>>(provider => provider
-            .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<CreateResourceConnectionPersistenceOutcome>);
+        services.TryAddScoped<RunMongoOutcomeTransaction<CreateResourceConnectionPersistenceOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddScoped<PersistResourceConnectionCreation>(provider => provider
             .GetRequiredService<MongoCreateResourceConnection>()
             .InvokeAsync);
@@ -86,10 +81,8 @@ public static class ResourceConnectionsFeature
             .GetRequiredService<MongoResourceConnectionReads>()
             .LoadPageAsync);
         services.TryAddScoped<MongoBeginResourceConnectionDeletion>();
-        services.TryAddScoped<RunMongoOutcomeTransaction<
-            DeleteResourceConnectionPersistenceOutcome>>(provider => provider
-            .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<DeleteResourceConnectionPersistenceOutcome>);
+        services.TryAddScoped<RunMongoOutcomeTransaction<DeleteResourceConnectionPersistenceOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddScoped<BeginResourceConnectionDeletion>(provider => provider
             .GetRequiredService<MongoBeginResourceConnectionDeletion>()
             .InvokeAsync);
@@ -97,7 +90,7 @@ public static class ResourceConnectionsFeature
         services.TryAddScoped<MongoResourceConnectionTombstonePersistence>();
         services.TryAddScoped<RunMongoOutcomeTransaction<bool>>(provider => provider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<bool>);
+            .InvokeOutcomeAsync);
         services.TryAddScoped<LoadResourceConnectionTombstone>(provider => provider
             .GetRequiredService<MongoResourceConnectionTombstonePersistence>()
             .LoadAsync);
@@ -119,8 +112,7 @@ public static class ResourceConnectionsFeature
         services.TryAddScoped<PurgeResourceConnectionIfComplete>(provider => provider
             .GetRequiredService<MongoResourceConnectionTombstonePersistence>()
             .PurgeIfCompleteAsync);
-        services.TryAddScoped<IResourceConnectionPolicyTarget,
-            KubernetesResourceConnectionPolicyTarget>();
+        services.TryAddScoped<IResourceConnectionPolicyTarget, KubernetesResourceConnectionPolicyTarget>();
         services.TryAddScoped<ResourceConnectionReconciler>();
         services.TryAddScoped<MongoLoadResourceConnectionRecoveryPage>();
         services.TryAddScoped<LoadResourceConnectionRecoveryPage>(provider => provider
@@ -130,8 +122,7 @@ public static class ResourceConnectionsFeature
         return services;
     }
 
-    public static IServiceProvider ScheduleResourceConnectionRecurringJobs(
-        this IServiceProvider services)
+    public static IServiceProvider ScheduleResourceConnectionRecurringJobs(this IServiceProvider services)
     {
         RecurringJob.AddOrUpdate<ResourceConnectionRecoveryJob>(
             "recover-resource-connections",
@@ -140,8 +131,7 @@ public static class ResourceConnectionsFeature
         return services;
     }
 
-    public static IEndpointRouteBuilder MapResourceConnectionEndpoints(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapResourceConnectionEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGroup("/resource-connections")
             .WithTags("ResourceConnections")

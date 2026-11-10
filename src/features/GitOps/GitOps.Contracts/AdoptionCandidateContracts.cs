@@ -4,35 +4,42 @@ namespace Pole.Features.GitOps.Contracts;
 
 public sealed record DeclarationAdoptionCandidatePageRequest(
     int Page,
-    int PageSize);
+    int PageSize
+);
 
 public sealed record DeclarationAdoptionCandidateReferences(
     GitLifecycleResourceReference Related,
-    GitLifecycleResourceReference Consumer);
+    GitLifecycleResourceReference Consumer
+);
 
 public sealed record FindDeclarationAdoptionCandidatesRequest(
     string TenantId,
     DeclarationAdoptionCandidateReferences References,
-    DeclarationAdoptionCandidatePageRequest Page);
+    DeclarationAdoptionCandidatePageRequest Page
+);
 
 public sealed record DeclarationAdoptionCandidateTargetScope(
     string Mode,
-    IReadOnlyList<string> DeploymentIds);
+    IReadOnlyList<string> DeploymentIds
+);
 
 public sealed record DeclarationAdoptionBindingMetadata(
     GitLifecycleResourceReference Secret,
     GitLifecycleResourceReference Consumer,
     string Usage,
-    DeclarationAdoptionCandidateTargetScope TargetScope);
+    DeclarationAdoptionCandidateTargetScope TargetScope
+);
 
 public sealed record DeclarationAdoptionCandidate(
     string ResourceId,
     string? Name,
-    DeclarationAdoptionBindingMetadata? Binding);
+    DeclarationAdoptionBindingMetadata? Binding
+);
 
 public sealed record DeclarationAdoptionCandidatePage(
     IReadOnlyList<DeclarationAdoptionCandidate> Items,
-    bool HasMore);
+    bool HasMore
+);
 
 // The resource owner supplies metadata searches that cannot be expressed by its declaration name,
 // such as a manual authorization binding that has no declaration name yet.

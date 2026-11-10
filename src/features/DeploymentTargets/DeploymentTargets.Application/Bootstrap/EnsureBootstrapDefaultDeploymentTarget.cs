@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.References;
@@ -11,9 +9,13 @@ using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.DeploymentTargets.Application.Bootstrap;
 
-internal sealed record BindExistingDeploymentTargetAsDefault(string DeploymentTargetId);
+internal sealed record BindExistingDeploymentTargetAsDefault(
+    string DeploymentTargetId
+);
 
-internal sealed record CreateFirstDeploymentTargetAsDefault(DeploymentTarget DeploymentTarget);
+internal sealed record CreateFirstDeploymentTargetAsDefault(
+    DeploymentTarget DeploymentTarget
+);
 
 internal union EnsureBootstrapDefaultDeploymentTargetRequest(
     BindExistingDeploymentTargetAsDefault,
@@ -27,10 +29,9 @@ internal union EnsureBootstrapDefaultDeploymentTargetOutcome(
     BootstrapDefaultDeploymentTargetEnsured,
     BootstrapDefaultDeploymentTargetRejected);
 
-internal delegate Task<EnsureBootstrapDefaultDeploymentTargetOutcome>
-    EnsureBootstrapDefaultDeploymentTarget(
-        EnsureBootstrapDefaultDeploymentTargetRequest request,
-        CancellationToken cancellationToken = default);
+internal delegate Task<EnsureBootstrapDefaultDeploymentTargetOutcome> EnsureBootstrapDefaultDeploymentTarget(
+    EnsureBootstrapDefaultDeploymentTargetRequest request,
+    CancellationToken cancellationToken = default);
 
 internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
     IMongoCollection<DeploymentTarget> deploymentTargets,
@@ -38,7 +39,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
     EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain,
     RunMongoOutcomeTransaction<EnsureBootstrapDefaultDeploymentTargetOutcome> runMongoTransaction,
     TimeProvider timeProvider,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<EnsureBootstrapDefaultDeploymentTargetOutcome> InvokeAsync(
         EnsureBootstrapDefaultDeploymentTargetRequest request,
@@ -49,46 +51,41 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             return await runMongoTransaction(
                 (transaction, ct) => request switch
                 {
-                    BindExistingDeploymentTargetAsDefault existing => BindExistingAsync(transaction,
+                    BindExistingDeploymentTargetAsDefault existing => BindExistingAsync(
+                        transaction,
                         existing.DeploymentTargetId,
                         ct),
-                    CreateFirstDeploymentTargetAsDefault created => CreateFirstAsync(transaction,
+                    CreateFirstDeploymentTargetAsDefault created => CreateFirstAsync(
+                        transaction,
                         created.DeploymentTarget,
-                        ct)
+                        ct),
                 },
                 cancellationToken);
         }
-        catch (MongoWriteException exception) when (
-            exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException exception) when (exception.WriteError?.Category == ServerErrorCategory.DuplicateKey)
         {
             return new BootstrapDefaultDeploymentTargetRejected();
         }
     }
 
-    private async Task<MongoTransactionDecision<EnsureBootstrapDefaultDeploymentTargetOutcome>>
-        BindExistingAsync(
-            MongoTransactionContext<EnsureBootstrapDefaultDeploymentTargetOutcome> transaction,
-            string deploymentTargetId,
-            CancellationToken cancellationToken)
+    private async Task<MongoTransactionDecision<EnsureBootstrapDefaultDeploymentTargetOutcome>> BindExistingAsync(
+        MongoTransactionContext<EnsureBootstrapDefaultDeploymentTargetOutcome> transaction,
+        string deploymentTargetId,
+        CancellationToken cancellationToken)
     {
-        var target = await deploymentTargets
-            .Find(transaction.Session, DeploymentTargetFilters.ById(deploymentTargetId))
+        var target = await deploymentTargets.Find(transaction.Session, DeploymentTargetFilters.ById(deploymentTargetId))
             .FirstOrDefaultAsync(cancellationToken);
         return target is null
             ? transaction.Abort(new BootstrapDefaultDeploymentTargetRejected())
             : await BindDefaultSettingsAsync(transaction, target, cancellationToken);
     }
 
-    private async Task<MongoTransactionDecision<EnsureBootstrapDefaultDeploymentTargetOutcome>>
-        CreateFirstAsync(
-            MongoTransactionContext<EnsureBootstrapDefaultDeploymentTargetOutcome> transaction,
-            DeploymentTarget deploymentTarget,
-            CancellationToken cancellationToken)
+    private async Task<MongoTransactionDecision<EnsureBootstrapDefaultDeploymentTargetOutcome>> CreateFirstAsync(
+        MongoTransactionContext<EnsureBootstrapDefaultDeploymentTargetOutcome> transaction,
+        DeploymentTarget deploymentTarget,
+        CancellationToken cancellationToken)
     {
-        var existing = await deploymentTargets
-            .Find(
-                transaction.Session,
-                DeploymentTargetFilters.NotPendingDeletion())
+        var existing = await deploymentTargets.Find(transaction.Session, DeploymentTargetFilters.NotPendingDeletion())
             .SortBy(item => item.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
@@ -108,14 +105,13 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             cancellationToken: cancellationToken);
         await settings.InsertOneAsync(
             transaction.Session,
-            DeploymentTargetSettings.Create(
-                deploymentTarget.Id,
-                deploymentTarget.CreatedAtUtc),
+            DeploymentTargetSettings.Create(deploymentTarget.Id, deploymentTarget.CreatedAtUtc),
             cancellationToken: cancellationToken);
-        await storeOutboxWrites(transaction.Session,
+        await storeOutboxWrites(
+            transaction.Session,
             [
                 OutboxWrite.Create(
-                    new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision))
+                    new DeploymentTargetCatalogChangedEvent(deploymentTarget.Id, deploymentTarget.Revision)),
             ],
             cancellationToken);
         return transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured());
@@ -130,15 +126,12 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
         if (target.DeletionRequestedAtUtc is not null)
             return transaction.Abort(new BootstrapDefaultDeploymentTargetRejected());
 
-        var existing = await settings
-            .Find(transaction.Session, DeploymentTargetSettingsFilters.Singleton())
+        var existing = await settings.Find(transaction.Session, DeploymentTargetSettingsFilters.Singleton())
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
-        {
             return existing.DefaultDeploymentTargetId == target.Id
                 ? transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured())
                 : transaction.Abort(new BootstrapDefaultDeploymentTargetRejected());
-        }
 
         var updatedAtUtc = DeploymentTargetClock.UtcNowAfter(timeProvider, target.UpdatedAtUtc);
         var fenced = await deploymentTargets.UpdateOneAsync(
@@ -155,7 +148,8 @@ internal sealed class MongoEnsureBootstrapDefaultDeploymentTarget(
             transaction.Session,
             DeploymentTargetSettings.Create(target.Id, updatedAtUtc),
             cancellationToken: cancellationToken);
-        await storeOutboxWrites(transaction.Session,
+        await storeOutboxWrites(
+            transaction.Session,
             [OutboxWrite.Create(new DeploymentTargetCatalogChangedEvent(target.Id, checked(target.Revision + 1)))],
             cancellationToken);
         return transaction.Commit(new BootstrapDefaultDeploymentTargetEnsured());

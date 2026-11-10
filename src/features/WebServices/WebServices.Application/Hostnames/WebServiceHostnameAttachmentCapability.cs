@@ -1,17 +1,13 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Domains.Contracts;
-using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Application.Releases;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
 
@@ -28,7 +24,8 @@ internal sealed class WebServiceHostnameAttachmentCapability(
     AdvanceResourceDeploymentRevision advanceRevision,
     PersistWebServiceHostnameAttachment persist,
     PersistCurrentWebServiceRelease persistRelease,
-    TimeProvider clock) : IHostnameBindingRemovalCapability
+    TimeProvider clock
+) : IHostnameBindingRemovalCapability
 {
     public string Kind => "WebService";
 
@@ -45,34 +42,51 @@ internal sealed class WebServiceHostnameAttachmentCapability(
             service.Lifecycle is not (ActiveWebServiceLifecycle or AwaitingFirstArtifactWebServiceLifecycle))
             return new HostnameAttachmentUnavailable();
 
-        var scopeRead = await loadScope(new(request.TenantId, service.ResourceGroupId, service.IsolationScopeId),
-            session, cancellationToken);
+        var scopeRead = await loadScope(
+            new IsolationScopePlanningRequest(request.TenantId, service.ResourceGroupId, service.IsolationScopeId),
+            session,
+            cancellationToken);
         if (scopeRead is not IsolationScopePlanningSnapshot scope)
             return new HostnameAttachmentUnavailable();
 
-        var read = await loadPlacements(new(request.TenantId, ResourceType, request.ResourceId),
-            session, cancellationToken);
+        var read = await loadPlacements(
+            new ResourceDeploymentPlanningRequest(request.TenantId, ResourceType, request.ResourceId),
+            session,
+            cancellationToken);
         if (read is not ResourceDeploymentPlanningSnapshot placements || placements.Items.Any(item =>
-            item.State == ResourceDeploymentPlanningState.Deleting))
+                item.State == ResourceDeploymentPlanningState.Deleting))
             return new HostnameAttachmentPlacementUnavailable();
 
-        var candidates = placements.Items.Where(item => item.DeploymentTargetId == request.DeploymentTargetId)
+        var candidates = placements.Items
+            .Where(item => item.DeploymentTargetId == request.DeploymentTargetId)
             .ToArray();
         if (candidates.Length != 1 || candidates[0].Ingress is null)
             return new HostnameAttachmentPlacementUnavailable();
 
         var placement = candidates[0];
-        return new HostnameAttachmentSnapshot(request.TenantId, request.ResourceId, ResourceType,
-            request.DeploymentTargetId, placement.DeploymentId, request.Hostname,
+        return new HostnameAttachmentSnapshot(
+            request.TenantId,
+            request.ResourceId,
+            ResourceType,
+            request.DeploymentTargetId,
+            placement.DeploymentId,
+            request.Hostname,
             placement.Ingress!.Hostnames.Order(StringComparer.Ordinal).ToArray(),
-            [new(WebServiceDeclarations.VersionKey(service.Id), service.Revision),
-                new(ResourceGroupVersionKeys.Revision(scope.ResourceGroupId), scope.ResourceGroupRevision),
-                new(ResourceGroupVersionKeys.IsolationScopeRevision(scope.IsolationScopeId), scope.ScopeRevision),
-                .. placements.Items.Select(item =>
+            [
+                new HostnameAttachmentDocumentVersion(WebServiceDeclarations.VersionKey(service.Id), service.Revision),
                 new HostnameAttachmentDocumentVersion(
-                    ResourceDeploymentVersionKeys.Revision(item.DeploymentId), item.Revision))],
+                    ResourceGroupVersionKeys.Revision(scope.ResourceGroupId),
+                    scope.ResourceGroupRevision),
+                new HostnameAttachmentDocumentVersion(
+                    ResourceGroupVersionKeys.IsolationScopeRevision(scope.IsolationScopeId),
+                    scope.ScopeRevision),
+                .. placements.Items.Select(item => new HostnameAttachmentDocumentVersion(
+                    ResourceDeploymentVersionKeys.Revision(item.DeploymentId),
+                    item.Revision)),
+            ],
             service.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
-                ? HostnameAttachmentAvailability.AwaitingArtifact : HostnameAttachmentAvailability.Active);
+                ? HostnameAttachmentAvailability.AwaitingArtifact
+                : HostnameAttachmentAvailability.Active);
     }
 
     public async Task<ReadHostnameAttachmentRemovalOutcome> ReadRemovalAsync(
@@ -91,7 +105,7 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         {
             HostnameAttachmentSnapshot snapshot => snapshot,
             HostnameAttachmentUnavailable unavailable => unavailable,
-            HostnameAttachmentPlacementUnavailable unavailable => unavailable
+            HostnameAttachmentPlacementUnavailable unavailable => unavailable,
         };
     }
 
@@ -100,8 +114,14 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var read = await ReadAsync(new(snapshot.TenantId, snapshot.ResourceId, snapshot.DeploymentTargetId,
-            snapshot.Hostname), session, cancellationToken);
+        var read = await ReadAsync(
+            new ReadHostnameAttachmentRequest(
+                snapshot.TenantId,
+                snapshot.ResourceId,
+                snapshot.DeploymentTargetId,
+                snapshot.Hostname),
+            session,
+            cancellationToken);
         if (read is HostnameAttachmentUnavailable unavailable)
             return unavailable;
         if (read is HostnameAttachmentPlacementUnavailable placementUnavailable)
@@ -114,8 +134,10 @@ internal sealed class WebServiceHostnameAttachmentCapability(
 
         var resource = await services.Find(session, WebServiceFilters.ById(snapshot.TenantId, snapshot.ResourceId))
             .SingleAsync(cancellationToken);
-        var scopeRead = await loadScope(new(resource.TenantId, resource.ResourceGroupId, resource.IsolationScopeId),
-            session, cancellationToken);
+        var scopeRead = await loadScope(
+            new IsolationScopePlanningRequest(resource.TenantId, resource.ResourceGroupId, resource.IsolationScopeId),
+            session,
+            cancellationToken);
         if (scopeRead is not IsolationScopePlanningSnapshot scope ||
             await fenceScope(scope, session, cancellationToken) is not IsolationScopePlanningFenced)
             return new HostnameAttachmentPreconditionsChanged();
@@ -123,13 +145,18 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         var version = snapshot.DocumentVersions.Single(item =>
             item.DocumentId == WebServiceDeclarations.VersionKey(snapshot.ResourceId));
         var filter = WebServiceFilters.AtRevision(snapshot.TenantId, snapshot.ResourceId, version.Version);
-        var write = await services.UpdateOneAsync(session, filter,
-            Builders<WebService>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: cancellationToken);
+        var write = await services.UpdateOneAsync(
+            session,
+            filter,
+            Builders<WebService>.Update.Inc(item => item.PlanningFence, 1),
+            cancellationToken: cancellationToken);
         if (write.ModifiedCount != 1)
             return new HostnameAttachmentPreconditionsChanged();
 
-        var placementRead = await loadPlacements(new(snapshot.TenantId, ResourceType, snapshot.ResourceId),
-            session, cancellationToken);
+        var placementRead = await loadPlacements(
+            new ResourceDeploymentPlanningRequest(snapshot.TenantId, ResourceType, snapshot.ResourceId),
+            session,
+            cancellationToken);
         if (placementRead is not ResourceDeploymentPlanningSnapshot placements ||
             await fencePlacements(placements, session, cancellationToken) is not ResourceDeploymentPlanningFenced)
             return new HostnameAttachmentPreconditionsChanged();
@@ -140,16 +167,26 @@ internal sealed class WebServiceHostnameAttachmentCapability(
     public Task<ApplyHostnameAttachmentOutcome> ApplyAsync(
         ApplyHostnameAttachmentRequest request,
         IClientSessionHandle session,
-        CancellationToken cancellationToken) =>
-        ApplyAuthoritativeAliasesAsync(new(request.Snapshot, request.BindingId, request.Provenance,
-            HostnameAttachmentChange.Attach), session, cancellationToken);
+        CancellationToken cancellationToken) => ApplyAuthoritativeAliasesAsync(
+        new ChangeHostnameAttachment(
+            request.Snapshot,
+            request.BindingId,
+            request.Provenance,
+            HostnameAttachmentChange.Attach),
+        session,
+        cancellationToken);
 
     public Task<ApplyHostnameAttachmentOutcome> RemoveAsync(
         RemoveHostnameAttachmentRequest request,
         IClientSessionHandle session,
-        CancellationToken cancellationToken) =>
-        ApplyAuthoritativeAliasesAsync(new(request.Snapshot, request.BindingId, request.Provenance,
-            HostnameAttachmentChange.Remove), session, cancellationToken);
+        CancellationToken cancellationToken) => ApplyAuthoritativeAliasesAsync(
+        new ChangeHostnameAttachment(
+            request.Snapshot,
+            request.BindingId,
+            request.Provenance,
+            HostnameAttachmentChange.Remove),
+        session,
+        cancellationToken);
 
     private async Task<ApplyHostnameAttachmentOutcome> ApplyAuthoritativeAliasesAsync(
         ChangeHostnameAttachment request,
@@ -157,8 +194,14 @@ internal sealed class WebServiceHostnameAttachmentCapability(
         CancellationToken cancellationToken)
     {
         var expected = request.Snapshot;
-        var read = await ReadAsync(new(expected.TenantId, expected.ResourceId, expected.DeploymentTargetId,
-            expected.Hostname), session, cancellationToken);
+        var read = await ReadAsync(
+            new ReadHostnameAttachmentRequest(
+                expected.TenantId,
+                expected.ResourceId,
+                expected.DeploymentTargetId,
+                expected.Hostname),
+            session,
+            cancellationToken);
         if (read is HostnameAttachmentUnavailable unavailable)
             return unavailable;
         if (read is HostnameAttachmentPlacementUnavailable placementUnavailable)
@@ -169,13 +212,20 @@ internal sealed class WebServiceHostnameAttachmentCapability(
             !snapshot.DocumentVersions.SequenceEqual(expected.DocumentVersions))
             return new HostnameAttachmentPreconditionsChanged();
 
-        var bindings = await loadBindings(new(expected.TenantId, ResourceType, expected.ResourceId,
-            expected.DeploymentId), session, cancellationToken);
+        var bindings = await loadBindings(
+            new LoadHostnameBindingsForDeploymentInTransactionRequest(
+                expected.TenantId,
+                ResourceType,
+                expected.ResourceId,
+                expected.DeploymentId),
+            session,
+            cancellationToken);
         var bindingPresent = bindings.Any(item => item.Id == request.BindingId &&
             item.Hostname == expected.Hostname && item.Kind == HostnameBindingKinds.Custom &&
             item.DeploymentTargetId == expected.DeploymentTargetId);
-        if (request.Change == HostnameAttachmentChange.Attach ? !bindingPresent :
-            bindings.Any(item => item.Id == request.BindingId))
+        if (request.Change == HostnameAttachmentChange.Attach
+                ? !bindingPresent
+                : bindings.Any(item => item.Id == request.BindingId))
             return new HostnameAttachmentBindingRejected();
 
         var hostnames = bindings.Select(item => item.Hostname).Distinct().Order(StringComparer.Ordinal).ToArray();
@@ -184,58 +234,102 @@ internal sealed class WebServiceHostnameAttachmentCapability(
 
         var service = await services.Find(session, WebServiceFilters.ById(expected.TenantId, expected.ResourceId))
             .SingleAsync(cancellationToken);
-        var placementRead = await loadPlacements(new(expected.TenantId, ResourceType, expected.ResourceId),
-            session, cancellationToken);
+        var placementRead = await loadPlacements(
+            new ResourceDeploymentPlanningRequest(expected.TenantId, ResourceType, expected.ResourceId),
+            session,
+            cancellationToken);
         if (placementRead is not ResourceDeploymentPlanningSnapshot placements)
             return new HostnameAttachmentPlacementUnavailable();
         var placement = placements.Items.Single(item => item.DeploymentId == expected.DeploymentId);
         var next = service.AdvancePlacementDesiredState();
         var ingress = placement.Ingress!;
-        var updated = await applyPlacements(new(expected.TenantId, ResourceType, expected.ResourceId,
-            next.ActiveRevision, [new(placement.DeploymentId, placement.Revision,
-                new(placement.Compute.ComputeProfileId, placement.Compute.ComputeProfileRevision),
-                new ReplaceIngress(ResourceDeploymentIngressConfiguration.Create(ingress.IngressClassName,
-                    ingress.ClusterIssuerName, ingress.PublicBaseDomain, hostnames)))],
-            service.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
-                ? ResourceDeploymentActivation.KeepPrepared : ResourceDeploymentActivation.Reconcile),
-            session, cancellationToken);
+        var updated = await applyPlacements(
+            new ResourceDeploymentSetApplyRequest(
+                expected.TenantId,
+                ResourceType,
+                expected.ResourceId,
+                next.ActiveRevision,
+                [
+                    new ResourceDeploymentSetApplyItem(
+                        placement.DeploymentId,
+                        placement.Revision,
+                        new ComputeProfileReference(
+                            placement.Compute.ComputeProfileId,
+                            placement.Compute.ComputeProfileRevision),
+                        new ReplaceIngress(
+                            ResourceDeploymentIngressConfiguration.Create(
+                                ingress.IngressClassName,
+                                ingress.ClusterIssuerName,
+                                ingress.PublicBaseDomain,
+                                hostnames))),
+                ],
+                service.Lifecycle is AwaitingFirstArtifactWebServiceLifecycle
+                    ? ResourceDeploymentActivation.KeepPrepared
+                    : ResourceDeploymentActivation.Reconcile),
+            session,
+            cancellationToken);
         if (updated is not MutatedResourceDeployments)
             return new HostnameAttachmentPreconditionsChanged();
 
-        var advanced = await advanceRevision(new(expected.TenantId, ResourceType, expected.ResourceId,
-            next.ActiveRevision), session, cancellationToken);
+        var advanced = await advanceRevision(
+            new ResourceDeploymentResourceRevisionRequest(
+                expected.TenantId,
+                ResourceType,
+                expected.ResourceId,
+                next.ActiveRevision),
+            session,
+            cancellationToken);
         if (advanced is not MutatedResourceDeployments changed)
             return new HostnameAttachmentPreconditionsChanged();
 
-        var result = await persist(new(service, next,
-            next.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(changed.Placements)),
-            request.Change == HostnameAttachmentChange.Attach
-                ? new AttachedWebServiceHostnameBinding(request.BindingId)
-                : new RemovedWebServiceHostnameBinding(request.BindingId, expected)),
-            session, cancellationToken);
+        var result = await persist(
+            new WebServiceHostnameAttachmentWrite(
+                service,
+                next,
+                next.ToUpdatedEvent(WebServiceDeploymentWorkflow.ToEventDeployments(changed.Placements)),
+                request.Change == HostnameAttachmentChange.Attach
+                    ? new AttachedWebServiceHostnameBinding(request.BindingId)
+                    : new RemovedWebServiceHostnameBinding(request.BindingId, expected)),
+            session,
+            cancellationToken);
         if (result is not WebServiceUpdateAccepted)
             return new HostnameAttachmentPreconditionsChanged();
 
         if (next.Lifecycle is ActiveWebServiceLifecycle)
         {
-            var release = WebServiceReleaseFactory.CreatePending(next.TenantId, next.Id, next.ActiveRevision,
-                WebServiceReleaseAction.HostnameChanged, null, null, next.Spec,
-                WebServiceDeploymentWorkflow.ToReleaseDeployments(changed.Placements), null, null,
-                new(ObjectId.GenerateNewId().ToString(), clock.GetUtcNow().UtcDateTime), next.Exposure,
-                new GitOpsReleaseProvenance(request.Provenance.SourceId, request.Provenance.RunId,
-                    request.Provenance.Commit, service.Spec.Image.ResolvedImage?.Tag,
+            var release = WebServiceReleaseFactory.CreatePending(
+                next.TenantId,
+                next.Id,
+                next.ActiveRevision,
+                WebServiceReleaseAction.HostnameChanged,
+                null,
+                null,
+                next.Spec,
+                WebServiceDeploymentWorkflow.ToReleaseDeployments(changed.Placements),
+                null,
+                null,
+                new WebServiceReleaseFactory.CreateOptions(
+                    ObjectId.GenerateNewId().ToString(),
+                    clock.GetUtcNow().UtcDateTime),
+                next.Exposure,
+                new GitOpsReleaseProvenance(
+                    request.Provenance.SourceId,
+                    request.Provenance.RunId,
+                    request.Provenance.Commit,
+                    service.Spec.Image.ResolvedImage?.Tag,
                     next.Spec.Image.ResolvedImage!.Tag));
             await persistRelease(session, release, cancellationToken);
         }
 
         return new HostnameAttachmentApplied(true);
     }
+
     private enum HostnameAttachmentChange { Attach, Remove }
 
     private sealed record ChangeHostnameAttachment(
         HostnameAttachmentSnapshot Snapshot,
         string BindingId,
         HostnameAttachmentProvenance Provenance,
-        HostnameAttachmentChange Change);
-
+        HostnameAttachmentChange Change
+    );
 }

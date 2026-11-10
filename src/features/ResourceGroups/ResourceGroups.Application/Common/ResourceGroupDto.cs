@@ -1,4 +1,5 @@
 using Pole.Features.GitOps.Contracts;
+
 namespace Pole.Features.ResourceGroups.Application.Common;
 
 public sealed record ResourceGroupDto(
@@ -12,7 +13,8 @@ public sealed record ResourceGroupDto(
     DateTime UpdatedAtUtc,
     long ResourceCount,
     IEnumerable<string> Tags,
-    GitResourceStatus? GitOps = null);
+    GitResourceStatus? GitOps = null
+);
 
 public sealed record ResourceRegistrationDto(
     string RegistrationId,
@@ -21,4 +23,5 @@ public sealed record ResourceRegistrationDto(
     string DisplayName,
     string? OwningPluginId,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc
+);

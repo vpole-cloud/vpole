@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Testing.Tests;
@@ -15,10 +14,7 @@ public sealed class KubernetesLabStateTests
     public void Selected_target_ignores_ambient_kubeconfig_and_embedded_current_context()
     {
         using var environment = new LabEnvironment();
-        var ambient = environment.WriteKubeconfig(
-            "ambient.yaml",
-            "ambient",
-            ("ambient", "https://ambient.invalid"));
+        var ambient = environment.WriteKubeconfig("ambient.yaml", "ambient", ("ambient", "https://ambient.invalid"));
         var selected = environment.WriteKubeconfig(
             "pole-lab-minimal.yaml",
             currentContext: "first",
@@ -35,9 +31,7 @@ public sealed class KubernetesLabStateTests
         Assert.Equal("https://127.0.0.1:6551", configuration.Host);
         Assert.Equal(selected, target.KubeconfigPath);
         Assert.Equal("k3d-pole-lab-minimal", target.Context);
-        Assert.Equal(
-            ["--kubeconfig", selected, "--context", "k3d-pole-lab-minimal"],
-            target.KubectlSelectionArguments);
+        Assert.Equal(["--kubeconfig", selected, "--context", "k3d-pole-lab-minimal"], target.KubectlSelectionArguments);
     }
 
     [Fact]
@@ -212,16 +206,19 @@ public sealed class KubernetesLabStateTests
         environment.Set("TESTCONTAINERS_RYUK_DISABLED", null);
         environment.Set("ASPIRE_CONTAINER_RUNTIME", null);
 
-        ContainerRuntimeBootstrap.Configure(new KubernetesLabRuntime(
-            "podman",
-            true,
-            "unix:///run/user/1000/podman/podman.sock",
-            "/run/user/1000/podman/podman.sock",
-            true));
+        ContainerRuntimeBootstrap.Configure(
+            new KubernetesLabRuntime(
+                "podman",
+                true,
+                "unix:///run/user/1000/podman/podman.sock",
+                "/run/user/1000/podman/podman.sock",
+                true));
 
         Assert.Equal("unix:///run/user/1000/podman/podman.sock", Environment.GetEnvironmentVariable("DOCKER_HOST"));
         Assert.Equal("/run/user/1000/podman/podman.sock", Environment.GetEnvironmentVariable("DOCKER_SOCK"));
-        Assert.Equal("/explicit/socket.sock", Environment.GetEnvironmentVariable("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE"));
+        Assert.Equal(
+            "/explicit/socket.sock",
+            Environment.GetEnvironmentVariable("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE"));
         Assert.Equal("true", Environment.GetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED"));
         Assert.Equal("podman", Environment.GetEnvironmentVariable("ASPIRE_CONTAINER_RUNTIME"));
     }
@@ -233,12 +230,7 @@ public sealed class KubernetesLabStateTests
         environment.Set("ASPIRE_CONTAINER_RUNTIME", null);
         environment.Set("TESTCONTAINERS_RYUK_DISABLED", null);
 
-        ContainerRuntimeBootstrap.Configure(new KubernetesLabRuntime(
-            "docker",
-            false,
-            null,
-            null,
-            false));
+        ContainerRuntimeBootstrap.Configure(new KubernetesLabRuntime("docker", false, null, null, false));
 
         Assert.Equal("docker", Environment.GetEnvironmentVariable("ASPIRE_CONTAINER_RUNTIME"));
         Assert.Null(Environment.GetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED"));
@@ -269,8 +261,8 @@ public sealed class KubernetesLabStateTests
     [Fact]
     public void Kubernetes_diagnostics_redact_common_credentials()
     {
-        const string diagnostic =
-            "Authorization: Bearer abcdef password=hunter2 token=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL " +
+        const string diagnostic
+            = "Authorization: Bearer abcdef password=hunter2 token=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL " +
             "url=https://user:super-secret@example.test eyJabcdefghijklmnop.qrstuvwxyz012345 " +
             "{\"password\":\"json-secret\"}";
 
@@ -292,10 +284,17 @@ public sealed class KubernetesLabStateTests
             Root = Path.Combine(Path.GetTempPath(), "pole-kubernetes-lab-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path.Combine(Root, "bin"));
             Directory.CreateDirectory(Path.Combine(Root, "kubeconfigs"));
-            File.WriteAllText(Path.Combine(Root, "bin", "kubectl"), string.Empty);
+            File.WriteAllText(Path.Combine(Root, "bin", "kubectl"), "");
         }
 
         public string Root { get; }
+
+        public void Dispose()
+        {
+            foreach (var (name, value) in _originalEnvironment)
+                Environment.SetEnvironmentVariable(name, value);
+            Directory.Delete(Root, recursive: true);
+        }
 
         public void Set(string name, string? value)
         {
@@ -309,23 +308,31 @@ public sealed class KubernetesLabStateTests
             params (string Context, string Server)[] entries)
         {
             var path = Path.Combine(Root, "kubeconfigs", fileName);
-            var clusters = string.Join(Environment.NewLine, entries.Select(entry =>
-                $"  - name: {entry.Context}{Environment.NewLine}    cluster:{Environment.NewLine}      server: {entry.Server}{Environment.NewLine}      insecure-skip-tls-verify: true"));
-            var contexts = string.Join(Environment.NewLine, entries.Select(entry =>
-                $"  - name: {entry.Context}{Environment.NewLine}    context:{Environment.NewLine}      cluster: {entry.Context}{Environment.NewLine}      user: {entry.Context}"));
-            var users = string.Join(Environment.NewLine, entries.Select(entry =>
-                $"  - name: {entry.Context}{Environment.NewLine}    user:{Environment.NewLine}      token: test-only"));
-            File.WriteAllText(path, $"""
-                apiVersion: v1
-                kind: Config
-                clusters:
-                {clusters}
-                contexts:
-                {contexts}
-                current-context: {currentContext}
-                users:
-                {users}
-                """);
+            var clusters = string.Join(
+                Environment.NewLine,
+                entries.Select(entry =>
+                    $"  - name: {entry.Context}{Environment.NewLine}    cluster:{Environment.NewLine}      server: {entry.Server}{Environment.NewLine}      insecure-skip-tls-verify: true"));
+            var contexts = string.Join(
+                Environment.NewLine,
+                entries.Select(entry =>
+                    $"  - name: {entry.Context}{Environment.NewLine}    context:{Environment.NewLine}      cluster: {entry.Context}{Environment.NewLine}      user: {entry.Context}"));
+            var users = string.Join(
+                Environment.NewLine,
+                entries.Select(entry =>
+                    $"  - name: {entry.Context}{Environment.NewLine}    user:{Environment.NewLine}      token: test-only"));
+            File.WriteAllText(
+                path,
+                $"""
+                 apiVersion: v1
+                 kind: Config
+                 clusters:
+                 {clusters}
+                 contexts:
+                 {contexts}
+                 current-context: {currentContext}
+                 users:
+                 {users}
+                 """);
             return path;
         }
 
@@ -346,7 +353,7 @@ public sealed class KubernetesLabStateTests
                 {
                     containerId = new string('b', 64),
                     host = "127.0.0.1:5051",
-                    clusterHost = "k3d-pole-lab-registry:5051"
+                    clusterHost = "k3d-pole-lab-registry:5051",
                 },
                 services = new { },
                 targets = new[]
@@ -364,10 +371,10 @@ public sealed class KubernetesLabStateTests
                         ingress = new
                         {
                             httpBaseUri = "http://127.0.0.1:8088",
-                            httpsBaseUri = "https://127.0.0.1:8448"
-                        }
-                    }
-                }
+                            httpsBaseUri = "https://127.0.0.1:8448",
+                        },
+                    },
+                },
             };
             File.WriteAllText(path, JsonSerializer.Serialize(state));
             return path;
@@ -379,7 +386,7 @@ public sealed class KubernetesLabStateTests
             var buildctlPath = Path.Combine(Root, "bin", "buildctl");
             var credentialsPath = Path.Combine(Root, "generated", "harbor", "default-credentials.json");
             Directory.CreateDirectory(Path.GetDirectoryName(credentialsPath)!);
-            File.WriteAllText(buildctlPath, string.Empty);
+            File.WriteAllText(buildctlPath, "");
             File.WriteAllText(credentialsPath, "{\"username\":\"admin\",\"password\":\"test-only\"}");
 
             object Target(
@@ -408,8 +415,8 @@ public sealed class KubernetesLabStateTests
                     ingress = new
                     {
                         httpBaseUri = $"http://127.0.0.1:{httpPort}",
-                        httpsBaseUri = $"https://127.0.0.1:{httpsPort}"
-                    }
+                        httpsBaseUri = $"https://127.0.0.1:{httpsPort}",
+                    },
                 };
             }
 
@@ -429,7 +436,7 @@ public sealed class KubernetesLabStateTests
                 {
                     containerId = new string('b', 64),
                     host = "127.0.0.1:5051",
-                    clusterHost = "k3d-pole-lab-registry:5051"
+                    clusterHost = "k3d-pole-lab-registry:5051",
                 },
                 services = new
                 {
@@ -440,25 +447,28 @@ public sealed class KubernetesLabStateTests
                         service = "harbor",
                         port = 80,
                         registryHost = "harbor.pole.localhost:5002",
-                        credentialsPath
+                        credentialsPath,
                     },
                     buildkit = new
                     {
                         targetKey = "default",
                         @namespace = "pole-lab-build",
                         service = "buildkit",
-                        port = 1234
-                    }
+                        port = 1234,
+                    },
                 },
                 targets = new[]
                 {
-                    Target("default", "pole-lab-default", 6552, 8089, 8449,
+                    Target(
+                        "default",
+                        "pole-lab-default",
+                        6552,
+                        8089,
+                        8449,
                         [.. baseline, "topology", "monitoring", "cert-manager", "cnpg", "harbor", "buildkit"]),
-                    Target("workload-a", "pole-lab-workload-a", 6553, 8090, 8450,
-                        [.. baseline, "monitoring"]),
-                    Target("workload-b", "pole-lab-workload-b", 6554, 8091, 8451,
-                        [.. baseline, "monitoring"])
-                }
+                    Target("workload-a", "pole-lab-workload-a", 6553, 8090, 8450, [.. baseline, "monitoring"]),
+                    Target("workload-b", "pole-lab-workload-b", 6554, 8091, 8451, [.. baseline, "monitoring"]),
+                },
             };
             File.WriteAllText(path, JsonSerializer.Serialize(state));
             return path;
@@ -470,15 +480,8 @@ public sealed class KubernetesLabStateTests
             rootless = false,
             dockerHost = (string?)null,
             dockerSocketPath = (string?)null,
-            testcontainersRyukDisabled = false
+            testcontainersRyukDisabled = false,
         };
-
-        public void Dispose()
-        {
-            foreach (var (name, value) in _originalEnvironment)
-                Environment.SetEnvironmentVariable(name, value);
-            Directory.Delete(Root, recursive: true);
-        }
     }
 }
 

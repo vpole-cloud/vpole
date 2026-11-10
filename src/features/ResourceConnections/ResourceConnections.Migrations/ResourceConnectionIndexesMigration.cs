@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.ResourceConnections.Migrations;
 
@@ -12,18 +12,16 @@ public sealed class ResourceConnectionIndexesMigration : IMigration
     public string Name => "Resource connection identity";
     public string Description => "Makes connection names unique within each tenant.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default) =>
-        await context.GetCollection<BsonDocument>("ResourceConnections").Indexes.CreateOneAsync(
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default) => await context
+        .GetCollection<BsonDocument>("ResourceConnections")
+        .Indexes
+        .CreateOneAsync(
             new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("TenantId")
-                    .Ascending("Name"),
+                Builders<BsonDocument>.IndexKeys.Ascending("TenantId").Ascending("Name"),
                 new CreateIndexOptions
                 {
                     Unique = true,
-                    Name = TenantNameIndex
+                    Name = TenantNameIndex,
                 }),
             cancellationToken: cancellationToken);
 }

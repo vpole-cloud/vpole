@@ -1,6 +1,4 @@
 using MongoDB.Bson;
-using Pole.Features.Core.Multitenancy;
-using Pole.Features.Tenants.Domain;
 using Pole.Features.Tenants.Testing;
 using Pole.Features.Users.Domain;
 
@@ -11,12 +9,13 @@ public sealed record IntegrationTestScope(
     string UserId,
     string UserEmail,
     string UniqueSuffix,
-    TestDatabaseScope Database)
+    TestDatabaseScope Database
+)
 {
     public static IntegrationTestScope Create(TestDatabaseScope database)
     {
         var id = ObjectId.GenerateNewId().ToString();
-        return new(id, "test-user-" + id, "test-" + id + "@example.test", id, database);
+        return new IntegrationTestScope(id, "test-user-" + id, "test-" + id + "@example.test", id, database);
     }
 
     public string Hostname(string label = "app") => label + "-" + UniqueSuffix + ".example.test";
@@ -24,7 +23,7 @@ public sealed record IntegrationTestScope(
     public async Task SeedAsync()
     {
         await new TenantTestData(Database.Database).CreateOwnedAsync(UserId, UserEmail, id: TenantId);
-        await Database.DbContext.Users.InsertOneAsync(PoleUserFactory.Create(
-            UserId, UserEmail, null, null, TenantId, DateTime.UtcNow));
+        await Database.DbContext.Users.InsertOneAsync(
+            PoleUserFactory.Create(UserId, UserEmail, null, null, TenantId, DateTime.UtcNow));
     }
 }

@@ -20,7 +20,8 @@ public delegate Task<DownloadProviderRepositoryArchiveOutcome> DownloadProviderR
 
 internal sealed class GitHubDownloadProviderRepositoryArchive(
     IGitHubAppClient gitHubClient,
-    ILogger<GitHubDownloadProviderRepositoryArchive> logger)
+    ILogger<GitHubDownloadProviderRepositoryArchive> logger
+)
 {
     public async Task<DownloadProviderRepositoryArchiveOutcome> InvokeAsync(
         GitProviderConnection connection,
@@ -30,10 +31,7 @@ internal sealed class GitHubDownloadProviderRepositoryArchive(
         CancellationToken cancellationToken = default)
     {
         if (connection.Provider is not GitProviderKind.GitHub)
-        {
-            return new GitProviderRepositoryAccessError(
-                new GitProviderUnsupported(connection.Provider.ToString()));
-        }
+            return new GitProviderRepositoryAccessError(new GitProviderUnsupported(connection.Provider.ToString()));
 
         try
         {

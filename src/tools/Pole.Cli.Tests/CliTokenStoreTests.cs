@@ -22,9 +22,11 @@ public sealed class CliTokenStoreTests
             Assert.Equal(identity, loaded.Value.Identity);
             if (!OperatingSystem.IsWindows())
             {
-                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                Assert.Equal(
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
                     File.GetUnixFileMode(Path.Combine(directory, "cli")));
-                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                Assert.Equal(
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite,
                     File.GetUnixFileMode(Path.Combine(directory, "cli", "server.json")));
             }
         }
@@ -38,7 +40,9 @@ public sealed class CliTokenStoreTests
     [Fact]
     public async Task Active_tenant_is_stored_per_account_and_server_profile()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "pole-cli-tenant-context-test-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "pole-cli-tenant-context-test-" + Guid.NewGuid().ToString("N"));
         var store = new CliTokenStore(Path.Combine(directory, "cli", "tokens.json"));
         var first = new PoleServerIdentity(new Uri("https://identity.example/realms/pole"), "pole.cli");
         var second = new PoleServerIdentity(new Uri("https://identity.example/realms/pole"), "pole.cli");
@@ -73,12 +77,19 @@ public sealed class CliTokenStoreTests
 
             var loaded = await store.LoadAsync(issuer, "pole.cli", server, CancellationToken.None);
             Assert.Equal(tokens, loaded);
-            Assert.Null(await store.LoadAsync(issuer, "pole.cli", new Uri("https://other.example:8443/"), CancellationToken.None));
+            Assert.Null(
+                await store.LoadAsync(
+                    issuer,
+                    "pole.cli",
+                    new Uri("https://other.example:8443/"),
+                    CancellationToken.None));
             if (!OperatingSystem.IsWindows())
             {
-                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                Assert.Equal(
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
                     File.GetUnixFileMode(Path.Combine(directory, "cli")));
-                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                Assert.Equal(
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite,
                     File.GetUnixFileMode(Path.Combine(directory, "cli", "tokens.json")));
             }
         }
@@ -105,8 +116,11 @@ public sealed class CliTokenStoreTests
         try
         {
             var store = new CliTokenStore(tokenPath);
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                store.LoadAsync(new Uri("https://identity.example/realms/pole"), "pole.cli", new Uri("https://pole.example/"), CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.LoadAsync(
+                new Uri("https://identity.example/realms/pole"),
+                "pole.cli",
+                new Uri("https://pole.example/"),
+                CancellationToken.None));
         }
         finally
         {

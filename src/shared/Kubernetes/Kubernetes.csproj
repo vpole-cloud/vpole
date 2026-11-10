@@ -9,11 +9,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Workloads\Workloads.csproj" />
+        <ProjectReference Include="..\Workloads\Workloads.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="KubernetesClient" />
+        <PackageReference Include="KubernetesClient"/>
     </ItemGroup>
 
 </Project>

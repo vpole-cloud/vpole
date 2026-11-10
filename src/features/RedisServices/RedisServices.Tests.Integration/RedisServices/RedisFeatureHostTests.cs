@@ -1,13 +1,10 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Runtime.Loader;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
-using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Delivery;
 using Pole.Features.RedisServices.Application;
@@ -17,16 +14,16 @@ using Pole.Features.RedisServices.Migrations;
 using Pole.Features.RedisServices.Tests.Integration.Infrastructure;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
 using Pole.Platform.Hosting;
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Features.RedisServices.Tests.Integration.RedisServices;
 
 [Collection(IntegrationTestCollection.Name)]
-public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
+public sealed class RedisFeatureHostTests(
+    MongoReplicaSetFixture fixture
+)
 {
     [Fact]
     public async Task StaticFeatureHost_EnforcesTenantAndRunsScopedMigration()
@@ -41,21 +38,19 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
             endpoints => endpoints.MapRedisServiceEndpoints(),
             null,
             services =>
-        {
-            services.AddFeatureMigrations("pole.redis", typeof(RedisSchemaValidationMigration).Assembly);
-            services.AddSingleton(fixture.Client);
-            services.AddSingleton(fixture.Database);
-            services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-(request, ct) =>
-                    Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-                        new RuntimeCellIngressBaselineReady()));
-            services.AddTestDeploymentTargets();
-            var storage = new TestStorageDiscoveryService("standard");
-            services.AddSingleton<DiscoverKubernetesStorageClasses>(storage.GetStorageClassesAsync);
-            services.AddSingleton<DiscoverKubernetesStorageClassNames>(storage.GetStorageClassNamesAsync);
-            services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storage.GetPersistentVolumesAsync);
-            services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storage.GetPersistentVolumeClaimsAsync);
-        });
+            {
+                services.AddFeatureMigrations("pole.redis", typeof(RedisSchemaValidationMigration).Assembly);
+                services.AddSingleton(fixture.Client);
+                services.AddSingleton(fixture.Database);
+                services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ => (request, ct) =>
+                    Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(new RuntimeCellIngressBaselineReady()));
+                services.AddTestDeploymentTargets();
+                var storage = new TestStorageDiscoveryService("standard");
+                services.AddSingleton<DiscoverKubernetesStorageClasses>(storage.GetStorageClassesAsync);
+                services.AddSingleton<DiscoverKubernetesStorageClassNames>(storage.GetStorageClassNamesAsync);
+                services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storage.GetPersistentVolumesAsync);
+                services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(storage.GetPersistentVolumeClaimsAsync);
+            });
         await host.SeedTenantAsync();
         using var client = host.GetClient();
         const string route = "/api/v1/redis-services/";
@@ -78,36 +73,72 @@ public sealed class RedisFeatureHostTests(MongoReplicaSetFixture fixture)
         Assert.Equal(HttpStatusCode.NotFound, missingDelete.StatusCode);
         var store = new RedisTestStore(fixture.Client, fixture.Database);
         await store.StorageProfiles.InsertOneAsync(RedisTestData.SeedStorageProfile());
-        await fixture.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(RedisTestData.SeedComputeProfile());
+        await fixture.Database
+            .GetCollection<ComputeProfile>("ComputeProfiles")
+            .InsertOneAsync(RedisTestData.SeedComputeProfile());
         var group = await store.InsertResourceGroupAsync(RedisTestData.SeedResourceGroup());
         using var created = await client.PostAsJsonAsync(route, RedisTestData.CreateRedisServiceRequest(group.Id).Body);
         Assert.True(created.StatusCode == HttpStatusCode.Accepted, await created.Content.ReadAsStringAsync());
-        var creation = await created.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var creation = await created.Content.ReadFromJsonAsync<JsonElement>();
         using var details = await client.GetAsync(route + creation.GetProperty("redisId").GetString());
         Assert.Equal(HttpStatusCode.OK, details.StatusCode);
-        var metadata = await details.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var metadata = await details.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Active", metadata.GetProperty("lifecycle").GetString());
         Assert.Equal(1, metadata.GetProperty("revision").GetInt64());
-        using var resize = await client.PutAsJsonAsync(route + creation.GetProperty("redisId").GetString(),
-            new { spec = new { storage = new { sizeGb = 2, storageProfileId = metadata.GetProperty("spec").GetProperty("storage").GetProperty("storageProfileId").GetString() } }, tags = Array.Empty<string>() });
+        using var resize = await client.PutAsJsonAsync(
+            route + creation.GetProperty("redisId").GetString(),
+            new
+            {
+                spec = new
+                {
+                    storage = new
+                    {
+                        sizeGb = 2,
+                        storageProfileId = metadata.GetProperty("spec")
+                            .GetProperty("storage")
+                            .GetProperty("storageProfileId")
+                            .GetString(),
+                    },
+                },
+                tags = Array.Empty<string>(),
+            });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resize.StatusCode);
         Assert.Contains("redis-services.storage-resize-unsupported", await resize.Content.ReadAsStringAsync());
-        using var grow = await client.PutAsJsonAsync(route + creation.GetProperty("redisId").GetString(),
-            new { spec = new { storage = new { sizeGb = 10, storageProfileId = metadata.GetProperty("spec").GetProperty("storage").GetProperty("storageProfileId").GetString() } }, tags = Array.Empty<string>() });
+        using var grow = await client.PutAsJsonAsync(
+            route + creation.GetProperty("redisId").GetString(),
+            new
+            {
+                spec = new
+                {
+                    storage = new
+                    {
+                        sizeGb = 10,
+                        storageProfileId = metadata.GetProperty("spec")
+                            .GetProperty("storage")
+                            .GetProperty("storageProfileId")
+                            .GetString(),
+                    },
+                },
+                tags = Array.Empty<string>(),
+            });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, grow.StatusCode);
         using var unchanged = await client.GetAsync(route + creation.GetProperty("redisId").GetString());
-        var unchangedMetadata = await unchanged.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var unchangedMetadata = await unchanged.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, unchangedMetadata.GetProperty("revision").GetInt64());
         Assert.Equal(5, unchangedMetadata.GetProperty("spec").GetProperty("storage").GetProperty("sizeGb").GetInt32());
         const string eventName = "pole.redis/v1/redis-service-created";
-        var outbox = await fixture.Database.GetCollection<BsonDocument>("OutboxMessages")
-            .Find(new BsonDocument("EventType", eventName)).ToListAsync();
+        var outbox = await fixture.Database
+            .GetCollection<BsonDocument>("OutboxMessages")
+            .Find(new BsonDocument("EventType", eventName))
+            .ToListAsync();
         Assert.Single(outbox);
         var eventType = host.Services.GetRequiredService<OutboxEventAssemblyCatalog>().GetRequiredEventType(eventName);
         Assert.Equal(AssemblyLoadContext.Default, AssemblyLoadContext.GetLoadContext(eventType.Assembly));
         await host.Services.GetRequiredService<EnsurePendingOutboxEventsRegistered>().InvokeAsync();
-        var history = await fixture.Database.GetCollection<BsonDocument>("__migrations")
-            .Find(new BsonDocument("_id", new BsonRegularExpression("^pole.redis/"))).ToListAsync();
+        var history = await fixture.Database
+            .GetCollection<BsonDocument>("__migrations")
+            .Find(new BsonDocument("_id", new BsonRegularExpression("^pole.redis/")))
+            .ToListAsync();
         Assert.Equal(
             ["pole.redis/6a700001b213917a38c38001", "pole.redis/6a700002b213917a38c38001"],
             history.Select(item => item["_id"].AsString).Order(StringComparer.Ordinal));

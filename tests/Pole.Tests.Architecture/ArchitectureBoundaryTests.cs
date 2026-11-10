@@ -16,7 +16,7 @@ public sealed class ArchitectureBoundaryTests
         "IEventDbContext",
         "MongoDbContext",
         "StoreEventAsync",
-        "ClientSessionHandleExtensions"
+        "ClientSessionHandleExtensions",
     ];
 
     private static readonly string[] LegacyResultCompatibilitySymbols =
@@ -25,7 +25,7 @@ public sealed class ArchitectureBoundaryTests
         "LegacyResultRejected",
         "RunMongoTransaction",
         "ISuccess",
-        "IFailure"
+        "IFailure",
     ];
 
     private static readonly string[] RawMongoQuerySymbols =
@@ -35,7 +35,7 @@ public sealed class ArchitectureBoundaryTests
         "IFindFluent",
         "FilterDefinition",
         "UpdateDefinition",
-        "Builders"
+        "Builders",
     ];
 
     private static readonly string[] ServerFeatureImplementationSymbols =
@@ -50,7 +50,7 @@ public sealed class ArchitectureBoundaryTests
         "RedisQuotaProfile",
         "FunctionAppQuotaProfile",
         "WebServiceQuotaProfile",
-        "PostgresQuotaProfile"
+        "PostgresQuotaProfile",
     ];
 
     private static readonly string[] FeatureRegistrationMethods =
@@ -74,7 +74,7 @@ public sealed class ArchitectureBoundaryTests
         "AddGitProvidersFeature",
         "AddContainerRegistriesFeature",
         "AddSourceBuildsFeature",
-        "AddUsersFeature"
+        "AddUsersFeature",
     ];
 
     [Fact]
@@ -82,25 +82,30 @@ public sealed class ArchitectureBoundaryTests
     {
         var sources = ArchitectureSources.ProductionCSharp()
             .Where(source => source.RelativePath.StartsWith(
-                "src/features/PrivateAccess/PrivateAccess.Domain/", StringComparison.Ordinal))
+                "src/features/PrivateAccess/PrivateAccess.Domain/",
+                StringComparison.Ordinal))
             .ToArray();
-        var factories = sources.SelectMany(source => source.Root.DescendantNodes()
-                .OfType<ClassDeclarationSyntax>())
+        var factories = sources.SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>())
             .ToDictionary(factory => factory.Identifier.ValueText, StringComparer.Ordinal);
-        var violations = sources.SelectMany(source => source.Root.DescendantNodes()
-                .OfType<RecordDeclarationSyntax>()
-                .Where(record => record.ParameterList?.Parameters.Any(parameter =>
-                    parameter.AttributeLists.SelectMany(list => list.Attributes)
-                        .Any(attribute => attribute.Name.ToString() == "BsonId")) == true)
-                .Where(record => !factories.TryGetValue(
-                    record.Identifier.ValueText + "Factory", out var factory) ||
-                    !factory.Members.OfType<MethodDeclarationSyntax>().Any(method =>
-                        method.Identifier.ValueText == "Create" &&
-                        method.ReturnType.ToString() == record.Identifier.ValueText &&
-                        method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PublicKeyword)) &&
-                        method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.StaticKeyword))))
-                .Select(record => ArchitectureSources.Describe(source, record,
-                    $"persisted domain model '{record.Identifier.ValueText}' requires a factory")))
+        var violations = sources.SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<RecordDeclarationSyntax>()
+                    .Where(record => record.ParameterList?.Parameters.Any(parameter =>
+                        parameter.AttributeLists
+                            .SelectMany(list => list.Attributes)
+                            .Any(attribute => attribute.Name.ToString() == "BsonId")) == true)
+                    .Where(record => !factories.TryGetValue(record.Identifier.ValueText + "Factory", out var factory) ||
+                        !factory.Members
+                            .OfType<MethodDeclarationSyntax>()
+                            .Any(method => method.Identifier.ValueText == "Create" &&
+                                method.ReturnType.ToString() == record.Identifier.ValueText &&
+                                method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PublicKeyword)) &&
+                                method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.StaticKeyword))))
+                    .Select(record => ArchitectureSources.Describe(
+                        source,
+                        record,
+                        $"persisted domain model '{record.Identifier.ValueText}' requires a factory")))
             .ToArray();
 
         AssertNoViolations(violations);
@@ -110,13 +115,15 @@ public sealed class ArchitectureBoundaryTests
     public void ProductionSources_DoNotReferenceRemovedMongoContexts()
     {
         var csharpViolations = ArchitectureSources.ProductionCSharp()
-            .SelectMany(source => source.Root.DescendantNodes()
-                .OfType<SimpleNameSyntax>()
-                .Where(name => LegacyMongoContextSymbols.Contains(name.Identifier.ValueText))
-                .Select(name => ArchitectureSources.Describe(
-                    source,
-                    name,
-                    $"removed persistence symbol '{name.Identifier.ValueText}' is forbidden")))
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<SimpleNameSyntax>()
+                    .Where(name => LegacyMongoContextSymbols.Contains(name.Identifier.ValueText))
+                    .Select(name => ArchitectureSources.Describe(
+                        source,
+                        name,
+                        $"removed persistence symbol '{name.Identifier.ValueText}' is forbidden")))
             .ToArray();
         var fsharpViolations = FindFSharpSymbols(
             ArchitectureSources.ProductionFSharp(),
@@ -130,22 +137,25 @@ public sealed class ArchitectureBoundaryTests
     public void RepositorySources_DoNotReferenceRemovedResultCompatibilityApis()
     {
         var symbolViolations = ArchitectureSources.RepositoryCSharp()
-            .SelectMany(source => source.Root.DescendantNodes()
-                .OfType<SimpleNameSyntax>()
-                .Where(name => LegacyResultCompatibilitySymbols.Contains(
-                    name.Identifier.ValueText))
-                .Select(name => ArchitectureSources.Describe(
-                    source,
-                    name,
-                    $"removed Result compatibility symbol '{name.Identifier.ValueText}' is forbidden")));
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<SimpleNameSyntax>()
+                    .Where(name => LegacyResultCompatibilitySymbols.Contains(name.Identifier.ValueText))
+                    .Select(name => ArchitectureSources.Describe(
+                        source,
+                        name,
+                        $"removed Result compatibility symbol '{name.Identifier.ValueText}' is forbidden")));
         var genericResultViolations = ArchitectureSources.RepositoryCSharp()
-            .SelectMany(source => source.Root.DescendantNodes()
-                .OfType<GenericNameSyntax>()
-                .Where(name => name.Identifier.ValueText is "Result" or "Ok" or "Err")
-                .Select(name => ArchitectureSources.Describe(
-                    source,
-                    name,
-                    "generic Result, Ok and Err are forbidden; use a closed outcome union")));
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<GenericNameSyntax>()
+                    .Where(name => name.Identifier.ValueText is "Result" or "Ok" or "Err")
+                    .Select(name => ArchitectureSources.Describe(
+                        source,
+                        name,
+                        "generic Result, Ok and Err are forbidden; use a closed outcome union")));
 
         var fsharpSymbolViolations = FindFSharpSymbols(
             ArchitectureSources.RepositoryFSharp(),
@@ -162,11 +172,11 @@ public sealed class ArchitectureBoundaryTests
                     line.Number,
                     "legacy Result<T> is forbidden; use a closed outcome union")));
 
-        AssertNoViolations(symbolViolations
-            .Concat(genericResultViolations)
-            .Concat(fsharpSymbolViolations)
-            .Concat(fsharpSingleGenericResultViolations)
-            .ToArray());
+        AssertNoViolations(
+            symbolViolations.Concat(genericResultViolations)
+                .Concat(fsharpSymbolViolations)
+                .Concat(fsharpSingleGenericResultViolations)
+                .ToArray());
     }
 
     [Fact]
@@ -204,43 +214,37 @@ public sealed class ArchitectureBoundaryTests
             """,
             $"/src/features/Example/Example.Application/{path}");
 
-        Assert.Equal(3, diagnostics.Count(diagnostic =>
-            diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
+        Assert.Equal(
+            3,
+            diagnostics.Count(diagnostic => diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 
     [Fact]
     public void MediatorEndpointHandlers_UseClosedOutcomeTypes()
     {
         var csharpViolations = ArchitectureSources.ProductionCSharp()
-            .Where(source => source.RelativePath.Contains(
-                ".Application/Endpoints/",
-                StringComparison.Ordinal))
-            .SelectMany(source => source.Root.DescendantNodes()
-                .OfType<GenericNameSyntax>()
-                .Where(name => name.Identifier.ValueText == "IMediatorOutcomeHandler")
-                .Select(name => (Handler: name, Outcome: name.TypeArgumentList.Arguments.Last()))
-                .Where(item => !GetTypeName(item.Outcome).EndsWith(
-                    "Outcome",
-                    StringComparison.Ordinal))
-                .Select(name => ArchitectureSources.Describe(
-                    source,
-                    name.Handler,
-                    $"mediator endpoint handler outcome '{GetTypeName(name.Outcome)}' must be a closed *Outcome type")));
+            .Where(source => source.RelativePath.Contains(".Application/Endpoints/", StringComparison.Ordinal))
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<GenericNameSyntax>()
+                    .Where(name => name.Identifier.ValueText == "IMediatorOutcomeHandler")
+                    .Select(name => (Handler: name, Outcome: name.TypeArgumentList.Arguments.Last()))
+                    .Where(item => !GetTypeName(item.Outcome).EndsWith("Outcome", StringComparison.Ordinal))
+                    .Select(name => ArchitectureSources.Describe(
+                        source,
+                        name.Handler,
+                        $"mediator endpoint handler outcome '{GetTypeName(name.Outcome)}' must be a closed *Outcome type")));
         var fsharpViolations = ArchitectureSources.ProductionFSharp()
-            .Where(source => source.RelativePath.Contains(
-                ".Application/Endpoints/",
-                StringComparison.Ordinal))
+            .Where(source => source.RelativePath.Contains(".Application/Endpoints/", StringComparison.Ordinal))
             .SelectMany(source => source.Lines
-                .Select(line => (
-                    Line: line,
+                .Select(line => (Line: line,
                     Match: Regex.Match(
                         line.Text,
                         @"\bIMediatorOutcomeHandler\s*<[^,]+,\s*([A-Za-z0-9_.']+)\s*>",
                         RegexOptions.CultureInvariant)))
                 .Where(item => item.Match.Success &&
-                               !item.Match.Groups[1].Value.EndsWith(
-                                   "Outcome",
-                                   StringComparison.Ordinal))
+                    !item.Match.Groups[1].Value.EndsWith("Outcome", StringComparison.Ordinal))
                 .Select(item => ArchitectureSources.Describe(
                     source,
                     item.Line.Number,
@@ -269,15 +273,17 @@ public sealed class ArchitectureBoundaryTests
             """,
             $"/src/features/Example/Example.Application/{path}");
 
-        Assert.DoesNotContain(diagnostics, diagnostic =>
-            diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId);
+        Assert.DoesNotContain(
+            diagnostics,
+            diagnostic => diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId);
     }
 
     [Theory]
     [InlineData("/src/features/Example/Example.Migrations/ExampleMigration.cs", false)]
     [InlineData("/src/features/Example/Example.Application/Migrations/ExampleMigration.cs", false)]
     [InlineData("/src/features/Example/Example.Application/Endpoints/Migrations/Example.cs", true)]
-    public async Task MongoApplicationBoundaryAnalyzer_RecognizesTheSeparateMigrationProjectRole(string path,
+    public async Task MongoApplicationBoundaryAnalyzer_RecognizesTheSeparateMigrationProjectRole(
+        string path,
         bool rejected)
     {
         var diagnostics = await AnalyzeAsync(
@@ -287,9 +293,11 @@ public sealed class ArchitectureBoundaryTests
             {
                 public FilterDefinition<string> All() => Builders<string>.Filter.Empty;
             }
-            """, path);
-        Assert.Equal(rejected, diagnostics.Any(diagnostic =>
-            diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
+            """,
+            path);
+        Assert.Equal(
+            rejected,
+            diagnostics.Any(diagnostic => diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 
     [Theory]
@@ -312,27 +320,29 @@ public sealed class ArchitectureBoundaryTests
             {
                 public FilterDefinition<string> All() => Builders<string>.Filter.Empty;
             }
-            """, $"src/features/SourceBuilds/SourceBuilds.Application/Persistence/Jobs/{name}");
-        Assert.Equal(3, diagnostics.Count(diagnostic =>
-            diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
+            """,
+            $"src/features/SourceBuilds/SourceBuilds.Application/Persistence/Jobs/{name}");
+        Assert.Equal(
+            3,
+            diagnostics.Count(diagnostic => diagnostic.Id == MongoApplicationBoundaryAnalyzer.DiagnosticId));
     }
 
     [Fact]
     public void RuntimeMongoFilters_AreDefinedByNamedFilterHelpers()
     {
         var violations = ArchitectureSources.RuntimeApplicationCSharp()
-            .SelectMany(source => source.Root.DescendantNodes()
-                .OfType<MemberAccessExpressionSyntax>()
-                .Where(IsMongoFilterBuilder)
-                .Where(filter => !filter.AncestorsAndSelf()
-                    .OfType<ClassDeclarationSyntax>()
-                    .Any(@class => @class.Identifier.ValueText.EndsWith(
-                        "Filters",
-                        StringComparison.Ordinal)))
-                .Select(filter => ArchitectureSources.Describe(
-                    source,
-                    filter,
-                    "Mongo filter must be defined in a named *Filters helper")))
+            .SelectMany(source =>
+                source.Root
+                    .DescendantNodes()
+                    .OfType<MemberAccessExpressionSyntax>()
+                    .Where(IsMongoFilterBuilder)
+                    .Where(filter => !filter.AncestorsAndSelf()
+                        .OfType<ClassDeclarationSyntax>()
+                        .Any(@class => @class.Identifier.ValueText.EndsWith("Filters", StringComparison.Ordinal)))
+                    .Select(filter => ArchitectureSources.Describe(
+                        source,
+                        filter,
+                        "Mongo filter must be defined in a named *Filters helper")))
             .ToArray();
 
         var fsharpViolations = ArchitectureSources.RuntimeApplicationFSharp()
@@ -357,18 +367,22 @@ public sealed class ArchitectureBoundaryTests
         var identities = ArchitectureSources.ProductionCSharp()
             .Where(source => source.RelativePath.StartsWith("src/features/", StringComparison.Ordinal) &&
                 source.RelativePath.Contains(".Migrations/", StringComparison.Ordinal))
-            .SelectMany(source => source.Root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .SelectMany(source => source.Root
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
                 .Where(type => type.BaseList?.Types.Any(item => GetTypeName(item.Type) == "IMigration") == true)
-                .SelectMany(type => type.Members.OfType<PropertyDeclarationSyntax>()
+                .SelectMany(type => type.Members
+                    .OfType<PropertyDeclarationSyntax>()
                     .Where(property => property.Identifier.ValueText == "Id")
-                    .SelectMany(property => property.DescendantNodes().OfType<LiteralExpressionSyntax>()
+                    .SelectMany(property => property.DescendantNodes()
+                        .OfType<LiteralExpressionSyntax>()
                         .Where(literal => literal.IsKind(SyntaxKind.StringLiteralExpression) &&
                             Regex.IsMatch(literal.Token.ValueText, "^[0-9a-fA-F]{24}$"))
                         .Select(literal => new
                         {
                             Feature = source.RelativePath.Split('/')[2],
                             Id = literal.Token.ValueText.ToLowerInvariant(),
-                            Location = ArchitectureSources.Describe(source, literal, "Migration ID")
+                            Location = ArchitectureSources.Describe(source, literal, "Migration ID"),
                         }))))
             .ToArray();
 
@@ -381,9 +395,10 @@ public sealed class ArchitectureBoundaryTests
                 {
                     Feature = source.RelativePath.Split('/')[2],
                     Id = match.Groups[1].Value.ToLowerInvariant(),
-                    Location = source.RelativePath
+                    Location = source.RelativePath,
                 }));
-        var duplicates = identities.Concat(fsharpIdentities).GroupBy(item => (item.Feature, item.Id))
+        var duplicates = identities.Concat(fsharpIdentities)
+            .GroupBy(item => (item.Feature, item.Id))
             .Where(group => group.Count() > 1)
             .Select(group => $"Duplicate migration ID {group.Key.Id} in {group.Key.Feature}: " +
                 string.Join(", ", group.Select(item => item.Location)))
@@ -395,26 +410,29 @@ public sealed class ArchitectureBoundaryTests
     public void ServerComposition_UsesFeatureRegistrationEntryPoints()
     {
         var program = ArchitectureSources.ServerProgram();
-        Assert.Contains(program.Root.DescendantNodes().OfType<InvocationExpressionSyntax>(),
+        Assert.Contains(
+            program.Root.DescendantNodes().OfType<InvocationExpressionSyntax>(),
             invocation => GetInvokedMethodName(invocation) == "AddPolePlatform");
-        var hosting = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(
-            Path.Combine(ArchitectureSources.RepositoryRoot, "src/api/Pole.Platform.Hosting/PolePlatform.cs")));
-        var invokedMethods = program.Root.DescendantNodes().Concat(hosting.GetRoot().DescendantNodes())
+        var hosting = CSharpSyntaxTree.ParseText(
+            File.ReadAllText(
+                Path.Combine(ArchitectureSources.RepositoryRoot, "src/api/Pole.Platform.Hosting/PolePlatform.cs")));
+        var invokedMethods = program.Root
+            .DescendantNodes()
+            .Concat(hosting.GetRoot().DescendantNodes())
             .OfType<InvocationExpressionSyntax>()
             .Select(GetInvokedMethodName)
             .Where(name => name is not null)
             .Select(name => name!)
             .ToHashSet(StringComparer.Ordinal);
 
-        var missingEntryPoints = FeatureRegistrationMethods
-            .Where(method => !invokedMethods.Contains(method))
-            .Select(method =>
-                $"{program.RelativePath}: feature registration '{method}' is not composed by Pole.Server")
+        var missingEntryPoints = FeatureRegistrationMethods.Where(method => !invokedMethods.Contains(method))
+            .Select(method => $"{program.RelativePath}: feature registration '{method}' is not composed by Pole.Server")
             .ToArray();
 
         AssertNoViolations(missingEntryPoints);
 
-        var mongoImplementationReferences = program.Root.DescendantNodes()
+        var mongoImplementationReferences = program.Root
+            .DescendantNodes()
             .OfType<SimpleNameSyntax>()
             .Where(name => name.Identifier.ValueText.StartsWith("Mongo", StringComparison.Ordinal))
             .Select(name => ArchitectureSources.Describe(
@@ -430,8 +448,9 @@ public sealed class ArchitectureBoundaryTests
     public void ServerComposition_DoesNotOwnFeatureImplementationDetails()
     {
         var sources = ArchitectureSources.ServerCSharp().ToArray();
-        var symbolViolations = sources
-            .SelectMany(source => source.Root.DescendantNodes()
+        var symbolViolations = sources.SelectMany(source =>
+            source.Root
+                .DescendantNodes()
                 .OfType<SimpleNameSyntax>()
                 .Where(name => ServerFeatureImplementationSymbols.Contains(
                     name.Identifier.ValueText,
@@ -440,8 +459,9 @@ public sealed class ArchitectureBoundaryTests
                     source,
                     name,
                     $"feature implementation symbol '{name.Identifier.ValueText}' belongs in its feature registration")));
-        var recurringJobViolations = sources
-            .SelectMany(source => source.Root.DescendantNodes()
+        var recurringJobViolations = sources.SelectMany(source =>
+            source.Root
+                .DescendantNodes()
                 .OfType<SimpleNameSyntax>()
                 .Where(name => name.Identifier.ValueText == "RecurringJob")
                 .Select(name => ArchitectureSources.Describe(
@@ -453,37 +473,31 @@ public sealed class ArchitectureBoundaryTests
     }
 
     private static bool IsMongoFilterBuilder(MemberAccessExpressionSyntax memberAccess) =>
-        memberAccess.Name.Identifier.ValueText == "Filter" &&
-        memberAccess.Expression.DescendantNodesAndSelf()
+        memberAccess.Name.Identifier.ValueText == "Filter" && memberAccess.Expression
+            .DescendantNodesAndSelf()
             .OfType<SimpleNameSyntax>()
             .Any(name => name.Identifier.ValueText == "Builders");
 
-    private static string? GetInvokedMethodName(InvocationExpressionSyntax invocation) =>
-        invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax { Name: SimpleNameSyntax name } => name.Identifier.ValueText,
-            SimpleNameSyntax name => name.Identifier.ValueText,
-            _ => null
-        };
+    private static string? GetInvokedMethodName(InvocationExpressionSyntax invocation) => invocation.Expression switch
+    {
+        MemberAccessExpressionSyntax { Name: SimpleNameSyntax name } => name.Identifier.ValueText,
+        SimpleNameSyntax name => name.Identifier.ValueText,
+        _ => null,
+    };
 
     private static string GetTypeName(TypeSyntax type) => type switch
     {
         SimpleNameSyntax name => name.Identifier.ValueText,
         QualifiedNameSyntax qualified => GetTypeName(qualified.Right),
         AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
-        _ => type.ToString()
+        _ => type.ToString(),
     };
 
-    private static async Task<IReadOnlyCollection<Diagnostic>> AnalyzeAsync(
-        string source,
-        string filePath)
+    private static async Task<IReadOnlyCollection<Diagnostic>> AnalyzeAsync(string source, string filePath)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
-        var compilation = CSharpCompilation.Create(
-            "ArchitectureAnalyzerTests",
-            [syntaxTree]);
-        var compilationWithAnalyzers = compilation.WithAnalyzers(
-            [new MongoApplicationBoundaryAnalyzer()]);
+        var compilation = CSharpCompilation.Create("ArchitectureAnalyzerTests", [syntaxTree]);
+        var compilationWithAnalyzers = compilation.WithAnalyzers([new MongoApplicationBoundaryAnalyzer()]);
 
         return await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
     }
@@ -493,25 +507,16 @@ public sealed class ArchitectureBoundaryTests
         IEnumerable<string> symbols,
         Func<string, string> message)
     {
-        var symbolPatterns = symbols
-            .Select(symbol => (
-                Symbol: symbol,
-                Pattern: new Regex(
-                    $@"\b{Regex.Escape(symbol)}\b",
-                    RegexOptions.CultureInvariant)))
+        var symbolPatterns = symbols.Select(symbol => (Symbol: symbol,
+                Pattern: new Regex($@"\b{Regex.Escape(symbol)}\b", RegexOptions.CultureInvariant)))
             .ToArray();
 
         return sources.SelectMany(source => source.Lines.SelectMany(line =>
-            symbolPatterns
-                .Where(item => item.Pattern.IsMatch(line.Text))
-                .Select(item => ArchitectureSources.Describe(
-                    source,
-                    line.Number,
-                    message(item.Symbol)))));
+            symbolPatterns.Where(item => item.Pattern.IsMatch(line.Text))
+                .Select(item => ArchitectureSources.Describe(source, line.Number, message(item.Symbol)))));
     }
 
-    private static void AssertNoViolations(IReadOnlyCollection<string> violations) =>
-        Assert.True(
-            violations.Count == 0,
-            $"Architecture boundary violations:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+    private static void AssertNoViolations(IReadOnlyCollection<string> violations) => Assert.True(
+        violations.Count == 0,
+        $"Architecture boundary violations:{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
 }

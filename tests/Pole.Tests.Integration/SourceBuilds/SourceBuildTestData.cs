@@ -7,11 +7,22 @@ namespace Pole.Tests.Integration.SourceBuilds;
 
 internal static class SourceBuildTestData
 {
-    public static async Task SeedRepositoryAsync(MongoTestStore store, SourceBuildConfiguration configuration, string actorUserId)
+    public static async Task SeedRepositoryAsync(
+        MongoTestStore store,
+        SourceBuildConfiguration configuration,
+        string actorUserId)
     {
-        var connection = GitProviderConnectionFactory.Create(configuration.TenantId, "application-github",
-            GitProviderKind.GitHub, "installation-" + configuration.Id, "account", "owner", GitProviderAccountType.User,
-            GitProviderRepositorySelection.All, actorUserId, GitProviderConnectionFactory.DefaultOptions);
+        var connection = GitProviderConnectionFactory.Create(
+            configuration.TenantId,
+            "application-github",
+            GitProviderKind.GitHub,
+            "installation-" + configuration.Id,
+            "account",
+            "owner",
+            GitProviderAccountType.User,
+            GitProviderRepositorySelection.All,
+            actorUserId,
+            GitProviderConnectionFactory.DefaultOptions);
         await store.GitProviderConnections.InsertOneAsync(connection);
         await store.SourceRepositories.InsertOneAsync(Repository(configuration, connection.Id));
     }
@@ -24,8 +35,8 @@ internal static class SourceBuildTestData
             Body = request.Body with
             {
                 CreationMode = WebServiceCreationMode.SourceBuild,
-                Spec = request.Body.Spec with { Image = null }
-            }
+                Spec = request.Body.Spec with { Image = null },
+            },
         };
     }
 
@@ -39,5 +50,8 @@ internal static class SourceBuildTestData
             "https://github.com/owner/application",
             true,
             "main",
-            new(configuration.SourceRepositoryId, configuration.CreatedAtUtc, configuration.CreatedAtUtc));
+            new SourceRepositoryFactory.CreateOptions(
+                configuration.SourceRepositoryId,
+                configuration.CreatedAtUtc,
+                configuration.CreatedAtUtc));
 }

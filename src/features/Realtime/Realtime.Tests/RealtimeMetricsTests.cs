@@ -19,44 +19,54 @@ public sealed class RealtimeMetricsTests
         using var capture = new MetricCapture(meter);
         using var metrics = new RealtimeMetrics(meter);
         var clock = new Clock();
-        var registry = new RealtimeTopicRegistry([new("registered", RealtimeScope.User)], new());
+        var registry = new RealtimeTopicRegistry(
+            [new RealtimeTopic("registered", RealtimeScope.User)],
+            new RealtimeOptions());
         var access = Access(registry);
         var tickets = new MemoryTickets();
         await tickets.StoreAsync(Ticket(clock));
         var subscriptions = new MemorySubscriptions();
-        await subscriptions.ReplaceAsync("connection-private",
+        await subscriptions.ReplaceAsync(
+            "connection-private",
             [
-                new("subscription-private",
+                new RealtimeSubscription(
+                    "subscription-private",
                     "connection-private",
                     "viewer",
-                    new("registered", ResourceId: "viewer"),
-                    clock.Now.AddMinutes(1))
+                    new RealtimeSubscriptionRequest("registered", ResourceId: "viewer"),
+                    clock.Now.AddMinutes(1)),
             ],
             default);
         var client = new Client();
-        var publisher = new RealtimePublisher(subscriptions,
+        var publisher = new RealtimePublisher(
+            subscriptions,
             tickets,
             access,
             registry,
             new HubContext(client),
             clock,
             metrics);
-        await publisher.PublishAsync(new("registered", ResourceId: "viewer"));
-        await publisher.PublishAsync(new("unregistered-secret-canary", ResourceId: "resource-secret-canary"));
+        await publisher.PublishAsync(new RealtimeChange("registered", ResourceId: "viewer"));
+        await publisher.PublishAsync(
+            new RealtimeChange("unregistered-secret-canary", ResourceId: "resource-secret-canary"));
         var hub = new RealtimeHub(subscriptions, tickets, access, [], clock, metrics)
         {
             Context = new Context(),
-            Clients = new RecordingClients(client)
+            Clients = new RecordingClients(client),
         };
         await hub.OnConnectedAsync();
-        await hub.Subscribe([new("registered", ResourceId: "viewer"), new("unregistered-secret-canary")]);
+        await hub.Subscribe(
+        [
+            new RealtimeSubscriptionRequest("registered", ResourceId: "viewer"),
+            new RealtimeSubscriptionRequest("unregistered-secret-canary"),
+        ]);
         var beforeHeartbeat = capture.Sum("pole.realtime.coverage.transitions");
         await hub.Heartbeat();
         Assert.Equal(beforeHeartbeat, capture.Sum("pole.realtime.coverage.transitions"));
-        Assert.True(await hub.ReportClientLifecycle(new(2, 3)));
-        Assert.False(await hub.ReportClientLifecycle(new(100, 100)));
+        Assert.True(await hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(2, 3)));
+        Assert.False(await hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(100, 100)));
         clock.Now += TimeSpan.FromSeconds(10);
-        Assert.True(await hub.ReportClientLifecycle(new(1, 0)));
+        Assert.True(await hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(1, 0)));
         await hub.Unsubscribe();
         await hub.OnDisconnectedAsync(null);
         Assert.Equal(2, capture.Sum("pole.realtime.delivery.attempts"));
@@ -64,23 +74,27 @@ public sealed class RealtimeMetricsTests
         Assert.Equal(3, capture.Sum("pole.realtime.reconnects"));
         Assert.Equal(4, capture.Sum("pole.realtime.fallbacks"));
         Assert.Equal(2, capture.Sum("pole.realtime.connections.transitions"));
-        Assert.Contains(capture.Measurements,
+        Assert.Contains(
+            capture.Measurements,
             item => item.Name == "pole.realtime.delivery.duration" && item.Value >= 0);
-        Assert.All(capture.Measurements.SelectMany(item => item.Tags),
+        Assert.All(
+            capture.Measurements.SelectMany(item => item.Tags),
             tag =>
             {
                 Assert.Contains(tag.Key, new[] { "topic", "scope", "outcome", "source" });
-                Assert.Contains(tag.Value?.ToString(),
+                Assert.Contains(
+                    tag.Value?.ToString(),
                     new[]
                     {
                         "registered", "unknown", "user", "sent", "unavailable", "connected", "disconnected",
                         "subscribed",
-                        "released", "covered", "uncovered", "server", "client"
+                        "released", "covered", "uncovered", "server", "client",
                     });
             });
-        Assert.DoesNotContain(capture.Measurements.SelectMany(item => item.Tags),
+        Assert.DoesNotContain(
+            capture.Measurements.SelectMany(item => item.Tags),
             tag => tag.Value?.ToString()?.Contains("private", StringComparison.Ordinal) == true ||
-                   tag.Value?.ToString()?.Contains("canary", StringComparison.Ordinal) == true);
+                tag.Value?.ToString()?.Contains("canary", StringComparison.Ordinal) == true);
     }
 
     [Theory]
@@ -93,23 +107,28 @@ public sealed class RealtimeMetricsTests
         using var capture = new MetricCapture(meter);
         using var metrics = new RealtimeMetrics(meter);
         var clock = new Clock();
-        var registry = new RealtimeTopicRegistry([new("registered", RealtimeScope.User)], new());
+        var registry = new RealtimeTopicRegistry(
+            [new RealtimeTopic("registered", RealtimeScope.User)],
+            new RealtimeOptions());
         var tickets = new MemoryTickets();
         await tickets.StoreAsync(Ticket(clock));
         var subscriptions = new MemorySubscriptions();
         if (expected != "no_recipients")
-            await subscriptions.ReplaceAsync("connection-private",
+            await subscriptions.ReplaceAsync(
+                "connection-private",
                 [
-                    new("subscription-private",
+                    new RealtimeSubscription(
+                        "subscription-private",
                         "connection-private",
                         "viewer",
-                        new("registered", ResourceId: "viewer"),
-                        clock.Now.AddMinutes(1))
+                        new RealtimeSubscriptionRequest("registered", ResourceId: "viewer"),
+                        clock.Now.AddMinutes(1)),
                 ],
                 default);
         var failure = new IOException("private-send-message");
         var client = new Client { SendFailure = expected == "failed" ? failure : null };
-        var publisher = new RealtimePublisher(subscriptions,
+        var publisher = new RealtimePublisher(
+            subscriptions,
             tickets,
             Access(registry),
             registry,
@@ -120,17 +139,21 @@ public sealed class RealtimeMetricsTests
         if (expected == "cancelled")
             lifetime.Cancel();
         if (expected == "failed")
-            Assert.Same(failure,
-                await Assert.ThrowsAsync<IOException>(() =>
-                    publisher.PublishAsync(new("registered", ResourceId: "viewer"), lifetime.Token)));
+            Assert.Same(
+                failure,
+                await Assert.ThrowsAsync<IOException>(() => publisher.PublishAsync(
+                    new RealtimeChange("registered", ResourceId: "viewer"),
+                    lifetime.Token)));
         else if (expected == "cancelled")
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-                publisher.PublishAsync(new("registered", ResourceId: "viewer"), lifetime.Token));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => publisher.PublishAsync(
+                new RealtimeChange("registered", ResourceId: "viewer"),
+                lifetime.Token));
         else
-            await publisher.PublishAsync(new("registered", ResourceId: "viewer"), lifetime.Token);
+            await publisher.PublishAsync(new RealtimeChange("registered", ResourceId: "viewer"), lifetime.Token);
         Assert.Equal(1, capture.Sum("pole.realtime.delivery.attempts"));
         Assert.Equal(expected == "failed" ? 1 : 0, capture.Sum("pole.realtime.delivery.recipients"));
-        Assert.All(capture.Measurements.SelectMany(item => item.Tags),
+        Assert.All(
+            capture.Measurements.SelectMany(item => item.Tags),
             tag =>
             {
                 Assert.Contains(tag.Key, new[] { "topic", "scope", "outcome" });
@@ -149,14 +172,21 @@ public sealed class RealtimeMetricsTests
         using var metrics = new RealtimeMetrics();
         var tickets = new MemoryTickets
         {
-            RetrieveFailure = new InvalidOperationException("Must not read authority for invalid shape")
+            RetrieveFailure = new InvalidOperationException("Must not read authority for invalid shape"),
         };
         var subscriptions = new MemorySubscriptions();
-        var hub = new RealtimeHub(subscriptions, tickets, Access(new([], new())), [], new Clock(), metrics)
+        var hub = new RealtimeHub(
+            subscriptions,
+            tickets,
+            Access(new RealtimeTopicRegistry([], new RealtimeOptions())),
+            [],
+            new Clock(),
+            metrics)
         {
-            Context = new Context()
+            Context = new Context(),
         };
-        await Assert.ThrowsAsync<HubException>(() => hub.ReportClientLifecycle(new(reconnects, fallbacks)));
+        await Assert.ThrowsAsync<HubException>(() =>
+            hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(reconnects, fallbacks)));
         Assert.Equal(0, subscriptions.ReplaceCalls);
         Assert.Equal(0, subscriptions.RemoveCalls);
         Assert.Empty(subscriptions.RevocationChecks);
@@ -180,21 +210,32 @@ public sealed class RealtimeMetricsTests
         if (reason == "expired")
             ticket.Properties.ExpiresUtc = clock.Now;
         if (reason == "foreign")
-            ticket = new(IdentityFixture.User("other"), ticket.Properties, RealtimeFeature.CookieScheme);
+            ticket = new AuthenticationTicket(
+                IdentityFixture.User("other"),
+                ticket.Properties,
+                RealtimeFeature.CookieScheme);
         if (reason != "missing")
             tickets.Tickets["viewer"] = ticket;
         if (reason == "revoked")
             subscriptions.Revoked.Add("viewer");
         if (reason == "storage-failure")
             tickets.RetrieveFailure = new IOException("private-infrastructure-message");
-        var hub = new RealtimeHub(subscriptions, tickets, Access(new([], new())), [], clock, metrics)
+        var hub = new RealtimeHub(
+            subscriptions,
+            tickets,
+            Access(new RealtimeTopicRegistry([], new RealtimeOptions())),
+            [],
+            clock,
+            metrics)
         {
-            Context = new Context()
+            Context = new Context(),
         };
         if (reason == "storage-failure")
-            await Assert.ThrowsAsync<IOException>(() => hub.ReportClientLifecycle(new(1, 1)));
+            await Assert.ThrowsAsync<IOException>(() =>
+                hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(1, 1)));
         else
-            await Assert.ThrowsAsync<HubException>(() => hub.ReportClientLifecycle(new(1, 1)));
+            await Assert.ThrowsAsync<HubException>(() =>
+                hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(1, 1)));
         Assert.Equal(0, capture.Sum("pole.realtime.reconnects"));
         Assert.Equal(0, capture.Sum("pole.realtime.fallbacks"));
         Assert.Equal(0, subscriptions.ReplaceCalls);
@@ -209,30 +250,41 @@ public sealed class RealtimeMetricsTests
         var tickets = new MemoryTickets();
         var subscriptions = new MemorySubscriptions();
         await tickets.StoreAsync(Ticket(clock));
-        var hub = new RealtimeHub(subscriptions, tickets, Access(new([], new())), [], clock, metrics)
+        var hub = new RealtimeHub(
+            subscriptions,
+            tickets,
+            Access(new RealtimeTopicRegistry([], new RealtimeOptions())),
+            [],
+            clock,
+            metrics)
         {
-            Context = new Context()
+            Context = new Context(),
         };
-        Assert.True(await hub.ReportClientLifecycle(new(1, 1)));
+        Assert.True(await hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(1, 1)));
         subscriptions.Revoked.Add("viewer");
-        await Assert.ThrowsAsync<HubException>(() => hub.ReportClientLifecycle(new(1, 1)));
+        await Assert.ThrowsAsync<HubException>(() =>
+            hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(1, 1)));
         Assert.Equal(2, subscriptions.RevocationChecks.Count);
         Assert.Equal(0, subscriptions.RemoveCalls);
         subscriptions.Revoked.Clear();
         subscriptions.OnRevocationCheck = () => clock.Now += TimeSpan.FromMinutes(1);
-        await Assert.ThrowsAsync<HubException>(() => hub.ReportClientLifecycle(new(1, 1)));
+        await Assert.ThrowsAsync<HubException>(() =>
+            hub.ReportClientLifecycle(new RealtimeClientLifecycleReport(1, 1)));
         Assert.Equal(0, subscriptions.RemoveCalls);
     }
 
-    private static RealtimeAccess Access(RealtimeTopicRegistry registry) => new((request, _, _) =>
-            throw new InvalidOperationException("Metrics cannot authorize a tenant."),
+    private static RealtimeAccess Access(RealtimeTopicRegistry registry) => new(
+        (
+            request, _,
+            _) => throw new InvalidOperationException("Metrics cannot authorize a tenant."),
         (_, _) => throw new InvalidOperationException("Metrics cannot load a tenant."),
         registry);
 
-    private static AuthenticationTicket Ticket(Clock clock) => new(IdentityFixture.User(),
-        new()
+    private static AuthenticationTicket Ticket(Clock clock) => new(
+        IdentityFixture.User(),
+        new AuthenticationProperties
         {
-            ExpiresUtc = clock.Now.AddMinutes(1)
+            ExpiresUtc = clock.Now.AddMinutes(1),
         },
         RealtimeFeature.CookieScheme);
 
@@ -274,14 +326,18 @@ public sealed class RealtimeMetricsTests
             throw new InvalidOperationException("Diagnostic reports cannot revoke access.");
     }
 
-    private sealed class HubContext(Client client) : IHubContext<RealtimeHub, IRealtimeClient>
+    private sealed class HubContext(
+        Client client
+    ) : IHubContext<RealtimeHub, IRealtimeClient>
     {
         public IHubClients<IRealtimeClient> Clients { get; } = new RecordingClients(client);
 
         public IGroupManager Groups => throw new NotSupportedException();
     }
 
-    private sealed class RecordingClients(Client client) : IHubCallerClients<IRealtimeClient>
+    private sealed class RecordingClients(
+        Client client
+    ) : IHubCallerClients<IRealtimeClient>
     {
         public IRealtimeClient Caller => client;
         public IRealtimeClient Others => client;
@@ -300,12 +356,11 @@ public sealed class RealtimeMetricsTests
     private sealed record Measurement(
         string Name,
         double Value,
-        KeyValuePair<string, object?>[] Tags);
+        KeyValuePair<string, object?>[] Tags
+    );
 
     private sealed class MetricCapture : IDisposable
     {
-        public ConcurrentQueue<Measurement> Measurements { get; } = new();
-
         private readonly MeterListener listener = new();
 
         public MetricCapture(Meter meter)
@@ -315,14 +370,18 @@ public sealed class RealtimeMetricsTests
                 if (ReferenceEquals(instrument.Meter, meter))
                     owner.EnableMeasurementEvents(instrument);
             };
-            listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-                Measurements.Enqueue(new(instrument.Name, value, tags.ToArray())));
-            listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
-                Measurements.Enqueue(new(instrument.Name, value, tags.ToArray())));
+            listener.SetMeasurementEventCallback<long>((
+                instrument, value,
+                tags, _) => Measurements.Enqueue(new Measurement(instrument.Name, value, tags.ToArray())));
+            listener.SetMeasurementEventCallback<double>((
+                instrument, value,
+                tags, _) => Measurements.Enqueue(new Measurement(instrument.Name, value, tags.ToArray())));
             listener.Start();
         }
 
-        public double Sum(string name) => Measurements.Where(item => item.Name == name).Sum(item => item.Value);
+        public ConcurrentQueue<Measurement> Measurements { get; } = new();
         public void Dispose() => listener.Dispose();
+
+        public double Sum(string name) => Measurements.Where(item => item.Name == name).Sum(item => item.Value);
     }
 }

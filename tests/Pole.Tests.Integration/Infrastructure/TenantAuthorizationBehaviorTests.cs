@@ -16,13 +16,9 @@ public sealed class TenantAuthorizationBehaviorTests
         var behavior = CreateBehavior<WriteRequest>(tenantContext: null);
         var nextCalled = false;
 
-        var result = await behavior.Handle(
-            new WriteRequest(null),
-            Next,
-            CancellationToken.None);
+        var result = await behavior.Handle(new WriteRequest(null), Next, CancellationToken.None);
 
-        var rejected = Assert.IsType<RequestValidationRejected>(
-            AssertRejected(result));
+        var rejected = Assert.IsType<RequestValidationRejected>(AssertRejected(result));
         Assert.Contains(TenantHeaders.TenantId, rejected.Errors.Keys);
         Assert.False(nextCalled);
         return;
@@ -51,19 +47,14 @@ public sealed class TenantAuthorizationBehaviorTests
     public async Task WriteOperationReportsTheMinimumTenantRole()
     {
         var behavior = CreateBehavior<WriteRequest>(
-            new TenantContext(
-                "tenant-1",
-                "Tenant 1",
-                TenantRole.Viewer,
-                IsPlatformAdmin: false));
+            new TenantContext("tenant-1", "Tenant 1", TenantRole.Viewer, IsPlatformAdmin: false));
 
         var result = await behavior.Handle(
             new WriteRequest("tenant-1"),
             () => Task.FromResult<MediatorResult<string>>("handled"),
             CancellationToken.None);
 
-        var rejected = Assert.IsType<TenantRoleRequired>(
-            AssertRejected(result));
+        var rejected = Assert.IsType<TenantRoleRequired>(AssertRejected(result));
         Assert.Equal(TenantRole.Member, rejected.MinimumRole);
     }
 
@@ -71,11 +62,7 @@ public sealed class TenantAuthorizationBehaviorTests
     public async Task ViewerCanContinueAReadOperation()
     {
         var behavior = CreateBehavior<ReadRequest>(
-            new TenantContext(
-                "tenant-1",
-                "Tenant 1",
-                TenantRole.Viewer,
-                IsPlatformAdmin: false));
+            new TenantContext("tenant-1", "Tenant 1", TenantRole.Viewer, IsPlatformAdmin: false));
 
         var result = await behavior.Handle(
             new ReadRequest("tenant-1"),
@@ -93,9 +80,7 @@ public sealed class TenantAuthorizationBehaviorTests
     [Fact]
     public async Task PlatformAdministratorCannotContinueWithoutTenantContext()
     {
-        var behavior = CreateBehavior<WriteRequest>(
-            tenantContext: null,
-            new Claim(Claims.Roles, Roles.Admin));
+        var behavior = CreateBehavior<WriteRequest>(tenantContext: null, new Claim(Claims.Roles, Roles.Admin));
 
         var result = await behavior.Handle(
             new WriteRequest("tenant-1"),
@@ -110,10 +95,11 @@ public sealed class TenantAuthorizationBehaviorTests
     [InlineData(true)]
     public async Task ARequestCannotUseAnotherTenantEvenForAPlatformAdmin(bool admin)
     {
-        var behavior = CreateBehavior<WriteRequest>(
-            new TenantContext("tenant-1", "Tenant 1", TenantRole.Owner, admin));
-        var result = await behavior.Handle(new WriteRequest("tenant-2"),
-            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+        var behavior = CreateBehavior<WriteRequest>(new TenantContext("tenant-1", "Tenant 1", TenantRole.Owner, admin));
+        var result = await behavior.Handle(
+            new WriteRequest("tenant-2"),
+            () => throw new XunitException("Handler must not execute."),
+            CancellationToken.None);
         Assert.IsType<TenantContextMismatch>(AssertRejected(result));
     }
 
@@ -122,15 +108,17 @@ public sealed class TenantAuthorizationBehaviorTests
     {
         var request = new PlatformRequest("target-tenant");
         var unauthorized = CreateBehavior<PlatformRequest>(tenantContext: null);
-        var result = await unauthorized.Handle(request,
-            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+        var result = await unauthorized.Handle(
+            request,
+            () => throw new XunitException("Handler must not execute."),
+            CancellationToken.None);
         Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
 
-        var authorized = CreateBehavior<PlatformRequest>(
-            null,
-            new Claim(Claims.Roles, Roles.Admin));
-        var allowed = await authorized.Handle(request,
-            () => Task.FromResult<MediatorResult<string>>("handled"), CancellationToken.None);
+        var authorized = CreateBehavior<PlatformRequest>(null, new Claim(Claims.Roles, Roles.Admin));
+        var allowed = await authorized.Handle(
+            request,
+            () => Task.FromResult<MediatorResult<string>>("handled"),
+            CancellationToken.None);
         Assert.Equal("handled", allowed.Match(value => value, _ => "rejected"));
     }
 
@@ -139,53 +127,53 @@ public sealed class TenantAuthorizationBehaviorTests
     {
         var context = new DefaultHttpContext
         {
-            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(Claims.Roles, Roles.Admin)]))
+            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(Claims.Roles, Roles.Admin)])),
         };
         var behavior = new TenantAuthorizationBehavior<PlatformRequest, string>(
-            new TenantContextAccessor(), new HttpContextAccessor { HttpContext = context });
-        var result = await behavior.Handle(new PlatformRequest("tenant-1"),
-            () => throw new XunitException("Handler must not execute."), CancellationToken.None);
+            new TenantContextAccessor(),
+            new HttpContextAccessor { HttpContext = context });
+        var result = await behavior.Handle(
+            new PlatformRequest("tenant-1"),
+            () => throw new XunitException("Handler must not execute."),
+            CancellationToken.None);
         Assert.IsType<TenantPlatformAdminRequired>(AssertRejected(result));
     }
 
-    private sealed record PlatformRequest(string TenantId)
-        : IMediatorRequest<string>, IPlatformTenantOperation;
-
-    private static TenantAuthorizationBehavior<TRequest, string>
-        CreateBehavior<TRequest>(
-            TenantContext? tenantContext,
-            params Claim[] claims)
+    private static TenantAuthorizationBehavior<TRequest, string> CreateBehavior<TRequest>(
+        TenantContext? tenantContext,
+        params Claim[] claims)
         where TRequest : IMediatorRequest<string>
     {
         var tenantContextAccessor = new TenantContextAccessor
         {
-            Current = tenantContext
+            Current = tenantContext,
         };
         var httpContextAccessor = new HttpContextAccessor
         {
             HttpContext = new DefaultHttpContext
             {
-                User = new ClaimsPrincipal(
-                    new ClaimsIdentity(claims, "test"))
-            }
+                User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")),
+            },
         };
 
-        return new TenantAuthorizationBehavior<TRequest, string>(
-            tenantContextAccessor,
-            httpContextAccessor);
+        return new TenantAuthorizationBehavior<TRequest, string>(tenantContextAccessor, httpContextAccessor);
     }
 
-    private static IMediatorRejection AssertRejected(
-        MediatorResult<string> result) => result switch
-        {
-            string value => throw new XunitException(
-                $"Expected a pipeline rejection, but received '{value}'."),
-            PipelineRejected rejected => rejected.Reason
-        };
+    private static IMediatorRejection AssertRejected(MediatorResult<string> result) => result switch
+    {
+        string value => throw new XunitException($"Expected a pipeline rejection, but received '{value}'."),
+        PipelineRejected rejected => rejected.Reason,
+    };
 
-    private sealed record WriteRequest(string? TenantId)
-        : IMediatorRequest<string>, ITenantWriteOperation;
+    private sealed record PlatformRequest(
+        string TenantId
+    ) : IMediatorRequest<string>, IPlatformTenantOperation;
 
-    private sealed record ReadRequest(string? TenantId)
-        : IMediatorRequest<string>, ITenantReadOperation;
+    private sealed record WriteRequest(
+        string? TenantId
+    ) : IMediatorRequest<string>, ITenantWriteOperation;
+
+    private sealed record ReadRequest(
+        string? TenantId
+    ) : IMediatorRequest<string>, ITenantReadOperation;
 }

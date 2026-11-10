@@ -1,14 +1,15 @@
-using Pole.Testing;
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
+using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.E2E;
 
 [Collection(PoleE2ECollection.Name)]
-public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
+public sealed class AuthenticationAndGitHubE2ETests(
+    PoleE2EFixture fixture
+)
 {
     private readonly TestTimings _timings = new(typeof(AuthenticationAndGitHubE2ETests));
 
@@ -16,7 +17,8 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
     public async Task Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called()
     {
         using var caseTiming = _timings.Measure("e2e.case");
-        using var testEvidence = new TestPhaseJournal(nameof(Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called)).Activate();
+        using var testEvidence = new TestPhaseJournal(
+            nameof(Tenant_authorization_blocks_foreign_GitHub_installation_before_the_provider_is_called)).Activate();
         using var reset = await fixture.Stub.PostAsync("/__e2e/reset", content: null);
         reset.EnsureSuccessStatusCode();
 
@@ -39,7 +41,9 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
     public async Task GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub()
     {
         using var caseTiming = _timings.Measure("e2e.case");
-        using var testEvidence = new TestPhaseJournal(nameof(GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub)).Activate();
+        using var testEvidence
+            = new TestPhaseJournal(nameof(GitHub_installation_and_OAuth_callback_are_completed_against_the_local_stub))
+                .Activate();
         using var reset = await fixture.Stub.PostAsync("/__e2e/reset", content: null);
         reset.EnsureSuccessStatusCode();
 
@@ -68,7 +72,10 @@ public sealed class AuthenticationAndGitHubE2ETests(PoleE2EFixture fixture)
         using var connections = JsonDocument.Parse(await connectionsResponse.Content.ReadAsStreamAsync());
         Assert.Contains(
             connections.RootElement.EnumerateArray(),
-            connection => string.Equals(connection.GetProperty("accountLogin").GetString(), "pole-e2e", StringComparison.Ordinal));
+            connection => string.Equals(
+                connection.GetProperty("accountLogin").GetString(),
+                "pole-e2e",
+                StringComparison.Ordinal));
 
         var journal = await fixture.Stub.GetFromJsonAsync<JsonElement[]>("/__e2e/requests");
         Assert.NotNull(journal);

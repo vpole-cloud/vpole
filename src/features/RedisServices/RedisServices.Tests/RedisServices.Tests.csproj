@@ -1,30 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <AssemblyName>Pole.Features.RedisServices.Tests</AssemblyName>
-    <RootNamespace>Pole.Features.RedisServices.Tests</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>Pole.Features.RedisServices.Tests</AssemblyName>
+        <RootNamespace>Pole.Features.RedisServices.Tests</RootNamespace>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\RedisServices.Application\RedisServices.Application.csproj" />
-    <ProjectReference Include="..\RedisServices.Domain\RedisServices.Domain.csproj" />
-    <ProjectReference Include="..\..\..\shared\Events\Events.csproj" />
-    <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
-    <ProjectReference Include="..\..\Quotas\Quotas.Application\Quotas.Application.csproj" />
-    <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\RedisServices.Application\RedisServices.Application.csproj"/>
+        <ProjectReference Include="..\RedisServices.Domain\RedisServices.Domain.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Events\Events.csproj"/>
+        <ProjectReference Include="..\..\Quotas\Quotas.Contracts\Quotas.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Quotas\Quotas.Application\Quotas.Application.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj"/>
+    </ItemGroup>
 
 </Project>

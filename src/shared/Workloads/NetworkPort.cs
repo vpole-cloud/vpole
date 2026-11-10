@@ -9,10 +9,9 @@ public readonly record struct NetworkPort
 
     public int Value { get; }
 
-    public static NetworkPort Create(int value) =>
-        value is >= 1 and <= 65535
-            ? new NetworkPort(value)
-            : throw new ArgumentOutOfRangeException(nameof(value), value, "Network port must be between 1 and 65535.");
+    public static NetworkPort Create(int value) => value is >= 1 and <= 65535
+        ? new NetworkPort(value)
+        : throw new ArgumentOutOfRangeException(nameof(value), value, "Network port must be between 1 and 65535.");
 
     public static bool TryCreate(int value, out NetworkPort port)
     {
@@ -30,7 +29,7 @@ public readonly record struct NetworkPort
     {
         port = default;
         return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) &&
-               TryCreate(parsed, out port);
+            TryCreate(parsed, out port);
     }
 
     public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);

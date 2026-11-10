@@ -8,7 +8,8 @@ public sealed record PrivateAccessGrantCreatedEvent(
     string GrantId,
     string SubjectUserId,
     string ResourceDeploymentId,
-    string EndpointId) : IPoleEvent
+    string EndpointId
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = null!;
 }
@@ -16,7 +17,8 @@ public sealed record PrivateAccessGrantCreatedEvent(
 [EntityName("pole.private-access/v1/grant-revoked")]
 public sealed record PrivateAccessGrantRevokedEvent(
     string GrantId,
-    long Revision) : IPoleEvent
+    long Revision
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = null!;
 }
@@ -25,7 +27,8 @@ public sealed record PrivateAccessGrantRevokedEvent(
 public sealed record PrivateAccessSessionIssuedEvent(
     string GrantId,
     string SessionId,
-    string SubjectUserId) : IPoleEvent
+    string SubjectUserId
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = null!;
 }

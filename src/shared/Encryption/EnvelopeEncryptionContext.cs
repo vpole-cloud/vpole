@@ -5,7 +5,7 @@ namespace Pole.Encryption;
 public enum EnvelopeEncryptionScopeKind
 {
     Tenant = 1,
-    Platform = 2
+    Platform = 2,
 }
 
 public sealed class EnvelopeEncryptionContext
@@ -28,7 +28,9 @@ public sealed class EnvelopeEncryptionContext
         ObjectId = Required(objectId, nameof(objectId), MaximumIdentifierBytes);
         ValueName = Required(valueName, nameof(valueName), MaximumNameBytes);
         if (valueVersion < 1)
-            throw new ArgumentOutOfRangeException(nameof(valueVersion), "The protected value version must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(valueVersion),
+                "The protected value version must be positive.");
         ValueVersion = valueVersion;
     }
 
@@ -44,32 +46,33 @@ public sealed class EnvelopeEncryptionContext
         string objectType,
         string objectId,
         string valueName,
-        long valueVersion) =>
-        new(
-            EnvelopeEncryptionScopeKind.Tenant,
-            tenantId,
-            objectType,
-            objectId,
-            valueName,
-            valueVersion);
+        long valueVersion) => new(
+        EnvelopeEncryptionScopeKind.Tenant,
+        tenantId,
+        objectType,
+        objectId,
+        valueName,
+        valueVersion);
 
     public static EnvelopeEncryptionContext ForPlatform(
         string platformScopeId,
         string objectType,
         string objectId,
         string valueName,
-        long valueVersion) =>
-        new(
-            EnvelopeEncryptionScopeKind.Platform,
-            platformScopeId,
-            objectType,
-            objectId,
-            valueName,
-            valueVersion);
+        long valueVersion) => new(
+        EnvelopeEncryptionScopeKind.Platform,
+        platformScopeId,
+        objectType,
+        objectId,
+        valueName,
+        valueVersion);
 
     public override string ToString() => $"EnvelopeEncryptionContext(scope={ScopeKind})";
 
-    private static string Required(string value, string parameterName, int maximumBytes)
+    private static string Required(
+        string value,
+        string parameterName,
+        int maximumBytes)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("The encryption context value is required.", parameterName);

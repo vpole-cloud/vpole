@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using MongoDB.Bson;
 
 namespace Pole.Features.StorageProfiles.Application.Common;
@@ -15,7 +16,7 @@ internal static class StorageOwnerValueRules
         if (string.IsNullOrEmpty(value) || value.Length > maximum)
             return null;
         foreach (var rune in value.EnumerateRunes())
-            if (System.Text.Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format
+            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format
                     or UnicodeCategory.Surrogate || rune.Value == 0xfffd)
                 return null;
         return value;

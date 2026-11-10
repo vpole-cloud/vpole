@@ -6,4 +6,5 @@ namespace Pole.Features.GitProviders.Events;
 [EntityName("pole.git-providers/v1/git-provider-connection-changed")]
 public sealed record GitProviderConnectionChangedEvent(
     string ConnectionId,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;

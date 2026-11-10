@@ -7,7 +7,8 @@ namespace Pole.Features.StorageProfiles.Events;
 public sealed record StorageObservationChangedEvent(
     string DeploymentTargetId,
     long ConnectionVersion,
-    long ObservationVersion) : IPoleEvent
+    long ObservationVersion
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

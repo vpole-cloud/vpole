@@ -3,49 +3,54 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Quotas.Application;
-using Pole.Features.Quotas.Application.Common;
-using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Application.Policies;
 using Pole.Features.Quotas.Application.Reservations;
 using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
-using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
 public sealed class QuotaProductionDiTests
 {
-    private readonly IMongoDatabase database = new MongoClient("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=100").GetDatabase("di-only");
+    private readonly IMongoDatabase database
+        = new MongoClient("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=100").GetDatabase("di-only");
+
     [Fact]
     public void FeatureRegistration_ResolvesTheQuotaCapabilityGraph()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IMongoClient>(database.Client);
-        services.AddSingleton<IMongoDatabase>(database);
+        services.AddSingleton(database);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton(TimeProvider.System);
         var configuration = new ConfigurationBuilder().Build();
         services.AddQuotasFeature(configuration);
 
-        Assert.DoesNotContain(services, descriptor =>
-            descriptor.ServiceType.Name.Contains("QuotaDbContext", StringComparison.Ordinal));
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(ReserveQuotaReservation) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(CommitQuotaReservation) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(CancelQuotaReservation) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(ApplyQuotaUsageDelta) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(IQuotaAdmissionExecutor) &&
-            descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.DoesNotContain(
+            services,
+            descriptor => descriptor.ServiceType.Name.Contains("QuotaDbContext", StringComparison.Ordinal));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ReserveQuotaReservation) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(CommitQuotaReservation) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(CancelQuotaReservation) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ApplyQuotaUsageDelta) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(IQuotaAdmissionExecutor) &&
+                descriptor.Lifetime == ServiceLifetime.Scoped);
 
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -61,6 +66,5 @@ public sealed class QuotaProductionDiTests
     }
 
     private static void AssertResolved<T>(IServiceProvider provider)
-        where T : notnull =>
-        Assert.NotNull(provider.GetRequiredService<T>());
+        where T : notnull => Assert.NotNull(provider.GetRequiredService<T>());
 }

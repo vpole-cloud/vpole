@@ -4,9 +4,7 @@ using Pole.Features.StorageProfiles.Contracts;
 
 namespace Pole.Features.StorageProfiles.Application.Observation;
 
-public union ReadStorageObservationOutcome(
-    StorageObservationSnapshot,
-    KubernetesStorageDiscoveryUnavailable);
+public union ReadStorageObservationOutcome(StorageObservationSnapshot, KubernetesStorageDiscoveryUnavailable);
 
 public sealed class StorageObservationReader(
     IStorageObservationStore store,
@@ -14,9 +12,11 @@ public sealed class StorageObservationReader(
     StorageObservationNativeReader native,
     StorageObservationOptions options,
     TimeProvider clock,
-    StorageObservationMetrics? metrics = null)
+    StorageObservationMetrics? metrics = null
+)
 {
-    internal async Task<ReadStorageObservationOutcome> ReadLegacyAsync(string targetId,
+    internal async Task<ReadStorageObservationOutcome> ReadLegacyAsync(
+        string targetId,
         StorageInventoryKind kind,
         CancellationToken ct)
     {
@@ -25,7 +25,7 @@ public sealed class StorageObservationReader(
             StorageInventoryKind.Classes => StorageObservationReadKind.Classes,
             StorageInventoryKind.Volumes => StorageObservationReadKind.Volumes,
             StorageInventoryKind.Claims => StorageObservationReadKind.Claims,
-            _ => StorageObservationReadKind.Coherent
+            _ => StorageObservationReadKind.Coherent,
         };
         var context = await contexts.LoadAsync(targetId, ct);
         if (context is null)
@@ -48,7 +48,8 @@ public sealed class StorageObservationReader(
         }
 
         metrics?.RecordRead(StorageObservationReadOutcome.Live, readKind);
-        return new StorageObservationSnapshot(context.DeploymentTargetId,
+        return new StorageObservationSnapshot(
+            context.DeploymentTargetId,
             context.ConnectionVersion,
             null,
             clock.GetUtcNow().UtcDateTime,
@@ -84,7 +85,8 @@ public sealed class StorageObservationReader(
         }
 
         metrics?.RecordRead(StorageObservationReadOutcome.Live);
-        return new StorageObservationSnapshot(context.DeploymentTargetId,
+        return new StorageObservationSnapshot(
+            context.DeploymentTargetId,
             context.ConnectionVersion,
             version,
             clock.GetUtcNow().UtcDateTime,

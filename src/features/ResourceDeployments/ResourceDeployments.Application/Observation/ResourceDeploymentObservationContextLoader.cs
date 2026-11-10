@@ -1,8 +1,5 @@
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -12,9 +9,11 @@ namespace Pole.Features.ResourceDeployments.Application.Observation;
 public sealed class ResourceDeploymentObservationContextLoader(
     ResourceDeploymentOperationsPersistence persistence,
     ResourceDeploymentObserverCatalog catalog,
-    LookupDeploymentTarget lookupTarget)
+    LookupDeploymentTarget lookupTarget
+)
 {
-    public async Task<ResourceDeploymentObservationContext?> LoadWatchAsync(ObservationIdentity identity,
+    public async Task<ResourceDeploymentObservationContext?> LoadWatchAsync(
+        ObservationIdentity identity,
         CancellationToken ct)
     {
         var deployment = await persistence.LoadAsync(identity.TenantId, identity.DeploymentId, ct);
@@ -25,21 +24,26 @@ public sealed class ResourceDeploymentObservationContextLoader(
     }
 
     public bool SupportsWatch(string resourceType) => catalog.Find(resourceType) is
-    { ChangeSourceType: not null, BoundObserverType: not null };
+        { ChangeSourceType: not null, BoundObserverType: not null };
 
-    public async Task<ResourceDeploymentObservationContext?> FromAsync(ResourceDeployment deployment,
+    public async Task<ResourceDeploymentObservationContext?> FromAsync(
+        ResourceDeployment deployment,
         CancellationToken ct)
     {
         var target = await lookupTarget(deployment.ResolvedPlacement.DeploymentTargetId, ct);
         return target is DeploymentTargetLookupDto
         {
-            Enabled: true, DeletionRequested: false, ConnectionVersion: > 0
+            Enabled: true, DeletionRequested: false, ConnectionVersion: > 0,
         } current
-            ? new(deployment.ToReconciliationSnapshot(), deployment.Revision, current.ConnectionVersion)
+            ? new ResourceDeploymentObservationContext(
+                deployment.ToReconciliationSnapshot(),
+                deployment.Revision,
+                current.ConnectionVersion)
             : null;
     }
 
-    public async Task<bool> IsCurrentAsync(ResourceDeployment deployment,
+    public async Task<bool> IsCurrentAsync(
+        ResourceDeployment deployment,
         ResourceDeploymentObservationContext? context,
         CancellationToken ct)
     {
@@ -49,12 +53,14 @@ public sealed class ResourceDeploymentObservationContextLoader(
             current.ResourceType != deployment.ResourceType || current.ResourceId != deployment.ResourceId ||
             current.ResourceGroupId != deployment.ResourceGroupId ||
             current.IsolationScopeId != deployment.IsolationScopeId ||
-            current.RuntimeCellId != deployment.RuntimeCellId || current.ResolvedPlacement.DeploymentTargetId !=
-            deployment.ResolvedPlacement.DeploymentTargetId ||
+            current.RuntimeCellId != deployment.RuntimeCellId ||
+            current.ResolvedPlacement.DeploymentTargetId != deployment.ResolvedPlacement.DeploymentTargetId ||
             current.ResolvedPlacement.KubernetesNamespace != deployment.ResolvedPlacement.KubernetesNamespace)
             return false;
-        return context is null || await lookupTarget(context.Deployment.Placement.DeploymentTargetId, ct) is
-                DeploymentTargetLookupDto { Enabled: true, DeletionRequested: false } target &&
-            target.ConnectionVersion == context.TargetConnectionVersion;
+        return context is null ||
+            (await lookupTarget(context.Deployment.Placement.DeploymentTargetId, ct) is DeploymentTargetLookupDto
+            {
+                Enabled: true, DeletionRequested: false,
+            } target && target.ConnectionVersion == context.TargetConnectionVersion);
     }
 }

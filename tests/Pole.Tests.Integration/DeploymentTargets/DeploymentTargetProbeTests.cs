@@ -11,8 +11,7 @@ namespace Pole.Tests.Integration.DeploymentTargets;
 
 public sealed class DeploymentTargetProbeTests
 {
-    private static readonly DateTimeOffset ObservedAt =
-        new(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset ObservedAt = new(2026, 7, 22, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
     public async Task ProbeAsync_UsesNamespaceIdentityAndVerifiesEveryRequiredPermission()
@@ -27,9 +26,7 @@ public sealed class DeploymentTargetProbeTests
             observation.IsUsable,
             $"{observation.Health.FailureCode}: {observation.Health.FailureMessage}; " +
             $"requests={string.Join(",", handler.RequestedPaths)}");
-        Assert.Equal(
-            "kubernetes:kube-system:pole-cluster-uid",
-            observation.ClusterIdentity);
+        Assert.Equal("kubernetes:kube-system:pole-cluster-uid", observation.ClusterIdentity);
         Assert.Equal(DeploymentTargetHealthStatus.Healthy, observation.Health.Status);
         Assert.Equal(ObservedAt.UtcDateTime, observation.Health.LastCheckedAtUtc);
         Assert.Equal(ObservedAt.UtcDateTime, observation.Health.LastHealthyAtUtc);
@@ -37,18 +34,14 @@ public sealed class DeploymentTargetProbeTests
         Assert.True(observation.Capabilities.IsKnown);
         Assert.Equal("v1.31.4", observation.Capabilities.KubernetesVersion);
         Assert.Equal(ObservedAt.UtcDateTime, observation.Capabilities.ObservedAtUtc);
-        Assert.Equal(
-            ["get", "create", "update", "patch", "delete"],
-            handler.ReviewedVerbs);
+        Assert.Equal(["get", "create", "update", "patch", "delete"], handler.ReviewedVerbs);
         Assert.Equal(
             new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
             observation.Capabilities.NamespaceCapabilities);
         Assert.Equal(
             new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true),
             observation.Capabilities.NetworkPolicyCapabilities);
-        Assert.Equal(
-            ["get", "create", "update", "patch", "delete"],
-            handler.ReviewedNetworkPolicyVerbs);
+        Assert.Equal(["get", "create", "update", "patch", "delete"], handler.ReviewedNetworkPolicyVerbs);
     }
 
     [Fact]
@@ -59,10 +52,7 @@ public sealed class DeploymentTargetProbeTests
         var probe = CreateProbe(ObservedAt);
         var lastHealthyAt = ObservedAt.AddMinutes(5).UtcDateTime;
 
-        var observation = await probe.InvokeAsync(
-            kubernetes,
-            connectionVersion: 3,
-            lastHealthyAtUtc: lastHealthyAt);
+        var observation = await probe.InvokeAsync(kubernetes, connectionVersion: 3, lastHealthyAtUtc: lastHealthyAt);
 
         Assert.False(observation.IsUsable);
         Assert.Equal("kubernetes:kube-system:pole-cluster-uid", observation.ClusterIdentity);
@@ -78,14 +68,10 @@ public sealed class DeploymentTargetProbeTests
     [Fact]
     public async Task ProbeAsync_MissingNetworkPolicyPermission_DegradesTargetReadiness()
     {
-        var handler = new KubernetesProbeHandler(
-            deniedVerb: "create",
-            deniedResource: "networkpolicies");
+        var handler = new KubernetesProbeHandler(deniedVerb: "create", deniedResource: "networkpolicies");
         using var kubernetes = CreateClient(handler);
 
-        var observation = await CreateProbe(ObservedAt).InvokeAsync(
-            kubernetes,
-            connectionVersion: 7);
+        var observation = await CreateProbe(ObservedAt).InvokeAsync(kubernetes, connectionVersion: 7);
 
         Assert.False(observation.IsUsable);
         Assert.Equal("InsufficientNetworkPolicyPermissions", observation.Health.FailureCode);
@@ -94,29 +80,31 @@ public sealed class DeploymentTargetProbeTests
         Assert.True(observation.Capabilities.NetworkPolicyCapabilities.CanGet);
     }
 
-    private static DeploymentTargetProbe CreateProbe(DateTimeOffset utcNow) =>
-        new(
-            new FixedTimeProvider(utcNow),
-            new DeploymentTargetOptions { ValidationTimeoutSeconds = 5 });
+    private static DeploymentTargetProbe CreateProbe(DateTimeOffset utcNow) => new(
+        new FixedTimeProvider(utcNow),
+        new DeploymentTargetOptions { ValidationTimeoutSeconds = 5 });
 
     private static Kubernetes CreateClient(DelegatingHandler handler)
     {
         var configuration = new KubernetesClientConfiguration
         {
             Host = "https://probe.pole.test:6443",
-            SkipTlsVerify = true
+            SkipTlsVerify = true,
         };
-        return new Kubernetes(configuration, [handler]);
+        return new Kubernetes(configuration, handler);
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
     private sealed class KubernetesProbeHandler(
         string? deniedVerb = null,
-        string? deniedResource = null) : DelegatingHandler
+        string? deniedResource = null
+    ) : DelegatingHandler
     {
         public List<string> ReviewedVerbs { get; } = [];
         public List<string> ReviewedNetworkPolicyVerbs { get; } = [];
@@ -156,9 +144,10 @@ public sealed class DeploymentTargetProbeTests
                       }
                     }
                     """),
-                "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" =>
-                    await ReviewAsync(request, cancellationToken),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+                "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" => await ReviewAsync(
+                    request,
+                    cancellationToken),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound),
             };
             response.RequestMessage = request;
             return response;
@@ -189,7 +178,7 @@ public sealed class DeploymentTargetProbeTests
             Assert.False(string.IsNullOrWhiteSpace(verb));
             if (resource == "namespaces")
             {
-                Assert.Equal(string.Empty, group);
+                Assert.Equal("", group);
                 ReviewedVerbs.Add(verb);
             }
             else
@@ -198,24 +187,26 @@ public sealed class DeploymentTargetProbeTests
                 Assert.Equal("networking.k8s.io", group);
                 ReviewedNetworkPolicyVerbs.Add(verb);
             }
-            var allowed = !string.Equals(verb, deniedVerb, StringComparison.Ordinal) ||
-                          !string.Equals(resource, deniedResource ?? "namespaces", StringComparison.Ordinal);
+
+            var allowed = !string.Equals(verb, deniedVerb, StringComparison.Ordinal) || !string.Equals(
+                resource,
+                deniedResource ?? "namespaces",
+                StringComparison.Ordinal);
             return Json(
                 $$"""
-                {
-                  "apiVersion": "authorization.k8s.io/v1",
-                  "kind": "SelfSubjectAccessReview",
-                  "status": {
-                    "allowed": {{allowed.ToString().ToLowerInvariant()}}
+                  {
+                    "apiVersion": "authorization.k8s.io/v1",
+                    "kind": "SelfSubjectAccessReview",
+                    "status": {
+                      "allowed": {{allowed.ToString().ToLowerInvariant()}}
+                    }
                   }
-                }
-                """);
+                  """);
         }
 
-        private static HttpResponseMessage Json(string body) =>
-            new(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json")
-            };
+        private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
     }
 }

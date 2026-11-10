@@ -22,20 +22,21 @@ public sealed class LocalKeyFileOptionsValidator : IValidateOptions<LocalKeyFile
             failures.Add($"EnvelopeEncryption:LocalKeyFile:Keys cannot contain more than {MaximumKeys} keys.");
 
         var identities = new HashSet<KeyEncryptionKeyIdentity>();
-        var paths = new HashSet<string>(OperatingSystem.IsWindows()
-            ? StringComparer.OrdinalIgnoreCase
-            : StringComparer.Ordinal);
+        var paths = new HashSet<string>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         var loadedKeys = new List<byte[]>();
         try
         {
             foreach (var (key, index) in (options.Keys ?? []).Select((key, index) => (key, index)))
             {
                 if (!IsValidKeyId(key.Id))
-                    failures.Add($"EnvelopeEncryption:LocalKeyFile:Keys:{index}:Id is required and must not exceed 128 characters.");
+                    failures.Add(
+                        $"EnvelopeEncryption:LocalKeyFile:Keys:{index}:Id is required and must not exceed 128 characters.");
                 if (key.Version < 1)
                     failures.Add($"EnvelopeEncryption:LocalKeyFile:Keys:{index}:Version must be positive.");
 
-                if (IsValidKeyId(key.Id) && key.Version > 0 && !identities.Add(new(key.Id, key.Version)))
+                if (IsValidKeyId(key.Id) && key.Version > 0 &&
+                    !identities.Add(new KeyEncryptionKeyIdentity(key.Id, key.Version)))
                     failures.Add("EnvelopeEncryption:LocalKeyFile key IDs and versions must be unique.");
 
                 if (string.IsNullOrWhiteSpace(key.Path) || !Path.IsPathFullyQualified(key.Path))
@@ -49,7 +50,8 @@ public sealed class LocalKeyFileOptionsValidator : IValidateOptions<LocalKeyFile
                 {
                     fullPath = Path.GetFullPath(key.Path);
                 }
-                catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+                catch (Exception exception) when (exception is ArgumentException or NotSupportedException
+                                                      or PathTooLongException)
                 {
                     failures.Add($"EnvelopeEncryption:LocalKeyFile:Keys:{index}:Path is invalid.");
                     continue;
@@ -60,12 +62,14 @@ public sealed class LocalKeyFileOptionsValidator : IValidateOptions<LocalKeyFile
 
                 if (!LocalKeyFileReader.TryRead(fullPath, out var keyMaterial))
                 {
-                    failures.Add($"EnvelopeEncryption:LocalKeyFile:Keys:{index}:Path must identify a readable Base64-encoded 256-bit key file.");
+                    failures.Add(
+                        $"EnvelopeEncryption:LocalKeyFile:Keys:{index}:Path must identify a readable Base64-encoded 256-bit key file.");
                     continue;
                 }
 
                 if (loadedKeys.Any(existing => CryptographicOperations.FixedTimeEquals(existing, keyMaterial)))
-                    failures.Add("EnvelopeEncryption:LocalKeyFile key material must be unique for every key ID and version.");
+                    failures.Add(
+                        "EnvelopeEncryption:LocalKeyFile key material must be unique for every key ID and version.");
                 loadedKeys.Add(keyMaterial);
             }
 
@@ -75,9 +79,7 @@ public sealed class LocalKeyFileOptionsValidator : IValidateOptions<LocalKeyFile
             if (activeMatches != 1)
                 failures.Add("EnvelopeEncryption:LocalKeyFile active key must identify exactly one configured key.");
 
-            return failures.Count == 0
-                ? ValidateOptionsResult.Success
-                : ValidateOptionsResult.Fail(failures);
+            return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
         }
         finally
         {
@@ -86,8 +88,7 @@ public sealed class LocalKeyFileOptionsValidator : IValidateOptions<LocalKeyFile
         }
     }
 
-    private static bool IsValidKeyId(string value) =>
-        !string.IsNullOrWhiteSpace(value) && value.Length <= 128;
+    private static bool IsValidKeyId(string value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 128;
 }
 
 internal static class LocalKeyFileReader
@@ -129,12 +130,8 @@ internal static class LocalKeyFileReader
                 CryptographicOperations.ZeroMemory(encoded);
             }
         }
-        catch (Exception exception) when (exception is
-            IOException or
-            UnauthorizedAccessException or
-            FormatException or
-            ArgumentException or
-            NotSupportedException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException
+                                              or ArgumentException or NotSupportedException)
         {
             return false;
         }
@@ -151,6 +148,5 @@ internal static class LocalKeyFileReader
         return value[start..end];
     }
 
-    private static bool IsAsciiWhitespace(byte value) =>
-        value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
+    private static bool IsAsciiWhitespace(byte value) => value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n';
 }

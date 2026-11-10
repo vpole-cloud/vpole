@@ -1,9 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.WebServices.Application;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
 
@@ -15,7 +10,8 @@ public sealed record WebServiceDeploymentPersistenceSnapshot(
     long ResourceRevision,
     string ResourceDeploymentId,
     long DeploymentGeneration,
-    DateTime RequestedAtUtc);
+    DateTime RequestedAtUtc
+);
 
 public delegate Task<WebServiceDeploymentPersistenceSnapshot?> LoadWebServiceDeploymentSnapshot(
     string tenantId,
@@ -27,7 +23,8 @@ public delegate Task<WebServiceDeploymentPersistenceSnapshot?> LoadWebServiceDep
 
 internal sealed class MongoLoadWebServiceDeploymentSnapshot(
     IMongoCollection<WebService> webServices,
-    IMongoCollection<WebServiceRelease> releases)
+    IMongoCollection<WebServiceRelease> releases
+)
 {
     public async Task<WebServiceDeploymentPersistenceSnapshot?> InvokeAsync(
         string tenantId,
@@ -37,8 +34,7 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
         long deploymentGeneration,
         CancellationToken cancellationToken = default)
     {
-        var webService = await webServices.Find(
-                WebServiceFilters.ById(tenantId, webServiceId))
+        var webService = await webServices.Find(WebServiceFilters.ById(tenantId, webServiceId))
             .FirstOrDefaultAsync(cancellationToken);
         if (webService is null)
             return null;
@@ -58,7 +54,7 @@ internal sealed class MongoLoadWebServiceDeploymentSnapshot(
                 {
                     Spec = release.Spec,
                     Exposure = release.Exposure,
-                    ActiveRevision = release.ResourceRevision
+                    ActiveRevision = release.ResourceRevision,
                 },
                 release.Id,
                 release.ResourceRevision,

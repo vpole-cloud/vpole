@@ -2,14 +2,14 @@ using MassTransit;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.Search.Contracts;
-using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Application.Consumers;
 
 public class ResourceDeploymentSearchProjectionConsumer(
     UpdateSearchOperationalStatus updateSearchOperationalStatus,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    ResolveSearchSourceType resolveSearchSourceType)
+    ResolveSearchSourceType resolveSearchSourceType
+)
 {
     public async Task Handle(
         string tenantId,
@@ -23,9 +23,7 @@ public class ResourceDeploymentSearchProjectionConsumer(
     {
         if (!ResourceTypeId.TryCreate(resourceType, out var resourceTypeId) ||
             resolveSearchSourceType(resourceTypeId) is null)
-        {
             return;
-        }
 
         var deployments = await loadResourceDeploymentSet(
             new LoadResourceDeploymentSetRequest(
@@ -33,23 +31,16 @@ public class ResourceDeploymentSearchProjectionConsumer(
                 ResourceType: resourceTypeId,
                 ResourceId: resourceId),
             cancellationToken: cancellationToken);
-        var eventDeployment = deployments.FirstOrDefault(deployment =>
-            string.Equals(
-                deployment.DeploymentId,
-                deploymentId,
-                StringComparison.Ordinal));
+        var eventDeployment = deployments.FirstOrDefault(deployment => string.Equals(
+            deployment.DeploymentId,
+            deploymentId,
+            StringComparison.Ordinal));
 
-        if (eventDeployment is not null &&
-            eventDeployment.DesiredGeneration < generation &&
+        if (eventDeployment is not null && eventDeployment.DesiredGeneration < generation &&
             eventDeployment.ObservedGeneration < generation)
-        {
             return;
-        }
-        if (eventDeployment is null &&
-            (!allowMissingDeployment || deployments.Count == 0))
-        {
+        if (eventDeployment is null && (!allowMissingDeployment || deployments.Count == 0))
             return;
-        }
 
         await updateSearchOperationalStatus(
             new SearchProjectionIdentity(tenantId, resourceTypeId, resourceId),
@@ -63,8 +54,7 @@ public class ResourceDeploymentSearchProjectionConsumer(
             cancellationToken);
     }
 
-    private static string AggregateStatus(
-        IReadOnlyList<PlacementSummaryDto> deployments)
+    private static string AggregateStatus(IReadOnlyList<PlacementSummaryDto> deployments)
     {
         var allStatuses = deployments.Select(deployment => deployment.Status).ToArray();
         var statuses = allStatuses.Where(status => status != ResourceDeploymentStatus.Deleted).ToArray();
@@ -90,65 +80,59 @@ public class ResourceDeploymentSearchProjectionConsumer(
 public sealed class UpdateResourceDeploymentInSearchOnAppliedConsumer(
     UpdateSearchOperationalStatus updateSearchOperationalStatus,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    ResolveSearchSourceType resolveSearchSourceType)
-    : ResourceDeploymentSearchProjectionConsumer(
-        updateSearchOperationalStatus,
-        loadResourceDeploymentSet,
-        resolveSearchSourceType),
-      IConsumer<ResourceDeploymentAppliedEvent>
+    ResolveSearchSourceType resolveSearchSourceType
+) : ResourceDeploymentSearchProjectionConsumer(
+    updateSearchOperationalStatus,
+    loadResourceDeploymentSet,
+    resolveSearchSourceType), IConsumer<ResourceDeploymentAppliedEvent>
 {
-    public Task Consume(ConsumeContext<ResourceDeploymentAppliedEvent> context) =>
-        Handle(
-            context.Message.EventCore.TenantId,
-            context.Message.ResourceDeploymentId,
-            context.Message.ResourceType,
-            context.Message.ResourceId,
-            context.Message.Generation,
-            context.Message.EventCore.OccurredOn,
-            false,
-            context.CancellationToken);
+    public Task Consume(ConsumeContext<ResourceDeploymentAppliedEvent> context) => Handle(
+        context.Message.EventCore.TenantId,
+        context.Message.ResourceDeploymentId,
+        context.Message.ResourceType,
+        context.Message.ResourceId,
+        context.Message.Generation,
+        context.Message.EventCore.OccurredOn,
+        false,
+        context.CancellationToken);
 }
 
 public sealed class UpdateResourceDeploymentInSearchOnFailedConsumer(
     UpdateSearchOperationalStatus updateSearchOperationalStatus,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    ResolveSearchSourceType resolveSearchSourceType)
-    : ResourceDeploymentSearchProjectionConsumer(
-        updateSearchOperationalStatus,
-        loadResourceDeploymentSet,
-        resolveSearchSourceType),
-      IConsumer<ResourceDeploymentFailedEvent>
+    ResolveSearchSourceType resolveSearchSourceType
+) : ResourceDeploymentSearchProjectionConsumer(
+    updateSearchOperationalStatus,
+    loadResourceDeploymentSet,
+    resolveSearchSourceType), IConsumer<ResourceDeploymentFailedEvent>
 {
-    public Task Consume(ConsumeContext<ResourceDeploymentFailedEvent> context) =>
-        Handle(
-            context.Message.EventCore.TenantId,
-            context.Message.ResourceDeploymentId,
-            context.Message.ResourceType,
-            context.Message.ResourceId,
-            context.Message.Generation,
-            context.Message.EventCore.OccurredOn,
-            false,
-            context.CancellationToken);
+    public Task Consume(ConsumeContext<ResourceDeploymentFailedEvent> context) => Handle(
+        context.Message.EventCore.TenantId,
+        context.Message.ResourceDeploymentId,
+        context.Message.ResourceType,
+        context.Message.ResourceId,
+        context.Message.Generation,
+        context.Message.EventCore.OccurredOn,
+        false,
+        context.CancellationToken);
 }
 
 public sealed class UpdateResourceDeploymentInSearchOnDeletedConsumer(
     UpdateSearchOperationalStatus updateSearchOperationalStatus,
     LoadResourceDeploymentSet loadResourceDeploymentSet,
-    ResolveSearchSourceType resolveSearchSourceType)
-    : ResourceDeploymentSearchProjectionConsumer(
-        updateSearchOperationalStatus,
-        loadResourceDeploymentSet,
-        resolveSearchSourceType),
-      IConsumer<ResourceDeploymentDeletedEvent>
+    ResolveSearchSourceType resolveSearchSourceType
+) : ResourceDeploymentSearchProjectionConsumer(
+    updateSearchOperationalStatus,
+    loadResourceDeploymentSet,
+    resolveSearchSourceType), IConsumer<ResourceDeploymentDeletedEvent>
 {
-    public Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context) =>
-        Handle(
-            context.Message.EventCore.TenantId,
-            context.Message.ResourceDeploymentId,
-            context.Message.ResourceType,
-            context.Message.ResourceId,
-            context.Message.Generation,
-            context.Message.EventCore.OccurredOn,
-            true,
-            context.CancellationToken);
+    public Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context) => Handle(
+        context.Message.EventCore.TenantId,
+        context.Message.ResourceDeploymentId,
+        context.Message.ResourceType,
+        context.Message.ResourceId,
+        context.Message.Generation,
+        context.Message.EventCore.OccurredOn,
+        true,
+        context.CancellationToken);
 }

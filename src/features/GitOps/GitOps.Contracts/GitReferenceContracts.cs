@@ -3,19 +3,22 @@ namespace Pole.Features.GitOps.Contracts;
 public sealed record ResolveAcceptedGitReferenceRequest(
     GitMutationContext Context,
     string ConsumerResourceId,
-    ResourceAddress Address);
+    ResourceAddress Address
+);
 
 public sealed record GitReferenceTarget(
     ResourceAddress Address,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record PinGitReferenceRequest(
     GitMutationContext Context,
     string ConsumerResourceId,
-    GitReferenceTarget Target);
+    GitReferenceTarget Target
+);
 
-public sealed record GitReferencePinned(string ResourceId);
+public sealed record GitReferencePinned(
+    string ResourceId
+);
 
-public union PinGitReferenceOutcome(
-    GitReferencePinned,
-    StaleGitExecution);
+public union PinGitReferenceOutcome(GitReferencePinned, StaleGitExecution);

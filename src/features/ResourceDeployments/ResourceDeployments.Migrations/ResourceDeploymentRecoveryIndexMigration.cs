@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.ResourceDeployments.Migrations;
 
@@ -13,20 +13,15 @@ public sealed class ResourceDeploymentRecoveryIndexMigration : IMigration
     public string Description =>
         "Indexes state and update time used to recover stale pending and waiting resource deployments.";
 
-    public Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var deployments = context.GetCollection<BsonDocument>("ResourceDeployments");
         return deployments.Indexes.CreateOneAsync(
             new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("State._t")
-                    .Ascending("UpdatedAtUtc")
-                    .Ascending("_id"),
+                Builders<BsonDocument>.IndexKeys.Ascending("State._t").Ascending("UpdatedAtUtc").Ascending("_id"),
                 new CreateIndexOptions
                 {
-                    Name = "IX_ResourceDeployments_State_Updated"
+                    Name = "IX_ResourceDeployments_State_Updated",
                 }),
             cancellationToken: cancellationToken);
     }

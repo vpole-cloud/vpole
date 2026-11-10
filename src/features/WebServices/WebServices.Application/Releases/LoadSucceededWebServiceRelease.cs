@@ -1,9 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.WebServices.Application;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
 
@@ -16,16 +11,14 @@ public delegate Task<WebServiceRelease?> LoadSucceededWebServiceRelease(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadSucceededWebServiceRelease(
-    IMongoCollection<WebServiceRelease> releases)
+    IMongoCollection<WebServiceRelease> releases
+)
 {
     public async Task<WebServiceRelease?> InvokeAsync(
         string tenantId,
         string webServiceId,
         long revision,
-        CancellationToken cancellationToken = default) =>
-        await releases.Find(WebServiceReleaseFilters.SucceededRevision(
-                tenantId,
-                webServiceId,
-                revision))
-            .FirstOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await releases
+        .Find(WebServiceReleaseFilters.SucceededRevision(tenantId, webServiceId, revision))
+        .FirstOrDefaultAsync(cancellationToken);
 }

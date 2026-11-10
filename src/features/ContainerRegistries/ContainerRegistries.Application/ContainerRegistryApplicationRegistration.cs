@@ -7,7 +7,6 @@ using MongoDB.Driver;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Application.Harbor;
-using Pole.Features.ContainerRegistries.Application.Mongo;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
@@ -68,18 +67,17 @@ public static class ContainerRegistryApplicationRegistration
             provider.GetRequiredService<RuntimeRegistryAccessProvider>().ResolveAsync);
 
         services.AddHttpClient<IContainerRegistryClient, HarborContainerRegistryClient>(client =>
-            client.Timeout = TimeSpan.FromMinutes(2))
+                client.Timeout = TimeSpan.FromMinutes(2))
             .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler
             {
                 // Harbor's Basic-auth API can set a browser session cookie. Replaying it without
                 // its corresponding CSRF context makes subsequent mutating requests fail with 403.
-                UseCookies = false
+                UseCookies = false,
             });
         return services;
     }
 
-    public static IServiceProvider ScheduleContainerRegistryRecurringJobs(
-        this IServiceProvider services)
+    public static IServiceProvider ScheduleContainerRegistryRecurringJobs(this IServiceProvider services)
     {
         RecurringJob.AddOrUpdate<RegistryProvisioningCleanupService>(
             "cleanup-container-registry-provisioning",

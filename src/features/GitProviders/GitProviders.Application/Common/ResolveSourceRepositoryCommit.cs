@@ -1,12 +1,13 @@
-using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 
 namespace Pole.Features.GitProviders.Application.Common;
 
 internal sealed class SourceRepositoryCommitResolver(
     LoadSourceRepository loadRepository,
-    ResolveProviderRepository resolveRepository)
+    ResolveProviderRepository resolveRepository
+)
 {
     public async Task<ResolveSourceRepositoryCommitOutcome> InvokeAsync(
         SourceRepositoryReferenceRequest request,
@@ -17,18 +18,24 @@ internal sealed class SourceRepositoryCommitResolver(
             return new SourceRepositoryBuildNotFound(request.SourceRepositoryId);
 
         var result = await resolveRepository(
-            new(request.TenantId, repository.ConnectionId, repository.ExternalRepositoryId, repository.Branch),
+            new ResolveProviderRepositoryRequest(
+                request.TenantId,
+                repository.ConnectionId,
+                repository.ExternalRepositoryId,
+                repository.Branch),
             cancellationToken);
         return result switch
         {
-            ResolvedProviderRepository resolved =>
-                new SourceRepositoryCommitResolved(repository.ToBuildSnapshot(), resolved.CommitSha),
-            GitProviderConnectionNotFound missing =>
-                new SourceRepositoryBuildConnectionNotFound(repository.Id, missing.ConnectionId),
+            ResolvedProviderRepository resolved => new SourceRepositoryCommitResolved(
+                repository.ToBuildSnapshot(),
+                resolved.CommitSha),
+            GitProviderConnectionNotFound missing => new SourceRepositoryBuildConnectionNotFound(
+                repository.Id,
+                missing.ConnectionId),
             SourceRepositoryRemoteNotFound missing => missing,
             SourceRepositoryBranchNotFound missing => missing,
             SourceRepositoryAccessDenied denied => denied,
-            SourceRepositoryUnavailable unavailable => unavailable
+            SourceRepositoryUnavailable unavailable => unavailable,
         };
     }
 }

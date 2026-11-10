@@ -5,11 +5,8 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Realtime.Contracts;
-using Pole.Features.Tenants;
-using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Identity;
 using Pole.Features.Tenants.Application.Members;
-using Pole.Features.Tenants.Application.Mongo;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
@@ -34,9 +31,7 @@ public static class TenantFeature
         services.AddHttpProblemMappings(TenantMemberAuthorizationHttpProblemMappings.All);
 
         services.TryAddScoped<MongoLoadTenant>();
-        services.TryAddScoped<LoadTenant>(provider => provider
-            .GetRequiredService<MongoLoadTenant>()
-            .InvokeAsync);
+        services.TryAddScoped<LoadTenant>(provider => provider.GetRequiredService<MongoLoadTenant>().InvokeAsync);
         services.TryAddScoped<MongoLoadTenantsForUser>();
         services.TryAddScoped<LoadTenantsForUser>(provider => provider
             .GetRequiredService<MongoLoadTenantsForUser>()
@@ -81,21 +76,18 @@ public static class TenantFeature
         return services;
     }
 
-    private static void AddOutcomeTransaction<TOutcome>(this IServiceCollection services) where TOutcome : notnull =>
-        services.TryAddScoped<RunMongoOutcomeTransaction<TOutcome>>(provider =>
-            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync<TOutcome>);
+    private static void AddOutcomeTransaction<TOutcome>(this IServiceCollection services)
+        where TOutcome : notnull => services.TryAddScoped<RunMongoOutcomeTransaction<TOutcome>>(provider =>
+        provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
 
     /// <summary>
-    /// Adds the tenant-member authorization stage after the common mediator stages.
-    /// The composition root invokes this separately so its position in the pipeline
-    /// remains validation, tenant authorization, then tenant-member authorization.
+    ///     Adds the tenant-member authorization stage after the common mediator stages.
+    ///     The composition root invokes this separately so its position in the pipeline
+    ///     remains validation, tenant authorization, then tenant-member authorization.
     /// </summary>
-    public static IServiceCollection AddTenantMemberAuthorizationBehavior(
-        this IServiceCollection services)
+    public static IServiceCollection AddTenantMemberAuthorizationBehavior(this IServiceCollection services)
     {
-        services.AddScoped(
-            typeof(IPipelineBehavior<,>),
-            typeof(TenantMemberAuthorizationBehavior<,>));
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantMemberAuthorizationBehavior<,>));
         return services;
     }
 }

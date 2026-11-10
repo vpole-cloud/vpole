@@ -8,10 +8,8 @@ public sealed class BrokerOrigin
 
     public static BrokerOrigin Parse(string value)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps ||
-            uri.UserInfo.Length != 0 || uri.Query.Length != 0 ||
-            uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.AbsolutePath != "/")
             throw new ArgumentException("Broker origin must be an HTTPS origin.", nameof(value));
         return new BrokerOrigin(uri);
     }
@@ -22,7 +20,7 @@ public sealed class BrokerOrigin
     {
         var builder = new UriBuilder(new Uri(Https, path))
         {
-            Scheme = "wss"
+            Scheme = "wss",
         };
         return builder.Uri;
     }

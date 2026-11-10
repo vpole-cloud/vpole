@@ -9,30 +9,36 @@ public sealed record FunctionRevisionSpecSnapshot(
     FunctionConfigurationSnapshot Configuration,
     FunctionResourcesSnapshot Resources,
     FunctionScalingPolicySnapshot Scaling,
-    ImmutableList<FunctionHandlerSnapshot> Handlers);
+    ImmutableList<FunctionHandlerSnapshot> Handlers
+);
 
 public sealed record FunctionImageSnapshot(
     string Server,
     string Name,
     string Tag,
     string? Digest,
-    string? PullSecretName);
+    string? PullSecretName
+);
 
 public sealed record FunctionConfigurationSnapshot(
     ImmutableDictionary<string, string> EnvironmentVariables,
-    ImmutableDictionary<string, FunctionSecretReferenceSnapshot> SecretReferences);
+    ImmutableDictionary<string, FunctionSecretReferenceSnapshot> SecretReferences
+);
 
 public sealed record FunctionSecretReferenceSnapshot(
     string SecretId,
-    string Key);
+    string Key
+);
 
 public sealed record FunctionResourcesSnapshot(
     FunctionResourceValuesSnapshot Requests,
-    FunctionResourceValuesSnapshot Limits);
+    FunctionResourceValuesSnapshot Limits
+);
 
 public sealed record FunctionResourceValuesSnapshot(
     int CpuMillis,
-    int MemoryMi);
+    int MemoryMi
+);
 
 public sealed record FunctionScalingPolicySnapshot(
     int MinInstances,
@@ -40,23 +46,28 @@ public sealed record FunctionScalingPolicySnapshot(
     int TargetConcurrencyPerInstance,
     int MaxConcurrencyPerInstance,
     int ScaleDownDelaySeconds,
-    int ActivationTimeoutSeconds);
+    int ActivationTimeoutSeconds
+);
 
 public sealed record FunctionHandlerSnapshot(
     string Name,
     int MaxConcurrencyPerInstance,
-    FunctionTriggerSnapshot Trigger);
+    FunctionTriggerSnapshot Trigger
+);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(HttpFunctionTriggerSnapshot), "http")]
 [JsonDerivedType(typeof(TimerFunctionTriggerSnapshot), "timer")]
-public abstract record FunctionTriggerSnapshot(string TriggerId);
+public abstract record FunctionTriggerSnapshot(
+    string TriggerId
+);
 
 public sealed record HttpFunctionTriggerSnapshot(
     string TriggerId,
     string Route,
     ImmutableHashSet<string> Methods,
-    string Exposure) : FunctionTriggerSnapshot(TriggerId);
+    string Exposure
+) : FunctionTriggerSnapshot(TriggerId);
 
 public sealed record TimerFunctionTriggerSnapshot(
     string TriggerId,
@@ -65,8 +76,10 @@ public sealed record TimerFunctionTriggerSnapshot(
     string ConcurrencyPolicy,
     string MisfirePolicy,
     int ScheduleVersion,
-    FunctionRetryPolicySnapshot Retry) : FunctionTriggerSnapshot(TriggerId);
+    FunctionRetryPolicySnapshot Retry
+) : FunctionTriggerSnapshot(TriggerId);
 
 public sealed record FunctionRetryPolicySnapshot(
     int MaxAttempts,
-    ImmutableList<int> BackoffSeconds);
+    ImmutableList<int> BackoffSeconds
+);

@@ -20,7 +20,8 @@ public sealed record ResourceRegistration(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     // Written by topology declarations and placement mutations in one transaction.
-    long ReferenceFence) : ITenantOwned;
+    long ReferenceFence
+) : ITenantOwned;
 
 public static class ResourceRegistrationFactory
 {
@@ -28,10 +29,6 @@ public static class ResourceRegistrationFactory
     public const int MaximumResourceIdLength = 512;
     public const int MaximumDisplayNameLength = 200;
     public const int MaximumPluginIdLength = 100;
-
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
 
     public static ResourceRegistration Create(
         string tenantId,
@@ -44,40 +41,28 @@ public static class ResourceRegistrationFactory
     {
         ArgumentNullException.ThrowIfNull(options);
         var normalizedResourceTypeId = ResourceTypeId.Create(resourceTypeId.Value);
-        var normalizedPluginId = owningPluginId is null
-            ? null
-            : NormalizePluginId(owningPluginId);
+        var normalizedPluginId = owningPluginId is null ? null : NormalizePluginId(owningPluginId);
         var resourceTypeNamespace = normalizedResourceTypeId.Value.Split('/', 2)[0];
         if (resourceTypeNamespace == FirstPartyNamespace && normalizedPluginId is not null)
-        {
             throw new ArgumentException(
                 "First-party resource types cannot declare an owning plugin.",
                 nameof(owningPluginId));
-        }
-        if (resourceTypeNamespace != FirstPartyNamespace &&
-            !string.Equals(resourceTypeNamespace, normalizedPluginId, StringComparison.Ordinal))
-        {
+        if (resourceTypeNamespace != FirstPartyNamespace && !string.Equals(
+                resourceTypeNamespace,
+                normalizedPluginId,
+                StringComparison.Ordinal))
             throw new ArgumentException(
                 "A third-party resource type namespace must match its owning plugin ID.",
                 nameof(owningPluginId));
-        }
 
-        var createdAtUtc = ResourceGroupValueGuard.Utc(
-            options.CreatedAtUtc,
-            nameof(options.CreatedAtUtc));
+        var createdAtUtc = ResourceGroupValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc));
         return new ResourceRegistration(
             ResourceGroupValueGuard.ObjectId(options.Id, nameof(options.Id)),
             ResourceGroupValueGuard.ObjectId(tenantId, nameof(tenantId)),
             ResourceGroupValueGuard.ObjectId(resourceGroupId, nameof(resourceGroupId)),
             normalizedResourceTypeId.Value,
-            ResourceGroupValueGuard.Required(
-                resourceId,
-                nameof(resourceId),
-                MaximumResourceIdLength),
-            ResourceGroupValueGuard.Required(
-                displayName,
-                nameof(displayName),
-                MaximumDisplayNameLength),
+            ResourceGroupValueGuard.Required(resourceId, nameof(resourceId), MaximumResourceIdLength),
+            ResourceGroupValueGuard.Required(displayName, nameof(displayName), MaximumDisplayNameLength),
             normalizedPluginId,
             createdAtUtc,
             createdAtUtc,
@@ -103,7 +88,7 @@ public static class ResourceRegistrationFactory
             UpdatedAtUtc = ResourceGroupValueGuard.UpdatedUtc(
                 updatedAtUtc,
                 registration.UpdatedAtUtc,
-                nameof(updatedAtUtc))
+                nameof(updatedAtUtc)),
         };
     }
 
@@ -113,20 +98,18 @@ public static class ResourceRegistrationFactory
             owningPluginId,
             nameof(owningPluginId),
             MaximumPluginIdLength);
-        if (normalized.Contains('/') ||
-            !ResourceTypeId.TryCreate($"{normalized}/resource", out _))
-        {
+        if (normalized.Contains('/') || !ResourceTypeId.TryCreate($"{normalized}/resource", out _))
             throw new ArgumentException(
                 "Plugin ID must be a valid lowercase resource-type namespace.",
                 nameof(owningPluginId));
-        }
         if (string.Equals(normalized, FirstPartyNamespace, StringComparison.Ordinal))
-        {
-            throw new ArgumentException(
-                "The platform resource-type namespace is reserved.",
-                nameof(owningPluginId));
-        }
+            throw new ArgumentException("The platform resource-type namespace is reserved.", nameof(owningPluginId));
 
         return normalized;
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }

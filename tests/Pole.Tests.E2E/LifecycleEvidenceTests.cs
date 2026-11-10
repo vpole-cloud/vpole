@@ -1,7 +1,7 @@
-using Aspire.Hosting.ApplicationModel;
-using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Aspire.Hosting.ApplicationModel;
+using Microsoft.Extensions.Logging;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
 
@@ -14,23 +14,63 @@ public sealed class LifecycleEvidenceTests
     private const string Source = "507f1f77bcf86cd799439013";
     private const string Run = "507f1f77bcf86cd799439014";
     private const string Instant = "2026-11-09T12:00:00.1234567Z";
-    private const string RuntimeIdentity = $"TenantId={Tenant}, RuntimeCellId={Resource}, Generation=2, CheckSequence=1";
+
+    private const string RuntimeIdentity
+        = $"TenantId={Tenant}, RuntimeCellId={Resource}, Generation=2, CheckSequence=1";
+
     private static readonly DateTimeOffset RecordedAt = new(2026, 11, 9, 12, 0, 1, TimeSpan.Zero);
-    public static TheoryData<string, string, string, string> OwnedMessages => new()
-    {
-        { "runtime-scheduled", $"RuntimeCell deletion check scheduled: {RuntimeIdentity}, NotBeforeUtc={Instant}", "runtime-cell", "scheduled" },
-        { "runtime-started-delayed", $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc={Instant}, StartedAtUtc={Instant}", "runtime-cell", "started" },
-        { "runtime-started-immediate", $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc=(null), StartedAtUtc={Instant}", "runtime-cell", "started" },
-        { "runtime-native-absent", $"RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}", "runtime-cell", "native-absent" },
-        { "runtime-finalized", $"RuntimeCell deletion finalized and target reference released: {RuntimeIdentity}, CommittedAtUtc={Instant}", "runtime-cell", "finalized" },
-        { "gitops-scheduled", $"GitOps work scheduled for source {Source}; notBeforeUtc={Instant}, scheduledAtUtc={Instant}", "gitops", "scheduled" },
-        { "gitops-started", $"GitOps attempt started for source {Source}, run {Run}, attempt 1; startedAtUtc={Instant}", "gitops", "started" },
-        { "gitops-action-completed", $"GitOps lifecycle action completed for run {Run}, operation WebService/{Resource}, action Remove; completedAtUtc={Instant}", "gitops", "action-completed" }
-    };
+
+    public static TheoryData<string, string, string, string> OwnedMessages =>
+        new()
+        {
+            {
+                "runtime-scheduled", $"RuntimeCell deletion check scheduled: {RuntimeIdentity}, NotBeforeUtc={Instant}",
+                "runtime-cell", "scheduled"
+            },
+            {
+                "runtime-started-delayed",
+                $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc={Instant}, StartedAtUtc={Instant}",
+                "runtime-cell", "started"
+            },
+            {
+                "runtime-started-immediate",
+                $"RuntimeCell deletion work started: {RuntimeIdentity}, NotBeforeUtc=(null), StartedAtUtc={Instant}",
+                "runtime-cell", "started"
+            },
+            {
+                "runtime-native-absent",
+                $"RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}", "runtime-cell",
+                "native-absent"
+            },
+            {
+                "runtime-finalized",
+                $"RuntimeCell deletion finalized and target reference released: {RuntimeIdentity}, CommittedAtUtc={Instant}",
+                "runtime-cell", "finalized"
+            },
+            {
+                "gitops-scheduled",
+                $"GitOps work scheduled for source {Source}; notBeforeUtc={Instant}, scheduledAtUtc={Instant}",
+                "gitops", "scheduled"
+            },
+            {
+                "gitops-started",
+                $"GitOps attempt started for source {Source}, run {Run}, attempt 1; startedAtUtc={Instant}", "gitops",
+                "started"
+            },
+            {
+                "gitops-action-completed",
+                $"GitOps lifecycle action completed for run {Run}, operation WebService/{Resource}, action Remove; completedAtUtc={Instant}",
+                "gitops", "action-completed"
+            },
+        };
 
     [Theory]
     [MemberData(nameof(OwnedMessages))]
-    public void ExactOwnedMessages_BecomeScalarEvidenceWithHashedIdentities(string scenario, string message, string component, string phase)
+    public void ExactOwnedMessages_BecomeScalarEvidenceWithHashedIdentities(
+        string scenario,
+        string message,
+        string component,
+        string phase)
     {
         Assert.True(LifecycleEvidence.TryParse("      " + message, RecordedAt, out var record), scenario);
         Assert.NotNull(record);
@@ -38,7 +78,8 @@ public sealed class LifecycleEvidenceTests
         Assert.Equal(phase, record.Phase);
         Assert.Equal(RecordedAt, record.RecordedAtUtc);
         var serialized = JsonSerializer.Serialize(record);
-        foreach (var id in new[] { Tenant, Resource, Source, Run }) Assert.DoesNotContain(id, serialized);
+        foreach (var id in new[] { Tenant, Resource, Source, Run })
+            Assert.DoesNotContain(id, serialized);
         Assert.DoesNotContain(message, serialized);
         if (record.OccurredAtUtc is { } occurred)
             Assert.Equal(1234567, occurred.Ticks % TimeSpan.TicksPerSecond);
@@ -51,14 +92,17 @@ public sealed class LifecycleEvidenceTests
     [InlineData("credentials-prefix", false)]
     public void AspireTimestampEnvelope_IsValidatedBeforeOwnedMessageParsing(string envelope, bool expected)
     {
-        var message = $"{envelope}       RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}";
+        var message
+            = $"{envelope}       RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}";
         Assert.Equal(expected, LifecycleEvidence.TryParse(message, RecordedAt, out _));
     }
 
     [Theory]
     [InlineData("Authorization: Bearer eyJ-secret-payload")]
-    [InlineData("GitOps work scheduled for source provider-password; notBeforeUtc=2026-11-09T12:00:00.1234567Z, scheduledAtUtc=2026-11-09T12:00:00.1234567Z")]
-    [InlineData("GitOps lifecycle action completed for run 507f1f77bcf86cd799439014, operation Secret/private-password, action Remove; completedAtUtc=2026-11-09T12:00:00.1234567Z")]
+    [InlineData(
+        "GitOps work scheduled for source provider-password; notBeforeUtc=2026-11-09T12:00:00.1234567Z, scheduledAtUtc=2026-11-09T12:00:00.1234567Z")]
+    [InlineData(
+        "GitOps lifecycle action completed for run 507f1f77bcf86cd799439014, operation Secret/private-password, action Remove; completedAtUtc=2026-11-09T12:00:00.1234567Z")]
     public void UnknownOrCredentialBearingLogs_AreRejected(string line) =>
         Assert.False(LifecycleEvidence.TryParse(line, RecordedAt, out _));
 
@@ -84,7 +128,7 @@ public sealed class LifecycleEvidenceTests
             "zero-generation" => line.Replace("Generation=2", "Generation=0"),
             "negative-sequence" => line.Replace("CheckSequence=1", "CheckSequence=-1"),
             "ansi" => "\u001b[32m" + line,
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(),
         };
         Assert.False(LifecycleEvidence.TryParse(line, RecordedAt, out _));
     }
@@ -107,15 +151,20 @@ public sealed class LifecycleEvidenceTests
             Assert.False(collector.SourceFailed);
             var lines = await File.ReadAllLinesAsync(Path.Combine(directory, "lifecycle-events.jsonl"));
             Assert.Equal(2, lines.Length);
-            Assert.All(lines, line =>
-            {
-                using var document = JsonDocument.Parse(line);
-                Assert.Equal("runtime-cell", document.RootElement.GetProperty("component").GetString());
-                Assert.DoesNotContain("private-password", line);
-                Assert.DoesNotContain(Tenant, line);
-            });
+            Assert.All(
+                lines,
+                line =>
+                {
+                    using var document = JsonDocument.Parse(line);
+                    Assert.Equal("runtime-cell", document.RootElement.GetProperty("component").GetString());
+                    Assert.DoesNotContain("private-password", line);
+                    Assert.DoesNotContain(Tenant, line);
+                });
         }
-        finally { Directory.Delete(directory, true); }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
 
         async IAsyncEnumerable<string> Snapshot()
         {
@@ -123,15 +172,20 @@ public sealed class LifecycleEvidenceTests
             yield return $"RuntimeCell native absence confirmed: {RuntimeIdentity}, ObservedAtUtc={Instant}";
             await Task.CompletedTask;
         }
+
         async IAsyncEnumerable<string> Live([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             try
             {
-                yield return $"RuntimeCell deletion finalized and target reference released: {RuntimeIdentity}, CommittedAtUtc={Instant}";
+                yield return
+                    $"RuntimeCell deletion finalized and target reference released: {RuntimeIdentity}, CommittedAtUtc={Instant}";
                 started.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             }
-            finally { stopped.TrySetResult(); }
+            finally
+            {
+                stopped.TrySetResult();
+            }
         }
     }
 
@@ -145,30 +199,44 @@ public sealed class LifecycleEvidenceTests
         {
             await using var collector = new LifecycleEvidence(directory);
             collector.Start(Read(live: false), Read(live: true));
-            logger.GetLogger("pole-server").LogInformation(
-                "RuntimeCell deletion work started: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}, StartedAtUtc={StartedAtUtc:O}",
-                Tenant, Resource, 2, 0, (DateTime?)null, RecordedAt.UtcDateTime);
+            logger.GetLogger("pole-server")
+                .LogInformation(
+                    "RuntimeCell deletion work started: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}, StartedAtUtc={StartedAtUtc:O}",
+                    Tenant,
+                    Resource,
+                    2,
+                    0,
+                    null,
+                    RecordedAt.UtcDateTime);
             await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await collector.DisposeAsync();
             var lines = await File.ReadAllLinesAsync(Path.Combine(directory, "lifecycle-events.jsonl"));
             Assert.NotEmpty(lines);
-            Assert.All(lines, line =>
-            {
-                using var document = JsonDocument.Parse(line);
-                Assert.Equal("started", document.RootElement.GetProperty("phase").GetString());
-            });
+            Assert.All(
+                lines,
+                line =>
+                {
+                    using var document = JsonDocument.Parse(line);
+                    Assert.Equal("started", document.RootElement.GetProperty("phase").GetString());
+                });
         }
-        finally { Directory.Delete(directory, true); }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
 
-        async IAsyncEnumerable<string> Read(bool live, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        async IAsyncEnumerable<string> Read(
+            bool live,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var batches = live ? logger.WatchAsync("pole-server") : logger.GetAllAsync("pole-server");
             await foreach (var batch in batches.WithCancellation(cancellationToken))
-                foreach (var line in batch)
-                {
-                    yield return line.Content;
-                    if (LifecycleEvidence.TryParse(line.Content, RecordedAt, out _)) observed.TrySetResult();
-                }
+            foreach (var line in batch)
+            {
+                yield return line.Content;
+                if (LifecycleEvidence.TryParse(line.Content, RecordedAt, out _))
+                    observed.TrySetResult();
+            }
         }
     }
 
@@ -187,7 +255,10 @@ public sealed class LifecycleEvidenceTests
             });
             Assert.Same(failure, actual);
         }
-        finally { File.Delete(file); }
+        finally
+        {
+            File.Delete(file);
+        }
     }
 
     [Fact]
@@ -201,7 +272,11 @@ public sealed class LifecycleEvidenceTests
             await collector.DisposeAsync();
             Assert.True(collector.SourceFailed);
         }
-        finally { Directory.Delete(directory, true); }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+
         async IAsyncEnumerable<string> Failed()
         {
             yield return "ignored unrelated diagnostic";

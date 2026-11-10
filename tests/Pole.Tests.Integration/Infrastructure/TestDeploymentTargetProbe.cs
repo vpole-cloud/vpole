@@ -21,9 +21,10 @@ internal sealed class TestDeploymentTargetProbe
             new DeploymentTargetNamespaceCapabilities(true, true, true, true, true),
             new DeploymentTargetNetworkPolicyCapabilities(true, true, true, true, true));
         var identity = $"test:kubernetes:{kubernetes.BaseUri.Host}:{kubernetes.BaseUri.Port}";
-        return Task.FromResult(new DeploymentTargetProbeObservation(
-            identity,
-            DeploymentTargetHealth.Healthy(connectionVersion, now),
-            capabilities));
+        return Task.FromResult(
+            new DeploymentTargetProbeObservation(
+                identity,
+                DeploymentTargetHealth.Healthy(connectionVersion, now),
+                capabilities));
     }
 }

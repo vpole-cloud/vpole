@@ -5,21 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Mediator;
 using Pole.Validation;
-
 using static Pole.Features.Secrets.Application.SecretHttpMappings;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
@@ -32,7 +22,8 @@ public sealed record SecretProjectionStatusDto(
     long? AppliedVersion,
     string Health,
     DateTime? LastAttemptAtUtc,
-    string? FailureCode)
+    string? FailureCode
+)
 {
     public static SecretProjectionStatusDto From(SecretProjection projection) => new(
         projection.DeploymentId,
@@ -46,20 +37,19 @@ public sealed record SecretProjectionStatusDto(
             ReadySecretProjection => "Ready",
             FailedSecretProjection => "Failed",
             DeletedSecretProjection => "Deleted",
-            _ => throw new InvalidOperationException("Unknown Secret projection state.")
+            _ => throw new InvalidOperationException("Unknown Secret projection state."),
         },
         projection.LastAttemptAtUtc,
         (projection.State as FailedSecretProjection)?.FailureCode);
 }
 
-public union GetSecretProjectionsOutcome(
-    SecretProjectionStatusDto[],
-    SecretMissing);
+public union GetSecretProjectionsOutcome(SecretProjectionStatusDto[], SecretMissing);
 
 public sealed record GetSecretProjectionsRequest(
     [FromRoute] string Id,
-    [FromHeader(Name = TenantHeaders.TenantId)] string TenantId)
-    : IMediatorRequest<GetSecretProjectionsOutcome>, ITenantReadOperation;
+    [FromHeader(Name = TenantHeaders.TenantId)]
+    string TenantId
+) : IMediatorRequest<GetSecretProjectionsOutcome>, ITenantReadOperation;
 
 public sealed class GetSecretProjectionsValidator : AbstractValidator<GetSecretProjectionsRequest>
 {
@@ -68,16 +58,19 @@ public sealed class GetSecretProjectionsValidator : AbstractValidator<GetSecretP
 
 public sealed class GetSecretProjectionsHandler(
     LoadSecretById loadSecret,
-    LoadSecretProjections loadProjections)
-    : IMediatorOutcomeHandler<GetSecretProjectionsRequest, GetSecretProjectionsOutcome>
+    LoadSecretProjections loadProjections
+) : IMediatorOutcomeHandler<GetSecretProjectionsRequest, GetSecretProjectionsOutcome>
 {
-    public async Task<GetSecretProjectionsOutcome> HandleAsync(GetSecretProjectionsRequest request, CancellationToken cancellationToken = default)
+    public async Task<GetSecretProjectionsOutcome> HandleAsync(
+        GetSecretProjectionsRequest request,
+        CancellationToken cancellationToken = default)
     {
         var secret = await loadSecret(request.TenantId, request.Id, cancellationToken);
         if (secret is null)
             return new SecretMissing();
         return (await loadProjections(secret.TenantId, secret.Id, cancellationToken))
-            .Select(SecretProjectionStatusDto.From).ToArray();
+            .Select(SecretProjectionStatusDto.From)
+            .ToArray();
     }
 }
 
@@ -85,14 +78,14 @@ public static class GetSecretProjectionsEndpoint
 {
     public static IEndpointRouteBuilder MapGetSecretProjectionsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/projections", async (
-                IMediator mediator,
-                [AsParameters] GetSecretProjectionsRequest request,
-                CancellationToken ct) =>
-                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}/projections",
+                async (
+                    IMediator mediator, [AsParameters] GetSecretProjectionsRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     SecretProjectionStatusDto[] projections => Results.Ok(projections),
-                    SecretMissing missing => MapMissing(missing)
+                    SecretMissing missing => MapMissing(missing),
                 }))
             .WithName("GetSecretProjections");
         return app;

@@ -16,12 +16,13 @@ namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 public sealed record UpdateDeploymentTargetNetworkPolicyBody(
     NetworkPolicyEnforcement Enforcement,
     bool AllowIsolationNotEnforced,
-    long Revision);
+    long Revision
+);
 
 public sealed record UpdateDeploymentTargetNetworkPolicyRequest(
     [FromRoute] string Id,
-    [FromBody] UpdateDeploymentTargetNetworkPolicyBody Body)
-    : IMediatorRequest<UpdateDeploymentTargetNetworkPolicyOutcome>;
+    [FromBody] UpdateDeploymentTargetNetworkPolicyBody Body
+) : IMediatorRequest<UpdateDeploymentTargetNetworkPolicyOutcome>;
 
 public union UpdateDeploymentTargetNetworkPolicyOutcome(
     DeploymentTargetDto,
@@ -32,10 +33,8 @@ public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
     LoadDeploymentTargetById loadTarget,
     LoadDefaultDeploymentTargetId loadDefaultTargetId,
     PersistUpdatedDeploymentTarget persistTarget,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<
-        UpdateDeploymentTargetNetworkPolicyRequest,
-        UpdateDeploymentTargetNetworkPolicyOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<UpdateDeploymentTargetNetworkPolicyRequest, UpdateDeploymentTargetNetworkPolicyOutcome>
 {
     public async Task<UpdateDeploymentTargetNetworkPolicyOutcome> HandleAsync(
         UpdateDeploymentTargetNetworkPolicyRequest request,
@@ -55,14 +54,13 @@ public sealed class UpdateDeploymentTargetNetworkPolicyHandler(
         var result = await persistTarget(target, replacement, cancellationToken);
         return result switch
         {
-            DeploymentTarget persisted => persisted.ToDto(
-                persisted.Id == await loadDefaultTargetId(cancellationToken)),
+            DeploymentTarget persisted => persisted.ToDto(persisted.Id == await loadDefaultTargetId(cancellationToken)),
             PersistUpdatedDeploymentTargetError error => error switch
             {
                 DeploymentTargetRevisionConflict conflict => conflict,
-                DeploymentTargetPublicBaseDomainReferenced or DeploymentTargetPublicBaseDomainConflict =>
-                    throw new InvalidOperationException("An unchanged ingress configuration cannot conflict.")
-            }
+                DeploymentTargetPublicBaseDomainReferenced or DeploymentTargetPublicBaseDomainConflict => throw
+                    new InvalidOperationException("An unchanged ingress configuration cannot conflict."),
+            },
         };
     }
 }
@@ -74,32 +72,34 @@ public sealed class UpdateDeploymentTargetNetworkPolicyValidator
     {
         RuleFor(request => request.Id).MongoObjectId("Deployment target ID");
         RuleFor(request => request.Body).NotNull();
-        When(request => request.Body is not null, () =>
-        {
-            RuleFor(request => request.Body.Enforcement).IsInEnum();
-            RuleFor(request => request.Body.Revision).GreaterThan(0);
-        });
+        When(
+            request => request.Body is not null,
+            () =>
+            {
+                RuleFor(request => request.Body.Enforcement).IsInEnum();
+                RuleFor(request => request.Body.Revision).GreaterThan(0);
+            });
     }
 }
 
 public static class UpdateDeploymentTargetNetworkPolicyEndpoint
 {
-    public static IEndpointRouteBuilder MapUpdateDeploymentTargetNetworkPolicyEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapUpdateDeploymentTargetNetworkPolicyEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{Id}/network-policy", async (
-            IMediator mediator,
-            [AsParameters] UpdateDeploymentTargetNetworkPolicyRequest request,
-            CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                DeploymentTargetDto dto => Results.Ok(dto),
-                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error)
-            });
-        })
+        app.MapPut(
+                "/{Id}/network-policy",
+                async (
+                    IMediator mediator, [AsParameters] UpdateDeploymentTargetNetworkPolicyRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        DeploymentTargetDto dto => Results.Ok(dto),
+                        DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                    });
+                })
             .WithName("UpdateDeploymentTargetNetworkPolicy")
             .Produces<DeploymentTargetDto>();
         return app;

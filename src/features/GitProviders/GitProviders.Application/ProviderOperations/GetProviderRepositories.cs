@@ -5,20 +5,18 @@ using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-public union GetProviderRepositoriesOutcome(
-    ProviderPage<ProviderRepository>,
-    GitProviderRepositoryAccessError);
+public union GetProviderRepositoriesOutcome(ProviderPage<ProviderRepository>, GitProviderRepositoryAccessError);
 
-public delegate Task<GetProviderRepositoriesOutcome>
-    GetProviderRepositories(
-        GitProviderConnection connection,
-        int page,
-        int pageSize,
-        CancellationToken cancellationToken = default);
+public delegate Task<GetProviderRepositoriesOutcome> GetProviderRepositories(
+    GitProviderConnection connection,
+    int page,
+    int pageSize,
+    CancellationToken cancellationToken = default);
 
 internal sealed class GitHubGetProviderRepositories(
     IGitHubAppClient gitHubClient,
-    ILogger<GitHubGetProviderRepositories> logger)
+    ILogger<GitHubGetProviderRepositories> logger
+)
 {
     public async Task<GetProviderRepositoriesOutcome> InvokeAsync(
         GitProviderConnection connection,
@@ -37,7 +35,7 @@ internal sealed class GitHubGetProviderRepositories(
         return result switch
         {
             ProviderPage<ProviderRepository> repositoryPage => repositoryPage,
-            GitProviderRepositoryAccessError error => error
+            GitProviderRepositoryAccessError error => error,
         };
     }
 }

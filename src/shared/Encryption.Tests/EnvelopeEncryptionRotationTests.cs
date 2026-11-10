@@ -1,4 +1,3 @@
-
 namespace Pole.Encryption.Tests;
 
 public sealed class EnvelopeEncryptionRotationTests
@@ -14,9 +13,9 @@ public sealed class EnvelopeEncryptionRotationTests
         var original = await EncryptAsync(oldService.Service, "rotate me");
 
         var transitionDecryption = await transitionService.Service.DecryptStringAsync(
-            original, EncryptionTestData.TenantContext());
-        var rewrapResult = await transitionService.Service.RewrapAsync(
-            original, EncryptionTestData.TenantContext());
+            original,
+            EncryptionTestData.TenantContext());
+        var rewrapResult = await transitionService.Service.RewrapAsync(original, EncryptionTestData.TenantContext());
 
         var plaintext = Assert.IsType<string>(transitionDecryption.Value);
         Assert.Equal("rotate me", plaintext);
@@ -76,17 +75,13 @@ public sealed class EnvelopeEncryptionRotationTests
         tamperedCiphertext[0] ^= 0x01;
         var tampered = encrypted with { Ciphertext = tamperedCiphertext };
 
-        var rewrapResult = await transition.Service.RewrapAsync(
-            tampered,
-            EncryptionTestData.TenantContext());
+        var rewrapResult = await transition.Service.RewrapAsync(tampered, EncryptionTestData.TenantContext());
 
         var rewrapped = Assert.IsType<EncryptedValue>(rewrapResult.Value);
         Assert.True(tampered.Ciphertext.SequenceEqual(rewrapped.Ciphertext));
         Assert.True(tampered.Nonce.SequenceEqual(rewrapped.Nonce));
         Assert.True(tampered.AuthenticationTag.SequenceEqual(rewrapped.AuthenticationTag));
-        var decryptResult = await transition.Service.DecryptStringAsync(
-            rewrapped,
-            EncryptionTestData.TenantContext());
+        var decryptResult = await transition.Service.DecryptStringAsync(rewrapped, EncryptionTestData.TenantContext());
         Assert.IsType<EnvelopeDecryptionFailed>(decryptResult.Value);
     }
 
@@ -111,15 +106,13 @@ public sealed class EnvelopeEncryptionRotationTests
         using var sourceFiles = new TemporaryKeyDirectory();
         using var backupFiles = new TemporaryKeyDirectory();
         var sourcePath = sourceFiles.WriteKey("primary.key");
-        using var sourceService = TestEncryptionService.Create(
-            "primary", 1, new TestKey("primary", 1, sourcePath));
+        using var sourceService = TestEncryptionService.Create("primary", 1, new TestKey("primary", 1, sourcePath));
         var encrypted = await EncryptAsync(sourceService.Service, "backup restore secret");
         var envelopeBackup = EncryptionTestData.CloneEnvelope(encrypted);
 
         var restoredPath = backupFiles.GetPath("primary-restored.key");
         File.Copy(sourcePath, restoredPath);
-        using var restoredService = TestEncryptionService.Create(
-            "primary", 1, new TestKey("primary", 1, restoredPath));
+        using var restoredService = TestEncryptionService.Create("primary", 1, new TestKey("primary", 1, restoredPath));
 
         await AssertDecryptsToAsync(restoredService.Service, envelopeBackup, "backup restore secret");
     }

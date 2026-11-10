@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Defaults;
@@ -22,14 +23,16 @@ internal sealed class MongoPersistCreatedStorageProfile(
     IMongoCollection<StorageProfile> storageProfiles,
     RunMongoOutcomeTransaction<PersistCreatedStorageProfileOutcome> runMongoTransaction,
     StoreOutboxWrites storeOutboxWrites,
-    StorageProfileHistory history)
+    StorageProfileHistory history
+)
 {
     public Task<PersistCreatedStorageProfileOutcome> InvokeAsync(
         StorageProfile profile,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        return runMongoTransaction(async (transaction, ct) =>
+        return runMongoTransaction(
+            async (transaction, ct) =>
             {
                 if (profile.IsDefault)
                 {
@@ -49,16 +52,23 @@ internal sealed class MongoPersistCreatedStorageProfile(
                     await storageProfiles.InsertOneAsync(transaction.Session, profile, cancellationToken: ct);
                 }
                 catch (MongoWriteException duplicate) when (MongoDuplicateKey.IsForIndex(
-                    duplicate, StorageProfileTechnicalNames.UniqueIndexName))
+                                                                duplicate,
+                                                                StorageProfileTechnicalNames.UniqueIndexName))
                 {
                     return transaction.Abort(new StorageProfileTechnicalNameConflict(profile.TechnicalName));
                 }
 
                 await history.StoreAsync(profile, transaction.Session, ct);
-                await storeOutboxWrites(transaction.Session,
-                    [OutboxWrite.Create(new StorageProfileCatalogChangedEvent(
-                        profile.Id, profile.Revision, profile.TechnicalName,
-                        Pole.Features.Events.Abstractions.EventCore.Create()))],
+                await storeOutboxWrites(
+                    transaction.Session,
+                    [
+                        OutboxWrite.Create(
+                            new StorageProfileCatalogChangedEvent(
+                                profile.Id,
+                                profile.Revision,
+                                profile.TechnicalName,
+                                EventCore.Create())),
+                    ],
                     ct);
                 return transaction.Commit(profile);
             },

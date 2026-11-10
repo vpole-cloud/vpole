@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Formats.Tar;
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 
@@ -7,37 +8,45 @@ namespace Pole.Tests.E2E.GitHubStub;
 
 public sealed record GitOpsMixedFile(
     string Path,
-    string Content);
+    string Content
+);
 
 public sealed record GitOpsMixedSnapshotRequest(
     string Commit,
-    IReadOnlyList<GitOpsMixedFile> Files);
+    IReadOnlyList<GitOpsMixedFile> Files
+);
 
 public sealed record GitOpsRepositoryAccessRequest(
-    bool Denied);
+    bool Denied
+);
 
 public enum GitOpsMixedPublishResult
 {
     Published,
     AlreadyPresent,
     InvalidInput,
-    CommitConflict
+    CommitConflict,
 }
 
 public sealed record GitOpsMixedTreeEntry(
     string Path,
     string Type,
-    string Mode);
+    string Mode
+);
 
 public sealed record GitOpsMixedSnapshot(
     string Commit,
-    ImmutableArray<GitOpsMixedFile> Files)
+    ImmutableArray<GitOpsMixedFile> Files
+)
 {
     public ImmutableArray<GitOpsMixedTreeEntry> Tree() => Files
-        .SelectMany(file => Directories(file.Path).Select(path => new GitOpsMixedTreeEntry(path, "tree", "040000"))
-            .Append(new(file.Path, "blob", "100644")))
+        .SelectMany(file =>
+            Directories(file.Path)
+                .Select(path => new GitOpsMixedTreeEntry(path, "tree", "040000"))
+                .Append(new GitOpsMixedTreeEntry(file.Path, "blob", "100644")))
         .DistinctBy(entry => entry.Path, StringComparer.Ordinal)
-        .OrderBy(entry => entry.Path, StringComparer.Ordinal).ToImmutableArray();
+        .OrderBy(entry => entry.Path, StringComparer.Ordinal)
+        .ToImmutableArray();
 
     public byte[] Archive()
     {
@@ -80,12 +89,12 @@ public sealed record GitOpsMixedSnapshot(
         ChangeTime = DateTimeOffset.UnixEpoch,
         Uid = 0,
         Gid = 0,
-        UserName = string.Empty,
-        GroupName = string.Empty,
+        UserName = "",
+        GroupName = "",
         Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead |
             (type == TarEntryType.Directory
                 ? UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute
-                : UnixFileMode.None)
+                : UnixFileMode.None),
     };
 }
 
@@ -94,8 +103,8 @@ public sealed class GitOpsMixedStubState
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly object gate = new();
     private readonly Dictionary<string, GitOpsMixedSnapshot> snapshots = new(StringComparer.Ordinal);
-    private string? head;
     private volatile bool accessDenied;
+    private string? head;
 
     public bool AccessDenied
     {
@@ -108,7 +117,9 @@ public sealed class GitOpsMixedStubState
         get
         {
             lock (gate)
+            {
                 return head;
+            }
         }
     }
 
@@ -146,7 +157,7 @@ public sealed class GitOpsMixedStubState
                 return GitOpsMixedPublishResult.AlreadyPresent;
             }
 
-            snapshots.Add(commit, new(commit, files));
+            snapshots.Add(commit, new GitOpsMixedSnapshot(commit, files));
             head = commit;
             return GitOpsMixedPublishResult.Published;
         }
@@ -158,13 +169,15 @@ public sealed class GitOpsMixedStubState
             return null;
 
         lock (gate)
+        {
             return snapshots.GetValueOrDefault(commit.ToLowerInvariant());
+        }
     }
 
     private static bool ValidCommit(string? commit) => commit is { Length: 40 } && commit.All(Uri.IsHexDigit);
 
-    private static bool ValidPath(string? path) => !string.IsNullOrWhiteSpace(path) &&
-        !path.Contains('\\') && !path.Contains(':') && !path.Any(char.IsControl) &&
+    private static bool ValidPath(string? path) => !string.IsNullOrWhiteSpace(path) && !path.Contains('\\') &&
+        !path.Contains(':') && !path.Any(char.IsControl) &&
         path.Split('/').All(segment => segment is not ("" or "." or ".."));
 }
 
@@ -177,67 +190,89 @@ public static class GitOpsMixedStubEndpoints
         MapRepository(app, authorized, "9005", "gitops-redis-replacement", new GitOpsMixedStubState());
         var console = new GitOpsMixedStubState();
         MapRepository(app, authorized, "9006", "gitops-console", console);
-        app.MapPost("/__e2e/gitops-console/access", (HttpRequest request, GitOpsRepositoryAccessRequest body,
-            IConfiguration config) =>
-        {
-            if (!authorized(request, config))
-                return Results.Unauthorized();
+        app.MapPost(
+            "/__e2e/gitops-console/access",
+            (
+                HttpRequest request, GitOpsRepositoryAccessRequest body,
+                IConfiguration config) =>
+            {
+                if (!authorized(request, config))
+                    return Results.Unauthorized();
 
-            console.AccessDenied = body.Denied;
-            return Results.NoContent();
-        });
+                console.AccessDenied = body.Denied;
+                return Results.NoContent();
+            });
     }
 
     public static object ConsoleRepository(string baseUrl) => Repository("9006", "gitops-console", baseUrl);
 
-    private static object Repository(string id, string name, string baseUrl) => new
+    private static object Repository(
+        string id,
+        string name,
+        string baseUrl) => new
     {
-        id = long.Parse(id, System.Globalization.CultureInfo.InvariantCulture),
+        id = long.Parse(id, CultureInfo.InvariantCulture),
         name,
         full_name = $"pole-e2e/{name}",
         html_url = $"{baseUrl.TrimEnd('/')}/pole-e2e/{name}",
         @private = true,
         default_branch = "main",
-        updated_at = "2026-10-30T00:00:00Z"
+        updated_at = "2026-10-30T00:00:00Z",
     };
 
-    private static void MapRepository(WebApplication app, Func<HttpRequest, IConfiguration, bool> authorized,
-        string repositoryId, string name, GitOpsMixedStubState state)
+    private static void MapRepository(
+        WebApplication app,
+        Func<HttpRequest, IConfiguration, bool> authorized,
+        string repositoryId,
+        string name,
+        GitOpsMixedStubState state)
     {
         var repositoryPath = $"/repos/pole-e2e/{name}";
-        app.MapPost($"/__e2e/{name}", (HttpRequest request, GitOpsMixedSnapshotRequest body,
-            IConfiguration config) =>
-        {
-            if (!authorized(request, config))
-                return Results.Unauthorized();
-
-            return state.Publish(body) switch
+        app.MapPost(
+            $"/__e2e/{name}",
+            (
+                HttpRequest request, GitOpsMixedSnapshotRequest body,
+                IConfiguration config) =>
             {
-                GitOpsMixedPublishResult.Published or GitOpsMixedPublishResult.AlreadyPresent => Results.NoContent(),
-                GitOpsMixedPublishResult.CommitConflict => Results.Conflict(),
-                GitOpsMixedPublishResult.InvalidInput => Results.BadRequest(),
-                _ => throw new ArgumentOutOfRangeException(nameof(body))
-            };
-        });
-        app.MapGet($"/repositories/{repositoryId}", (HttpRequest request, GitHubStubState journal) =>
-        {
-            journal.Record(request);
-            return state.AccessDenied
-                ? Results.StatusCode(StatusCodes.Status403Forbidden)
-                : Results.Ok(Repository(repositoryId, name, $"{request.Scheme}://{request.Host}"));
-        });
-        app.MapGet(repositoryPath + "/branches", (HttpRequest request, GitHubStubState journal) =>
-        {
-            journal.Record(request);
-            if (state.AccessDenied)
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (!authorized(request, config))
+                    return Results.Unauthorized();
 
-            return Results.Ok(state.Head is { } commit
-                ? new[] { new { name = "main", commit = new { sha = commit }, @protected = false } }
-                : []);
-        });
-        app.MapGet(repositoryPath + "/branches/{branch}",
-            (string branch, HttpRequest request, GitHubStubState journal) =>
+                return state.Publish(body) switch
+                {
+                    GitOpsMixedPublishResult.Published or GitOpsMixedPublishResult.AlreadyPresent =>
+                        Results.NoContent(),
+                    GitOpsMixedPublishResult.CommitConflict => Results.Conflict(),
+                    GitOpsMixedPublishResult.InvalidInput => Results.BadRequest(),
+                    _ => throw new ArgumentOutOfRangeException(nameof(body)),
+                };
+            });
+        app.MapGet(
+            $"/repositories/{repositoryId}",
+            (HttpRequest request, GitHubStubState journal) =>
+            {
+                journal.Record(request);
+                return state.AccessDenied
+                    ? Results.StatusCode(StatusCodes.Status403Forbidden)
+                    : Results.Ok(Repository(repositoryId, name, $"{request.Scheme}://{request.Host}"));
+            });
+        app.MapGet(
+            repositoryPath + "/branches",
+            (HttpRequest request, GitHubStubState journal) =>
+            {
+                journal.Record(request);
+                if (state.AccessDenied)
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+                return Results.Ok(
+                    state.Head is { } commit
+                        ? new[] { new { name = "main", commit = new { sha = commit }, @protected = false } }
+                        : []);
+            });
+        app.MapGet(
+            repositoryPath + "/branches/{branch}",
+            (
+                string branch, HttpRequest request,
+                GitHubStubState journal) =>
             {
                 journal.Record(request);
                 if (state.AccessDenied)
@@ -247,8 +282,11 @@ public static class GitOpsMixedStubEndpoints
                     ? Results.Ok(new { name = "main", commit = new { sha = commit } })
                     : Results.NotFound();
             });
-        app.MapGet(repositoryPath + "/git/commits/{commit}",
-            (string commit, HttpRequest request, GitHubStubState journal) =>
+        app.MapGet(
+            repositoryPath + "/git/commits/{commit}",
+            (
+                string commit, HttpRequest request,
+                GitHubStubState journal) =>
             {
                 journal.Record(request);
                 if (state.AccessDenied)
@@ -258,8 +296,11 @@ public static class GitOpsMixedStubEndpoints
                     ? Results.Ok(new { sha = snapshot.Commit, tree = new { sha = snapshot.Commit } })
                     : Results.NotFound();
             });
-        app.MapGet(repositoryPath + "/git/trees/{tree}",
-            (string tree, HttpRequest request, GitHubStubState journal) =>
+        app.MapGet(
+            repositoryPath + "/git/trees/{tree}",
+            (
+                string tree, HttpRequest request,
+                GitHubStubState journal) =>
             {
                 journal.Record(request);
                 if (state.AccessDenied)
@@ -269,8 +310,11 @@ public static class GitOpsMixedStubEndpoints
                     ? Results.Ok(new { tree = snapshot.Tree(), truncated = false })
                     : Results.NotFound();
             });
-        app.MapGet(repositoryPath + "/tarball/{commit}",
-            (string commit, HttpRequest request, GitHubStubState journal) =>
+        app.MapGet(
+            repositoryPath + "/tarball/{commit}",
+            (
+                string commit, HttpRequest request,
+                GitHubStubState journal) =>
             {
                 journal.Record(request);
                 if (state.AccessDenied)

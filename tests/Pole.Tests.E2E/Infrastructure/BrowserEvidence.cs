@@ -6,9 +6,7 @@ namespace Pole.Tests.E2E.Infrastructure;
 
 internal static class BrowserEvidence
 {
-    public static async Task<IPage> NewPageAsync(
-        IBrowserContext context,
-        [CallerMemberName] string scenario = "")
+    public static async Task<IPage> NewPageAsync(IBrowserContext context, [CallerMemberName] string scenario = "")
     {
         var page = await context.NewPageAsync();
         var journal = TestPhaseJournal.Current ?? new TestPhaseJournal(scenario);

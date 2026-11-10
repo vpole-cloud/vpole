@@ -12,18 +12,20 @@ internal static class RealtimeDevelopmentCertificate
             return path;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using var rsa = RSA.Create(3072);
-        var request = new CertificateRequest("CN=Pole local realtime key protection",
+        var request = new CertificateRequest(
+            "CN=Pole local realtime key protection",
             rsa,
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyEncipherment, critical: true));
-        using var certificate =
-            request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(5));
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(5));
         var fileOptions = new FileStreamOptions
         {
             Mode = FileMode.CreateNew,
             Access = FileAccess.Write,
-            Share = FileShare.None
+            Share = FileShare.None,
         };
         if (!OperatingSystem.IsWindows())
             fileOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
@@ -31,7 +33,10 @@ internal static class RealtimeDevelopmentCertificate
         try
         {
             using (var file = new FileStream(temporaryPath, fileOptions))
+            {
                 file.Write(certificate.Export(X509ContentType.Pfx));
+            }
+
             try
             {
                 File.Move(temporaryPath, path, overwrite: false);

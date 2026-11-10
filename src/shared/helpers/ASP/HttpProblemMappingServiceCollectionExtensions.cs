@@ -21,14 +21,13 @@ public static class HttpProblemMappingServiceCollectionExtensions
         services.TryAddSingleton<HttpProblemMapper>();
         services.TryAddSingleton<IHttpProblemMapper>(serviceProvider =>
             serviceProvider.GetRequiredService<HttpProblemMapper>());
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IHostedService, HttpProblemMappingStartupService>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, HttpProblemMappingStartupService>());
         return services;
     }
 
     private sealed class HttpProblemMappingStartupService(
-        HttpProblemMapper mapper)
-        : IHostedService
+        HttpProblemMapper mapper
+    ) : IHostedService
     {
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -36,7 +35,6 @@ public static class HttpProblemMappingServiceCollectionExtensions
             return Task.CompletedTask;
         }
 
-        public Task StopAsync(CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

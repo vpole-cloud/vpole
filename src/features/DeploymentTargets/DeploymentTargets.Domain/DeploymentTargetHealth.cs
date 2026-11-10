@@ -6,7 +6,7 @@ public enum DeploymentTargetHealthStatus
 {
     Unknown,
     Healthy,
-    Degraded
+    Degraded,
 }
 
 public sealed record DeploymentTargetNamespaceCapabilities(
@@ -14,10 +14,10 @@ public sealed record DeploymentTargetNamespaceCapabilities(
     bool CanCreate,
     bool CanUpdate,
     bool CanPatch,
-    bool CanDelete)
+    bool CanDelete
+)
 {
-    public static DeploymentTargetNamespaceCapabilities Unknown { get; } =
-        new(false, false, false, false, false);
+    public static DeploymentTargetNamespaceCapabilities Unknown { get; } = new(false, false, false, false, false);
 }
 
 public sealed record DeploymentTargetNetworkPolicyCapabilities(
@@ -25,13 +25,12 @@ public sealed record DeploymentTargetNetworkPolicyCapabilities(
     bool CanCreate,
     bool CanUpdate,
     bool CanPatch,
-    bool CanDelete)
+    bool CanDelete
+)
 {
-    public static DeploymentTargetNetworkPolicyCapabilities Unknown { get; } =
-        new(false, false, false, false, false);
+    public static DeploymentTargetNetworkPolicyCapabilities Unknown { get; } = new(false, false, false, false, false);
 
-    [BsonIgnore]
-    public bool CanManage => CanGet && CanCreate && CanUpdate && CanPatch && CanDelete;
+    [BsonIgnore] public bool CanManage => CanGet && CanCreate && CanUpdate && CanPatch && CanDelete;
 }
 
 public sealed record DeploymentTargetCapabilities(
@@ -39,18 +38,17 @@ public sealed record DeploymentTargetCapabilities(
     DateTime? ObservedAtUtc,
     string? KubernetesVersion,
     DeploymentTargetNamespaceCapabilities NamespaceCapabilities,
-    DeploymentTargetNetworkPolicyCapabilities NetworkPolicyCapabilities)
+    DeploymentTargetNetworkPolicyCapabilities NetworkPolicyCapabilities
+)
 {
-    [BsonIgnore]
-    public bool IsKnown => ObservedAtUtc is not null;
+    [BsonIgnore] public bool IsKnown => ObservedAtUtc is not null;
 
-    public static DeploymentTargetCapabilities Unknown(long connectionVersion) =>
-        new(
-            DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
-            ObservedAtUtc: null,
-            KubernetesVersion: null,
-            DeploymentTargetNamespaceCapabilities.Unknown,
-            DeploymentTargetNetworkPolicyCapabilities.Unknown);
+    public static DeploymentTargetCapabilities Unknown(long connectionVersion) => new(
+        DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
+        ObservedAtUtc: null,
+        KubernetesVersion: null,
+        DeploymentTargetNamespaceCapabilities.Unknown,
+        DeploymentTargetNetworkPolicyCapabilities.Unknown);
 
     public static DeploymentTargetCapabilities Observed(
         long connectionVersion,
@@ -80,22 +78,20 @@ public sealed record DeploymentTargetHealth(
     DateTime? LastCheckedAtUtc,
     DateTime? LastHealthyAtUtc,
     string? FailureCode,
-    string? FailureMessage)
+    string? FailureMessage
+)
 {
-    public static DeploymentTargetHealth Unknown(long connectionVersion) =>
-        new(
-            DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
-            DeploymentTargetHealthStatus.Unknown,
-            null,
-            null,
-            null,
-            null);
+    public static DeploymentTargetHealth Unknown(long connectionVersion) => new(
+        DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
+        DeploymentTargetHealthStatus.Unknown,
+        null,
+        null,
+        null,
+        null);
 
     public static DeploymentTargetHealth Healthy(long connectionVersion, DateTime checkedAtUtc)
     {
-        var normalizedCheckedAtUtc = DeploymentTargetValueGuard.Utc(
-            checkedAtUtc,
-            nameof(checkedAtUtc));
+        var normalizedCheckedAtUtc = DeploymentTargetValueGuard.Utc(checkedAtUtc, nameof(checkedAtUtc));
 
         return new DeploymentTargetHealth(
             DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),
@@ -113,18 +109,14 @@ public sealed record DeploymentTargetHealth(
         string failureCode,
         string safeFailureMessage)
     {
-        var normalizedCheckedAtUtc = DeploymentTargetValueGuard.Utc(
-            checkedAtUtc,
-            nameof(checkedAtUtc));
+        var normalizedCheckedAtUtc = DeploymentTargetValueGuard.Utc(checkedAtUtc, nameof(checkedAtUtc));
         DateTime? normalizedLastHealthyAtUtc = lastHealthyAtUtc is null
             ? null
             : DeploymentTargetValueGuard.Utc(lastHealthyAtUtc.Value, nameof(lastHealthyAtUtc));
         if (normalizedLastHealthyAtUtc > normalizedCheckedAtUtc)
-        {
             throw new ArgumentException(
                 "The last healthy time cannot be later than the last validation time.",
                 nameof(lastHealthyAtUtc));
-        }
 
         return new DeploymentTargetHealth(
             DeploymentTargetValueGuard.Positive(connectionVersion, nameof(connectionVersion)),

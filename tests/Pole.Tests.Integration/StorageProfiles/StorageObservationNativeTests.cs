@@ -1,16 +1,14 @@
-using Pole.Observation;
-using System.Collections.Immutable;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Text.Json;
 using k8s;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
-using Pole.Tests.Integration.Infrastructure;
+using Pole.Observation;
 using Pole.Testing.Kubernetes;
+using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.StorageProfiles;
@@ -74,7 +72,8 @@ public sealed class StorageObservationNativeTests
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         var first = await NextAsync(changes, StorageObservationChangeKind.Ready);
         api.Streams["classes"].Write(StorageNativeApi.ClassFrame("ADDED", "replacement", "replace-version"));
-        Assert.Equal(StorageObservationChangeKind.Unavailable,
+        Assert.Equal(
+            StorageObservationChangeKind.Unavailable,
             (await NextAsync(changes, StorageObservationChangeKind.Unavailable)).Kind);
         var replaced = await NextAsync(changes, StorageObservationChangeKind.Ready);
         Assert.NotEqual(first.SourceId, replaced.SourceId);
@@ -98,9 +97,11 @@ public sealed class StorageObservationNativeTests
         using var budget = new ObservationReadBudget(TimeProvider.System);
         var changes = Source(client, budget).WatchAsync(Context, cancellation.Token).GetAsyncEnumerator();
         var before = await NextAsync(changes, StorageObservationChangeKind.Ready);
-        api.Streams["claims"].Write(malformed
-            ? "{broken-json\n"
-            : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"native-canary\"}}\n");
+        api.Streams["claims"]
+            .Write(
+                malformed
+                    ? "{broken-json\n"
+                    : "{\"type\":\"ERROR\",\"object\":{\"apiVersion\":\"v1\",\"kind\":\"Status\",\"code\":410,\"message\":\"native-canary\"}}\n");
         await NextAsync(changes, StorageObservationChangeKind.Unavailable);
         var recovered = await NextAsync(changes, StorageObservationChangeKind.Ready);
         Assert.NotEqual(before.SourceId, recovered.SourceId);
@@ -116,47 +117,57 @@ public sealed class StorageObservationNativeTests
         using var client = NativeWatchTestClient.Create(api.Handler);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var budget = new ObservationReadBudget(TimeProvider.System);
-        var changes = Source(client, budget, new()
-        {
-            MaximumItemsPerKind = 1
-        }).WatchAsync(Context, cancellation.Token)
+        var changes = Source(
+                client,
+                budget,
+                new StorageObservationOptions
+                {
+                    MaximumItemsPerKind = 1,
+                })
+            .WatchAsync(Context, cancellation.Token)
             .GetAsyncEnumerator();
         var first = await NextAsync(changes, StorageObservationChangeKind.Unavailable);
         Assert.Null(first.Inventory);
-        Assert.DoesNotContain(api.Requests,
+        Assert.DoesNotContain(
+            api.Requests,
             uri => NativeWatchTestClient.IsWatch(uri) && StorageNativeApi.Key(uri.AbsolutePath) == "classes");
         cancellation.Cancel();
         await changes.DisposeAsync();
     }
 
-    private static KubernetesStorageObservationSource Source(IKubernetes client,
+    private static KubernetesStorageObservationSource Source(
+        IKubernetes client,
         IObservationReadBudget budget,
         StorageObservationOptions? options = null)
     {
         var contexts = new StorageObservationContextLoader((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(
-            new DeploymentTargetLookupDto(id,
+            new DeploymentTargetLookupDto(
+                id,
                 "Target",
                 "cluster",
                 "InCluster",
                 1,
-                new(1, null, new(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
+                new DeploymentTargetWorkloadConfigurationLookupDto(
+                    1,
+                    null,
+                    new DeploymentTargetNetworkSourcesDto(
+                        ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
                 1,
                 true,
                 false,
                 false,
                 "Healthy",
-        TechnicalName: "test-target",
-        NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
-        var limits = options ?? new();
-        return new(new StorageObservationNativeReader(new FixedKubernetesClientProvider(client),
-                contexts,
-                budget,
-                limits),
+                TechnicalName: "test-target",
+                NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown)));
+        var limits = options ?? new StorageObservationOptions();
+        return new KubernetesStorageObservationSource(
+            new StorageObservationNativeReader(new FixedKubernetesClientProvider(client), contexts, budget, limits),
             limits,
             TimeProvider.System);
     }
 
-    internal static async Task<StorageObservationChange> NextAsync(IAsyncEnumerator<StorageObservationChange> changes,
+    internal static async Task<StorageObservationChange> NextAsync(
+        IAsyncEnumerator<StorageObservationChange> changes,
         StorageObservationChangeKind kind)
     {
         for (var count = 0; count < 30; count++)
@@ -174,6 +185,20 @@ internal sealed class StorageNativeApi : IDisposable
 {
     private readonly bool empty;
 
+    public StorageNativeApi(bool empty)
+    {
+        this.empty = empty;
+        Handler = new NativeWatchTestHandler(
+            List,
+            request =>
+            {
+                var key = Key(request.RequestUri!.AbsolutePath);
+                var stream = new NativeWatchTestStream();
+                Streams[key] = stream;
+                return stream;
+            });
+    }
+
     public NativeWatchTestHandler Handler { get; }
 
     public ConcurrentDictionary<string, NativeWatchTestStream> Streams { get; } = new(StringComparer.Ordinal);
@@ -188,17 +213,11 @@ internal sealed class StorageNativeApi : IDisposable
         string.Join('.', new string('a', 63), new string('b', 63), new string('c', 63), new string('d', 61)) + "/" +
         new string('e', 63);
 
-    public StorageNativeApi(bool empty)
+    public void Dispose()
     {
-        this.empty = empty;
-        Handler = new NativeWatchTestHandler(List,
-            request =>
-            {
-                var key = Key(request.RequestUri!.AbsolutePath);
-                var stream = new NativeWatchTestStream();
-                Streams[key] = stream;
-                return stream;
-            });
+        Handler.Dispose();
+        foreach (var stream in Streams.Values)
+            stream.Dispose();
     }
 
     internal static string Key(string path) => path.EndsWith("storageclasses", StringComparison.Ordinal) ? "classes" :
@@ -212,16 +231,18 @@ internal sealed class StorageNativeApi : IDisposable
         var version = key == "classes" ? "storage.k8s.io/v1" : "v1";
         var items = key == "classes" && !empty
             ? ClassObject("original", "class-a", provisioner: Provisioner) +
-              (ExtraClass ? "," + ClassObject("extra", "class-b", provisioner: Provisioner) : "")
+            (ExtraClass ? "," + ClassObject("extra", "class-b", provisioner: Provisioner) : "")
             : "";
         return
             $$"""{"apiVersion":"{{version}}","kind":"{{kind}}","metadata":{"resourceVersion":"{{key}}-list"},"items":[{{items}}]}""";
     }
 
-    private static string ClassObject(string uid,
+    private static string ClassObject(
+        string uid,
         string name,
         string version = "class-version",
-        string provisioner = "driver.example") => JsonSerializer.Serialize(new
+        string provisioner = "driver.example") => JsonSerializer.Serialize(
+        new
         {
             apiVersion = "storage.k8s.io/v1",
             kind = "StorageClass",
@@ -233,23 +254,20 @@ internal sealed class StorageNativeApi : IDisposable
                 annotations = new Dictionary<string, string>
                 {
                     ["pole.io/raw"] = "native-canary",
-                    ["storageclass.kubernetes.io/is-default-class"] = "true"
-                }
+                    ["storageclass.kubernetes.io/is-default-class"] = "true",
+                },
             },
             provisioner,
-            parameters = new Dictionary<string, string> { ["raw"] = "native-canary" }
+            parameters = new Dictionary<string, string> { ["raw"] = "native-canary" },
         });
 
-    internal static string ClassFrame(string type, string uid, string version) => JsonSerializer.Serialize(new
-    {
-        type,
-        @object = JsonSerializer.Deserialize<JsonElement>(ClassObject(uid, "class-a", version))
-    }) + "\n";
-
-    public void Dispose()
-    {
-        Handler.Dispose();
-        foreach (var stream in Streams.Values)
-            stream.Dispose();
-    }
+    internal static string ClassFrame(
+        string type,
+        string uid,
+        string version) => JsonSerializer.Serialize(
+        new
+        {
+            type,
+            @object = JsonSerializer.Deserialize<JsonElement>(ClassObject(uid, "class-a", version)),
+        }) + "\n";
 }

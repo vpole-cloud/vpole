@@ -21,13 +21,17 @@ public sealed class TenantDomainZoneSchemaValidationMigration : IMigration
             [
                 "_id", "TenantId", "DeploymentTargetId", "Label",
                 "Domain", "Identity", "ReferenceFence",
-                "Revision", "CreatedAtUtc", "UpdatedAtUtc"
+                "Revision", "CreatedAtUtc", "UpdatedAtUtc",
             ],
             ("_id", DomainCollectionSchema.Type("objectId")),
             ("TenantId", DomainCollectionSchema.Type("objectId")),
             ("DeploymentTargetId", DomainCollectionSchema.Type("objectId")),
             ("Label", DomainCollectionSchema.String(1, 63, "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")),
-            ("Domain", DomainCollectionSchema.String(1, 253, "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")),
+            ("Domain",
+                DomainCollectionSchema.String(
+                    1,
+                    253,
+                    "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")),
             ("Revision", DomainCollectionSchema.Integer("long", 1)),
             ("Identity", DomainCollectionSchema.Identity()),
             ("ReferenceFence", DomainCollectionSchema.Integer("long", 0)),

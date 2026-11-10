@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Pole.ArchitectureAnalyzers;
 
@@ -70,22 +70,25 @@ public sealed class EndpointOutcomeOwnershipAnalyzer : DiagnosticAnalyzer
             return;
 
         var handlers = tree.GetRoot(context.CancellationToken)
-            .DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .DescendantNodes()
+            .OfType<TypeDeclarationSyntax>()
             .Select(declaration => context.SemanticModel.GetDeclaredSymbol(declaration, context.CancellationToken))
             .OfType<INamedTypeSymbol>()
             .Where(type => type.TypeKind == TypeKind.Class && !type.IsAbstract &&
-                           type.AllInterfaces.Any(IsOutcomeHandler))
+                type.AllInterfaces.Any(IsOutcomeHandler))
             .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
             .ToArray();
         if (handlers.Sum(handler => handler.AllInterfaces.Count(IsOutcomeHandler)) < 2)
             return;
 
         foreach (var handler in handlers)
-            context.ReportDiagnostic(Diagnostic.Create(SingleHandlerRule,
-                handler.Locations.First(location => location.SourceTree == tree), handler.Name));
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    SingleHandlerRule,
+                    handler.Locations.First(location => location.SourceTree == tree),
+                    handler.Name));
     }
 
-    private static bool IsOutcomeHandler(INamedTypeSymbol contract) =>
-        contract.OriginalDefinition.ToDisplayString() ==
+    private static bool IsOutcomeHandler(INamedTypeSymbol contract) => contract.OriginalDefinition.ToDisplayString() ==
         "Pole.Mediator.IMediatorOutcomeHandler<TRequest, TOutcome>";
 }

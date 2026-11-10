@@ -1,4 +1,3 @@
-using Pole.Features.Functions.Application.Common;
 namespace Pole.Features.Functions.Application.Mongo;
 
 internal static class FunctionAppIndexes

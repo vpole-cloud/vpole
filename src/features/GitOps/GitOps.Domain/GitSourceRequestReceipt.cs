@@ -11,4 +11,5 @@ public sealed record GitSourceRequestReceipt(
     string InputHash,
     long Generation,
     GitRunInitiator Initiator,
-    DateTime RequestedAtUtc) : ITenantOwned;
+    DateTime RequestedAtUtc
+) : ITenantOwned;

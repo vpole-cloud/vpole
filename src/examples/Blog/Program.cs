@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Blog;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,10 +10,7 @@ builder.AddServiceDefaults();
 
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://pole-server";
 
-builder.Services.AddHttpClient<BlogSeedClient>(client =>
-{
-    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/'));
-});
+builder.Services.AddHttpClient<BlogSeedClient>(client => { client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/')); });
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();
@@ -24,7 +20,9 @@ await seeder.RunAsync();
 
 namespace Blog
 {
-    internal sealed class BlogSeedClient(HttpClient httpClient)
+    internal sealed class BlogSeedClient(
+        HttpClient httpClient
+    )
     {
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -65,7 +63,7 @@ namespace Blog
                 {
                     Name = name,
                     Description = description,
-                    Tags = tags
+                    Tags = tags,
                 });
 
             response.EnsureSuccessStatusCode();
@@ -95,14 +93,14 @@ namespace Blog
                         {
                             Server = "docker.io",
                             Name = "nginx",
-                            Tag = "1.27"
+                            Tag = "1.27",
                         },
                         Config = new
                         {
                             EnvironmentVariables = new Dictionary<string, string>
                             {
                                 ["ASPNETCORE_ENVIRONMENT"] = "Production",
-                                ["SERVICE_NAME"] = name
+                                ["SERVICE_NAME"] = name,
                             },
                             PortMappings = new[]
                             {
@@ -111,17 +109,17 @@ namespace Blog
                                     ServicePort = 80,
                                     TargetPort = "8080",
                                     Protocol = "TCP",
-                                    Name = "http"
-                                }
-                            }
+                                    Name = "http",
+                                },
+                            },
                         },
                         Autoscaling = (object?)null,
                         Probes = new
                         {
                             Startup = CreateProbe(),
                             Liveness = CreateProbe(),
-                            Readiness = CreateProbe()
-                        }
+                            Readiness = CreateProbe(),
+                        },
                     },
                     Placement = new
                     {
@@ -132,11 +130,11 @@ namespace Blog
                             {
                                 DeploymentTargetId = (string?)null,
                                 FixedReplicas = 2,
-                                ComputeProfileId = (string?)null
-                            }
-                        }
+                                ComputeProfileId = (string?)null,
+                            },
+                        },
                     },
-                    Tags = Array.Empty<string>()
+                    Tags = Array.Empty<string>(),
                 });
 
             if (response.StatusCode == HttpStatusCode.Conflict)
@@ -150,7 +148,11 @@ namespace Blog
             Console.WriteLine($"Created web service: {name} ({created.WebServiceId})");
         }
 
-        private async Task EnsurePostgresClusterAsync(string resourceGroupId, string name, string username, string password)
+        private async Task EnsurePostgresClusterAsync(
+            string resourceGroupId,
+            string name,
+            string username,
+            string password)
         {
             var existing = await FindPostgresClusterByNameAsync(name);
             if (existing is not null)
@@ -169,7 +171,7 @@ namespace Blog
                     Instances = 1,
                     Storage = 10,
                     Username = username,
-                    Password = password
+                    Password = password,
                 });
 
             response.EnsureSuccessStatusCode();
@@ -179,20 +181,28 @@ namespace Blog
 
         private async Task<ResourceGroupResponse?> FindResourceGroupByNameAsync(string name)
         {
-            var response = await httpClient.GetAsync($"/api/v1/resource-groups/?search={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=50");
+            var response = await httpClient.GetAsync(
+                $"/api/v1/resource-groups/?search={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=50");
             response.EnsureSuccessStatusCode();
 
             var page = await ReadJsonAsync<PaginatedResponse<ResourceGroupResponse>>(response);
-            return page.Items.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            return page.Items.FirstOrDefault(item => string.Equals(
+                item.Name,
+                name,
+                StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task<WebServiceResponse?> FindWebServiceByNameAsync(string name)
         {
-            var response = await httpClient.GetAsync($"/api/v1/web-services/?search={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=50");
+            var response = await httpClient.GetAsync(
+                $"/api/v1/web-services/?search={Uri.EscapeDataString(name)}&pageNumber=1&pageSize=50");
             response.EnsureSuccessStatusCode();
 
             var page = await ReadJsonAsync<PaginatedResponse<WebServiceResponse>>(response);
-            return page.Items.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            return page.Items.FirstOrDefault(item => string.Equals(
+                item.Name,
+                name,
+                StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task<PostgresClusterResponse?> FindPostgresClusterByNameAsync(string name)
@@ -201,7 +211,10 @@ namespace Blog
             response.EnsureSuccessStatusCode();
 
             var page = await ReadJsonAsync<PaginatedResponse<PostgresClusterResponse>>(response);
-            return page.Items.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            return page.Items.FirstOrDefault(item => string.Equals(
+                item.Name,
+                name,
+                StringComparison.OrdinalIgnoreCase));
         }
 
         private static async Task<T> ReadJsonAsync<T>(HttpResponseMessage response)
@@ -218,31 +231,37 @@ namespace Blog
             PeriodSeconds = 10,
             TimeoutSeconds = 5,
             FailureThreshold = 3,
-            SuccessThreshold = 1
+            SuccessThreshold = 1,
         };
 
         private sealed record ResourceGroupResponse(
             string Id,
             string Name,
             string Description,
-            IReadOnlyCollection<string> Tags);
+            IReadOnlyCollection<string> Tags
+        );
 
-        private sealed record WebServiceCreateResponse(string WebServiceId);
+        private sealed record WebServiceCreateResponse(
+            string WebServiceId
+        );
 
         private sealed record WebServiceResponse(
             string Id,
             string Name,
-            string ResourceGroupId);
+            string ResourceGroupId
+        );
 
         private sealed record PostgresClusterResponse(
             string Id,
             string Name,
-            string GroupId);
+            string GroupId
+        );
 
         private sealed record PaginatedResponse<T>(
             IReadOnlyCollection<T> Items,
             long TotalCount,
             int PageNumber,
-            int PageSize);
+            int PageSize
+        );
     }
 }

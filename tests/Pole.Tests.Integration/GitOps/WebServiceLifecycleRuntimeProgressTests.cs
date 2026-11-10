@@ -1,16 +1,7 @@
-using System.Collections.Immutable;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
-using Pole.Features.Domains.Domain;
-using Pole.Features.Domains.Migrations;
-using Pole.Features.GitOps.Application;
-using Pole.Features.GitOps.Application.Jobs;
-using Pole.Features.GitOps.Application.Lifecycle;
-using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.Infrastructure;
@@ -19,7 +10,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class WebServiceLifecycleRuntimeProgressTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+public sealed class WebServiceLifecycleRuntimeProgressTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("complete")]
@@ -31,11 +24,14 @@ public sealed class WebServiceLifecycleRuntimeProgressTests(MongoReplicaSetFixtu
         Assert.True(run.State is GitRunWaitingCleanup, string.Join(",", run.Diagnostics.Select(item => item.Code)));
         Assert.IsType<DeletingWebServiceLifecycle>((await Service()).Lifecycle);
         var receipts = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
-            .Find(item => item.RunId == run.Id).ToListAsync();
-        Assert.Single(receipts, item => item.Kind == "HostnameBinding" &&
-            item.Lifecycle?.Step == GitLifecycleStep.RemovalCompleted);
-        Assert.Single(receipts, item => item.Kind == "WebService" &&
-            item.Lifecycle?.Step == GitLifecycleStep.BeginRemoval);
+            .Find(item => item.RunId == run.Id)
+            .ToListAsync();
+        Assert.Single(
+            receipts,
+            item => item.Kind == "HostnameBinding" && item.Lifecycle?.Step == GitLifecycleStep.RemovalCompleted);
+        Assert.Single(
+            receipts,
+            item => item.Kind == "WebService" && item.Lifecycle?.Step == GitLifecycleStep.BeginRemoval);
         var placement = await DbContext.ResourceDeployments.Find(_ => true).SingleAsync();
         Assert.Equal(ResourceDeploymentOperation.Delete, placement.DesiredOperation);
     }
@@ -55,13 +51,18 @@ public sealed class WebServiceLifecycleRuntimeProgressTests(MongoReplicaSetFixtu
         Assert.IsType<ActiveWebServiceLifecycle>((await Service()).Lifecycle);
         var finished = Assert.IsType<GitRunFinished>(run.State);
         if (change == "source")
+        {
             Assert.Equal(GitRunCompletion.Superseded, finished.Completion);
+        }
         else
         {
             Assert.Equal(GitRunCompletion.Blocked, finished.Completion);
             Assert.Contains(run.Diagnostics, item => item.Code == nameof(GitLifecycleApprovalStale));
         }
-        Assert.False(await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
-            .Find(item => item.RunId == run.Id && item.Kind == "WebService").AnyAsync());
+
+        Assert.False(
+            await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
+                .Find(item => item.RunId == run.Id && item.Kind == "WebService")
+                .AnyAsync());
     }
 }

@@ -17,7 +17,7 @@ public sealed partial class PoleE2EFixture
     private async Task<string> StartBrowserTransportAsync(CancellationToken cancellationToken)
     {
         using var timing = _timings.Measure("fixture.e2e.browser.transport.start");
-        var container = new PlaywrightBrowserContainer(_identity);
+        var container = new PlaywrightBrowserContainer(Identity);
         // Register before startup so a partial failure still disposes the owned container.
         _cleanup.Add(("fixture.e2e.cleanup.browser.container", _ => container.DisposeAsync().AsTask()));
         await container.StartAsync(cancellationToken);

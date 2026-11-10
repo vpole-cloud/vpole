@@ -8,5 +8,5 @@ public enum IntegrationSchemaProfile
     StorageCatalog,
     StorageObservation,
     ComputeCatalog,
-    Catalogs
+    Catalogs,
 }

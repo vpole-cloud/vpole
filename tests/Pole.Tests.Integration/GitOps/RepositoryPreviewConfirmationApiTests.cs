@@ -1,9 +1,5 @@
 using System.Net;
-using Microsoft.Extensions.DependencyInjection;
-using Pole.Features.GitOps.Application.Endpoints.Sources.Previews;
-using Pole.Features.GitOps.Application.Lifecycle;
 using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Domain;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -11,7 +7,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant1)]
-public sealed class RepositoryPreviewConfirmationApiTests(MongoReplicaSetFixture fixture) : RepositorySourceApiTestBase(fixture)
+public sealed class RepositoryPreviewConfirmationApiTests(
+    MongoReplicaSetFixture fixture
+) : RepositorySourceApiTestBase(fixture)
 {
     [Fact]
     public async Task Preview_confirmation_rejects_an_advanced_commit_as_stale_without_consuming_approval()
@@ -20,7 +18,8 @@ public sealed class RepositoryPreviewConfirmationApiTests(MongoReplicaSetFixture
         var preview = await CreateRepositoryPreview(source.Id, source.Revision);
         repository.Publish("repo", [GroupManifest("keep")], "advanced");
 
-        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews/{preview.Id}/confirm",
+        using var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source.Id}/previews/{preview.Id}/confirm",
             new { expectedRevision = preview.Revision });
         await AssertProblem(response, HttpStatusCode.Conflict, "gitops.preview-stale");
         await AssertPreviewAwaiting(source.Id, preview);
@@ -39,10 +38,11 @@ public sealed class RepositoryPreviewConfirmationApiTests(MongoReplicaSetFixture
             "Denied" => new RepositoryAccessDenied(),
             "Missing" => new RepositoryNotFound(),
             "Temporary" => new RepositoryTemporarilyUnavailable(),
-            _ => throw new ArgumentOutOfRangeException(nameof(failure))
+            _ => throw new ArgumentOutOfRangeException(nameof(failure)),
         };
 
-        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews/{preview.Id}/confirm",
+        using var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source.Id}/previews/{preview.Id}/confirm",
             new { expectedRevision = preview.Revision });
         await AssertProblem(response, HttpStatusCode.Conflict, "gitops.preview-input-unavailable");
         await AssertPreviewAwaiting(source.Id, preview);
@@ -63,11 +63,12 @@ public sealed class RepositoryPreviewConfirmationApiTests(MongoReplicaSetFixture
             "Missing" => new RepositoryNotFound(),
             "RefMissing" => new RepositoryRefNotFound("main"),
             "Temporary" => new RepositoryTemporarilyUnavailable(),
-            _ => throw new ArgumentOutOfRangeException(nameof(failure))
+            _ => throw new ArgumentOutOfRangeException(nameof(failure)),
         };
         repository.ResolveOverride = (_, _) => Task.FromResult(unavailable);
 
-        using var response = await Client.PostAsJsonAsync($"{Root}/{source.Id}/previews/{preview.Id}/confirm",
+        using var response = await Client.PostAsJsonAsync(
+            $"{Root}/{source.Id}/previews/{preview.Id}/confirm",
             new { expectedRevision = preview.Revision });
         await AssertProblem(response, HttpStatusCode.Conflict, "gitops.preview-input-unavailable");
         await AssertPreviewAwaiting(source.Id, preview);

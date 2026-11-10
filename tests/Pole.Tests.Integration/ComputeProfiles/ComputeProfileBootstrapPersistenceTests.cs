@@ -9,7 +9,6 @@ using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.DeploymentTargets.Migrations;
-using Pole.ResultType;
 using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -17,8 +16,9 @@ using Xunit;
 namespace Pole.Tests.Integration.ComputeProfiles;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class ComputeProfileBootstrapPersistenceTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
 
@@ -32,8 +32,8 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         var target = DeploymentTargetNetworkPolicyTests.Target();
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         LoadDefaultDeploymentTargetId loadDefaultId = _ => Task.FromResult<string?>(target.Id);
-        LoadDeploymentTargetById loadTarget = new MongoLoadDeploymentTargetById(
-            Fixture.DbContext.DeploymentTargets).InvokeAsync;
+        LoadDeploymentTargetById loadTarget
+            = new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync;
         var admission = new MongoAdmitDefaultDeploymentTargetForNewWorkload(loadDefaultId, loadTarget);
         var lookup = new MongoLookupDefaultDeploymentTarget(loadDefaultId, loadTarget);
         using var persistence = new ComputeProfilePersistenceTestHost(Fixture);
@@ -54,8 +54,11 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         var profile = await persistence.GetRequiredService<LoadDefaultComputeProfile>()();
         Assert.NotNull(profile);
         Assert.Equal(target.Id, Assert.Single(profile.TargetMappings).DeploymentTargetId);
-        var reference = Assert.Single(await Fixture.DbContext.DeploymentTargetReferences
-            .Find(Builders<DeploymentTargetReference>.Filter.Empty).ToListAsync());
+        var reference = Assert.Single(
+            await Fixture.DbContext
+                .DeploymentTargetReferences
+                .Find(Builders<DeploymentTargetReference>.Filter.Empty)
+                .ToListAsync());
         Assert.Equal(profile.Id, reference.OwnerId);
         Assert.Equal(target.Id, reference.DeploymentTargetId);
         var persistedTarget = Assert.IsType<DeploymentTarget>(await loadTarget(target.Id));
@@ -63,6 +66,7 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         Assert.IsType<UnattestedNetworkPolicy>(persistedTarget.WorkloadConfiguration.NetworkPolicy);
         Assert.IsType<DefaultDeploymentTargetWorkloadAdmissionError>((await admission.InvokeAsync()).Value);
     }
+
     [Theory]
     [InlineData("runtime-cell", true, true, false)]
     [InlineData("compute-profile", false, true, false)]
@@ -79,7 +83,7 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
         {
             Enabled = enabled,
             AcceptsWorkloads = acceptsWorkloads,
-            DeletionRequestedAtUtc = deleting ? DateTime.UtcNow : null
+            DeletionRequestedAtUtc = deleting ? DateTime.UtcNow : null,
         };
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(target);
         using var persistence = new ComputeProfilePersistenceTestHost(Fixture);
@@ -95,8 +99,9 @@ public sealed class ComputeProfileBootstrapPersistenceTests(MongoReplicaSetFixtu
 
         Assert.IsType<DeploymentTargetReferenceChangeRejected>(result.Value);
         await session.AbortTransactionAsync();
-        Assert.Equal(0, await Fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
-            Builders<DeploymentTargetReference>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.DeploymentTargetReferences.CountDocumentsAsync(
+                Builders<DeploymentTargetReference>.Filter.Empty));
     }
-
 }

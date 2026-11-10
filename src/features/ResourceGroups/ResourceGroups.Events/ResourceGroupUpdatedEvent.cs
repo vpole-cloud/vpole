@@ -18,4 +18,5 @@ public sealed record ResourceGroupUpdatedEvent(
 
 public sealed record ResourceGroupUpdatedEventChanges(
     UpdateLog<string> Description,
-    UpdateLog<ImmutableHashSet<string>> Tags);
+    UpdateLog<ImmutableHashSet<string>> Tags
+);

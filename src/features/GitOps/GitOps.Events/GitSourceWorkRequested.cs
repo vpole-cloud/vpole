@@ -7,4 +7,5 @@ namespace Pole.Features.GitOps.Events;
 public sealed record GitSourceWorkRequested(
     string SourceId,
     EventCore EventCore,
-    DateTime? NotBeforeUtc = null) : IPoleEvent;
+    DateTime? NotBeforeUtc = null
+) : IPoleEvent;

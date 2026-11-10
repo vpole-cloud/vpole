@@ -8,9 +8,12 @@ public sealed record NamedStorageProfileRequest(
     string Name,
     string DeploymentTargetId,
     int SizeGb,
-    long Revision);
+    long Revision
+);
 
-public sealed record NamedStorageProfileUnavailable(string Name);
+public sealed record NamedStorageProfileUnavailable(
+    string Name
+);
 
 public union ResolveNamedStorageProfileOutcome(
     ResolvedStorageProfile,

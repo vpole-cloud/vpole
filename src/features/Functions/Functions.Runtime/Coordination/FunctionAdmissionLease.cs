@@ -10,12 +10,12 @@ public sealed class FunctionAdmissionLease : IAsyncDisposable
 
     private readonly IFunctionAdmissionCoordinator coordinator;
     private readonly FunctionRevisionCoordinationKey key;
-    private readonly TimeProvider timeProvider;
-    private readonly CancellationTokenSource renewalStop = new();
     private readonly CancellationTokenSource leaseLost = new();
+    private readonly CancellationTokenSource renewalStop = new();
     private readonly Task renewalTask;
-    private FunctionAdmissionToken? token;
+    private readonly TimeProvider timeProvider;
     private int disposed;
+    private FunctionAdmissionToken? token;
 
     public FunctionAdmissionLease(
         IFunctionAdmissionCoordinator coordinator,
@@ -36,33 +36,6 @@ public sealed class FunctionAdmissionLease : IAsyncDisposable
     public CancellationToken LeaseLostToken => leaseLost.Token;
 
     public bool IsLost => leaseLost.IsCancellationRequested;
-
-    public async Task<FunctionAdmissionReleaseDecision> ReleaseAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var current = Interlocked.Exchange(ref token, null);
-        if (current is null)
-            return FunctionAdmissionReleaseDecision.AlreadyReleasedOrExpired;
-
-        renewalStop.Cancel();
-        try
-        {
-            await renewalTask.WaitAsync(cancellationToken);
-            return await coordinator.ReleaseAsync(
-                key,
-                new FunctionAdmissionReleaseRequest(
-                    current.AdmissionId,
-                    current.LeaseId,
-                    current.CoordinatorIncarnation),
-                cancellationToken);
-        }
-        catch
-        {
-            Interlocked.CompareExchange(ref token, current, null);
-            MarkLost();
-            throw;
-        }
-    }
 
     public async ValueTask DisposeAsync()
     {
@@ -96,8 +69,35 @@ public sealed class FunctionAdmissionLease : IAsyncDisposable
             {
                 // A lost lease is surfaced through LeaseLostToken while the caller owns it.
             }
+
             renewalStop.Dispose();
             leaseLost.Dispose();
+        }
+    }
+
+    public async Task<FunctionAdmissionReleaseDecision> ReleaseAsync(CancellationToken cancellationToken = default)
+    {
+        var current = Interlocked.Exchange(ref token, null);
+        if (current is null)
+            return FunctionAdmissionReleaseDecision.AlreadyReleasedOrExpired;
+
+        renewalStop.Cancel();
+        try
+        {
+            await renewalTask.WaitAsync(cancellationToken);
+            return await coordinator.ReleaseAsync(
+                key,
+                new FunctionAdmissionReleaseRequest(
+                    current.AdmissionId,
+                    current.LeaseId,
+                    current.CoordinatorIncarnation),
+                cancellationToken);
+        }
+        catch
+        {
+            Interlocked.CompareExchange(ref token, current, null);
+            MarkLost();
+            throw;
         }
     }
 
@@ -127,21 +127,17 @@ public sealed class FunctionAdmissionLease : IAsyncDisposable
                 }
 
                 var delay = retrying
-                    ? TimeSpan.FromTicks(Math.Min(
-                        RenewalRetryInterval.Ticks,
-                        renewalWindow.Ticks / 2))
-                    : TimeSpan.FromTicks(Math.Min(
-                        MaximumRenewalInterval.Ticks,
-                        Math.Min(remaining.Ticks / 3, renewalWindow.Ticks / 2)));
+                    ? TimeSpan.FromTicks(Math.Min(RenewalRetryInterval.Ticks, renewalWindow.Ticks / 2))
+                    : TimeSpan.FromTicks(
+                        Math.Min(MaximumRenewalInterval.Ticks, Math.Min(remaining.Ticks / 3, renewalWindow.Ticks / 2)));
                 await Task.Delay(delay, timeProvider, renewalStop.Token);
 
                 current = Volatile.Read(ref token);
                 if (current is null)
                     return;
                 remaining = current.ExpiresAtUtc - timeProvider.GetUtcNow();
-                var callWindow = TimeSpan.FromTicks(Math.Min(
-                    RenewalCallTimeout.Ticks,
-                    remaining.Ticks - ExpirySafetyMargin.Ticks));
+                var callWindow = TimeSpan.FromTicks(
+                    Math.Min(RenewalCallTimeout.Ticks, remaining.Ticks - ExpirySafetyMargin.Ticks));
                 if (callWindow <= TimeSpan.Zero)
                 {
                     MarkLost();
@@ -159,8 +155,7 @@ public sealed class FunctionAdmissionLease : IAsyncDisposable
                         new FunctionAdmissionRenewalRequest(current),
                         callCancellation.Token);
                     if (decision.Kind != FunctionAdmissionRenewalDecisionKind.Renewed ||
-                        decision.Token is not { } renewed ||
-                        !IsSameLease(current, renewed) ||
+                        decision.Token is not { } renewed || !IsSameLease(current, renewed) ||
                         renewed.ExpiresAtUtc <= timeProvider.GetUtcNow() + ExpirySafetyMargin)
                     {
                         MarkLost();
@@ -197,8 +192,10 @@ public sealed class FunctionAdmissionLease : IAsyncDisposable
 
     private static bool IsSameLease(FunctionAdmissionToken first, FunctionAdmissionToken second) =>
         string.Equals(first.AdmissionId, second.AdmissionId, StringComparison.Ordinal) &&
-        string.Equals(first.LeaseId, second.LeaseId, StringComparison.Ordinal) &&
-        string.Equals(first.CoordinatorIncarnation, second.CoordinatorIncarnation, StringComparison.Ordinal);
+        string.Equals(first.LeaseId, second.LeaseId, StringComparison.Ordinal) && string.Equals(
+            first.CoordinatorIncarnation,
+            second.CoordinatorIncarnation,
+            StringComparison.Ordinal);
 
     private void MarkLost()
     {

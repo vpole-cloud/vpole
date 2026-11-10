@@ -7,10 +7,8 @@ using MongoDB.Driver;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Delivery;
-using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Migrations;
 using Pole.Features.ResourceGroups.Events;
-using Pole.Features.Shared.Models;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
@@ -19,13 +17,15 @@ namespace Pole.Tests.Integration.Database;
 
 [Collection(IntegrationTestCollection.Global2)]
 public sealed class OutboxProcessorLifecycleTests(
-    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
-    private static readonly DateTime InitialNowUtc =
-        new(2026, 7, 28, 12, 0, 0, DateTimeKind.Utc);
-    private readonly MutableTimeProvider _timeProvider =
-        new(new DateTimeOffset(InitialNowUtc));
+    private static readonly DateTime InitialNowUtc = new(2026, 7, 28, 12, 0, 0, DateTimeKind.Utc);
+
     private readonly OutboxMetrics _metrics = new();
+
+    private readonly MutableTimeProvider _timeProvider = new(new DateTimeOffset(InitialNowUtc));
+
     private ServiceProvider? _services;
 
     public override async Task InitializeAsync()
@@ -48,8 +48,7 @@ public sealed class OutboxProcessorLifecycleTests(
     [Fact]
     public async Task Process_Success_PublishesAndClearsPendingKey()
     {
-        var message = CreateValidMessage(
-            pendingKey: "runtime-cell:success:1:reconciliation");
+        var message = CreateValidMessage(pendingKey: "runtime-cell:success:1:reconciliation");
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
         var publisher = new RecordingPublisher();
 
@@ -68,8 +67,9 @@ public sealed class OutboxProcessorLifecycleTests(
         const string pendingKey = "runtime-cell:retry:1:reconciliation";
         var message = CreateValidMessage(pendingKey);
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
-        var publisher = new RecordingPublisher(
-            (_, _, _) => throw new InvalidOperationException("broker unavailable"));
+        var publisher = new RecordingPublisher((
+            _, _,
+            _) => throw new InvalidOperationException("broker unavailable"));
 
         await CreateJob(publisher).ProcessOutboxMessagesAsync();
 
@@ -84,26 +84,18 @@ public sealed class OutboxProcessorLifecycleTests(
     [Fact]
     public async Task Process_UnknownType_IsAbandonedAndDoesNotBlockValidMessage()
     {
-        var unknown = CreateMessage(
-            "unknown-event",
-            "{}",
-            "unknown-key",
-            InitialNowUtc.AddMinutes(-2));
-        var valid = CreateValidMessage(
-            pendingKey: "valid-key",
-            enqueuedAtUtc: InitialNowUtc.AddMinutes(-1));
+        var unknown = CreateMessage("unknown-event", "{}", "unknown-key", InitialNowUtc.AddMinutes(-2));
+        var valid = CreateValidMessage(pendingKey: "valid-key", enqueuedAtUtc: InitialNowUtc.AddMinutes(-1));
         await Fixture.DbContext.OutboxMessages.InsertManyAsync([unknown, valid]);
         var publisher = new RecordingPublisher();
 
         await CreateJob(publisher).ProcessOutboxMessagesAsync();
 
         var abandoned = await LoadAsync(unknown.Id);
-        var abandonedState =
-            Assert.IsType<AbandonedOutboxMessageState>(abandoned.State);
+        var abandonedState = Assert.IsType<AbandonedOutboxMessageState>(abandoned.State);
         Assert.Equal("UnknownEventType", abandonedState.FailureCode);
         Assert.Null(abandoned.PendingKey);
-        Assert.IsType<PublishedOutboxMessageState>(
-            (await LoadAsync(valid.Id)).State);
+        Assert.IsType<PublishedOutboxMessageState>((await LoadAsync(valid.Id)).State);
         Assert.Single(publisher.Messages);
     }
 
@@ -117,12 +109,10 @@ public sealed class OutboxProcessorLifecycleTests(
             InitialNowUtc.AddMinutes(-1));
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
 
-        await CreateJob(new RecordingPublisher())
-            .ProcessOutboxMessagesAsync();
+        await CreateJob(new RecordingPublisher()).ProcessOutboxMessagesAsync();
 
         var saved = await LoadAsync(message.Id);
-        var abandoned =
-            Assert.IsType<AbandonedOutboxMessageState>(saved.State);
+        var abandoned = Assert.IsType<AbandonedOutboxMessageState>(saved.State);
         Assert.Equal("InvalidPayload", abandoned.FailureCode);
         Assert.Null(saved.PendingKey);
     }
@@ -141,20 +131,16 @@ public sealed class OutboxProcessorLifecycleTests(
               """,
             "null-core-key",
             InitialNowUtc.AddMinutes(-2));
-        var valid = CreateValidMessage(
-            pendingKey: "after-null-core-key",
-            enqueuedAtUtc: InitialNowUtc.AddMinutes(-1));
+        var valid = CreateValidMessage(pendingKey: "after-null-core-key", enqueuedAtUtc: InitialNowUtc.AddMinutes(-1));
         await Fixture.DbContext.OutboxMessages.InsertManyAsync([invalid, valid]);
         var publisher = new RecordingPublisher();
 
         await CreateJob(publisher).ProcessOutboxMessagesAsync();
 
         var invalidSaved = await LoadAsync(invalid.Id);
-        var abandoned =
-            Assert.IsType<AbandonedOutboxMessageState>(invalidSaved.State);
+        var abandoned = Assert.IsType<AbandonedOutboxMessageState>(invalidSaved.State);
         Assert.Equal("InvalidPayload", abandoned.FailureCode);
-        Assert.IsType<PublishedOutboxMessageState>(
-            (await LoadAsync(valid.Id)).State);
+        Assert.IsType<PublishedOutboxMessageState>((await LoadAsync(valid.Id)).State);
         Assert.Single(publisher.Messages);
     }
 
@@ -164,15 +150,16 @@ public sealed class OutboxProcessorLifecycleTests(
         var message = CreateValidMessage(pendingKey: "cancelled-key");
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
         using var cancellation = new CancellationTokenSource();
-        var publisher = new RecordingPublisher((_, _, cancellationToken) =>
+        var publisher = new RecordingPublisher((
+            _, _,
+            cancellationToken) =>
         {
             cancellation.Cancel();
             return Task.FromCanceled(cancellationToken);
         });
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            CreateJob(publisher)
-                .ProcessOutboxMessagesAsync(cancellation.Token));
+            CreateJob(publisher).ProcessOutboxMessagesAsync(cancellation.Token));
 
         var saved = await LoadAsync(message.Id);
         var pending = Assert.IsType<PendingOutboxMessageState>(saved.State);
@@ -199,8 +186,9 @@ public sealed class OutboxProcessorLifecycleTests(
     {
         var message = CreateValidMessage(pendingKey: "persistent-key");
         await Fixture.DbContext.OutboxMessages.InsertOneAsync(message);
-        var publisher = new RecordingPublisher(
-            (_, _, _) => throw new InvalidOperationException("offline"));
+        var publisher = new RecordingPublisher((
+            _, _,
+            _) => throw new InvalidOperationException("offline"));
         var job = CreateJob(publisher);
 
         for (var attempt = 1; attempt <= 8; attempt++)
@@ -220,27 +208,17 @@ public sealed class OutboxProcessorLifecycleTests(
     [Fact]
     public async Task Cleanup_RemovesOnlyExpiredTerminalMessages()
     {
-        var expiredPublished = CreateValidMessage(
-                enqueuedAtUtc: InitialNowUtc.AddDays(-20))
+        var expiredPublished = CreateValidMessage(enqueuedAtUtc: InitialNowUtc.AddDays(-20))
             .MarkPublished(InitialNowUtc.AddDays(-10));
-        var recentPublished = CreateValidMessage(
-                enqueuedAtUtc: InitialNowUtc.AddDays(-2))
+        var recentPublished = CreateValidMessage(enqueuedAtUtc: InitialNowUtc.AddDays(-2))
             .MarkPublished(InitialNowUtc.AddDays(-1));
-        var expiredAbandoned = CreateValidMessage(
-                enqueuedAtUtc: InitialNowUtc.AddDays(-40))
-            .Abandon(
-                InitialNowUtc.AddDays(-31),
-                "InvalidPayload",
-                "bad payload");
-        var secondExpiredPublished = CreateValidMessage(
-                enqueuedAtUtc: InitialNowUtc.AddDays(-21))
+        var expiredAbandoned = CreateValidMessage(enqueuedAtUtc: InitialNowUtc.AddDays(-40))
+            .Abandon(InitialNowUtc.AddDays(-31), "InvalidPayload", "bad payload");
+        var secondExpiredPublished = CreateValidMessage(enqueuedAtUtc: InitialNowUtc.AddDays(-21))
             .MarkPublished(InitialNowUtc.AddDays(-11));
-        var thirdExpiredPublished = CreateValidMessage(
-                enqueuedAtUtc: InitialNowUtc.AddDays(-22))
+        var thirdExpiredPublished = CreateValidMessage(enqueuedAtUtc: InitialNowUtc.AddDays(-22))
             .MarkPublished(InitialNowUtc.AddDays(-12));
-        var pending = CreateValidMessage(
-            pendingKey: "pending-key",
-            enqueuedAtUtc: InitialNowUtc.AddDays(-60));
+        var pending = CreateValidMessage(pendingKey: "pending-key", enqueuedAtUtc: InitialNowUtc.AddDays(-60));
         await Fixture.DbContext.OutboxMessages.InsertManyAsync(
         [
             expiredPublished,
@@ -248,15 +226,13 @@ public sealed class OutboxProcessorLifecycleTests(
             thirdExpiredPublished,
             recentPublished,
             expiredAbandoned,
-            pending
+            pending,
         ]);
 
-        await CreateJob(
-                new RecordingPublisher(),
-                new OutboxSettings { CleanupBatchSize = 2 })
-            .CleanupMessagesAsync();
+        await CreateJob(new RecordingPublisher(), new OutboxSettings { CleanupBatchSize = 2 }).CleanupMessagesAsync();
 
-        var remainingIds = await Fixture.DbContext.OutboxMessages
+        var remainingIds = await Fixture.DbContext
+            .OutboxMessages
             .Find(Builders<OutboxMessage>.Filter.Empty)
             .Project(message => message.Id)
             .ToListAsync();
@@ -268,9 +244,7 @@ public sealed class OutboxProcessorLifecycleTests(
         Assert.Contains(pending.Id, remainingIds);
     }
 
-    private OutboxProcessorJob CreateJob(
-        IOutboxPublisher publisher,
-        OutboxSettings? settings = null)
+    private OutboxProcessorJob CreateJob(IOutboxPublisher publisher, OutboxSettings? settings = null)
     {
         settings ??= new OutboxSettings();
         var services = _services ?? throw new InvalidOperationException(
@@ -281,8 +255,7 @@ public sealed class OutboxProcessorLifecycleTests(
             services.GetRequiredService<CleanupTerminalOutboxMessages>(),
             services.GetRequiredService<LoadOutboxQueueSnapshot>(),
             publisher,
-            new OutboxEventAssemblyCatalog(
-                [typeof(RuntimeCellReconciliationRequestedEvent).Assembly]),
+            new OutboxEventAssemblyCatalog([typeof(RuntimeCellReconciliationRequestedEvent).Assembly]),
             Options.Create(settings),
             _timeProvider,
             new OutboxRetryDelayPolicy(settings),
@@ -291,31 +264,22 @@ public sealed class OutboxProcessorLifecycleTests(
     }
 
     private async Task<OutboxMessage> LoadAsync(string id) =>
-        await Fixture.DbContext.OutboxMessages
-            .Find(message => message.Id == id)
-            .SingleAsync();
+        await Fixture.DbContext.OutboxMessages.Find(message => message.Id == id).SingleAsync();
 
-    private OutboxMessage CreateValidMessage(
-        string? pendingKey = null,
-        DateTime? enqueuedAtUtc = null)
+    private OutboxMessage CreateValidMessage(string? pendingKey = null, DateTime? enqueuedAtUtc = null)
     {
         var enqueued = enqueuedAtUtc ?? InitialNowUtc.AddMinutes(-1);
-        var @event = new RuntimeCellReconciliationRequestedEvent(
-            ObjectId.GenerateNewId().ToString(),
-            1)
+        var @event = new RuntimeCellReconciliationRequestedEvent(ObjectId.GenerateNewId().ToString(), 1)
         {
             EventCore = new EventCore
             {
                 TenantId = Data.TenantId,
                 OccurredOn = enqueued.AddSeconds(-1),
                 TraceId = "0123456789abcdef0123456789abcdef",
-                CorrelationId = "outbox-processor-test"
-            }
+                CorrelationId = "outbox-processor-test",
+            },
         };
-        var payload = JsonSerializer.Serialize(
-            @event,
-            @event.GetType(),
-            EventExtensions.SerializerOptions);
+        var payload = JsonSerializer.Serialize(@event, @event.GetType(), EventExtensions.SerializerOptions);
 
         return CreateMessage(
             "pole.resource-groups/v1/runtime-cell-reconciliation-requested",
@@ -328,22 +292,19 @@ public sealed class OutboxProcessorLifecycleTests(
         string eventType,
         string payload,
         string? pendingKey,
-        DateTime enqueuedAtUtc) =>
-        OutboxMessageFactory.Create(
-            eventType,
-            Data.TenantId,
-            payload,
-            "0123456789abcdef0123456789abcdef",
-            "outbox-processor-test",
-            enqueuedAtUtc.AddSeconds(-1),
-            pendingKey,
-            new OutboxMessageFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                enqueuedAtUtc));
+        DateTime enqueuedAtUtc) => OutboxMessageFactory.Create(
+        eventType,
+        Data.TenantId,
+        payload,
+        "0123456789abcdef0123456789abcdef",
+        "outbox-processor-test",
+        enqueuedAtUtc.AddSeconds(-1),
+        pendingKey,
+        new OutboxMessageFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), enqueuedAtUtc));
 
     private sealed class RecordingPublisher(
-        Func<object, Type, CancellationToken, Task>? publish = null)
-        : IOutboxPublisher
+        Func<object, Type, CancellationToken, Task>? publish = null
+    ) : IOutboxPublisher
     {
         public List<object> Messages { get; } = [];
 
@@ -362,15 +323,15 @@ public sealed class OutboxProcessorLifecycleTests(
         }
     }
 
-    private sealed class MutableTimeProvider(DateTimeOffset now)
-        : TimeProvider
+    private sealed class MutableTimeProvider(
+        DateTimeOffset now
+    ) : TimeProvider
     {
         private DateTimeOffset _now = now;
 
         public override DateTimeOffset GetUtcNow() => _now;
 
         public void SetUtcNow(DateTime utcNow) =>
-            _now = new DateTimeOffset(
-                DateTime.SpecifyKind(utcNow, DateTimeKind.Utc));
+            _now = new DateTimeOffset(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc));
     }
 }

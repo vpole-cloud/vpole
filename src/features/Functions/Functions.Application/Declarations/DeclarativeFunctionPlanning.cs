@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
@@ -29,22 +28,26 @@ internal sealed class FunctionDeclarationPlanning(
     LoadResourceDeploymentPlanningSnapshot loadPlacements,
     FenceResourceDeploymentPlanningSnapshot fencePlacements,
     LoadConsumerSecretPlanningSnapshot loadSecrets,
-    FenceConsumerSecretPlanningSnapshot fenceSecrets)
+    FenceConsumerSecretPlanningSnapshot fenceSecrets
+)
 {
     public async Task<string?> ResolveAsync(
         ResolveDeclaredResourceRequest request,
         IClientSessionHandle session,
-        CancellationToken ct) =>
-        (await resources.Find(session, FunctionAppFilters.ByName(request.TenantId, request.Name))
-            .FirstOrDefaultAsync(ct))?.Id;
+        CancellationToken ct) => (await resources
+        .Find(session, FunctionAppFilters.ByName(request.TenantId, request.Name))
+        .FirstOrDefaultAsync(ct))?.Id;
 
 
     public async Task<ReadCurrentDeclarationOutcome> ReadCurrentAsync(
-        ReadCurrentDeclarationRequest request, IClientSessionHandle session, CancellationToken ct)
+        ReadCurrentDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var current = request.Operation is { } operation
             ? await resources.Find(session, FunctionAppFilters.ByTenantAndId(request.TenantId, operation.ResourceId))
-                .FirstOrDefaultAsync(ct) : null;
+                .FirstOrDefaultAsync(ct)
+            : null;
         current ??= await resources.Find(session, FunctionAppFilters.ByName(request.TenantId, request.Address.Name))
             .FirstOrDefaultAsync(ct);
         if (current is null)
@@ -59,16 +62,28 @@ internal sealed class FunctionDeclarationPlanning(
 
         var state = (FunctionPlanningCurrent)loaded.Value;
         var phase = request.Operation?.Phase ?? DeclarationPhase.Configure;
-        return new CurrentDeclaration(current.Id, new(CurrentVersions(state)),
-            Project(phase, new(current.ResourceGroupId, state.Placements.Items[0].IsolationScopeId,
-                current.Placement.DeploymentTargetId, current.FunctionRoute,
-                state.Placements.Items[0].Compute, state.Latest?.Spec, current.Tags)),
+        return new CurrentDeclaration(
+            current.Id,
+            new DeclarationVersionToken(CurrentVersions(state)),
+            Project(
+                phase,
+                new FunctionProjectionState(
+                    current.ResourceGroupId,
+                    state.Placements.Items[0].IsolationScopeId,
+                    current.Placement.DeploymentTargetId,
+                    current.FunctionRoute,
+                    state.Placements.Items[0].Compute,
+                    state.Latest?.Spec,
+                    current.Tags)),
             phase == DeclarationPhase.Prepare || current.DesiredState == FunctionAppDesiredState.Enabled
-                ? DeclarationConfigurationState.Configured : DeclarationConfigurationState.Prepared);
+                ? DeclarationConfigurationState.Configured
+                : DeclarationConfigurationState.Prepared);
     }
 
     public async Task<ProjectDesiredDeclarationOutcome> ProjectDesiredAsync(
-        ProjectDesiredDeclarationRequest request, IClientSessionHandle session, CancellationToken ct)
+        ProjectDesiredDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         if (request.Operation is null)
             return Blocked(FunctionDeclarationError.AcceptedSnapshotRequired);
@@ -80,16 +95,25 @@ internal sealed class FunctionDeclarationPlanning(
         var dependencies = (FunctionPlanningDependencies)loaded.Value;
         var declaration = FunctionDeclarationJson.Read(request.Declaration.Spec);
         var spec = FunctionDeclarationJson.Spec(declaration, dependencies.SecretReferences, null);
-        return Project(request.Operation.Phase, new(dependencies.Scope.ResourceGroupId,
-            dependencies.Scope.IsolationScopeId, dependencies.Target.Target.Id, declaration.FunctionRoute,
-            dependencies.Compute.Compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
-            spec, declaration.Tags))
-            with
-        { Dependencies = new(DependencyVersions(dependencies)) };
+        return Project(
+                request.Operation.Phase,
+                new FunctionProjectionState(
+                    dependencies.Scope.ResourceGroupId,
+                    dependencies.Scope.IsolationScopeId,
+                    dependencies.Target.Target.Id,
+                    declaration.FunctionRoute,
+                    dependencies.Compute.Compute.ToFunctionResourceDeploymentConfiguration(spec.Resources),
+                    spec,
+                    declaration.Tags)) with
+            {
+                Dependencies = new DeclarationVersionToken(DependencyVersions(dependencies)),
+            };
     }
 
     public async Task<FenceDeclarationOutcome> FenceAsync(
-        FenceDeclarationRequest request, IClientSessionHandle session, CancellationToken ct)
+        FenceDeclarationRequest request,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         var loaded = await ReadPlanningAsync(request.Operation, session, ct);
         if (loaded is DeclarationReadBlocked blocked)
@@ -105,31 +129,36 @@ internal sealed class FunctionDeclarationPlanning(
                 return new DeclarationPreconditionsChanged();
 
             var root = current.Root;
-            var fenced = await resources.UpdateOneAsync(session,
+            var fenced = await resources.UpdateOneAsync(
+                session,
                 FunctionAppFilters.AtPlanningVersion(root),
-                Builders<FunctionApp>.Update.Inc(app => app.PlanningFence, 1), cancellationToken: ct);
+                Builders<FunctionApp>.Update.Inc(app => app.PlanningFence, 1),
+                cancellationToken: ct);
             if (fenced.ModifiedCount != 1)
                 return new DeclarationPreconditionsChanged();
 
             foreach (var revision in ConfigurationRevisions(current))
             {
-                var result = await revisions.UpdateOneAsync(session,
+                var result = await revisions.UpdateOneAsync(
+                    session,
                     FunctionRevisionFilters.AtPlanningVersion(revision),
-                    Builders<FunctionRevision>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: ct);
+                    Builders<FunctionRevision>.Update.Inc(item => item.PlanningFence, 1),
+                    cancellationToken: ct);
                 if (result.ModifiedCount != 1)
                     return new DeclarationPreconditionsChanged();
             }
 
             var route = current.Route;
-            var routeFenced = await routes.UpdateOneAsync(session,
+            var routeFenced = await routes.UpdateOneAsync(
+                session,
                 FunctionRouteBindingFilters.AtPlanningVersion(route),
-                Builders<FunctionRouteBinding>.Update.Inc(item => item.PlanningFence, 1), cancellationToken: ct);
+                Builders<FunctionRouteBinding>.Update.Inc(item => item.PlanningFence, 1),
+                cancellationToken: ct);
             if (routeFenced.ModifiedCount != 1)
                 return new DeclarationPreconditionsChanged();
         }
         else if (request.Expected.Documents.Any(item =>
-                     item.DocumentId ==
-                         DeclarationVersionKeys.Resource(FunctionDeclarations.Kind, request.Operation.ResourceId)))
+                     item.DocumentId == DeclarationVersionKeys.Resource(Kind, request.Operation.ResourceId)))
         {
             return new DeclarationPreconditionsChanged();
         }
@@ -157,14 +186,20 @@ internal sealed class FunctionDeclarationPlanning(
     }
 
     internal async Task<ReadFunctionCurrentOutcome> ReadCurrentStateAsync(
-        FunctionApp current, IClientSessionHandle session, CancellationToken ct)
+        FunctionApp current,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
         if (current.DesiredState is not (FunctionAppDesiredState.Prepared or FunctionAppDesiredState.Enabled))
             return Blocked(FunctionDeclarationError.ResourceDeleting);
 
         if (await loadPlacements(
-                new(current.TenantId, FunctionResourceDeployment.ResourceType, current.Id), session, ct)
-            is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } placements ||
+                new ResourceDeploymentPlanningRequest(
+                    current.TenantId,
+                    FunctionResourceDeployment.ResourceType,
+                    current.Id),
+                session,
+                ct) is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } placements ||
             placements.Items[0].State == ResourceDeploymentPlanningState.Deleting ||
             placements.Items[0].ResourceGroupId != current.ResourceGroupId ||
             placements.Items[0].DeploymentId != current.Placement.ResourceDeploymentId ||
@@ -177,23 +212,38 @@ internal sealed class FunctionDeclarationPlanning(
             route.State == FunctionRouteBindingState.Disabled)
             return Blocked(FunctionDeclarationError.FunctionRouteUnavailable);
 
-        var found = await revisions.Find(session, FunctionRevisionFilters.ReferencedConfiguration(current,
-            current.ActiveRevisionId is { } active ? [active] : [])).ToListAsync(ct);
+        var found = await revisions.Find(
+                session,
+                FunctionRevisionFilters.ReferencedConfiguration(
+                    current,
+                    current.ActiveRevisionId is { } active ? [active] : []))
+            .ToListAsync(ct);
         var latest = found.SingleOrDefault(item => item.RevisionNumber == current.NextRevisionNumber - 1);
         var activeRevision = found.SingleOrDefault(item => item.Id == current.ActiveRevisionId);
-        if (current.NextRevisionNumber > 1 && latest is null ||
-            current.ActiveRevisionId is not null && activeRevision is null)
+        if ((current.NextRevisionNumber > 1 && latest is null) ||
+            (current.ActiveRevisionId is not null && activeRevision is null))
             return Blocked(FunctionDeclarationError.ConfigurationUnavailable);
 
         return new FunctionPlanningCurrent(current, latest, activeRevision, route, placements);
     }
 
     internal async Task<ReadFunctionPlanningOutcome> ReadPlanningAsync(
-        GitOperationInput operation, IClientSessionHandle session, CancellationToken ct)
+        GitOperationInput operation,
+        IClientSessionHandle session,
+        CancellationToken ct)
     {
-        return await ReadPlanningWithReferencesAsync(new(operation.Context.TenantId, operation.ResourceId,
-            operation.Declaration, operation.Phase, address => git.ResolveAcceptedAsync(
-                new(operation.Context, operation.ResourceId, address), session, ct)), session, ct);
+        return await ReadPlanningWithReferencesAsync(
+            new FunctionPlanningInput(
+                operation.Context.TenantId,
+                operation.ResourceId,
+                operation.Declaration,
+                operation.Phase,
+                address => git.ResolveAcceptedAsync(
+                    new ResolveAcceptedGitReferenceRequest(operation.Context, operation.ResourceId, address),
+                    session,
+                    ct)),
+            session,
+            ct);
     }
 
     internal async Task<ReadFunctionPlanningOutcome> ReadPlanningWithReferencesAsync(
@@ -202,35 +252,48 @@ internal sealed class FunctionDeclarationPlanning(
         CancellationToken ct)
     {
         var declaration = FunctionDeclarationJson.Read(input.Declaration.Spec);
-        var groupId = await input.Reference(new("ResourceGroup", declaration.ResourceGroup));
+        var groupId = await input.Reference(new ResourceAddress("ResourceGroup", declaration.ResourceGroup));
         if (groupId is null)
             return Blocked(FunctionDeclarationError.ResourceGroupUnavailable);
 
         var scopeId = declaration.Placement.IsolationScope is { } scopeName
-            ? await input.Reference(new("IsolationScope", scopeName))
+            ? await input.Reference(new ResourceAddress("IsolationScope", scopeName))
             : null;
         if (declaration.Placement.IsolationScope is not null && scopeId is null)
             return Blocked(FunctionDeclarationError.IsolationScopeUnavailable);
 
-        if (await loadScope(new(input.TenantId, groupId, scopeId), session, ct)
-            is not IsolationScopePlanningSnapshot scope)
+        if (await loadScope(new IsolationScopePlanningRequest(input.TenantId, groupId, scopeId), session, ct) is not
+            IsolationScopePlanningSnapshot scope)
             return Blocked(FunctionDeclarationError.IsolationScopeUnavailable);
 
-        var targetId = await input.Reference(new("DeploymentTarget", declaration.Placement.DeploymentTarget));
-        if (targetId is null || await loadTarget(new(input.TenantId, FunctionResourceDeployment.ResourceType,
-                scope.IsolationScopeId, targetId, DeploymentTargetRequiredCapabilities.None,
-                FunctionResourceDeployment.GatewaySourceName), session, ct)
-            is not DeploymentTargetPlanningSnapshot target)
+        var targetId = await input.Reference(
+            new ResourceAddress("DeploymentTarget", declaration.Placement.DeploymentTarget));
+        if (targetId is null || await loadTarget(
+                new DeploymentTargetAdmissionRequest(
+                    input.TenantId,
+                    FunctionResourceDeployment.ResourceType,
+                    scope.IsolationScopeId,
+                    targetId,
+                    DeploymentTargetRequiredCapabilities.None,
+                    FunctionResourceDeployment.GatewaySourceName),
+                session,
+                ct) is not DeploymentTargetPlanningSnapshot target)
             return Blocked(FunctionDeclarationError.DeploymentTargetUnavailable);
 
-        var computeId = await input.Reference(new("ComputeProfile", declaration.Placement.ComputeProfile.Name));
-        if (computeId is null || await loadCompute(new(input.TenantId, FunctionResourceDeployment.ResourceType,
-                computeId, targetId, declaration.Placement.ComputeProfile.Revision), session, ct)
-            is not ComputeProfilePlanningSnapshot compute)
+        var computeId = await input.Reference(
+            new ResourceAddress("ComputeProfile", declaration.Placement.ComputeProfile.Name));
+        if (computeId is null || await loadCompute(
+                new ComputeProfilePlanningRequest(
+                    input.TenantId,
+                    FunctionResourceDeployment.ResourceType,
+                    computeId,
+                    targetId,
+                    declaration.Placement.ComputeProfile.Revision),
+                session,
+                ct) is not ComputeProfilePlanningSnapshot compute)
             return Blocked(FunctionDeclarationError.ComputeProfileUnavailable);
 
-        var root = await resources.Find(session,
-                FunctionAppFilters.ByTenantAndId(input.TenantId, input.ResourceId))
+        var root = await resources.Find(session, FunctionAppFilters.ByTenantAndId(input.TenantId, input.ResourceId))
             .FirstOrDefaultAsync(ct);
         FunctionPlanningCurrent? current = null;
         if (root is not null)
@@ -257,17 +320,27 @@ internal sealed class FunctionDeclarationPlanning(
         {
             foreach (var (name, reference) in declaration.SecretEnvironment)
             {
-                var secretId = await input.Reference(new("Secret", reference.Secret));
+                var secretId = await input.Reference(new ResourceAddress("Secret", reference.Secret));
                 if (secretId is null)
                     return Blocked(FunctionDeclarationError.SecretReferenceUnavailable);
 
-                references.Add(name, new(secretId, reference.Key));
+                references.Add(name, new FunctionSecretReference(secretId, reference.Key));
             }
 
-            var loaded = await loadSecrets(new(input.TenantId, groupId, scope.IsolationScopeId,
-                FunctionResourceDeployment.ResourceType, input.ResourceId, PreviousSecrets(current),
-                references.Values.Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key))
-                    .ToArray(), current!.Placements.Items.Select(item => item.DeploymentId).ToArray()), session, ct);
+            var loaded = await loadSecrets(
+                new ConsumerSecretPlanningRequest(
+                    input.TenantId,
+                    groupId,
+                    scope.IsolationScopeId,
+                    FunctionResourceDeployment.ResourceType,
+                    input.ResourceId,
+                    PreviousSecrets(current),
+                    references.Values
+                        .Select(reference => new ConsumerSecretKeyReference(reference.SecretId, reference.Key))
+                        .ToArray(),
+                    current!.Placements.Items.Select(item => item.DeploymentId).ToArray()),
+                session,
+                ct);
             if (loaded is ConsumerSecretReferenceUnavailable unavailable)
                 return new DeclarationReadBlocked(new FunctionDeclarationSecretRejected(unavailable.Reason));
 
@@ -276,7 +349,6 @@ internal sealed class FunctionDeclarationPlanning(
 
         return new FunctionPlanningDependencies(current, scope, target, compute, references.ToImmutable(), secrets);
     }
-
 }
 
 internal sealed record FunctionPlanningCurrent(
@@ -284,7 +356,8 @@ internal sealed record FunctionPlanningCurrent(
     FunctionRevision? Latest,
     FunctionRevision? Active,
     FunctionRouteBinding Route,
-    ResourceDeploymentPlanningSnapshot Placements);
+    ResourceDeploymentPlanningSnapshot Placements
+);
 
 internal sealed record FunctionPlanningDependencies(
     FunctionPlanningCurrent? Current,
@@ -292,19 +365,17 @@ internal sealed record FunctionPlanningDependencies(
     DeploymentTargetPlanningSnapshot Target,
     ComputeProfilePlanningSnapshot Compute,
     ImmutableDictionary<string, FunctionSecretReference> SecretReferences,
-    ConsumerSecretPlanningSnapshot? Secrets);
+    ConsumerSecretPlanningSnapshot? Secrets
+);
 
-internal union ReadFunctionPlanningOutcome(
-    FunctionPlanningDependencies,
-    DeclarationReadBlocked);
+internal union ReadFunctionPlanningOutcome(FunctionPlanningDependencies, DeclarationReadBlocked);
 
-internal union ReadFunctionCurrentOutcome(
-    FunctionPlanningCurrent,
-    DeclarationReadBlocked);
+internal union ReadFunctionCurrentOutcome(FunctionPlanningCurrent, DeclarationReadBlocked);
 
 internal sealed record FunctionPlanningInput(
     string TenantId,
     string ResourceId,
     CompiledDeclaration Declaration,
     DeclarationPhase Phase,
-    Func<ResourceAddress, Task<string?>> Reference);
+    Func<ResourceAddress, Task<string?>> Reference
+);

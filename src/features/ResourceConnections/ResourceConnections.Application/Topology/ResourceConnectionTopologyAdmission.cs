@@ -1,16 +1,13 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 
 namespace Pole.Features.ResourceConnections.Application.Topology;
 
-internal sealed record ResolvedResourceConnectionTopology(IReadOnlyList<ConnectionTargetSnapshot> Targets);
+internal sealed record ResolvedResourceConnectionTopology(
+    IReadOnlyList<ConnectionTargetSnapshot> Targets
+);
 
 internal union ReadResourceConnectionTopologyOutcome(
     ResolvedResourceConnectionTopology,
@@ -23,32 +20,49 @@ internal union ReadResourceConnectionTopologyOutcome(
 
 internal sealed class ResourceConnectionTopologyAdmission(
     LoadResourceDeploymentConnectionPlacements loadPlacements,
-    ResourceConnectionEndpointCatalog endpoints)
+    ResourceConnectionEndpointCatalog endpoints
+)
 {
     public async Task<ReadResourceConnectionTopologyOutcome> ReadAsync(
         CreateResourceConnectionCommand command,
         IClientSessionHandle session,
         CancellationToken cancellationToken)
     {
-        var published = await endpoints.ResolveAsync(command.TenantId, command.DestinationResourceType,
-            command.DestinationResourceId, command.EndpointId, session, cancellationToken);
+        var published = await endpoints.ResolveAsync(
+            command.TenantId,
+            command.DestinationResourceType,
+            command.DestinationResourceId,
+            command.EndpointId,
+            session,
+            cancellationToken);
         return published switch
         {
             ResolvedConnectionEndpoint endpoint => await ResolveTargetsAsync(endpoint),
             ConnectionEndpointMissing => new ConnectionResourceMissing(),
             ConnectionDestinationDeleting => new ConnectionPlacementDeleting(),
-            ConnectionEndpointUnsupportedByProvider => new ConnectionEndpointUnsupported()
+            ConnectionEndpointUnsupportedByProvider => new ConnectionEndpointUnsupported(),
         };
 
         async Task<ReadResourceConnectionTopologyOutcome> ResolveTargetsAsync(ResolvedConnectionEndpoint endpoint)
         {
-            var sources = (await loadPlacements(new(command.TenantId, command.SourceResourceType,
-                command.SourceResourceId), session, cancellationToken))
-                .Where(item => !item.DeletionRequested).ToArray();
-            var destinations = (await loadPlacements(new(command.TenantId, command.DestinationResourceType,
-                command.DestinationResourceId), session, cancellationToken))
-                .Where(item => !item.DeletionRequested).ToArray();
-            var topology = ResourceConnectionTopology.Evaluate(sources.Select(item => item.DeploymentTargetId),
+            var sources = (await loadPlacements(
+                    new LoadResourceDeploymentConnectionPlacementsRequest(
+                        command.TenantId,
+                        command.SourceResourceType,
+                        command.SourceResourceId),
+                    session,
+                    cancellationToken)).Where(item => !item.DeletionRequested)
+                .ToArray();
+            var destinations = (await loadPlacements(
+                    new LoadResourceDeploymentConnectionPlacementsRequest(
+                        command.TenantId,
+                        command.DestinationResourceType,
+                        command.DestinationResourceId),
+                    session,
+                    cancellationToken)).Where(item => !item.DeletionRequested)
+                .ToArray();
+            var topology = ResourceConnectionTopology.Evaluate(
+                sources.Select(item => item.DeploymentTargetId),
                 destinations.Select(item => item.DeploymentTargetId));
             switch (topology.Kind)
             {
@@ -60,14 +74,25 @@ internal sealed class ResourceConnectionTopologyAdmission(
                     return new ConnectionDestinationTargetAmbiguous(topology.TargetId!);
             }
 
-            var targets = sources.GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal).Select(group =>
-            {
-                var destination = destinations.Single(item => item.DeploymentTargetId == group.Key);
-                return ConnectionTargetSnapshot.Create(group.Key, destination.DeploymentId, destination.RuntimeCellId,
-                    destination.KubernetesNamespace, endpoint.ServiceName, endpoint.ServicePort.Value,
-                    endpoint.TargetPort.Value, group.Select(item => new ConnectionSourcePlacement(item.DeploymentId,
-                        item.RuntimeCellId, item.KubernetesNamespace)));
-            }).OrderBy(item => item.TargetId, StringComparer.Ordinal).ToArray();
+            var targets = sources.GroupBy(item => item.DeploymentTargetId, StringComparer.Ordinal)
+                .Select(group =>
+                {
+                    var destination = destinations.Single(item => item.DeploymentTargetId == group.Key);
+                    return ConnectionTargetSnapshot.Create(
+                        group.Key,
+                        destination.DeploymentId,
+                        destination.RuntimeCellId,
+                        destination.KubernetesNamespace,
+                        endpoint.ServiceName,
+                        endpoint.ServicePort.Value,
+                        endpoint.TargetPort.Value,
+                        group.Select(item => new ConnectionSourcePlacement(
+                            item.DeploymentId,
+                            item.RuntimeCellId,
+                            item.KubernetesNamespace)));
+                })
+                .OrderBy(item => item.TargetId, StringComparer.Ordinal)
+                .ToArray();
             return new ResolvedResourceConnectionTopology(targets);
         }
     }

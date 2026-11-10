@@ -12,7 +12,8 @@ public sealed record Tenant(
     string Name,
     DateTime CreatedAtUtc,
     ImmutableList<TenantMember> Members,
-    long ReferenceFence);
+    long ReferenceFence
+);
 
 public sealed record TenantMember(
     [property: BsonId]
@@ -23,30 +24,29 @@ public sealed record TenantMember(
     string Email,
     TenantRole Role,
     DateTime CreatedAtUtc,
-    bool IsDefault);
+    bool IsDefault
+);
 
 public static class TenantFactory
 {
-    public static Tenant Create(string name, string? id = null) =>
-        new(
-            Id: id ?? ObjectId.GenerateNewId().ToString(),
-            Name: name,
-            CreatedAtUtc: DateTime.UtcNow,
-            Members: [],
-            ReferenceFence: 0);
+    public static Tenant Create(string name, string? id = null) => new(
+        Id: id ?? ObjectId.GenerateNewId().ToString(),
+        Name: name,
+        CreatedAtUtc: DateTime.UtcNow,
+        Members: [],
+        ReferenceFence: 0);
 
     public static TenantMember CreateMember(
         string tenantId,
         string userId,
         string email,
         TenantRole role,
-        bool isDefault = false) =>
-        new(
-            Id: ObjectId.GenerateNewId().ToString(),
-            TenantId: tenantId,
-            UserId: userId,
-            Email: email,
-            Role: role,
-            CreatedAtUtc: DateTime.UtcNow,
-            IsDefault: isDefault);
+        bool isDefault = false) => new(
+        Id: ObjectId.GenerateNewId().ToString(),
+        TenantId: tenantId,
+        UserId: userId,
+        Email: email,
+        Role: role,
+        CreatedAtUtc: DateTime.UtcNow,
+        IsDefault: isDefault);
 }

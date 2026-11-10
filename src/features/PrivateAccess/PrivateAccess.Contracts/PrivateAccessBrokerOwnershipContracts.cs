@@ -5,9 +5,11 @@ public sealed record PrivateAccessBrokerOwnerLease(
     string InstanceId,
     string InternalOrigin,
     long Epoch,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc
+);
 
 public sealed record PrivateAccessBrokerOwnerBusy;
+
 public sealed record PrivateAccessBrokerGatewayUnavailable;
 
 public union ClaimPrivateAccessBrokerOwnerOutcome(
@@ -35,4 +37,5 @@ public delegate Task<PrivateAccessBrokerOwnerLease?> LoadPrivateAccessBrokerOwne
 public sealed record ClaimPrivateAccessBrokerOwnerRequest(
     PrivateAccessGatewayIdentity Gateway,
     string InstanceId,
-    string InternalOrigin);
+    string InternalOrigin
+);

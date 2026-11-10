@@ -1,12 +1,10 @@
-using Microsoft.FSharp.Core;
-using Pole.Features.ResourceGroups.Contracts;
 using System.Collections.Immutable;
+using Microsoft.FSharp.Core;
+using MongoDB.Bson;
 using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Domain;
-using Pole.Features.StorageProfiles.Contracts;
 using Pole.Features.StorageProfiles.Domain;
 
 namespace Pole.Features.Postgres.Tests.Integration.Infrastructure;
@@ -24,8 +22,8 @@ public static class PostgresTestData
         int version = 17,
         string username = "postgres",
         string password = "postgres-secret",
-        string? tenantId = null)
-        => new(new CreatePostgresClusterRequestBody(
+        string? tenantId = null) => new(
+        new CreatePostgresClusterRequestBody(
             name,
             resourceGroupId,
             version,
@@ -36,26 +34,25 @@ public static class PostgresTestData
             username,
             password,
             FSharpOption<PlacementRequest>.None),
-            tenantId ?? TenantId);
+        tenantId ?? TenantId);
 
     public static StorageProfile SeedStorageProfile(
         string id = DefaultStorageProfileId,
         string storageClassName = "standard",
         bool isEnabled = true,
-        bool isDefault = true) =>
-        StorageProfileFactory.Create(
-            technicalName: "storage-" + MongoDB.Bson.ObjectId.GenerateNewId(),
-            "Standard",
-            "Default test storage",
-            StorageMediaType.SSD,
-            StoragePerformanceTier.Standard,
-            isEnabled,
-            isDefault,
-            [StorageProfileTargetMapping.Create(DefaultDeploymentTargetId, storageClassName)],
-            [ResourceTypeId.Create("pole/postgresql")],
-            StorageProfileTenantAccess.Create(StorageProfileTenantAccessMode.AllTenants, []),
-            StorageProfileSizeLimits.Create(1, 100),
-            StorageProfileFactory.DefaultOptions with { Id = id });
+        bool isDefault = true) => StorageProfileFactory.Create(
+        technicalName: "storage-" + ObjectId.GenerateNewId(),
+        "Standard",
+        "Default test storage",
+        StorageMediaType.SSD,
+        StoragePerformanceTier.Standard,
+        isEnabled,
+        isDefault,
+        [StorageProfileTargetMapping.Create(DefaultDeploymentTargetId, storageClassName)],
+        [ResourceTypeId.Create("pole/postgresql")],
+        StorageProfileTenantAccess.Create(StorageProfileTenantAccessMode.AllTenants, []),
+        StorageProfileSizeLimits.Create(1, 100),
+        StorageProfileFactory.DefaultOptions with { Id = id });
 
     public static ComputeProfile SeedComputeProfile(
         string id = DefaultComputeProfileId,
@@ -63,33 +60,29 @@ public static class PostgresTestData
         long requestedMemoryMi = 256,
         long limitCpuMillis = 1000,
         long limitMemoryMi = 1024,
-        bool isDefault = true) =>
-        ComputeProfileFactory.Create("profile-" + id,
-            "Default",
-            "Default test compute profile",
-            ComputeProfileResourceRequirements.Create(
-                ComputeProfileResourceQuantity.Create(requestedCpuMillis, requestedMemoryMi),
-                ComputeProfileResourceQuantity.Create(limitCpuMillis, limitMemoryMi)),
-            ComputeArchitecture.Any,
-            [],
-            [ResourceTypeId.Create("pole/postgresql")],
-            AllTenantsComputeProfileAccess.Create(),
-            [ComputeProfileTargetMapping.Create(DefaultDeploymentTargetId)],
-            isEnabled: true,
-            isDefault,
-            new ComputeProfileFactory.CreateOptions(
-                id,
-                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+        bool isDefault = true) => ComputeProfileFactory.Create(
+        "profile-" + id,
+        "Default",
+        "Default test compute profile",
+        ComputeProfileResourceRequirements.Create(
+            ComputeProfileResourceQuantity.Create(requestedCpuMillis, requestedMemoryMi),
+            ComputeProfileResourceQuantity.Create(limitCpuMillis, limitMemoryMi)),
+        ComputeArchitecture.Any,
+        [],
+        [ResourceTypeId.Create("pole/postgresql")],
+        AllTenantsComputeProfileAccess.Create(),
+        [ComputeProfileTargetMapping.Create(DefaultDeploymentTargetId)],
+        isEnabled: true,
+        isDefault,
+        new ComputeProfileFactory.CreateOptions(id, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
 
-    public static ResourceGroup SeedResourceGroup(
-        string name = "alpha",
-        string tenantId = TenantId) =>
+    public static ResourceGroup SeedResourceGroup(string name = "alpha", string tenantId = TenantId) =>
         ResourceGroupFactory.Create(
             tenantId,
             name,
             $"{name} description",
             ResourceGroupFactory.DefaultCreateOptions with
             {
-                Tags = ImmutableHashSet.Create("seed")
+                Tags = ImmutableHashSet.Create("seed"),
             });
 }

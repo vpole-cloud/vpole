@@ -5,9 +5,7 @@ using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Domain;
-using Pole.Features.Domains.Migrations;
 using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Tests.Integration.Infrastructure;
@@ -16,7 +14,9 @@ using Xunit;
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class DomainZoneGitOpsGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+public sealed class DomainZoneGitOpsGlobalTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task DomainZoneCreatesThenNoOpsWithOwnershipAndNoBusinessEffects()
@@ -33,12 +33,11 @@ public sealed class DomainZoneGitOpsGlobalTests(MongoReplicaSetFixture fixture) 
         Assert.Equal(zone.Revision, current.Revision);
         Assert.Equal(zone.UpdatedAtUtc, current.UpdatedAtUtc);
         Assert.Equal(events, await BusinessEvents());
-        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            Data.TenantId, source, unchanged.Context!.RunId, 1, 30, default))!.Items;
+        var operations = (await Services.GetRequiredService<GitRepositoryQueries>()
+            .OperationsAsync(Data.TenantId, source, unchanged.Context!.RunId, 1, 30, default))!.Items;
         Assert.Equal(GitPlannedAction.NoOp, Assert.Single(operations).Plan!.Action);
 
-        var detail = (await Mediator.Send(new GetDomainZoneRequest(zone.Id, Data.TenantId)))
-            .AssertHandlerOutcome();
+        var detail = (await Mediator.Send(new GetDomainZoneRequest(zone.Id, Data.TenantId))).AssertHandlerOutcome();
         Assert.NotNull(Assert.IsType<DomainZoneDto>(detail.Value).GitOps);
         var deletion = (await Mediator.Send(new DeleteDomainZoneRequest(zone.Id, Data.TenantId)))
             .AssertHandlerOutcome();
@@ -72,17 +71,22 @@ public sealed class DomainZoneGitOpsGlobalTests(MongoReplicaSetFixture fixture) 
         await targets.DeleteOneAsync(item => item.Id == target.Id);
         await targets.InsertOneAsync(target with { Id = Id() });
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(DomainZoneSnapshot())).Status);
-        Assert.Equal(target.Id, (await DomainZones.Find(Builders<TenantDomainZone>.Filter.Empty).SingleAsync())
-            .DeploymentTargetId);
+        Assert.Equal(
+            target.Id,
+            (await DomainZones.Find(Builders<TenantDomainZone>.Filter.Empty).SingleAsync()).DeploymentTargetId);
     }
 
     [Fact]
     public async Task DomainZoneForeignDnsReservationDoesNotCreateResourceOrAppliedOwnership()
     {
         await EnablePublicWebTargetAsync();
-        var manual = TenantDomainZoneFactory.CreateManagedReservation(Data.TenantId,
-            TestData.DefaultDeploymentTargetId, "company", DnsName.Create(Data.Hostname("apps")), "manual-zone",
-            new(Id(), DateTime.UtcNow));
+        var manual = TenantDomainZoneFactory.CreateManagedReservation(
+            Data.TenantId,
+            TestData.DefaultDeploymentTargetId,
+            "company",
+            DnsName.Create(Data.Hostname("apps")),
+            "manual-zone",
+            new TenantDomainZoneFactory.CreateOptions(Id(), DateTime.UtcNow));
         await DomainZones.InsertOneAsync(manual);
         var result = await Apply(DomainZoneSnapshot());
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
@@ -91,10 +95,13 @@ public sealed class DomainZoneGitOpsGlobalTests(MongoReplicaSetFixture fixture) 
         Assert.Equal(GitResourceMaterialization.Allocated, inventory.Materialization);
         Assert.Null(inventory.Projections.Applied);
         var receipt = await Services.GetRequiredService<IMongoCollection<GitOperationReceipt>>()
-            .Find(item => item.RunId == result.Context!.RunId && item.Kind == "DomainZone").SingleAsync();
+            .Find(item => item.RunId == result.Context!.RunId && item.Kind == "DomainZone")
+            .SingleAsync();
         Assert.Equal(nameof(DomainZoneDeclarationAlreadyReserved), receipt.Blocker);
         Assert.False(receipt.Changed);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(item =>
-            item.EventType == "pole.domains/v1/domain-metadata-changed"));
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(item =>
+                item.EventType == "pole.domains/v1/domain-metadata-changed"));
     }
 }

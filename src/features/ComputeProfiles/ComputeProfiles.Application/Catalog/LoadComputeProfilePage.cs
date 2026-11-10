@@ -6,21 +6,24 @@ namespace Pole.Features.ComputeProfiles.Application.Catalog;
 
 public sealed record ComputeProfileListQuery(
     int PageNumber,
-    int PageSize)
+    int PageSize
+)
 {
     public int Skip => checked((PageNumber - 1) * PageSize);
 }
 
 public sealed record ComputeProfilePage(
     IReadOnlyList<ComputeProfile> Items,
-    long TotalCount);
+    long TotalCount
+);
 
 public delegate Task<ComputeProfilePage> LoadComputeProfilePage(
     ComputeProfileListQuery query,
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadComputeProfilePage(
-    IMongoCollection<ComputeProfile> computeProfiles)
+    IMongoCollection<ComputeProfile> computeProfiles
+)
 {
     public async Task<ComputeProfilePage> InvokeAsync(
         ComputeProfileListQuery query,
@@ -28,11 +31,8 @@ internal sealed class MongoLoadComputeProfilePage(
     {
         ArgumentNullException.ThrowIfNull(query);
         var filter = ComputeProfileFilters.All();
-        var totalCount = await computeProfiles.CountDocumentsAsync(
-            filter,
-            cancellationToken: cancellationToken);
-        var profiles = await computeProfiles
-            .Find(filter)
+        var totalCount = await computeProfiles.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var profiles = await computeProfiles.Find(filter)
             .SortByDescending(profile => profile.IsDefault)
             .ThenBy(profile => profile.DisplayName)
             .ThenBy(profile => profile.Id)

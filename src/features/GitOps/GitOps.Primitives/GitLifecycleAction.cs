@@ -16,5 +16,5 @@ public enum GitLifecycleDependencyOrder
 {
     BeforeRemoval,
     AfterRemovalRequested,
-    AfterDependentRemovalRequested
+    AfterDependentRemovalRequested,
 }

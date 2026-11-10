@@ -1,22 +1,19 @@
 using k8s;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class KubernetesClientProviderTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override async Task InitializeAsync() => await base.InitializeAsync();
 
@@ -90,7 +87,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         Assert.Equal(
             [
                 target.Connection.Version,
-                connectionRevision.Connection.Version
+                connectionRevision.Connection.Version,
             ],
             factory.Calls.Select(call => call.ConnectionVersion));
     }
@@ -103,12 +100,13 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var factory = new RecordingClientFactory();
         using var provider = CreateProvider(factory);
 
-        var missing = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(
-            () => provider.GetAsync(ObjectId.GenerateNewId().ToString()));
-        var disabled = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(
-            () => provider.GetAsync(disabledTarget.Id));
-        var defaultNotConfigured = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(
-            () => provider.GetDefaultAsync());
+        var missing = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(() =>
+            provider.GetAsync(ObjectId.GenerateNewId().ToString()));
+        var disabled
+            = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(() =>
+                provider.GetAsync(disabledTarget.Id));
+        var defaultNotConfigured
+            = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(() => provider.GetDefaultAsync());
 
         Assert.Equal(DeploymentTargetUnavailableReason.NotFound, missing.Reason);
         Assert.Equal(DeploymentTargetUnavailableReason.Disabled, disabled.Reason);
@@ -127,8 +125,7 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         var client = await provider.GetForCleanupAsync(target.Id);
 
         Assert.Same(Assert.Single(factory.Calls).Client, client);
-        var denied = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(
-            () => provider.GetAsync(target.Id));
+        var denied = await Assert.ThrowsAsync<DeploymentTargetUnavailableException>(() => provider.GetAsync(target.Id));
         Assert.Equal(DeploymentTargetUnavailableReason.Disabled, denied.Reason);
     }
 
@@ -170,16 +167,12 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
     }
 
     private async Task ReplaceTargetAsync(DeploymentTarget target) =>
-        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(
-            existing => existing.Id == target.Id,
-            target);
+        await Fixture.DbContext.DeploymentTargets.ReplaceOneAsync(existing => existing.Id == target.Id, target);
 
-    private KubernetesClientProvider CreateProvider(RecordingClientFactory factory) =>
-        new(
-            new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync,
-            new MongoLoadDefaultDeploymentTargetId(Fixture.DbContext.DeploymentTargetSettings)
-                .InvokeAsync,
-            factory.InvokeAsync);
+    private KubernetesClientProvider CreateProvider(RecordingClientFactory factory) => new(
+        new MongoLoadDeploymentTargetById(Fixture.DbContext.DeploymentTargets).InvokeAsync,
+        new MongoLoadDefaultDeploymentTargetId(Fixture.DbContext.DeploymentTargetSettings).InvokeAsync,
+        factory.InvokeAsync);
 
     private static DeploymentTarget CreateTarget(bool enabled = true, bool degraded = false)
     {
@@ -195,7 +188,8 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
                 "The cluster probe failed.")
             : DeploymentTargetHealth.Unknown(connectionVersion);
 
-        return DeploymentTargetFactory.Create("target-" + id,
+        return DeploymentTargetFactory.Create(
+            "target-" + id,
             $"Target {id[..8]}",
             $"cluster-{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
@@ -221,15 +215,11 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
             IKubernetes client = new Kubernetes(
                 new KubernetesClientConfiguration
                 {
-                    Host = $"https://{deploymentTargetId}.invalid"
+                    Host = $"https://{deploymentTargetId}.invalid",
                 },
                 disposalHandler);
-            Calls.Add(new ClientFactoryCall(
-                deploymentTargetId,
-                connection.Version,
-                client,
-                disposalHandler));
-            return ValueTask.FromResult<CreateStoredKubernetesClientOutcome>(new CreateStoredKubernetesClientOutcome(client));
+            Calls.Add(new ClientFactoryCall(deploymentTargetId, connection.Version, client, disposalHandler));
+            return ValueTask.FromResult(new CreateStoredKubernetesClientOutcome(client));
         }
     }
 
@@ -237,7 +227,8 @@ public sealed class KubernetesClientProviderTests(MongoReplicaSetFixture fixture
         string DeploymentTargetId,
         long ConnectionVersion,
         IKubernetes Client,
-        DisposalTrackingHandler DisposalHandler);
+        DisposalTrackingHandler DisposalHandler
+    );
 
     private sealed class DisposalTrackingHandler : DelegatingHandler
     {

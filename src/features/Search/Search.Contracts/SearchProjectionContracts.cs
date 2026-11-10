@@ -5,12 +5,14 @@ namespace Pole.Features.Search.Contracts;
 public sealed record SearchSourceType(
     ResourceTypeId ResourceTypeId,
     string ApiName,
-    int SortOrder);
+    int SortOrder
+);
 
 public sealed record SearchProjectionIdentity(
     string TenantId,
     ResourceTypeId ResourceTypeId,
-    string SourceId);
+    string SourceId
+);
 
 public enum SearchProjectionFieldType
 {
@@ -23,12 +25,13 @@ public enum SearchProjectionFieldType
     StorageClassName = 6,
     ResourceName = 7,
     Username = 8,
-    GroupId = 9
+    GroupId = 9,
 }
 
 public sealed record SearchProjectionField(
     SearchProjectionFieldType Type,
-    string Value);
+    string Value
+);
 
 public sealed record SearchProjectionSnapshot(
     SearchProjectionIdentity Identity,
@@ -36,14 +39,16 @@ public sealed record SearchProjectionSnapshot(
     string? ResourceGroupId,
     string? ResourceGroupName,
     IReadOnlyCollection<SearchProjectionField> Fields,
-    long ResourceRevision);
+    long ResourceRevision
+);
 
 public sealed record SearchOperationalStatusSnapshot(
     long ResourceRevision,
     long ObservedGeneration,
     string Status,
     string? FailureCode,
-    DateTime EventOccurredAtUtc);
+    DateTime EventOccurredAtUtc
+);
 
 public delegate Task CreateSearchProjection(
     SearchProjectionSnapshot snapshot,
@@ -63,5 +68,4 @@ public delegate Task UpdateSearchOperationalStatus(
     SearchOperationalStatusSnapshot status,
     CancellationToken cancellationToken = default);
 
-public delegate SearchSourceType? ResolveSearchSourceType(
-    ResourceTypeId resourceTypeId);
+public delegate SearchSourceType? ResolveSearchSourceType(ResourceTypeId resourceTypeId);

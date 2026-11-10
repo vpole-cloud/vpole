@@ -1,14 +1,11 @@
+using System.Diagnostics;
 using k8s.Autorest;
 using Microsoft.Extensions.Logging;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceDeployments.Application.Reconciliation;
 
@@ -21,7 +18,8 @@ public sealed class ResourceDeploymentReconciler(
     LookupDeploymentTarget lookupDeploymentTarget,
     EnsureRuntimeCellIngressBaseline ensureRuntimeCellIngressBaseline,
     ResourceDeploymentMetrics metrics,
-    ILogger<ResourceDeploymentReconciler> logger)
+    ILogger<ResourceDeploymentReconciler> logger
+)
 {
     public async Task HandleAsync(
         string tenantId,
@@ -42,15 +40,13 @@ public sealed class ResourceDeploymentReconciler(
             return;
         metrics.RecordAttempt(claimed.ResourceType, operation);
 
-        var runtimeCell = await loadResourcePlacement(
-            claimed.TenantId,
-            claimed.RuntimeCellId,
-            cancellationToken);
+        var runtimeCell = await loadResourcePlacement(claimed.TenantId, claimed.RuntimeCellId, cancellationToken);
         if (runtimeCell is null ||
-            !string.Equals(runtimeCell.DeploymentTargetId,
+            !string.Equals(
+                runtimeCell.DeploymentTargetId,
                 claimed.ResolvedPlacement.DeploymentTargetId,
-                StringComparison.Ordinal) ||
-            !string.Equals(runtimeCell.KubernetesNamespace,
+                StringComparison.Ordinal) || !string.Equals(
+                runtimeCell.KubernetesNamespace,
                 claimed.ResolvedPlacement.KubernetesNamespace,
                 StringComparison.Ordinal))
         {
@@ -65,8 +61,7 @@ public sealed class ResourceDeploymentReconciler(
             return;
         }
 
-        if (operation == ResourceDeploymentOperation.Apply &&
-            runtimeCell.State != ResourcePlacementState.Ready)
+        if (operation == ResourceDeploymentOperation.Apply && runtimeCell.State != ResourcePlacementState.Ready)
         {
             await PersistFailureAsync(
                 claimed,
@@ -136,22 +131,21 @@ public sealed class ResourceDeploymentReconciler(
             {
                 null => throw new InvalidOperationException("The ingress baseline returned no outcome."),
                 RuntimeCellIngressBaselineReady => null,
-                RuntimeCellIngressBaselineTargetNotFound =>
-                    ("DeploymentTargetNotFound", "The deployment target Kubernetes client is unavailable.", true),
-                RuntimeCellIngressBaselineTargetDisabled =>
-                    ("DeploymentTargetDisabled", "The deployment target Kubernetes client is unavailable.", true),
-                RuntimeCellIngressBaselineDefaultTargetNotConfigured =>
-                    ("DeploymentTargetDefaultNotConfigured", "The deployment target Kubernetes client is unavailable.", true),
-                RuntimeCellIngressBaselineTargetConnectionUnavailable =>
-                    ("DeploymentTargetConnectionUnavailable", "The deployment target Kubernetes client is unavailable.", true),
-                RuntimeCellIngressBaselinePlacementMismatch =>
-                    ("IngressBaselinePlacementMismatch", "The runtime-cell ingress baseline belongs to another placement.", false),
-                RuntimeCellIngressBaselineNotReady or
-                RuntimeCellIngressBaselineNamespaceOwnershipConflict or
-                RuntimeCellIngressBaselineNamespaceUnavailable or
-                RuntimeCellIngressBaselinePolicyOwnershipConflict or
-                RuntimeCellIngressBaselinePolicyUnavailable =>
-                    ("IngressBaselineUnavailable", "The runtime-cell ingress baseline could not be established.", true)
+                RuntimeCellIngressBaselineTargetNotFound => ("DeploymentTargetNotFound",
+                    "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselineTargetDisabled => ("DeploymentTargetDisabled",
+                    "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselineDefaultTargetNotConfigured => ("DeploymentTargetDefaultNotConfigured",
+                    "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselineTargetConnectionUnavailable => ("DeploymentTargetConnectionUnavailable",
+                    "The deployment target Kubernetes client is unavailable.", true),
+                RuntimeCellIngressBaselinePlacementMismatch => ("IngressBaselinePlacementMismatch",
+                    "The runtime-cell ingress baseline belongs to another placement.", false),
+                RuntimeCellIngressBaselineNotReady or RuntimeCellIngressBaselineNamespaceOwnershipConflict
+                    or RuntimeCellIngressBaselineNamespaceUnavailable
+                    or RuntimeCellIngressBaselinePolicyOwnershipConflict
+                    or RuntimeCellIngressBaselinePolicyUnavailable => ("IngressBaselineUnavailable",
+                        "The runtime-cell ingress baseline could not be established.", true),
             };
             if (baselineFailure is { } failure)
             {
@@ -167,8 +161,7 @@ public sealed class ResourceDeploymentReconciler(
             }
         }
 
-        var (adapter, placementCapability) = resolveResourceDeploymentAdapter(
-            claimed.ResourceType);
+        var (adapter, placementCapability) = resolveResourceDeploymentAdapter(claimed.ResourceType);
         if (placementCapability != claimed.PlacementCapability)
         {
             await PersistFailureAsync(
@@ -182,9 +175,8 @@ public sealed class ResourceDeploymentReconciler(
             return;
         }
 
-        var context = new ResourceDeploymentReconciliationContext(
-            claimed.ToReconciliationSnapshot());
-        var adapterStartedTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        var context = new ResourceDeploymentReconciliationContext(claimed.ToReconciliationSnapshot());
+        var adapterStartedTimestamp = Stopwatch.GetTimestamp();
         ResourceDeploymentAdapterResult result;
         try
         {
@@ -241,10 +233,7 @@ public sealed class ResourceDeploymentReconciler(
         switch (result)
         {
             case ResourceDeploymentAdapterResult.Succeeded succeeded:
-                metrics.RecordCompletion(
-                    claimed.ResourceType,
-                    operation,
-                    adapterStartedTimestamp);
+                metrics.RecordCompletion(claimed.ResourceType, operation, adapterStartedTimestamp);
                 await PersistSuccessAsync(
                     claimed,
                     generation,
@@ -253,10 +242,7 @@ public sealed class ResourceDeploymentReconciler(
                     cancellationToken);
                 break;
             case ResourceDeploymentAdapterResult.Failed failed:
-                metrics.RecordFailure(
-                    claimed.ResourceType,
-                    operation,
-                    adapterStartedTimestamp);
+                metrics.RecordFailure(claimed.ResourceType, operation, adapterStartedTimestamp);
                 await PersistFailureAsync(
                     claimed,
                     generation,
@@ -267,8 +253,7 @@ public sealed class ResourceDeploymentReconciler(
                     cancellationToken);
                 break;
             default:
-                throw new InvalidOperationException(
-                    $"Unsupported adapter result '{result.GetType().FullName}'.");
+                throw new InvalidOperationException($"Unsupported adapter result '{result.GetType().FullName}'.");
         }
     }
 
@@ -280,10 +265,7 @@ public sealed class ResourceDeploymentReconciler(
         string failureCode,
         CancellationToken cancellationToken)
     {
-        metrics.RecordFailure(
-            claimed.ResourceType,
-            operation,
-            adapterStartedTimestamp);
+        metrics.RecordFailure(claimed.ResourceType, operation, adapterStartedTimestamp);
         logger.LogWarning(
             "Resource deployment {ResourceDeploymentId} adapter reported infrastructure failure {FailureCode}",
             claimed.Id,
@@ -305,12 +287,7 @@ public sealed class ResourceDeploymentReconciler(
         IEnumerable<ResourceDeploymentEndpoint> endpoints,
         CancellationToken cancellationToken)
     {
-        await persistResourceDeploymentSuccess(
-            claimed,
-            generation,
-            operation,
-            endpoints.ToArray(),
-            cancellationToken);
+        await persistResourceDeploymentSuccess(claimed, generation, operation, endpoints.ToArray(), cancellationToken);
     }
 
     private async Task PersistFailureAsync(

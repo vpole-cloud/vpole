@@ -1,12 +1,7 @@
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Finalization;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -14,7 +9,8 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 
 [Collection(IntegrationTestCollection.Global3)]
 public sealed class ResourceDeploymentFinalizationCapabilityTests(
-    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     private const string TenantId = "507f1f77bcf86cd799439081";
     private const string OtherTenantId = "507f1f77bcf86cd799439082";
@@ -23,10 +19,10 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
     private const string IsolationScopeId = "507f1f77bcf86cd799439085";
     private const string RuntimeCellId = "507f1f77bcf86cd799439086";
     private const string TargetId = "507f1f77bcf86cd799439087";
-    private static readonly ResourceTypeId ResourceType =
-        ResourceTypeId.Create("pole/finalization-test");
-    private static readonly DateTime CreatedAtUtc =
-        new(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
+
+    private static readonly ResourceTypeId ResourceType = ResourceTypeId.Create("pole/finalization-test");
+
+    private static readonly DateTime CreatedAtUtc = new(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
 
     public override Task InitializeAsync() => base.InitializeAsync();
 
@@ -37,43 +33,36 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
     {
         await Fixture.DbContext.ResourceDeployments.InsertManyAsync(
         [
-            CreateDeployment(
-                "507f1f77bcf86cd799439088",
-                TenantId,
-                deleted: true),
-            CreateDeployment(
-                "507f1f77bcf86cd799439089",
-                TenantId,
-                deleted: false)
+            CreateDeployment("507f1f77bcf86cd799439088", TenantId, deleted: true),
+            CreateDeployment("507f1f77bcf86cd799439089", TenantId, deleted: false),
         ]);
         var operations = CreateOperations();
 
-        var result = await RunTypedTransactionAsync(
-            async (session, cancellationToken) =>
-            {
-                var readiness = await operations.GetReadiness(
-                    new GetResourceDeploymentFinalizationReadinessRequest(
-                        TenantId: TenantId,
-                        ResourceType: ResourceType,
-                        ResourceId: ResourceId),
-                    session: session,
-                    cancellationToken: cancellationToken);
-                Assert.Equal(ResourceDeploymentFinalizationReadiness.Waiting, readiness);
-                return await operations.PurgeDeleted(
-                    new PurgeDeletedResourceDeploymentsRequest(
-                        TenantId: TenantId,
-                        ResourceType: ResourceType,
-                        ResourceId: ResourceId),
-                    session: session,
-                    cancellationToken: cancellationToken);
-            });
+        var result = await RunTypedTransactionAsync(async (session, cancellationToken) =>
+        {
+            var readiness = await operations.GetReadiness(
+                new GetResourceDeploymentFinalizationReadinessRequest(
+                    TenantId: TenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: ResourceId),
+                session: session,
+                cancellationToken: cancellationToken);
+            Assert.Equal(ResourceDeploymentFinalizationReadiness.Waiting, readiness);
+            return await operations.PurgeDeleted(
+                new PurgeDeletedResourceDeploymentsRequest(
+                    TenantId: TenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: ResourceId),
+                session: session,
+                cancellationToken: cancellationToken);
+        });
 
         var error = Assert.IsType<ResourceDeploymentFinalizationConflict>(result.Value);
         Assert.Equal(ResourceId, error.ResourceId);
         Assert.Equal(
             2,
-            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
-                deployment => deployment.TenantId == TenantId));
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(deployment =>
+                deployment.TenantId == TenantId));
     }
 
     [Fact]
@@ -81,46 +70,39 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
     {
         await Fixture.DbContext.ResourceDeployments.InsertManyAsync(
         [
-            CreateDeployment(
-                "507f1f77bcf86cd79943908a",
-                TenantId,
-                deleted: true),
-            CreateDeployment(
-                "507f1f77bcf86cd79943908b",
-                OtherTenantId,
-                deleted: true)
+            CreateDeployment("507f1f77bcf86cd79943908a", TenantId, deleted: true),
+            CreateDeployment("507f1f77bcf86cd79943908b", OtherTenantId, deleted: true),
         ]);
         var operations = CreateOperations();
 
-        var result = await RunTypedTransactionAsync(
-            async (session, cancellationToken) =>
-            {
-                var readiness = await operations.GetReadiness(
-                    new GetResourceDeploymentFinalizationReadinessRequest(
-                        TenantId: TenantId,
-                        ResourceType: ResourceType,
-                        ResourceId: ResourceId),
-                    session: session,
-                    cancellationToken: cancellationToken);
-                Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
-                return await operations.PurgeDeleted(
-                    new PurgeDeletedResourceDeploymentsRequest(
-                        TenantId: TenantId,
-                        ResourceType: ResourceType,
-                        ResourceId: ResourceId),
-                    session: session,
-                    cancellationToken: cancellationToken);
-            });
+        var result = await RunTypedTransactionAsync(async (session, cancellationToken) =>
+        {
+            var readiness = await operations.GetReadiness(
+                new GetResourceDeploymentFinalizationReadinessRequest(
+                    TenantId: TenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: ResourceId),
+                session: session,
+                cancellationToken: cancellationToken);
+            Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
+            return await operations.PurgeDeleted(
+                new PurgeDeletedResourceDeploymentsRequest(
+                    TenantId: TenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: ResourceId),
+                session: session,
+                cancellationToken: cancellationToken);
+        });
 
         Assert.IsType<ResourceDeploymentsPurged>(result.Value);
         Assert.Equal(
             0,
-            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
-                deployment => deployment.TenantId == TenantId));
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(deployment =>
+                deployment.TenantId == TenantId));
         Assert.Equal(
             1,
-            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
-                deployment => deployment.TenantId == OtherTenantId));
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(deployment =>
+                deployment.TenantId == OtherTenantId));
     }
 
     [Fact]
@@ -131,69 +113,55 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
         await Fixture.DbContext.ResourceDeployments.InsertManyAsync(
         [
             CreateDeployment(deletedDeploymentId, TenantId, deleted: true),
-            CreateDeployment(siblingDeploymentId, TenantId, deleted: false)
+            CreateDeployment(siblingDeploymentId, TenantId, deleted: false),
         ]);
         var operations = CreateOperations();
 
-        var result = await RunTypedTransactionAsync(
-            async (session, cancellationToken) =>
-            {
-                var readiness = await operations.GetExactReadiness(
-                    new GetExactResourceDeploymentFinalizationReadinessRequest(
-                        TenantId: TenantId,
-                        ResourceType: ResourceType,
-                        ResourceId: ResourceId,
-                        ResourceDeploymentId: deletedDeploymentId),
-                    session: session,
-                    cancellationToken: cancellationToken);
-                Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
-                return await operations.PurgeExactDeleted(
-                    new PurgeExactDeletedResourceDeploymentRequest(
-                        TenantId: TenantId,
-                        ResourceType: ResourceType,
-                        ResourceId: ResourceId,
-                        ResourceDeploymentId: deletedDeploymentId),
-                    session: session,
-                    cancellationToken: cancellationToken);
-            });
+        var result = await RunTypedTransactionAsync(async (session, cancellationToken) =>
+        {
+            var readiness = await operations.GetExactReadiness(
+                new GetExactResourceDeploymentFinalizationReadinessRequest(
+                    TenantId: TenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: ResourceId,
+                    ResourceDeploymentId: deletedDeploymentId),
+                session: session,
+                cancellationToken: cancellationToken);
+            Assert.Equal(ResourceDeploymentFinalizationReadiness.Ready, readiness);
+            return await operations.PurgeExactDeleted(
+                new PurgeExactDeletedResourceDeploymentRequest(
+                    TenantId: TenantId,
+                    ResourceType: ResourceType,
+                    ResourceId: ResourceId,
+                    ResourceDeploymentId: deletedDeploymentId),
+                session: session,
+                cancellationToken: cancellationToken);
+        });
 
         Assert.IsType<ResourceDeploymentsPurged>(result.Value);
         Assert.Equal(
             1,
-            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(
-                deployment => deployment.TenantId == TenantId));
-        var remaining = await Fixture.DbContext.ResourceDeployments
+            await Fixture.DbContext.ResourceDeployments.CountDocumentsAsync(deployment =>
+                deployment.TenantId == TenantId));
+        var remaining = await Fixture.DbContext
+            .ResourceDeployments
             .Find(deployment => deployment.Id == siblingDeploymentId)
             .SingleAsync();
         Assert.IsNotType<DeletedResourceDeploymentState>(remaining.State);
     }
 
-    private async Task<PurgeResourceDeploymentsOutcome>
-        RunTypedTransactionAsync(
-            Func<
-                IClientSessionHandle,
-                CancellationToken,
-                Task<PurgeResourceDeploymentsOutcome>> operation)
+    private async Task<PurgeResourceDeploymentsOutcome> RunTypedTransactionAsync(
+        Func<IClientSessionHandle, CancellationToken, Task<PurgeResourceDeploymentsOutcome>> operation)
     {
         using var session = await Fixture.DbContext.Client.StartSessionAsync();
         return await session.WithTransactionAsync(operation);
     }
 
     private FinalizationOperations CreateOperations() => new(
-        new MongoGetResourceDeploymentFinalizationReadiness(
-            Fixture.DbContext.ResourceDeployments).InvokeAsync,
-        new MongoPurgeDeletedResourceDeployments(
-            Fixture.DbContext.ResourceDeployments).InvokeAsync,
-        new MongoGetExactResourceDeploymentFinalizationReadiness(
-            Fixture.DbContext.ResourceDeployments).InvokeAsync,
-        new MongoPurgeExactDeletedResourceDeployment(
-            Fixture.DbContext.ResourceDeployments).InvokeAsync);
-
-    private sealed record FinalizationOperations(
-        GetResourceDeploymentFinalizationReadiness GetReadiness,
-        PurgeDeletedResourceDeployments PurgeDeleted,
-        GetExactResourceDeploymentFinalizationReadiness GetExactReadiness,
-        PurgeExactDeletedResourceDeployment PurgeExactDeleted);
+        new MongoGetResourceDeploymentFinalizationReadiness(Fixture.DbContext.ResourceDeployments).InvokeAsync,
+        new MongoPurgeDeletedResourceDeployments(Fixture.DbContext.ResourceDeployments).InvokeAsync,
+        new MongoGetExactResourceDeploymentFinalizationReadiness(Fixture.DbContext.ResourceDeployments).InvokeAsync,
+        new MongoPurgeExactDeletedResourceDeployment(Fixture.DbContext.ResourceDeployments).InvokeAsync);
 
     private static ResourceDeployment CreateDeployment(
         string deploymentId,
@@ -221,7 +189,7 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
             ResourceDeploymentFactory.DefaultOptions with
             {
                 Id = deploymentId,
-                CreatedAtUtc = CreatedAtUtc
+                CreatedAtUtc = CreatedAtUtc,
             });
         if (!deleted)
             return deployment;
@@ -241,4 +209,11 @@ public sealed class ResourceDeploymentFinalizationCapabilityTests(
             [],
             CreatedAtUtc.AddSeconds(3));
     }
+
+    private sealed record FinalizationOperations(
+        GetResourceDeploymentFinalizationReadiness GetReadiness,
+        PurgeDeletedResourceDeployments PurgeDeleted,
+        GetExactResourceDeploymentFinalizationReadiness GetExactReadiness,
+        PurgeExactDeletedResourceDeployment PurgeExactDeleted
+    );
 }

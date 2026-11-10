@@ -1,9 +1,7 @@
-using k8s;
-using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.StorageProfiles.Application.Common;
+using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Contracts;
-using Pole.Features.StorageProfiles.Application.Discovery.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
@@ -16,7 +14,8 @@ public delegate Task<DiscoverKubernetesStorageClassesOutcome> DiscoverKubernetes
     CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesDiscoverStorageClasses(
-    StorageObservationReader reader)
+    StorageObservationReader reader
+)
 {
     public async Task<DiscoverKubernetesStorageClassesOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -24,16 +23,18 @@ internal sealed class KubernetesDiscoverStorageClasses(
     {
         return await reader.ReadLegacyAsync(deploymentTargetId, StorageInventoryKind.Classes, cancellationToken) switch
         {
-            StorageObservationSnapshot snapshot => snapshot.StorageClasses.Select(item =>
-                new KubernetesStorageClassDto(item.Name,
+            StorageObservationSnapshot snapshot => snapshot.StorageClasses
+                .Select(item => new KubernetesStorageClassDto(
+                    item.Name,
                     item.Provisioner,
                     item.IsDefault,
                     item.ReclaimPolicy,
                     item.VolumeBindingMode,
                     item.AllowVolumeExpansion,
                     new Dictionary<string, string>(),
-                    new Dictionary<string, string>())).ToArray(),
-            KubernetesStorageDiscoveryUnavailable unavailable => unavailable
+                    new Dictionary<string, string>()))
+                .ToArray(),
+            KubernetesStorageDiscoveryUnavailable unavailable => unavailable,
         };
     }
 }

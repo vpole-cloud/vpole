@@ -2,14 +2,21 @@ using Pole.Features.Functions.Runtime.Kubernetes;
 
 namespace Pole.Features.Functions.Runtime.Activation;
 
-public sealed record FunctionActivationCoordinatorRejected(string Message);
+public sealed record FunctionActivationCoordinatorRejected(
+    string Message
+);
 
-public sealed record FunctionActivationCoordinatorUnavailable(string Message);
+public sealed record FunctionActivationCoordinatorUnavailable(
+    string Message
+);
 
-public sealed record FunctionActivationTimedOut(string Message);
+public sealed record FunctionActivationTimedOut(
+    string Message
+);
 
 public sealed record FunctionActivationScaleRejected(
-    FunctionRevisionKubernetesOperationError Error);
+    FunctionRevisionKubernetesOperationError Error
+);
 
 public union FunctionRevisionActivationError(
     FunctionActivationCoordinatorRejected,
@@ -24,6 +31,6 @@ public static class FunctionRevisionActivationErrorExtensions
         FunctionActivationCoordinatorRejected rejected => rejected.Message,
         FunctionActivationCoordinatorUnavailable unavailable => unavailable.Message,
         FunctionActivationTimedOut timedOut => timedOut.Message,
-        FunctionActivationScaleRejected rejected => rejected.Error.Message()
+        FunctionActivationScaleRejected rejected => rejected.Error.Message(),
     };
 }

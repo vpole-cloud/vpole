@@ -26,17 +26,15 @@ public static class TenantEndpointConventionExtensions
             if (method is null)
                 return;
 
-            var requiresTenant = method.GetParameters().Any(parameter =>
-                typeof(ITenantOperation).IsAssignableFrom(parameter.ParameterType));
+            var requiresTenant = method.GetParameters()
+                .Any(parameter => typeof(ITenantOperation).IsAssignableFrom(parameter.ParameterType));
             if (!requiresTenant)
                 return;
 
             var metadata = endpoint.Metadata.OfType<TenantEndpointMetadata>().LastOrDefault();
             if (metadata?.ActiveTenant != ActiveTenantRequirement.Required)
-            {
                 throw new InvalidOperationException(
                     $"Tenant endpoint '{endpoint.DisplayName}' must declare required active tenant context.");
-            }
         });
         return builder;
     }

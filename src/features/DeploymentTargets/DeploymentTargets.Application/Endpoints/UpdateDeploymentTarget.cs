@@ -4,14 +4,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Mediator;
@@ -25,12 +21,13 @@ public sealed record UpdateDeploymentTargetRequestBody(
     bool Enabled,
     bool AcceptsWorkloads,
     DeploymentTargetWorkloadConfigurationRequestBody WorkloadConfiguration,
-    long Revision);
+    long Revision
+);
 
 public sealed record UpdateDeploymentTargetRequest(
     [FromRoute] string Id,
-    [FromBody] UpdateDeploymentTargetRequestBody Body)
-    : IMediatorRequest<UpdateDeploymentTargetOutcome>;
+    [FromBody] UpdateDeploymentTargetRequestBody Body
+) : IMediatorRequest<UpdateDeploymentTargetOutcome>;
 
 public union UpdateDeploymentTargetOutcome(
     DeploymentTargetDto,
@@ -45,8 +42,8 @@ public sealed class UpdateDeploymentTargetHandler(
     LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
     PersistUpdatedDeploymentTarget persistUpdatedDeploymentTarget,
     InvalidateDeploymentTargetKubernetesClient invalidateDeploymentTargetKubernetesClient,
-    TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<UpdateDeploymentTargetRequest, UpdateDeploymentTargetOutcome>
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<UpdateDeploymentTargetRequest, UpdateDeploymentTargetOutcome>
 {
     public async Task<UpdateDeploymentTargetOutcome> HandleAsync(
         UpdateDeploymentTargetRequest request,
@@ -74,19 +71,14 @@ public sealed class UpdateDeploymentTargetHandler(
             return target.ToDto(target.Id == existingDefaultId);
         }
 
-        var persistedResult = await persistUpdatedDeploymentTarget(
-            target,
-            updated,
-            cancellationToken);
+        var persistedResult = await persistUpdatedDeploymentTarget(target, updated, cancellationToken);
         if (persistedResult is PersistUpdatedDeploymentTargetError persistenceError)
-        {
             return persistenceError switch
             {
                 DeploymentTargetRevisionConflict conflict => conflict,
                 DeploymentTargetPublicBaseDomainReferenced referenced => referenced,
-                DeploymentTargetPublicBaseDomainConflict conflict => conflict
+                DeploymentTargetPublicBaseDomainConflict conflict => conflict,
             };
-        }
 
         var persisted = (DeploymentTarget)persistedResult.Value;
         if (!persisted.Enabled)
@@ -94,30 +86,22 @@ public sealed class UpdateDeploymentTargetHandler(
         var defaultId = await loadDefaultDeploymentTargetId(cancellationToken);
         return persisted.ToDto(persisted.Id == defaultId);
     }
-
 }
 
-public sealed class UpdateDeploymentTargetRequestValidator
-    : AbstractValidator<UpdateDeploymentTargetRequest>
+public sealed class UpdateDeploymentTargetRequestValidator : AbstractValidator<UpdateDeploymentTargetRequest>
 {
     public UpdateDeploymentTargetRequestValidator()
     {
-        RuleFor(request => request.Id)
-            .MongoObjectId("Deployment target ID");
-        RuleFor(request => request.Body)
-            .NotNull()
-            .SetValidator(new UpdateDeploymentTargetRequestBodyValidator());
+        RuleFor(request => request.Id).MongoObjectId("Deployment target ID");
+        RuleFor(request => request.Body).NotNull().SetValidator(new UpdateDeploymentTargetRequestBodyValidator());
     }
 }
 
-public sealed class UpdateDeploymentTargetRequestBodyValidator
-    : AbstractValidator<UpdateDeploymentTargetRequestBody>
+public sealed class UpdateDeploymentTargetRequestBodyValidator : AbstractValidator<UpdateDeploymentTargetRequestBody>
 {
     public UpdateDeploymentTargetRequestBodyValidator()
     {
-        RuleFor(body => body.DisplayName)
-            .NotEmpty()
-            .MaximumLength(80);
+        RuleFor(body => body.DisplayName).NotEmpty().MaximumLength(80);
         RuleFor(body => body.Revision).GreaterThan(0);
         RuleFor(body => body.AcceptsWorkloads)
             .Equal(false)
@@ -133,22 +117,23 @@ public static class UpdateDeploymentTargetEndpoint
 {
     public static IEndpointRouteBuilder MapUpdateDeploymentTargetEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] UpdateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                DeploymentTargetDto target => Results.Ok(target),
-                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetDeletionRejected error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetPublicBaseDomainReferenced error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error)
-            });
-        })
+        app.MapPut(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateDeploymentTargetRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        DeploymentTargetDto target => Results.Ok(target),
+                        DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetDeletionRejected error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetPublicBaseDomainReferenced error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetPublicBaseDomainConflict error => DeploymentTargetHttpMappings.Map(error),
+                    });
+                })
             .WithName("UpdateDeploymentTarget")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

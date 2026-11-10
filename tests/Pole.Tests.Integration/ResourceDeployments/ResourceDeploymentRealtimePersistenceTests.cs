@@ -13,14 +13,14 @@ using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.WebServices.Application.Realtime;
 using Pole.Observability;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
 [Collection(IntegrationTestCollection.Tenant3)]
-public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class ResourceDeploymentRealtimePersistenceTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     private const string StartedEventName = "pole.resource-deployments/v1/resource-deployment-reconciliation-started";
 
@@ -34,38 +34,45 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
         await DbContext.ResourceDeployments.InsertOneAsync(deployment);
         var claim = Services.GetRequiredService<ClaimResourceDeployment>();
         var otherTenantId = ObjectId.GenerateNewId().ToString();
-        Assert.Null(await claim(otherTenantId,
-            deployment.Id,
-            deployment.RuntimeCellId,
-            deployment.DesiredGeneration,
-            operation));
-        Assert.Null(await claim(deployment.TenantId,
-            deployment.Id,
-            deployment.RuntimeCellId,
-            deployment.DesiredGeneration + 1,
-            operation));
+        Assert.Null(
+            await claim(
+                otherTenantId,
+                deployment.Id,
+                deployment.RuntimeCellId,
+                deployment.DesiredGeneration,
+                operation));
+        Assert.Null(
+            await claim(
+                deployment.TenantId,
+                deployment.Id,
+                deployment.RuntimeCellId,
+                deployment.DesiredGeneration + 1,
+                operation));
         using var trace = TraceContext.Push(TraceContext.Create("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "claim-pilot"));
         var results = await Task.WhenAll(
-            claim(deployment.TenantId,
+            claim(
+                deployment.TenantId,
                 deployment.Id,
                 deployment.RuntimeCellId,
                 deployment.DesiredGeneration,
                 operation),
-            claim(deployment.TenantId,
+            claim(
+                deployment.TenantId,
                 deployment.Id,
                 deployment.RuntimeCellId,
                 deployment.DesiredGeneration,
                 operation));
         var claimed = Assert.Single(results, result => result is not null)!;
         Assert.IsType<ReconcilingResourceDeploymentState>(claimed.State);
-        var envelope = await DbContext.OutboxMessages.Find(x =>
-            (x.TenantId == deployment.TenantId || x.TenantId == otherTenantId) &&
-            x.EventType == StartedEventName).SingleAsync();
+        var envelope = await DbContext.OutboxMessages
+            .Find(x => (x.TenantId == deployment.TenantId || x.TenantId == otherTenantId) &&
+                x.EventType == StartedEventName)
+            .SingleAsync();
         Assert.Equal("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", envelope.TraceId);
         Assert.Equal("claim-pilot", envelope.CorrelationId);
-        var message =
-            JsonSerializer.Deserialize<ResourceDeploymentReconciliationStartedEvent>(envelope.PayloadJson,
-                EventExtensions.SerializerOptions)!;
+        var message = JsonSerializer.Deserialize<ResourceDeploymentReconciliationStartedEvent>(
+            envelope.PayloadJson,
+            EventExtensions.SerializerOptions)!;
         Assert.Equal(deployment.TenantId, message.EventCore.TenantId);
         Assert.Equal(deployment.ResourceId, message.ResourceId);
         Assert.Equal(deployment.ResourceGroupId, message.ResourceGroupId);
@@ -78,16 +85,20 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
     {
         var deployment = Deployment(ResourceDeploymentOperation.Apply);
         await DbContext.ResourceDeployments.InsertOneAsync(deployment);
-        var claim = new ClaimResourceDeploymentOperation(DbContext.ResourceDeployments,
+        var claim = new ClaimResourceDeploymentOperation(
+            DbContext.ResourceDeployments,
             new ResourceDeploymentSettings(),
             TimeProvider.System,
             new MongoRunTransaction(Fixture.Client),
-            async (session, writes, ct) =>
+            async (
+                session, writes,
+                ct) =>
             {
                 await Fixture.StoreOutboxWrites(session, writes, ct);
                 throw new InvalidOperationException("Injected outbox failure.");
             });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => claim.InvokeAsync(deployment.TenantId,
+        await Assert.ThrowsAsync<InvalidOperationException>(() => claim.InvokeAsync(
+            deployment.TenantId,
             deployment.Id,
             deployment.RuntimeCellId,
             deployment.DesiredGeneration,
@@ -95,7 +106,10 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
         var stored = await DbContext.ResourceDeployments.Find(x => x.Id == deployment.Id).SingleAsync();
         Assert.IsType<PendingResourceDeploymentState>(stored.State);
         Assert.Equal(deployment.Revision, stored.Revision);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == deployment.TenantId && x.EventType == StartedEventName));
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(x =>
+                x.TenantId == deployment.TenantId && x.EventType == StartedEventName));
     }
 
     [Fact]
@@ -103,20 +117,24 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
     {
         var deployment = Deployment(ResourceDeploymentOperation.Delete);
         await DbContext.ResourceDeployments.InsertOneAsync(deployment);
-        var claimed = await Services.GetRequiredService<ClaimResourceDeployment>()(deployment.TenantId,
+        var claimed = await Services.GetRequiredService<ClaimResourceDeployment>()(
+            deployment.TenantId,
             deployment.Id,
             deployment.RuntimeCellId,
             deployment.DesiredGeneration,
             ResourceDeploymentOperation.Delete);
-        await Services.GetRequiredService<PersistResourceDeploymentSuccess>()(claimed!,
+        await Services.GetRequiredService<PersistResourceDeploymentSuccess>()(
+            claimed!,
             deployment.DesiredGeneration,
             ResourceDeploymentOperation.Delete,
             []);
         var envelope = await DbContext.OutboxMessages
-            .Find(x => x.TenantId == deployment.TenantId && x.EventType == "pole.resource-deployments/v1/resource-deployment-deleted").SingleAsync();
-        var message =
-            JsonSerializer.Deserialize<ResourceDeploymentDeletedEvent>(envelope.PayloadJson,
-                EventExtensions.SerializerOptions)!;
+            .Find(x => x.TenantId == deployment.TenantId &&
+                x.EventType == "pole.resource-deployments/v1/resource-deployment-deleted")
+            .SingleAsync();
+        var message = JsonSerializer.Deserialize<ResourceDeploymentDeletedEvent>(
+            envelope.PayloadJson,
+            EventExtensions.SerializerOptions)!;
         await DbContext.ResourceDeployments.DeleteOneAsync(x => x.Id == deployment.Id);
         var notices = new List<RealtimeChange>();
 
@@ -127,13 +145,17 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
         }
 
         var operations = new NotifyResourceDeploymentChangedConsumer(Publish);
-        var webServices = new NotifyWebServiceChangedConsumer(Publish,
-            (_, _, _) => throw new InvalidOperationException("Deletion must use the event snapshot."));
+        var webServices = new NotifyWebServiceChangedConsumer(
+            Publish,
+            (
+                _, _,
+                _) => throw new InvalidOperationException("Deletion must use the event snapshot."));
         await operations.HandleAsync(message);
         await webServices.HandleAsync(message);
         await operations.HandleAsync(message);
         Assert.Equal(["operations", "web-services", "operations"], notices.Select(notice => notice.Topic));
-        Assert.All(notices,
+        Assert.All(
+            notices,
             notice =>
             {
                 Assert.Equal(deployment.TenantId, notice.TenantId);
@@ -146,12 +168,14 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
     private ResourceDeployment Deployment(ResourceDeploymentOperation operation)
     {
         var now = DateTime.UtcNow.AddMinutes(-1);
-        var deployment = ResourceDeploymentFactory.Create(Data.TenantId,
+        var deployment = ResourceDeploymentFactory.Create(
+            Data.TenantId,
             ResourceTypeId.Create("pole/web-service"),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
-            ResolvedResourcePlacement.Create(ObjectId.GenerateNewId().ToString(),
+            ResolvedResourcePlacement.Create(
+                ObjectId.GenerateNewId().ToString(),
                 ObjectId.GenerateNewId().ToString(),
                 "pole-realtime-test",
                 1,
@@ -165,7 +189,7 @@ public sealed class ResourceDeploymentRealtimePersistenceTests(MongoReplicaSetFi
             ResourceDeploymentFactory.DefaultOptions with
             {
                 Id = ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc = now
+                CreatedAtUtc = now,
             });
         return operation == ResourceDeploymentOperation.Delete
             ? deployment.RequestDeletion(now.AddSeconds(1))

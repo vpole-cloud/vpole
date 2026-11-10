@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Observability\Observability.csproj" />
-      <PackageReference Include="MassTransit.Abstractions" />
+        <ProjectReference Include="..\Observability\Observability.csproj"/>
+        <PackageReference Include="MassTransit.Abstractions"/>
     </ItemGroup>
 
 </Project>

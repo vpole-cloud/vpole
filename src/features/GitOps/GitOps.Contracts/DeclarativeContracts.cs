@@ -1,46 +1,53 @@
-using Pole.Features.GitOps.Primitives;
 using System.Diagnostics.CodeAnalysis;
-using Pole.Workloads;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MongoDB.Driver;
+using Pole.Features.GitOps.Primitives;
+using Pole.Workloads;
 
 namespace Pole.Features.GitOps.Contracts;
 
 public sealed record ResourceAddress(
     string Kind,
-    string Name);
+    string Name
+);
 
 public sealed record DeclarationDependency(
     ResourceAddress Resource,
-    DeclarationPhase Phase);
+    DeclarationPhase Phase
+);
 
 public sealed record DeclarationStep(
     DeclarationPhase Phase,
-    IReadOnlyList<DeclarationDependency> Dependencies);
+    IReadOnlyList<DeclarationDependency> Dependencies
+);
 
 public sealed record DeclarationDiagnostic(
     string File,
     int Document,
     string Field,
-    string Code);
+    string Code
+);
 
 public sealed record DeclaredReference(
     ResourceAddress Target,
     string Field,
     string? RequiredKey = null,
-    bool RequiresAccess = false);
+    bool RequiresAccess = false
+);
 
 public sealed record DeclarationExclusiveRelation(
     string Relation,
     ResourceAddress Left,
-    ResourceAddress Right);
+    ResourceAddress Right
+);
 
 public sealed record DeclarationKeyGrant(
     ResourceAddress Consumer,
     ResourceAddress Target,
     IReadOnlyList<string> Keys,
-    bool AllKeys);
+    bool AllKeys
+);
 
 public sealed record DeclarationFacts(
     ResourceAddress? Scope,
@@ -48,7 +55,8 @@ public sealed record DeclarationFacts(
     IReadOnlyList<DeclaredReference> References,
     IReadOnlyList<DeclarationExclusiveRelation> ExclusiveRelations,
     IReadOnlyList<DeclarationKeyGrant> AccessGrants,
-    bool ReferencesShareScope = true);
+    bool ReferencesShareScope = true
+);
 
 public sealed record CompiledDeclaration(
     ResourceAddress Address,
@@ -56,7 +64,8 @@ public sealed record CompiledDeclaration(
     string Hash,
     IReadOnlyList<DeclarationStep> Steps,
     string File,
-    int Document);
+    int Document
+);
 
 // The worker creates this authority from its persisted run and current lease, never from a user payload.
 public sealed record GitExecutionAuthority(
@@ -64,7 +73,8 @@ public sealed record GitExecutionAuthority(
     long Generation,
     string WorkerId,
     long Attempt,
-    string Commit);
+    string Commit
+);
 
 public sealed record GitMutationContext(
     string TenantId,
@@ -72,19 +82,22 @@ public sealed record GitMutationContext(
     string RunId,
     long Fence,
     string SourceUrl,
-    GitExecutionAuthority Authority);
+    GitExecutionAuthority Authority
+);
 
 public sealed record GitResourceStatus(
     string SourceId,
     string SourceUrl,
     string? Blocker,
     bool PendingRemoval,
-    bool ConfigurationApplied);
+    bool ConfigurationApplied
+);
 
 public sealed record GitOperationResult(
     string ResourceId,
     IDeclarationFailure? Failure = null,
-    bool Changed = false)
+    bool Changed = false
+)
 {
     public bool Applied => Failure is null;
 }
@@ -93,11 +106,13 @@ public sealed record GitOperationInput(
     GitMutationContext Context,
     CompiledDeclaration Declaration,
     DeclarationPhase Phase,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record GitOperation(
     GitOperationInput Input,
-    DeclarationExecutionPlan Plan)
+    DeclarationExecutionPlan Plan
+)
 {
     public GitMutationContext Context => Input.Context;
     public CompiledDeclaration Declaration => Input.Declaration;
@@ -109,10 +124,11 @@ public interface IDeclarativeResourceProvider
 {
     string Kind { get; }
 
+    int MaximumNameLength => ResourceTechnicalName.MaximumLength;
+
     string DescribeFailure(IDeclarationFailure failure) =>
         throw new InvalidOperationException("The provider must map its own typed declaration failures.");
 
-    int MaximumNameLength => ResourceTechnicalName.MaximumLength;
     DeclarationFacts Facts(JsonElement spec) => new(null, [], [], [], []);
     JsonElement NormalizeAndValidate(JsonElement spec);
     IReadOnlyList<DeclarationStep> Steps(ResourceAddress address, JsonElement spec);
@@ -129,11 +145,15 @@ public interface IDeclarativeResourceProvider
 // source fence write and claims the tenant-wide address, serializing obsolete workers and owners.
 public interface IGitOpsMutations
 {
-    Task<GitOperationResult> ExecuteAsync(GitOperation operation,
+    Task<GitOperationResult> ExecuteAsync(
+        GitOperation operation,
         Func<IClientSessionHandle, CancellationToken, Task<GitOperationResult>> mutation,
         CancellationToken ct);
 
-    Task<GitOperationResult?> BeginAsync(GitOperation operation, IClientSessionHandle session, CancellationToken ct);
+    Task<GitOperationResult?> BeginAsync(
+        GitOperation operation,
+        IClientSessionHandle session,
+        CancellationToken ct);
 
     Task<GitOperationResult> CompleteAsync(
         CompleteGitOperationRequest request,
@@ -161,9 +181,7 @@ public interface IGitOpsMutations
         LoadGitResourceStatusesRequest request,
         CancellationToken ct);
 
-    Task<GitResourceStatus?> StatusAsync(
-        LoadGitResourceStatusRequest request,
-        CancellationToken ct);
+    Task<GitResourceStatus?> StatusAsync(LoadGitResourceStatusRequest request, CancellationToken ct);
 }
 
 public static class DeclarationJson
@@ -171,11 +189,11 @@ public static class DeclarationJson
     public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web)
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        PropertyNameCaseInsensitive = false
+        PropertyNameCaseInsensitive = false,
     };
 
-    public static T Read<T>(JsonElement value) where T : class =>
-        value.Deserialize<T>(Options) ?? throw new JsonException("A spec object is required.");
+    public static T Read<T>(JsonElement value)
+        where T : class => value.Deserialize<T>(Options) ?? throw new JsonException("A spec object is required.");
 
     public static JsonElement Write<T>(T value) => JsonSerializer.SerializeToElement(value, Options);
 
@@ -186,18 +204,22 @@ public static class DeclarationJson
     }
 }
 
-public sealed class DeclarationSchemaException(string field) : Exception
+public sealed class DeclarationSchemaException(
+    string field
+) : Exception
 {
     public string Field { get; } = field;
 }
 
 public sealed record ResolveDeclaredResourceRequest(
     string TenantId,
-    string Name);
+    string Name
+);
 
 public sealed record CompleteGitOperationRequest(
     GitOperation Operation,
-    GitOperationResult Result);
+    GitOperationResult Result
+);
 
 public sealed record AuthorizeGitResourceMutationRequest(
     string TenantId,
@@ -205,18 +227,22 @@ public sealed record AuthorizeGitResourceMutationRequest(
     string ResourceId,
     GitMutationContext? Context = null,
     GitLifecycleAuthority? Lifecycle = null,
-    GitLifecycleMutationEffect? LifecycleEffect = null);
+    GitLifecycleMutationEffect? LifecycleEffect = null
+);
 
 public sealed record ResolveGitResourceRequest(
     string TenantId,
-    ResourceAddress Address);
+    ResourceAddress Address
+);
 
 public sealed record LoadGitResourceStatusesRequest(
     string TenantId,
     string Kind,
-    IReadOnlyCollection<string> ResourceIds);
+    IReadOnlyCollection<string> ResourceIds
+);
 
 public sealed record LoadGitResourceStatusRequest(
     string TenantId,
     string Kind,
-    string ResourceId);
+    string ResourceId
+);

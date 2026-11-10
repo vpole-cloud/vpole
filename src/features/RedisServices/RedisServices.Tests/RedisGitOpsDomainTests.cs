@@ -11,8 +11,11 @@ public sealed class RedisGitOpsDomainTests
     [Fact]
     public void FactoryExplicitlyInitializesPlanningFenceAndPreparedActivationPreservesIt()
     {
-        var prepared = RedisFactory.Create("507f1f77bcf86cd799439001", "cache", "507f1f77bcf86cd799439002",
-            new(new(4, "507f1f77bcf86cd799439003")),
+        var prepared = RedisFactory.Create(
+            "507f1f77bcf86cd799439001",
+            "cache",
+            "507f1f77bcf86cd799439002",
+            new RedisSpec(new Storage(4, "507f1f77bcf86cd799439003")),
             RedisFactory.DefaultCreateOptions with { Lifecycle = new PreparedRedisLifecycle() });
         Assert.Equal(0, prepared.PlanningFence);
         Assert.Equal(1, prepared.Revision);
@@ -29,8 +32,11 @@ public sealed class RedisGitOpsDomainTests
     [Fact]
     public void CurrentPreparedAndConfiguredDocumentsRoundTripWithoutDefaults()
     {
-        var prepared = RedisFactory.Create("507f1f77bcf86cd799439001", "cache", "507f1f77bcf86cd799439002",
-            new(new(4, "507f1f77bcf86cd799439003")),
+        var prepared = RedisFactory.Create(
+            "507f1f77bcf86cd799439001",
+            "cache",
+            "507f1f77bcf86cd799439002",
+            new RedisSpec(new Storage(4, "507f1f77bcf86cd799439003")),
             RedisFactory.DefaultCreateOptions with { Lifecycle = new PreparedRedisLifecycle() });
         var configured = prepared.ActivatePrepared(ImmutableHashSet.Create("production"));
         foreach (var resource in new[] { prepared, configured })

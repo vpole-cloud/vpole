@@ -9,6 +9,7 @@ namespace Pole.ArchitectureAnalyzers;
 public sealed class TypedMongoFieldFilterAnalyzer : DiagnosticAnalyzer
 {
     public const string DiagnosticId = "POLE013";
+
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         "Runtime Mongo field operations use typed fields",
@@ -37,9 +38,8 @@ public sealed class TypedMongoFieldFilterAnalyzer : DiagnosticAnalyzer
     private static void Analyze(OperationAnalysisContext context)
     {
         var invocation = (IInvocationOperation)context.Operation;
-        if (invocation.TargetMethod.ContainingType.Name is not
-                ("FilterDefinitionBuilder" or "UpdateDefinitionBuilder" or "SortDefinitionBuilder" or
-                 "IndexKeysDefinitionBuilder") ||
+        if (invocation.TargetMethod.ContainingType.Name is not ("FilterDefinitionBuilder" or "UpdateDefinitionBuilder"
+                or "SortDefinitionBuilder" or "IndexKeysDefinitionBuilder") ||
             invocation.TargetMethod.ContainingNamespace.ToDisplayString() != "MongoDB.Driver")
             return;
         foreach (var argument in invocation.Arguments)

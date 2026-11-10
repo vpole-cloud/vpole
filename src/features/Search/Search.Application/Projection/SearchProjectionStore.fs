@@ -20,13 +20,14 @@ open Pole.Features.Search.Contracts
 open Pole.Features.Search.Domain
 open Pole.Features.Search.Events
 
-type internal SearchProjectionStore(
-    client: IMongoClient,
-    documents: IMongoCollection<SearchDocument>,
-    sources: IMongoCollection<SearchSourceDocument>,
-    versions: IMongoCollection<SearchProjectionVersionDocument>,
-    outbox: StoreOutboxWrites
-) =
+type internal SearchProjectionStore
+    (
+        client: IMongoClient,
+        documents: IMongoCollection<SearchDocument>,
+        sources: IMongoCollection<SearchSourceDocument>,
+        versions: IMongoCollection<SearchProjectionVersionDocument>,
+        outbox: StoreOutboxWrites
+    ) =
 
     let storeChanged session (identity: SearchProjectionIdentity) revision generation ct =
         let message =
@@ -87,7 +88,7 @@ type internal SearchProjectionStore(
 
                 if not exists then
                     let pendingSource =
-                        { Id = SearchSourceDocument.createId()
+                        { Id = SearchSourceDocument.createId ()
                           ResourceTypeId = sourceType.ResourceTypeId.Value
                           SourceApiName = sourceType.ApiName
                           SourceSortOrder = sourceType.SortOrder
@@ -352,13 +353,16 @@ type internal SearchProjectionStore(
         }
 
     [<ViolateArchitecture(ArchitectureRules.RawBson,
-        "Search computes regex matches, weights and pagination in one aggregation; decoding stays in this method.")>]
+                          "Search computes regex matches, weights and pagination in one aggregation; decoding stays in this method.")>]
     member _.SearchAsync(query: SearchQuery, cancellationToken: CancellationToken) =
         task {
             let bsonDocument (elements: BsonElement list) = BsonDocument(elements)
             let bsonArray (values: BsonValue list) = BsonArray(values)
             let registry = BsonSerializer.SerializerRegistry
-            let arguments = RenderArgs<SearchSourceDocument>(registry.GetSerializer<SearchSourceDocument>(), registry)
+
+            let arguments =
+                RenderArgs<SearchSourceDocument>(registry.GetSerializer<SearchSourceDocument>(), registry)
+
             let matches = SearchProjectionFilters.sourceMatch query
             let matchStage = bsonDocument [ BsonElement("$match", matches.Render(arguments)) ]
 
@@ -375,14 +379,21 @@ type internal SearchProjectionStore(
                 MongoFields.Field<SearchMatchedFields, _>(fun fields -> fields.BestWeight)
 
             let itemsField = MongoFields.Field<SearchFacetResult, _>(fun result -> result.Items)
-            let totalCountField = MongoFields.Field<SearchFacetResult, _>(fun result -> result.TotalCount)
-            let countValueField = MongoFields.Field<SearchFacetCount, _>(fun count -> count.Value)
-            let titleField = MongoFields.Field<SearchSourceDocument, _>(fun document -> document.Title)
+
+            let totalCountField =
+                MongoFields.Field<SearchFacetResult, _>(fun result -> result.TotalCount)
+
+            let countValueField =
+                MongoFields.Field<SearchFacetCount, _>(fun count -> count.Value)
+
+            let titleField =
+                MongoFields.Field<SearchSourceDocument, _>(fun document -> document.Title)
 
             let sourceSortOrderField =
                 MongoFields.Field<SearchSourceDocument, _>(fun document -> document.SourceSortOrder)
 
-            let sourceIdField = MongoFields.Field<SearchSourceDocument, _>(fun document -> document.SourceId)
+            let sourceIdField =
+                MongoFields.Field<SearchSourceDocument, _>(fun document -> document.SourceId)
 
             let skip = (max query.PageNumber 1 - 1) * max query.PageSize 1
             let limit = max query.PageSize 1
@@ -404,8 +415,8 @@ type internal SearchProjectionStore(
                                                  bsonDocument
                                                      [ BsonElement(
                                                            "input",
-                                                           MongoFields.Reference<SearchSourceDocument, _>(
-                                                               fun document -> document.SearchKeys)
+                                                           MongoFields.Reference<SearchSourceDocument, _>
+                                                               (fun document -> document.SearchKeys)
                                                        )
                                                        BsonElement("as", "key")
                                                        BsonElement(
@@ -417,7 +428,9 @@ type internal SearchProjectionStore(
                                                                          [ BsonElement(
                                                                                "input",
                                                                                BsonString(
-                                                                                   "$$key." + searchKeyValueField))
+                                                                                   "$$key." + searchKeyValueField
+                                                                               )
+                                                                           )
                                                                            BsonElement("regex", regex) ]
                                                                  ) ]
                                                        ) ]
@@ -434,9 +447,11 @@ type internal SearchProjectionStore(
                                            [ BsonElement(
                                                  "$max",
                                                  BsonString(
-                                                     MongoFields.Reference<SearchMatchedFields, _>(
-                                                         fun fields -> fields.MatchedKeys)
-                                                     + "." + searchKeyWeightField)
+                                                     MongoFields.Reference<SearchMatchedFields, _>(fun fields ->
+                                                         fields.MatchedKeys)
+                                                     + "."
+                                                     + searchKeyWeightField
+                                                 )
                                              ) ]
                                    ) ]
                          ) ]
@@ -490,10 +505,7 @@ type internal SearchProjectionStore(
                 else
                     let counts = facet.TotalCount
 
-                    if counts.Length = 0 then
-                        0L
-                    else
-                        counts[0].Value
+                    if counts.Length = 0 then 0L else counts[0].Value
 
             return
                 PaginatedResponse<SearchHitDto>(

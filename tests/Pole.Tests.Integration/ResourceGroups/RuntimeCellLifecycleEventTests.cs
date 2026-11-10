@@ -13,11 +13,12 @@ public sealed class RuntimeCellLifecycleEventTests
     private const string TenantId = "507f1f77bcf86cd799439011";
     private const string RuntimeCellId = "507f1f77bcf86cd799439012";
     private const long Generation = 7;
+
     private static readonly EventCore Core = EventCore.Create(TenantId) with
     {
         OccurredOn = new DateTime(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc),
         TraceId = "0123456789abcdef0123456789abcdef",
-        CorrelationId = "runtime-cell-event-test"
+        CorrelationId = "runtime-cell-event-test",
     };
 
     public static TheoryData<Type, IPoleEvent, string> Events =>
@@ -35,7 +36,8 @@ public sealed class RuntimeCellLifecycleEventTests
             },
             {
                 typeof(RuntimeCellReconciliationFailedEvent),
-                new RuntimeCellReconciliationFailedEvent(RuntimeCellId, Generation, "NamespaceOwnershipConflict") { EventCore = Core },
+                new RuntimeCellReconciliationFailedEvent(RuntimeCellId, Generation, "NamespaceOwnershipConflict")
+                    { EventCore = Core },
                 "pole.resource-groups/v1/runtime-cell-reconciliation-failed"
             },
             {
@@ -47,7 +49,7 @@ public sealed class RuntimeCellLifecycleEventTests
                 typeof(RuntimeCellDeletedEvent),
                 new RuntimeCellDeletedEvent(RuntimeCellId, Generation) { EventCore = Core },
                 "pole.resource-groups/v1/runtime-cell-deleted"
-            }
+            },
         };
 
     [Theory]
@@ -83,12 +85,9 @@ public sealed class RuntimeCellLifecycleEventTests
     [Fact]
     public void ReconciliationFailure_ContainsOnlyTheSafeFailureCode()
     {
-        var @event = new RuntimeCellReconciliationFailedEvent(
-            RuntimeCellId,
-            Generation,
-            "NamespaceOwnershipConflict")
+        var @event = new RuntimeCellReconciliationFailedEvent(RuntimeCellId, Generation, "NamespaceOwnershipConflict")
         {
-            EventCore = Core
+            EventCore = Core,
         };
 
         var payloadJson = JsonSerializer.Serialize(@event, EventJson.SerializerOptions);
@@ -102,14 +101,11 @@ public sealed class RuntimeCellLifecycleEventTests
     [Fact]
     public void IsolationScopeDeletionRequested_HasStableNameAndTenantMetadata()
     {
-        var @event = new IsolationScopeDeletionRequestedEvent(
-            "507f1f77bcf86cd799439013",
-            "507f1f77bcf86cd799439014")
+        var @event = new IsolationScopeDeletionRequestedEvent("507f1f77bcf86cd799439013", "507f1f77bcf86cd799439014")
         {
-            EventCore = Core
+            EventCore = Core,
         };
-        var entityName = typeof(IsolationScopeDeletionRequestedEvent)
-            .GetCustomAttribute<EntityNameAttribute>();
+        var entityName = typeof(IsolationScopeDeletionRequestedEvent).GetCustomAttribute<EntityNameAttribute>();
 
         Assert.NotNull(entityName);
         Assert.Equal("pole.resource-groups/v1/isolation-scope-deletion-requested", entityName.EntityName);

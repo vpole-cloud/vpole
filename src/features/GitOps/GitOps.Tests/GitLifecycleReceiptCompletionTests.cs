@@ -43,33 +43,73 @@ public sealed class GitLifecycleReceiptCompletionTests
             "subject" => receipt with
             {
                 Lifecycle = receipt.Lifecycle! with
-                { Subject = new("Widget", "kept", "other") }
+                {
+                    Subject = new GitResourceIdentity("Widget", "kept", "other"),
+                },
             },
             "action" => receipt with { Lifecycle = receipt.Lifecycle! with { ActionId = "other" } },
             "step" => receipt with { Lifecycle = receipt.Lifecycle! with { Step = GitLifecycleStep.BeginRemoval } },
             "blocked" => receipt with { Blocker = "blocked" },
-            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario)),
         };
-        Assert.False(GitLifecycleReceiptCompletion.HasCompleteActions(plan, 7,
-            scenario == "missing" ? [] : [changed]));
+        Assert.False(GitLifecycleReceiptCompletion.HasCompleteActions(plan, 7, scenario == "missing" ? [] : [changed]));
     }
 
     private static (GitLifecycleExecutionPlan Plan, GitOperationReceipt Receipt) Detach()
     {
         var identity = new GitResourceIdentity("Widget", "kept", "resource");
-        var source = new GitPreviewSourceStamp(new("tenant", "source"), 1, 1, new GitPreviewInventoryInput());
-        var expected = new GitResourcePreconditions(identity, "source", [new("Widget/resource", 1)], "configuration");
-        var operation = new GitPreviewOperation("detach-resource", identity, GitLifecycleAction.Detach, expected,
-            null, [], [], [], GitLifecycleProtection.ConfigurationOnly);
+        var source = new GitPreviewSourceStamp(
+            new GitSourceIdentity("tenant", "source"),
+            1,
+            1,
+            new GitPreviewInventoryInput());
+        var expected = new GitResourcePreconditions(
+            identity,
+            "source",
+            [new GitResourceVersion("Widget/resource", 1)],
+            "configuration");
+        var operation = new GitPreviewOperation(
+            "detach-resource",
+            identity,
+            GitLifecycleAction.Detach,
+            expected,
+            null,
+            [],
+            [],
+            [],
+            GitLifecycleProtection.ConfigurationOnly);
         var now = DateTime.UtcNow;
-        var preview = GitOperationPreviewFactory.Create("preview", source, new GitPreviewDetachSource(),
-            [operation], now);
-        var confirmed = preview.Confirm(new(preview.Id, preview.Revision, source, [new(identity, expected)],
-            "user", now, "run"));
+        var preview = GitOperationPreviewFactory.Create(
+            "preview",
+            source,
+            new GitPreviewDetachSource(),
+            [operation],
+            now);
+        var confirmed = preview.Confirm(
+            new GitPreviewConfirmationContext(
+                preview.Id,
+                preview.Revision,
+                source,
+                [new GitPreviewObservation(identity, expected)],
+                "user",
+                now,
+                "run"));
         var plan = GitLifecycleExecutionPlanFactory.Create(confirmed);
-        var receipt = new GitOperationReceipt("receipt", "tenant", "source", "run", 7, identity.Kind, identity.Name,
-            "detach", identity.ResourceId, "hash", null, false, 1,
-            new(1, operation.Id, GitLifecycleStep.Detach, null, 2, [], identity));
+        var receipt = new GitOperationReceipt(
+            "receipt",
+            "tenant",
+            "source",
+            "run",
+            7,
+            identity.Kind,
+            identity.Name,
+            "detach",
+            identity.ResourceId,
+            "hash",
+            null,
+            false,
+            1,
+            new GitLifecycleEffect(1, operation.Id, GitLifecycleStep.Detach, null, 2, [], identity));
         return (plan, receipt);
     }
 }

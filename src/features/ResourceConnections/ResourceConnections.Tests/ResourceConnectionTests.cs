@@ -15,16 +15,15 @@ public sealed class ResourceConnectionTests
     {
         var sources = new List<ConnectionSourcePlacement>
         {
-            new("source-deployment-1", "source-cell-1", "source-namespace-1")
+            new("source-deployment-1", "source-cell-1", "source-namespace-1"),
         };
         var targets = new List<ConnectionTargetSnapshot>
         {
-            Target("target-1", "destination-deployment-1", sources)
+            Target("target-1", "destination-deployment-1", sources),
         };
 
         var connection = Create(targets);
-        sources.Add(new ConnectionSourcePlacement(
-            "source-deployment-2", "source-cell-2", "source-namespace-2"));
+        sources.Add(new ConnectionSourcePlacement("source-deployment-2", "source-cell-2", "source-namespace-2"));
         targets.Add(Target("target-2", "destination-deployment-2"));
 
         var active = Assert.IsType<ActiveResourceConnection>(connection.Lifecycle);
@@ -44,20 +43,21 @@ public sealed class ResourceConnectionTests
     {
         var sameTarget = Target("target-1", "destination-deployment-1");
         Assert.Throws<ArgumentException>(() => Create([sameTarget, sameTarget]));
-        Assert.Throws<ArgumentException>(() => Create([
+        Assert.Throws<ArgumentException>(() => Create(
+        [
             sameTarget,
             Target("target-2", "destination-deployment-2") with
             {
-                Sources = sameTarget.Sources
-            }
+                Sources = sameTarget.Sources,
+            },
         ]));
         Assert.Throws<ArgumentException>(() => Create([]));
         Assert.Throws<ArgumentException>(() => Target(
             "target-3",
             "destination-deployment-3",
             [
-                new("source-deployment", "source-cell-1", "source-namespace-1"),
-                new(" source-deployment ", "source-cell-2", "source-namespace-2")
+                new ConnectionSourcePlacement("source-deployment", "source-cell-1", "source-namespace-1"),
+                new ConnectionSourcePlacement(" source-deployment ", "source-cell-2", "source-namespace-2"),
             ]));
     }
 
@@ -65,15 +65,13 @@ public sealed class ResourceConnectionTests
     public void Refresh_FencesOlderSuccessAndFailure_WithoutChangingEndpointIdentity()
     {
         var original = Create([Target("target-1", "destination-deployment-1", port: 6379)]);
-        var refreshed = original.RefreshResolvedTargets(
-            [Target("target-1", "destination-deployment-1", port: 6380)]);
+        var refreshed = original.RefreshResolvedTargets([Target("target-1", "destination-deployment-1", port: 6380)]);
 
         Assert.Equal("redis", refreshed.EndpointId);
         Assert.Equal(original.Generation + 1, refreshed.Generation);
-        AssertApply<StaleConnectionApply>(refreshed.RecordApplied(
-            "target-1", original.Generation, Timestamp));
-        AssertApply<StaleConnectionApply>(refreshed.RecordApplyFailure(
-            "target-1", original.Generation, "unavailable", Timestamp));
+        AssertApply<StaleConnectionApply>(refreshed.RecordApplied("target-1", original.Generation, Timestamp));
+        AssertApply<StaleConnectionApply>(
+            refreshed.RecordApplyFailure("target-1", original.Generation, "unavailable", Timestamp));
         var active = Assert.IsType<ActiveResourceConnection>(refreshed.Lifecycle);
         Assert.IsType<PendingConnectionApply>(Assert.Single(active.Targets).Status);
         Assert.Equal(6380, active.Targets[0].Snapshot.DestinationPort);
@@ -84,12 +82,13 @@ public sealed class ResourceConnectionTests
     public void RefreshToNewPolicyLocation_RetainsOldSnapshotThroughResourcePurgeAndDeletion()
     {
         var original = Create([Target("target-1", "old-destination-deployment")]);
-        var moved = original.RefreshResolvedTargets([
+        var moved = original.RefreshResolvedTargets(
+        [
             Target("target-1", "new-destination-deployment") with
             {
                 DestinationRuntimeCellId = "new-destination-cell",
-                DestinationNamespace = "new-destination-namespace"
-            }
+                DestinationNamespace = "new-destination-namespace",
+            },
         ]);
         var active = Assert.IsType<ActiveResourceConnection>(moved.Lifecycle);
         var retiring = Assert.Single(active.RetiringTargets);
@@ -105,21 +104,25 @@ public sealed class ResourceConnectionTests
         var deleting = reloaded.BeginDeletion(Timestamp);
         var cleanup = Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle);
         Assert.Equal(2, cleanup.Targets.Count);
-        Assert.Contains(cleanup.Targets, target =>
-            target.Snapshot.PolicyLocation == Location("target-1") &&
-            target.Snapshot.DestinationResourceDeploymentId == "old-destination-deployment");
-        Assert.Contains(cleanup.Targets, target =>
-            target.Snapshot.DestinationNamespace == "new-destination-namespace" &&
-            target.Snapshot.DestinationResourceDeploymentId == "new-destination-deployment");
+        Assert.Contains(
+            cleanup.Targets,
+            target => target.Snapshot.PolicyLocation == Location("target-1") &&
+                target.Snapshot.DestinationResourceDeploymentId == "old-destination-deployment");
+        Assert.Contains(
+            cleanup.Targets,
+            target => target.Snapshot.DestinationNamespace == "new-destination-namespace" &&
+                target.Snapshot.DestinationResourceDeploymentId == "new-destination-deployment");
 
-        var oldCleaned = AssertCleanup<ConnectionCleanupRecorded>(deleting.RecordCleanupCompleted(
-            Location("target-1"), deleting.Generation, Timestamp)).Connection;
+        var oldCleaned = AssertCleanup<ConnectionCleanupRecorded>(
+                deleting.RecordCleanupCompleted(Location("target-1"), deleting.Generation, Timestamp))
+            .Connection;
         Assert.False(oldCleaned.IsCleanupComplete);
-        var newCleaned = AssertCleanup<ConnectionCleanupRecorded>(oldCleaned.RecordCleanupCompleted(
-            new ConnectionPolicyLocation(
-                "target-1", "new-destination-cell", "new-destination-namespace"),
-            oldCleaned.Generation,
-            Timestamp)).Connection;
+        var newCleaned = AssertCleanup<ConnectionCleanupRecorded>(
+                oldCleaned.RecordCleanupCompleted(
+                    new ConnectionPolicyLocation("target-1", "new-destination-cell", "new-destination-namespace"),
+                    oldCleaned.Generation,
+                    Timestamp))
+            .Connection;
         Assert.True(newCleaned.IsCleanupComplete);
     }
 
@@ -128,57 +131,64 @@ public sealed class ResourceConnectionTests
     {
         var originalSnapshot = Target("target-1", "old-destination-deployment");
         var original = Create([originalSnapshot]);
-        var moved = original.RefreshResolvedTargets([
+        var moved = original.RefreshResolvedTargets(
+        [
             originalSnapshot with
             {
                 DestinationResourceDeploymentId = "new-destination-deployment",
                 DestinationRuntimeCellId = "new-destination-cell",
-                DestinationNamespace = "new-destination-namespace"
-            }
+                DestinationNamespace = "new-destination-namespace",
+            },
         ]);
         var reintroduced = moved.RefreshResolvedTargets([originalSnapshot]);
         var active = Assert.IsType<ActiveResourceConnection>(reintroduced.Lifecycle);
 
-        Assert.DoesNotContain(active.RetiringTargets, target =>
-            target.Snapshot.PolicyLocation == originalSnapshot.PolicyLocation);
+        Assert.DoesNotContain(
+            active.RetiringTargets,
+            target => target.Snapshot.PolicyLocation == originalSnapshot.PolicyLocation);
         Assert.Single(active.RetiringTargets);
-        AssertCleanup<StaleConnectionCleanup>(reintroduced.RecordCleanupCompleted(
-            originalSnapshot.PolicyLocation, moved.Generation, Timestamp));
-        AssertCleanup<CurrentConnectionPolicyLocation>(reintroduced.RecordCleanupCompleted(
-            originalSnapshot.PolicyLocation, reintroduced.Generation, Timestamp));
+        AssertCleanup<StaleConnectionCleanup>(
+            reintroduced.RecordCleanupCompleted(originalSnapshot.PolicyLocation, moved.Generation, Timestamp));
+        AssertCleanup<CurrentConnectionPolicyLocation>(
+            reintroduced.RecordCleanupCompleted(originalSnapshot.PolicyLocation, reintroduced.Generation, Timestamp));
     }
 
     [Fact]
     public void RetiringPolicyLocation_CanCompleteWhileConnectionRemainsActive()
     {
         var original = Create([Target("target-1", "old-destination-deployment")]);
-        var moved = original.RefreshResolvedTargets([
+        var moved = original.RefreshResolvedTargets(
+        [
             Target("target-1", "new-destination-deployment") with
             {
                 DestinationRuntimeCellId = "new-destination-cell",
-                DestinationNamespace = "new-destination-namespace"
-            }
+                DestinationNamespace = "new-destination-namespace",
+            },
         ]);
 
-        var completed = AssertCleanup<ConnectionCleanupRecorded>(moved.RecordCleanupCompleted(
-            Location("target-1"), moved.Generation, Timestamp)).Connection;
+        var completed = AssertCleanup<ConnectionCleanupRecorded>(
+                moved.RecordCleanupCompleted(Location("target-1"), moved.Generation, Timestamp))
+            .Connection;
         var active = Assert.IsType<ActiveResourceConnection>(completed.Lifecycle);
         Assert.IsType<CompletedConnectionCleanup>(active.RetiringTargets[0].Status);
         var deleting = completed.BeginDeletion(Timestamp);
         Assert.Equal(2, Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle).Targets.Count);
-        Assert.Contains(Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle).Targets,
+        Assert.Contains(
+            Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle).Targets,
             target => target.Snapshot.PolicyLocation == Location("target-1"));
     }
 
     [Fact]
     public void RemovingOneTarget_RetainsItsPolicyLocationForLaterDeletion()
     {
-        var original = Create([
+        var original = Create(
+        [
             Target("target-1", "destination-deployment-1"),
-            Target("target-2", "destination-deployment-2")
+            Target("target-2", "destination-deployment-2"),
         ]);
-        var refreshed = original.RefreshResolvedTargets([
-            Target("target-2", "destination-deployment-2")
+        var refreshed = original.RefreshResolvedTargets(
+        [
+            Target("target-2", "destination-deployment-2"),
         ]);
         var active = Assert.IsType<ActiveResourceConnection>(refreshed.Lifecycle);
         Assert.Equal("target-1", Assert.Single(active.RetiringTargets).Snapshot.TargetId);
@@ -186,21 +196,20 @@ public sealed class ResourceConnectionTests
         var reloaded = BsonSerializer.Deserialize<ResourceConnection>(refreshed.ToBson());
         var deleting = reloaded.BeginDeletion(Timestamp);
         var cleanup = Assert.IsType<DeletingResourceConnection>(deleting.Lifecycle);
-        Assert.Contains(cleanup.Targets, target =>
-            target.Snapshot.PolicyLocation == Location("target-1"));
-        Assert.Contains(cleanup.Targets, target =>
-            target.Snapshot.PolicyLocation == Location("target-2"));
+        Assert.Contains(cleanup.Targets, target => target.Snapshot.PolicyLocation == Location("target-1"));
+        Assert.Contains(cleanup.Targets, target => target.Snapshot.PolicyLocation == Location("target-2"));
     }
 
     [Fact]
     public void AppliedTarget_CannotBeDowngradedByALateFailure()
     {
         var connection = Create([Target("target-1", "destination-deployment-1")]);
-        var applied = AssertApply<ConnectionApplyRecorded>(connection.RecordApplied(
-            "target-1", connection.Generation, Timestamp)).Connection;
+        var applied = AssertApply<ConnectionApplyRecorded>(
+                connection.RecordApplied("target-1", connection.Generation, Timestamp))
+            .Connection;
 
-        AssertApply<ConnectionApplyAlreadyApplied>(applied.RecordApplyFailure(
-            "target-1", applied.Generation, "late failure", Timestamp));
+        AssertApply<ConnectionApplyAlreadyApplied>(
+            applied.RecordApplyFailure("target-1", applied.Generation, "late failure", Timestamp));
         var active = Assert.IsType<ActiveResourceConnection>(applied.Lifecycle);
         Assert.IsType<AppliedConnectionApply>(active.Targets[0].Status);
     }
@@ -216,10 +225,8 @@ public sealed class ResourceConnectionTests
         Assert.Equal("redis", deleting.EndpointId);
         Assert.Equal(connection.Generation + 1, deleting.Generation);
         Assert.Same(deleting, deleting.BeginDeletion(Timestamp));
-        AssertApply<StaleConnectionApply>(deleting.RecordApplied(
-            "target-1", connection.Generation, Timestamp));
-        AssertApply<ConnectionNoLongerActive>(deleting.RecordApplied(
-            "target-1", deleting.Generation, Timestamp));
+        AssertApply<StaleConnectionApply>(deleting.RecordApplied("target-1", connection.Generation, Timestamp));
+        AssertApply<ConnectionNoLongerActive>(deleting.RecordApplied("target-1", deleting.Generation, Timestamp));
         Assert.Throws<InvalidOperationException>(() => deleting.RefreshResolvedTargets(
             [Target("target-1", "replacement-deployment")]));
 
@@ -236,40 +243,50 @@ public sealed class ResourceConnectionTests
     [Fact]
     public void Cleanup_RemainsDeletingUntilEveryTargetCompletes()
     {
-        var connection = Create([
-            Target("target-1", "destination-deployment-1"),
-            Target("target-2", "destination-deployment-2")
-        ]).BeginDeletion(Timestamp);
+        var connection = Create(
+            [
+                Target("target-1", "destination-deployment-1"),
+                Target("target-2", "destination-deployment-2"),
+            ])
+            .BeginDeletion(Timestamp);
 
         var oneComplete = AssertCleanup<ConnectionCleanupRecorded>(
-            connection.RecordCleanupCompleted(Location("target-1"), connection.Generation, Timestamp)).Connection;
+                connection.RecordCleanupCompleted(Location("target-1"), connection.Generation, Timestamp))
+            .Connection;
         Assert.False(oneComplete.IsCleanupComplete);
         Assert.IsType<DeletingResourceConnection>(oneComplete.Lifecycle);
         var oneFailed = AssertCleanup<ConnectionCleanupRecorded>(
-            oneComplete.RecordCleanupFailure(
-                Location("target-2"), oneComplete.Generation, "target unavailable", Timestamp)).Connection;
+                oneComplete.RecordCleanupFailure(
+                    Location("target-2"),
+                    oneComplete.Generation,
+                    "target unavailable",
+                    Timestamp))
+            .Connection;
         Assert.False(oneFailed.IsCleanupComplete);
-        AssertCleanup<ConnectionCleanupAlreadyCompleted>(oneFailed.RecordCleanupFailure(
-            Location("target-1"), oneFailed.Generation, "late failure", Timestamp));
+        AssertCleanup<ConnectionCleanupAlreadyCompleted>(
+            oneFailed.RecordCleanupFailure(Location("target-1"), oneFailed.Generation, "late failure", Timestamp));
         var allComplete = AssertCleanup<ConnectionCleanupRecorded>(
-            oneFailed.RecordCleanupCompleted(Location("target-2"), oneFailed.Generation, Timestamp)).Connection;
+                oneFailed.RecordCleanupCompleted(Location("target-2"), oneFailed.Generation, Timestamp))
+            .Connection;
         Assert.True(allComplete.IsCleanupComplete);
         Assert.IsType<DeletingResourceConnection>(allComplete.Lifecycle);
-        AssertCleanup<StaleConnectionCleanup>(allComplete.RecordCleanupFailure(
-            Location("target-2"), allComplete.Generation - 1, "old", Timestamp));
+        AssertCleanup<StaleConnectionCleanup>(
+            allComplete.RecordCleanupFailure(Location("target-2"), allComplete.Generation - 1, "old", Timestamp));
     }
 
     [Fact]
     public void ApplyFailureIsRetryableWithinTheSameDesiredGeneration()
     {
         var connection = Create([Target("target-1", "destination-deployment-1")]);
-        var failed = AssertApply<ConnectionApplyRecorded>(connection.RecordApplyFailure(
-            "target-1", connection.Generation, "target unavailable", Timestamp)).Connection;
+        var failed = AssertApply<ConnectionApplyRecorded>(
+                connection.RecordApplyFailure("target-1", connection.Generation, "target unavailable", Timestamp))
+            .Connection;
         var active = Assert.IsType<ActiveResourceConnection>(failed.Lifecycle);
         Assert.IsType<FailedConnectionApply>(active.Targets[0].Status);
 
-        var recovered = AssertApply<ConnectionApplyRecorded>(failed.RecordApplied(
-            "target-1", failed.Generation, Timestamp)).Connection;
+        var recovered
+            = AssertApply<ConnectionApplyRecorded>(failed.RecordApplied("target-1", failed.Generation, Timestamp))
+                .Connection;
         Assert.IsType<AppliedConnectionApply>(
             Assert.IsType<ActiveResourceConnection>(recovered.Lifecycle).Targets[0].Status);
     }
@@ -278,15 +295,17 @@ public sealed class ResourceConnectionTests
     public void MongoRoundTrip_PreservesClosedApplyAndCleanupStates()
     {
         var connection = Create([Target("target-1", "destination-deployment-1")]);
-        var failed = AssertApply<ConnectionApplyRecorded>(connection.RecordApplyFailure(
-            "target-1", connection.Generation, "target unavailable", Timestamp)).Connection;
+        var failed = AssertApply<ConnectionApplyRecorded>(
+                connection.RecordApplyFailure("target-1", connection.Generation, "target unavailable", Timestamp))
+            .Connection;
         var reloadedActive = BsonSerializer.Deserialize<ResourceConnection>(failed.ToBson());
         var active = Assert.IsType<ActiveResourceConnection>(reloadedActive.Lifecycle);
         Assert.IsType<FailedConnectionApply>(active.Targets[0].Status);
 
         var deleting = reloadedActive.BeginDeletion(Timestamp);
-        var cleaned = AssertCleanup<ConnectionCleanupRecorded>(deleting.RecordCleanupCompleted(
-            Location("target-1"), deleting.Generation, Timestamp)).Connection;
+        var cleaned = AssertCleanup<ConnectionCleanupRecorded>(
+                deleting.RecordCleanupCompleted(Location("target-1"), deleting.Generation, Timestamp))
+            .Connection;
         var reloadedDeleting = BsonSerializer.Deserialize<ResourceConnection>(cleaned.ToBson());
         Assert.True(reloadedDeleting.IsCleanupComplete);
         var cleanup = Assert.IsType<DeletingResourceConnection>(reloadedDeleting.Lifecycle);
@@ -295,15 +314,12 @@ public sealed class ResourceConnectionTests
     }
 
     private static T AssertApply<T>(ConnectionApplyOutcome outcome)
-        where T : class =>
-        Assert.IsType<T>(outcome.Value);
+        where T : class => Assert.IsType<T>(outcome.Value);
 
     private static T AssertCleanup<T>(ConnectionCleanupOutcome outcome)
-        where T : class =>
-        Assert.IsType<T>(outcome.Value);
+        where T : class => Assert.IsType<T>(outcome.Value);
 
-    private static ResourceConnection Create(
-        IEnumerable<ConnectionTargetSnapshot> targets) =>
+    private static ResourceConnection Create(IEnumerable<ConnectionTargetSnapshot> targets) =>
         ResourceConnectionFactory.Create(
             ObjectId.GenerateNewId().ToString(),
             "tenant-id",
@@ -319,19 +335,21 @@ public sealed class ResourceConnectionTests
         string targetId,
         string destinationDeploymentId,
         IEnumerable<ConnectionSourcePlacement>? sources = null,
-        int port = 6379) =>
-        ConnectionTargetSnapshot.Create(
-            targetId,
-            destinationDeploymentId,
-            $"destination-cell-{targetId}",
-            $"destination-namespace-{targetId}",
-            "redis-destination-service",
-            6379,
-            port,
-            sources ?? [new ConnectionSourcePlacement(
+        int port = 6379) => ConnectionTargetSnapshot.Create(
+        targetId,
+        destinationDeploymentId,
+        $"destination-cell-{targetId}",
+        $"destination-namespace-{targetId}",
+        "redis-destination-service",
+        6379,
+        port,
+        sources ??
+        [
+            new ConnectionSourcePlacement(
                 $"source-deployment-{targetId}",
                 $"source-cell-{targetId}",
-                $"source-namespace-{targetId}")]);
+                $"source-namespace-{targetId}"),
+        ]);
 
     private static ConnectionPolicyLocation Location(string targetId) => new(
         targetId,

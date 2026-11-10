@@ -14,14 +14,15 @@ public sealed class MongoStartupTests
     [InlineData("sensitive native payload", "unclassified")]
     public void Native_errors_expose_only_numeric_codes_and_known_categories(string message, string category)
     {
-        var line = JsonSerializer.Serialize(new
-        {
-            s = "E",
-            id = 20568,
-            msg = "private message",
-            context = "private context",
-            attr = new { error = new { code = 9001, codeName = "private code name", errmsg = message } }
-        });
+        var line = JsonSerializer.Serialize(
+            new
+            {
+                s = "E",
+                id = 20568,
+                msg = "private message",
+                context = "private context",
+                attr = new { error = new { code = 9001, codeName = "private code name", errmsg = message } },
+            });
 
         var error = Assert.IsType<MongoStartupError>(MongoStartupError.Parse(line));
 
@@ -34,7 +35,8 @@ public sealed class MongoStartupTests
     [Fact]
     public void String_errors_and_missing_native_codes_are_supported_without_exposing_the_payload()
     {
-        var error = MongoStartupError.Parse("""{"s":"F","id":23024,"attr":{"error":"Permission denied: secret-path"}}""");
+        var error = MongoStartupError.Parse(
+            """{"s":"F","id":23024,"attr":{"error":"Permission denied: secret-path"}}""");
 
         Assert.Equal("MongoDB error: event=23024, code=none, cause=permission-denied", error?.ToString());
     }
@@ -50,8 +52,7 @@ public sealed class MongoStartupTests
         Assert.Null(MongoStartupError.Parse(line));
 
     [Fact]
-    public void Oversized_native_lines_are_ignored() =>
-        Assert.Null(MongoStartupError.Parse(new string('x', 16_385)));
+    public void Oversized_native_lines_are_ignored() => Assert.Null(MongoStartupError.Parse(new string('x', 16_385)));
 
     [Fact]
     public async Task Running_mongo_that_exits_while_the_API_is_waiting_fails_startup_promptly()
@@ -63,7 +64,8 @@ public sealed class MongoStartupTests
 
         mongoExited.SetResult();
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => startup.WaitAsync(TimeSpan.FromSeconds(2)));
+        var error
+            = await Assert.ThrowsAsync<InvalidOperationException>(() => startup.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal("MongoDB exited before the API was ready.", error.Message);
         Assert.False(api.Task.IsCompleted);
     }

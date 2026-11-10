@@ -11,13 +11,13 @@ public union ValidateStorageProfileTargetMappingsOutcome(
     StorageProfileTargetMappingsInvalid,
     KubernetesStorageDiscoveryUnavailable);
 
-public delegate Task<ValidateStorageProfileTargetMappingsOutcome>
-    ValidateStorageProfileTargetMappings(
-        StorageProfile profile,
-        CancellationToken cancellationToken = default);
+public delegate Task<ValidateStorageProfileTargetMappingsOutcome> ValidateStorageProfileTargetMappings(
+    StorageProfile profile,
+    CancellationToken cancellationToken = default);
 
 internal sealed class KubernetesStorageProfileTargetMappingValidator(
-    DiscoverKubernetesStorageClassNames discoverStorageClassNames)
+    DiscoverKubernetesStorageClassNames discoverStorageClassNames
+)
 {
     private const int MaximumConcurrentTargetQueries = 4;
 
@@ -29,32 +29,24 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
 
         using var concurrencyGate = new SemaphoreSlim(MaximumConcurrentTargetQueries);
         var checks = profile.TargetMappings
-            .Select((mapping, index) => CheckAsync(
-                index,
-                mapping,
-                concurrencyGate,
-                cancellationToken))
+            .Select((mapping, index) => CheckAsync(index, mapping, concurrencyGate, cancellationToken))
             .ToArray();
         var outcomes = await Task.WhenAll(checks);
 
-        var unavailable = outcomes
-            .Where(outcome => outcome.DiscoveryUnavailable is not null)
+        var unavailable = outcomes.Where(outcome => outcome.DiscoveryUnavailable is not null)
             .OrderBy(outcome => outcome.Index)
             .FirstOrDefault();
         if (unavailable?.DiscoveryUnavailable is { } discoveryUnavailable)
-        {
             return discoveryUnavailable;
-        }
 
-        var errors = outcomes
-            .Where(outcome => !outcome.IsKnown)
+        var errors = outcomes.Where(outcome => !outcome.IsKnown)
             .OrderBy(outcome => outcome.Index)
             .ToDictionary(
                 outcome => $"Body.TargetMappings[{outcome.Index}].StorageClassName",
                 outcome => new[]
                 {
                     $"Storage class '{outcome.StorageClassName}' was not found in " +
-                    $"deployment target '{outcome.DeploymentTargetId}'."
+                    $"deployment target '{outcome.DeploymentTargetId}'.",
                 });
         return errors.Count == 0
             ? new StorageProfileTargetMappingsValid()
@@ -70,18 +62,14 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
         await concurrencyGate.WaitAsync(cancellationToken);
         try
         {
-            var discovered = await discoverStorageClassNames(
-                mapping.DeploymentTargetId,
-                cancellationToken);
+            var discovered = await discoverStorageClassNames(mapping.DeploymentTargetId, cancellationToken);
             if (discovered is KubernetesStorageDiscoveryUnavailable error)
-            {
                 return new ValidationOutcome(
                     index,
                     mapping.DeploymentTargetId,
                     mapping.StorageClassName,
                     IsKnown: false,
                     error);
-            }
 
             var knownStorageClasses = (IReadOnlySet<string>)discovered.Value;
             return new ValidationOutcome(
@@ -102,5 +90,6 @@ internal sealed class KubernetesStorageProfileTargetMappingValidator(
         string DeploymentTargetId,
         string StorageClassName,
         bool IsKnown,
-        KubernetesStorageDiscoveryUnavailable? DiscoveryUnavailable);
+        KubernetesStorageDiscoveryUnavailable? DiscoveryUnavailable
+    );
 }

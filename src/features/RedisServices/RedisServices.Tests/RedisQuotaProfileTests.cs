@@ -16,10 +16,7 @@ public sealed class RedisQuotaProfileTests
             new RedisServiceCountQuota());
 
         var result = subject.Calculate(
-            RedisQuotaInput.Create(
-                requestedCpuMillis: 375,
-                requestedMemoryMi: 640,
-                instances: 2));
+            RedisQuotaInput.Create(requestedCpuMillis: 375, requestedMemoryMi: 640, instances: 2));
 
         Assert.Equal(750, result[CpuQuota.QuotaKey]);
         Assert.Equal(1280, result[RamQuota.QuotaKey]);

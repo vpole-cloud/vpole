@@ -1,9 +1,7 @@
 using System.Net;
 using Pole.ASP.Helpers;
-using Pole.Features.Functions.Application.FunctionApps;
 using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Revisions;
 
 namespace Pole.Features.Functions.Application.Common;
@@ -12,10 +10,13 @@ public static class FunctionAppHttpMappings
 {
     public static HttpProblem MapSecretBindingRemovalRequired(FunctionSecretBindingRemovalRequired error) => Conflict(
         "function-apps.secret-bindings-removal-required",
-        "Remove Git-owned Secret bindings before deleting the Function App", error.FunctionAppId);
+        "Remove Git-owned Secret bindings before deleting the Function App",
+        error.FunctionAppId);
 
     public static HttpProblem MapGitOwned(FunctionAppGitOwnedConfiguration error) => Conflict(
-        "function-apps.git-owned", "Function App configuration is managed by GitOps", error.FunctionAppId);
+        "function-apps.git-owned",
+        "Function App configuration is managed by GitOps",
+        error.FunctionAppId);
 
     public static HttpProblem MapConfigurationUnavailable(FunctionAppConfigurationUnavailable error) => Conflict(
         "function-apps.configuration-unavailable",
@@ -28,78 +29,72 @@ public static class FunctionAppHttpMappings
         "Function Secret references are not available or authorized",
         "function-apps.secret-reference-unavailable");
 
-    public static HttpProblem MapNotFound(FunctionAppNotFound error) =>
-        new(
-            (int)HttpStatusCode.NotFound,
-            PoleProblemTypeId.FromCode("function-apps.not-found"),
-            "Function App not found",
-            "function-apps.not-found",
-            extensions: new Dictionary<string, object>
-            {
-                ["functionAppId"] = error.FunctionAppId
-            });
+    public static HttpProblem MapNotFound(FunctionAppNotFound error) => new(
+        (int)HttpStatusCode.NotFound,
+        PoleProblemTypeId.FromCode("function-apps.not-found"),
+        "Function App not found",
+        "function-apps.not-found",
+        extensions: new Dictionary<string, object>
+        {
+            ["functionAppId"] = error.FunctionAppId,
+        });
 
-    public static HttpProblem MapDefaultDeploymentTargetUnavailable(
-        FunctionAppDefaultDeploymentTargetUnavailable _) =>
+    public static HttpProblem MapDefaultDeploymentTargetUnavailable(FunctionAppDefaultDeploymentTargetUnavailable _) =>
         new(
             (int)HttpStatusCode.Conflict,
             PoleProblemTypeId.FromCode("function-apps.default-deployment-target.unavailable"),
             "Default deployment target is unavailable",
             "function-apps.default-deployment-target.unavailable");
 
-    public static HttpProblem MapPendingRevision(FunctionAppHasPendingRevision error) =>
-        Conflict(
-            "function-apps.pending-revision.exists",
-            "Function App already has a pending revision",
-            error.FunctionAppId);
+    public static HttpProblem MapPendingRevision(FunctionAppHasPendingRevision error) => Conflict(
+        "function-apps.pending-revision.exists",
+        "Function App already has a pending revision",
+        error.FunctionAppId);
 
-    public static HttpProblem MapNotEnabled(FunctionAppIsNotEnabled error) =>
-        Conflict(
-            "function-apps.not-enabled",
-            "Function App is not enabled",
-            error.FunctionAppId);
+    public static HttpProblem MapNotEnabled(FunctionAppIsNotEnabled error) => Conflict(
+        "function-apps.not-enabled",
+        "Function App is not enabled",
+        error.FunctionAppId);
 
-    public static HttpProblem MapResourceDeploymentMissing(
-        FunctionAppResourceDeploymentMissing error) =>
-        Conflict(
-            "function-apps.resource-deployment.missing",
-            "Function App resource deployment is unavailable",
-            error.FunctionAppId);
+    public static HttpProblem MapResourceDeploymentMissing(FunctionAppResourceDeploymentMissing error) => Conflict(
+        "function-apps.resource-deployment.missing",
+        "Function App resource deployment is unavailable",
+        error.FunctionAppId);
 
-    public static HttpProblem MapRevisionChanged(FunctionAppRevisionChanged error) =>
-        Conflict(
-            "function-apps.revision-changed",
-            "Function App revision changed concurrently",
-            error.FunctionAppId);
+    public static HttpProblem MapRevisionChanged(FunctionAppRevisionChanged error) => Conflict(
+        "function-apps.revision-changed",
+        "Function App revision changed concurrently",
+        error.FunctionAppId);
 
-    public static HttpProblem MapDeletionChanged(FunctionAppDeletionChanged error) =>
-        Conflict(
-            "function-apps.deletion-changed",
-            "Function App state changed concurrently",
-            error.FunctionAppId);
+    public static HttpProblem MapDeletionChanged(FunctionAppDeletionChanged error) => Conflict(
+        "function-apps.deletion-changed",
+        "Function App state changed concurrently",
+        error.FunctionAppId);
 
-    private static HttpProblem Conflict(string code, string title, string functionAppId) =>
-        new(
-            (int)HttpStatusCode.Conflict,
-            PoleProblemTypeId.FromCode(code),
-            title,
-            code,
-            extensions: new Dictionary<string, object>
-            {
-                ["functionAppId"] = functionAppId
-            });
+    private static HttpProblem Conflict(
+        string code,
+        string title,
+        string functionAppId) => new(
+        (int)HttpStatusCode.Conflict,
+        PoleProblemTypeId.FromCode(code),
+        title,
+        code,
+        extensions: new Dictionary<string, object>
+        {
+            ["functionAppId"] = functionAppId,
+        });
 
     public static HttpProblem MapRetryError(RetryFunctionInvocationError error) => error switch
     {
         FunctionAppNotFound notFound => MapNotFound(notFound),
-        FunctionInvocationNotFound notFound => new(
+        FunctionInvocationNotFound notFound => new HttpProblem(
             (int)HttpStatusCode.NotFound,
             PoleProblemTypeId.FromCode("function-apps.invocation.not-found"),
             "Function invocation not found",
             "function-apps.invocation.not-found",
             extensions: new Dictionary<string, object>
             {
-                ["invocationId"] = notFound.InvocationId
+                ["invocationId"] = notFound.InvocationId,
             }),
         FunctionInvocationNotRetryable rejected => InvocationConflict(
             "function-apps.invocation.not-retryable",
@@ -128,20 +123,19 @@ public static class FunctionAppHttpMappings
         FunctionInvocationChanged rejected => InvocationConflict(
             "function-apps.invocation.changed",
             "Function invocation state changed concurrently",
-            rejected.InvocationId)
+            rejected.InvocationId),
     };
 
     private static HttpProblem InvocationConflict(
         string code,
         string title,
-        string invocationId) =>
-        new(
-            (int)HttpStatusCode.Conflict,
-            PoleProblemTypeId.FromCode(code),
-            title,
-            code,
-            extensions: new Dictionary<string, object>
-            {
-                ["invocationId"] = invocationId
-            });
+        string invocationId) => new(
+        (int)HttpStatusCode.Conflict,
+        PoleProblemTypeId.FromCode(code),
+        title,
+        code,
+        extensions: new Dictionary<string, object>
+        {
+            ["invocationId"] = invocationId,
+        });
 }

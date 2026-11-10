@@ -1,24 +1,27 @@
-using Pole.Multitenancy.Primitives;
-using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Multitenancy.Primitives;
+using Pole.Workloads;
 
 namespace Pole.Features.SourceBuilds.Domain;
 
-public sealed record SourceBuildRecipe(string Dockerfile)
+public sealed record SourceBuildRecipe(
+    string Dockerfile
+)
 {
     public static SourceBuildRecipe Create(string dockerfile)
     {
         if (string.IsNullOrWhiteSpace(dockerfile) || dockerfile.Length > 100_000)
             throw new ArgumentException("A bounded executable Dockerfile is required.", nameof(dockerfile));
 
-        return new(dockerfile);
+        return new SourceBuildRecipe(dockerfile);
     }
 }
 
 public sealed record SourceBuildArtifact(
     string Reference,
-    string Digest);
+    string Digest
+);
 
 public static class SourceBuildArtifactFactory
 {
@@ -29,7 +32,7 @@ public static class SourceBuildArtifactFactory
         if (string.IsNullOrWhiteSpace(digest))
             throw new ArgumentException("A non-empty image digest is required.", nameof(digest));
 
-        return new(reference, digest);
+        return new SourceBuildArtifact(reference, digest);
     }
 }
 
@@ -47,26 +50,25 @@ public sealed record SourceBuildConfiguration(
     long BuildGeneration,
     SourceBuildConfigurationOrigin Origin,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned;
+    DateTime UpdatedAtUtc
+) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ManualSourceBuildConfigurationOrigin), typeof(GitSourceBuildConfigurationOrigin))]
 public closed record SourceBuildConfigurationOrigin;
 
-public sealed record ManualSourceBuildConfigurationOrigin(string UserId) : SourceBuildConfigurationOrigin;
+public sealed record ManualSourceBuildConfigurationOrigin(
+    string UserId
+) : SourceBuildConfigurationOrigin;
 
 public sealed record GitSourceBuildConfigurationOrigin(
     string SourceId,
-    string RunId) : SourceBuildConfigurationOrigin;
+    string RunId
+) : SourceBuildConfigurationOrigin;
 
 public static class SourceBuildConfigurationFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
-
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
+    public static CreateOptions DefaultOptions => new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static SourceBuildConfiguration Create(
         string tenantId,
@@ -80,7 +82,7 @@ public static class SourceBuildConfigurationFactory
         if (!ResourceTechnicalName.IsValid(technicalName))
             throw new ArgumentException("A valid technical name is required.", nameof(technicalName));
 
-        return new(
+        return new SourceBuildConfiguration(
             options.Id,
             tenantId,
             technicalName,
@@ -94,6 +96,11 @@ public static class SourceBuildConfigurationFactory
             options.CreatedAtUtc,
             options.CreatedAtUtc);
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }
 
 public sealed record SourceBuildJob(
@@ -113,12 +120,14 @@ public sealed record SourceBuildJob(
     SourceBuildTrigger Trigger,
     SourceBuildJobState State,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned;
+    DateTime UpdatedAtUtc
+) : ITenantOwned;
 
 public sealed record SourceBuildInputVersion(
     long ConfigurationRevision,
     long RepositoryRevision,
-    long Generation);
+    long Generation
+);
 
 [BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(ManualSourceBuildTrigger))]
@@ -126,7 +135,8 @@ public abstract record SourceBuildTrigger;
 
 public sealed record ManualSourceBuildTrigger(
     string UserId,
-    string? Email) : SourceBuildTrigger;
+    string? Email
+) : SourceBuildTrigger;
 
 public enum SourceBuildPhase
 {
@@ -135,7 +145,7 @@ public enum SourceBuildPhase
     Analyzing,
     Building,
     Pushing,
-    Deploying
+    Deploying,
 }
 
 [BsonDiscriminator(RootClass = true)]
@@ -150,40 +160,50 @@ public enum SourceBuildPhase
     typeof(FailedSourceBuild))]
 public abstract record SourceBuildJobState;
 
-public sealed record QueuedSourceBuild(DateTime QueuedAtUtc) : SourceBuildJobState;
-public sealed record CloningSourceBuild(DateTime StartedAtUtc) : SourceBuildJobState;
-public sealed record AnalyzingSourceBuild(DateTime StartedAtUtc) : SourceBuildJobState;
-public sealed record BuildingSourceBuild(DateTime StartedAtUtc) : SourceBuildJobState;
+public sealed record QueuedSourceBuild(
+    DateTime QueuedAtUtc
+) : SourceBuildJobState;
+
+public sealed record CloningSourceBuild(
+    DateTime StartedAtUtc
+) : SourceBuildJobState;
+
+public sealed record AnalyzingSourceBuild(
+    DateTime StartedAtUtc
+) : SourceBuildJobState;
+
+public sealed record BuildingSourceBuild(
+    DateTime StartedAtUtc
+) : SourceBuildJobState;
 
 public sealed record PushingSourceBuild(
     DateTime StartedAtUtc,
-    SourceBuildArtifact Artifact) : SourceBuildJobState;
+    SourceBuildArtifact Artifact
+) : SourceBuildJobState;
 
 public sealed record DeployingSourceBuild(
     DateTime StartedAtUtc,
     SourceBuildArtifact Artifact,
-    string ReleaseId) : SourceBuildJobState;
+    string ReleaseId
+) : SourceBuildJobState;
 
 public sealed record SucceededSourceBuild(
     DateTime CompletedAtUtc,
     SourceBuildArtifact Artifact,
-    string ReleaseId) : SourceBuildJobState;
+    string ReleaseId
+) : SourceBuildJobState;
 
 public sealed record FailedSourceBuild(
     DateTime FailedAtUtc,
     [property: BsonRepresentation(BsonType.String)]
     SourceBuildPhase Phase,
     string Code,
-    string Message) : SourceBuildJobState;
+    string Message
+) : SourceBuildJobState;
 
 public static class SourceBuildJobFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
-
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
+    public static CreateOptions DefaultOptions => new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static SourceBuildJob CreateManual(
         string tenantId,
@@ -196,23 +216,27 @@ public static class SourceBuildJobFactory
         SourceBuildRecipe recipe,
         string userId,
         string? email,
-        CreateOptions options) =>
-        new(
-            options.Id,
-            tenantId,
-            configurationId,
-            sourceRepositoryId,
-            webServiceId,
-            branch,
-            commitSha,
-            inputVersion,
-            0,
-            new AvailableSourceBuildExecution(0),
-            recipe,
-            new ManualSourceBuildTrigger(userId, email),
-            new QueuedSourceBuild(options.CreatedAtUtc),
-            options.CreatedAtUtc,
-            options.CreatedAtUtc);
+        CreateOptions options) => new(
+        options.Id,
+        tenantId,
+        configurationId,
+        sourceRepositoryId,
+        webServiceId,
+        branch,
+        commitSha,
+        inputVersion,
+        0,
+        new AvailableSourceBuildExecution(0),
+        recipe,
+        new ManualSourceBuildTrigger(userId, email),
+        new QueuedSourceBuild(options.CreatedAtUtc),
+        options.CreatedAtUtc,
+        options.CreatedAtUtc);
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }
 
 public static class SourceBuildJobTransitions
@@ -234,7 +258,8 @@ public static class SourceBuildJobTransitions
         ArgumentNullException.ThrowIfNull(artifact);
         return Transition<BuildingSourceBuild>(
             job,
-            new PushingSourceBuild(occurredAtUtc,
+            new PushingSourceBuild(
+                occurredAtUtc,
                 SourceBuildArtifactFactory.Create(artifact.Reference, artifact.Digest)),
             occurredAtUtc);
     }
@@ -255,11 +280,8 @@ public static class SourceBuildJobTransitions
 
         return job with
         {
-            State = new DeployingSourceBuild(
-                occurredAtUtc,
-                promotedArtifact,
-                releaseId),
-            UpdatedAtUtc = occurredAtUtc
+            State = new DeployingSourceBuild(occurredAtUtc, promotedArtifact, releaseId),
+            UpdatedAtUtc = occurredAtUtc,
         };
     }
 
@@ -270,11 +292,8 @@ public static class SourceBuildJobTransitions
 
         return job with
         {
-            State = new SucceededSourceBuild(
-                occurredAtUtc,
-                deploying.Artifact,
-                deploying.ReleaseId),
-            UpdatedAtUtc = occurredAtUtc
+            State = new SucceededSourceBuild(occurredAtUtc, deploying.Artifact, deploying.ReleaseId),
+            UpdatedAtUtc = occurredAtUtc,
         };
     }
 
@@ -291,7 +310,7 @@ public static class SourceBuildJobTransitions
         return job with
         {
             State = new FailedSourceBuild(occurredAtUtc, phase, code, message),
-            UpdatedAtUtc = occurredAtUtc
+            UpdatedAtUtc = occurredAtUtc,
         };
     }
 

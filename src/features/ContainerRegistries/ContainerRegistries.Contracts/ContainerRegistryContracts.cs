@@ -3,36 +3,42 @@ namespace Pole.Features.ContainerRegistries.Contracts;
 public sealed record RegistryProjectProvisioningRequest(
     string TenantId,
     string ProjectName,
-    string AttemptId);
+    string AttemptId
+);
 
 public sealed record RegistryRobotNames(
     string Build,
-    string Pull)
+    string Pull
+)
 {
     public static RegistryRobotNames ForAttempt(string attemptId)
     {
         var normalized = attemptId.Trim().ToLowerInvariant();
         if (normalized.Length != 32 || normalized.Any(character => !char.IsAsciiHexDigit(character)))
-            throw new ArgumentException("Registry provisioning attempt ids must be 32 hexadecimal characters.", nameof(attemptId));
+            throw new ArgumentException(
+                "Registry provisioning attempt ids must be 32 hexadecimal characters.",
+                nameof(attemptId));
 
-        return new RegistryRobotNames(
-            $"pole-build-{normalized}",
-            $"pole-runtime-{normalized}");
+        return new RegistryRobotNames($"pole-build-{normalized}", $"pole-runtime-{normalized}");
     }
 }
 
 public sealed record RegistryRobotCleanupTarget(
     string ProjectName,
     string Name,
-    string? ExternalRobotId);
+    string? ExternalRobotId
+);
 
-public sealed record RegistryRobotCleanupResult(int MatchedByNameCount);
+public sealed record RegistryRobotCleanupResult(
+    int MatchedByNameCount
+);
 
 public sealed record RegistryRobotCredential(
     string ExternalRobotId,
     string Username,
     string Secret,
-    DateTime? ExpiresAtUtc)
+    DateTime? ExpiresAtUtc
+)
 {
     public override string ToString() => "RegistryRobotCredential([REDACTED])";
 }
@@ -41,13 +47,15 @@ public sealed record ProvisionedRegistryProject(
     string ExternalProjectId,
     string ProjectName,
     RegistryRobotCredential BuildCredential,
-    RegistryRobotCredential PullCredential);
+    RegistryRobotCredential PullCredential
+);
 
 public sealed record RegistryPushTarget(
     string RegistryHost,
     string ProjectName,
     string RepositoryName,
-    string Tag)
+    string Tag
+)
 {
     public string Reference => $"{RegistryHost}/{ProjectName}/{RepositoryName}:{Tag}";
 }
@@ -56,29 +64,42 @@ public sealed record RegistryArtifact(
     string RepositoryName,
     string Tag,
     string Digest,
-    long SizeBytes);
+    long SizeBytes
+);
 
-public sealed record ContainerRegistryProviderNotConfigured(string Provider);
+public sealed record ContainerRegistryProviderNotConfigured(
+    string Provider
+);
 
-public sealed record ContainerRegistryProviderUnavailable(string Provider);
+public sealed record ContainerRegistryProviderUnavailable(
+    string Provider
+);
 
 public union ContainerRegistryProviderError(
     ContainerRegistryProviderNotConfigured,
     ContainerRegistryProviderUnavailable);
 
-public sealed record ContainerRegistryArtifactNotFound(string Reference);
+public sealed record ContainerRegistryArtifactNotFound(
+    string Reference
+);
 
-public union ContainerRegistryArtifactLookupError(
-    ContainerRegistryArtifactNotFound,
-    ContainerRegistryProviderError);
+public union ContainerRegistryArtifactLookupError(ContainerRegistryArtifactNotFound, ContainerRegistryProviderError);
 
-public sealed record TenantContainerRegistryNotReady(string TenantId);
+public sealed record TenantContainerRegistryNotReady(
+    string TenantId
+);
 
-public sealed record TenantContainerRegistryProvisioningConflict(string TenantId);
+public sealed record TenantContainerRegistryProvisioningConflict(
+    string TenantId
+);
 
-public sealed record TenantContainerRegistryProjectNotFound(string RegistryProjectId);
+public sealed record TenantContainerRegistryProjectNotFound(
+    string RegistryProjectId
+);
 
-public sealed record RegistryCredentialUnavailable(string RegistryProjectId);
+public sealed record RegistryCredentialUnavailable(
+    string RegistryProjectId
+);
 
 public sealed record RegistryCredentialProtectionFailed;
 
@@ -94,58 +115,41 @@ public union GetTenantRegistryArtifactError(
     TenantContainerRegistryNotReady,
     ContainerRegistryArtifactLookupError);
 
-public union ResolveRuntimeRegistryAccessError(
-    TenantContainerRegistryNotReady,
-    RegistryCredentialUnavailable);
+public union ResolveRuntimeRegistryAccessError(TenantContainerRegistryNotReady, RegistryCredentialUnavailable);
 
-public union PrepareRegistryBuildPushOutcome(
-    RegistryBuildAccess,
-    PrepareRegistryBuildPushError);
+public union PrepareRegistryBuildPushOutcome(RegistryBuildAccess, PrepareRegistryBuildPushError);
 
-public union GetTenantRegistryArtifactOutcome(
-    RegistryArtifact,
-    GetTenantRegistryArtifactError);
+public union GetTenantRegistryArtifactOutcome(RegistryArtifact, GetTenantRegistryArtifactError);
 
-public union ResolveRuntimeRegistryAccessOutcome(
-    RuntimeRegistryAccess,
-    ResolveRuntimeRegistryAccessError);
+public union ResolveRuntimeRegistryAccessOutcome(RuntimeRegistryAccess, ResolveRuntimeRegistryAccessError);
 
-public union ProvisionRegistryProjectOutcome(
-    ProvisionedRegistryProject,
-    ContainerRegistryProviderError);
+public union ProvisionRegistryProjectOutcome(ProvisionedRegistryProject, ContainerRegistryProviderError);
 
-public union GetRegistryArtifactOutcome(
-    RegistryArtifact,
-    ContainerRegistryArtifactLookupError);
+public union GetRegistryArtifactOutcome(RegistryArtifact, ContainerRegistryArtifactLookupError);
 
-public union DeleteRegistryRobotCredentialsOutcome(
-    RegistryRobotCleanupResult,
-    ContainerRegistryProviderError);
+public union DeleteRegistryRobotCredentialsOutcome(RegistryRobotCleanupResult, ContainerRegistryProviderError);
 
 public sealed record RegistryProjectDeleted;
 
-public union DeleteRegistryProjectOutcome(
-    RegistryProjectDeleted,
-    ContainerRegistryProviderError);
+public union DeleteRegistryProjectOutcome(RegistryProjectDeleted, ContainerRegistryProviderError);
 
 public sealed record RegistryBuildAccess(
     string RegistryProjectId,
     RegistryPushTarget Target,
     string KubernetesPullSecretName,
     string Username,
-    string Secret)
+    string Secret
+)
 {
     public override string ToString() =>
         $"RegistryBuildAccess(project={RegistryProjectId}, target={Target.Reference}, credentials=[REDACTED])";
 }
 
-public delegate Task<PrepareRegistryBuildPushOutcome>
-    PrepareRegistryBuildPush(
+public delegate Task<PrepareRegistryBuildPushOutcome> PrepareRegistryBuildPush(
     PrepareRegistryBuildPushRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<GetTenantRegistryArtifactOutcome>
-    GetTenantRegistryArtifact(
+public delegate Task<GetTenantRegistryArtifactOutcome> GetTenantRegistryArtifact(
     GetTenantRegistryArtifactRequest request,
     CancellationToken cancellationToken = default);
 
@@ -174,29 +178,32 @@ public sealed record RuntimeRegistryAccess(
     string ProjectName,
     string KubernetesSecretName,
     string Username,
-    string Secret)
+    string Secret
+)
 {
     public override string ToString() => "RuntimeRegistryAccess([REDACTED])";
 }
 
-public delegate Task<ResolveRuntimeRegistryAccessOutcome>
-    ResolveRuntimeRegistryAccess(
-        string tenantId,
-        CancellationToken cancellationToken = default);
+public delegate Task<ResolveRuntimeRegistryAccessOutcome> ResolveRuntimeRegistryAccess(
+    string tenantId,
+    CancellationToken cancellationToken = default);
 
 public sealed record PrepareRegistryBuildPushRequest(
     string TenantId,
     string InitiatedByUserId,
     string RepositoryName,
-    string Tag);
+    string Tag
+);
 
 public sealed record GetTenantRegistryArtifactRequest(
     string TenantId,
     string RegistryProjectId,
     string RepositoryName,
-    string Reference);
+    string Reference
+);
 
 public sealed record GetRegistryArtifactRequest(
     string ProjectName,
     string RepositoryName,
-    string Reference);
+    string Reference
+);

@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.ComputeProfiles.Migrations;
 
@@ -12,18 +12,15 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
 
     public string Name => "Compute profile document schema validation";
 
-    public string Description =>
-        "Applies strict MongoDB schema validation to portable compute profile documents.";
+    public string Description => "Applies strict MongoDB schema validation to portable compute profile documents.";
 
-    public async Task Up(
-        IMongoDatabase context,
-        CancellationToken cancellationToken = default)
+    public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
         var validator = ComputeProfileDocumentSchema.CreateValidator();
         using var names = await context.ListCollectionNamesAsync(
             new ListCollectionNamesOptions
             {
-                Filter = new BsonDocument("name", CollectionName)
+                Filter = new BsonDocument("name", CollectionName),
             },
             cancellationToken);
         var exists = await names.AnyAsync(cancellationToken);
@@ -35,7 +32,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
                 {
                     Validator = new BsonDocumentFilterDefinition<BsonDocument>(validator),
                     ValidationLevel = DocumentValidationLevel.Strict,
-                    ValidationAction = DocumentValidationAction.Error
+                    ValidationAction = DocumentValidationAction.Error,
                 },
                 cancellationToken);
             return;
@@ -47,7 +44,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
                 ["collMod"] = CollectionName,
                 ["validator"] = validator,
                 ["validationLevel"] = "strict",
-                ["validationAction"] = "error"
+                ["validationAction"] = "error",
             },
             cancellationToken: cancellationToken);
     }
@@ -73,7 +70,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
                     "Revision",
                     "ResolutionFence",
                     "CreatedAtUtc",
-                    "UpdatedAtUtc"
+                    "UpdatedAtUtc",
                 ],
                 ("_id", Type("objectId")),
                 ("TechnicalName", StringType(1, 63, "^[a-z](?:[a-z0-9-]*[a-z0-9])?$")),
@@ -82,9 +79,10 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
                 ("Resources", ResourceRequirementsSchema()),
                 ("Architecture", IntegerType("int", 0, 2)),
                 ("ExtendedResources", ArrayOf(ExtendedResourceSchema())),
-                ("AllowedResourceTypes", ArrayOf(
-                    StringType(1, 128, "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)+$"),
-                    uniqueItems: true)),
+                ("AllowedResourceTypes",
+                    ArrayOf(
+                        StringType(1, 128, "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)+$"),
+                        uniqueItems: true)),
                 ("TenantAccess", TenantAccessSchema()),
                 ("TargetMappings", ArrayOf(TargetMappingSchema())),
                 ("IsEnabled", Type("bool")),
@@ -112,18 +110,20 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
         private static BsonDocument TenantAccessSchema() => OneOf(
             ClosedObject(
                 ["_t"],
-                ("_t", AllowedValue(new BsonArray
-                {
-                    "ComputeProfileTenantAccess",
-                    "all-tenants"
-                }))),
+                ("_t", AllowedValue(
+                    new BsonArray
+                    {
+                        "ComputeProfileTenantAccess",
+                        "all-tenants",
+                    }))),
             ClosedObject(
                 ["_t", "TenantIds"],
-                ("_t", AllowedValue(new BsonArray
-                {
-                    "ComputeProfileTenantAccess",
-                    "selected-tenants"
-                })),
+                ("_t", AllowedValue(
+                    new BsonArray
+                    {
+                        "ComputeProfileTenantAccess",
+                        "selected-tenants",
+                    })),
                 ("TenantIds", ArrayOf(StringType(24, 24, "^[0-9a-fA-F]{24}$"), uniqueItems: true))));
 
         private static BsonDocument TargetMappingSchema() => Object(
@@ -133,7 +133,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
                 "RequiredNodeAffinity",
                 "PreferredNodeAffinity",
                 "Tolerations",
-                "RuntimeClassName"
+                "RuntimeClassName",
             ],
             ("DeploymentTargetId", Type("objectId")),
             ("NodeSelector", ArrayOf(NodeSelectorSchema())),
@@ -170,9 +170,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
             ("Effect", IntegerType("int", 0, 3)),
             ("TolerationSeconds", Nullable(IntegerType("long", 0))));
 
-        private static BsonDocument Object(
-            BsonArray required,
-            params (string Name, BsonDocument Schema)[] properties)
+        private static BsonDocument Object(BsonArray required, params (string Name, BsonDocument Schema)[] properties)
         {
             var propertySchemas = new BsonDocument();
             foreach (var (name, schema) in properties)
@@ -181,7 +179,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
             {
                 ["bsonType"] = "object",
                 ["required"] = required,
-                ["properties"] = propertySchemas
+                ["properties"] = propertySchemas,
             };
         }
 
@@ -205,7 +203,7 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
             {
                 ["bsonType"] = "string",
                 ["minLength"] = minimumLength,
-                ["maxLength"] = maximumLength
+                ["maxLength"] = maximumLength,
             };
             if (pattern is not null)
                 schema["pattern"] = pattern;
@@ -220,36 +218,29 @@ public sealed class ComputeProfileSchemaValidationMigration : IMigration
             var schema = new BsonDocument
             {
                 ["bsonType"] = bsonType,
-                ["minimum"] = minimum
+                ["minimum"] = minimum,
             };
             if (maximum is not null)
                 schema["maximum"] = maximum.Value;
             return schema;
         }
 
-        private static BsonDocument ArrayOf(
-            BsonDocument items,
-            bool uniqueItems = false)
+        private static BsonDocument ArrayOf(BsonDocument items, bool uniqueItems = false)
         {
             var schema = new BsonDocument
             {
                 ["bsonType"] = "array",
-                ["items"] = items
+                ["items"] = items,
             };
             if (uniqueItems)
                 schema["uniqueItems"] = true;
             return schema;
         }
 
-        private static BsonDocument Nullable(BsonDocument schema) =>
-            OneOf(Type("null"), schema);
+        private static BsonDocument Nullable(BsonDocument schema) => OneOf(Type("null"), schema);
 
-        private static BsonDocument AllowedValue(BsonValue value) => new(
-            "enum",
-            new BsonArray { value });
+        private static BsonDocument AllowedValue(BsonValue value) => new("enum", new BsonArray { value });
 
-        private static BsonDocument OneOf(params BsonDocument[] schemas) => new(
-            "oneOf",
-            new BsonArray(schemas));
+        private static BsonDocument OneOf(params BsonDocument[] schemas) => new("oneOf", new BsonArray(schemas));
     }
 }

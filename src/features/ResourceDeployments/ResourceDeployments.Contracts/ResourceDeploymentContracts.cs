@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 using MongoDB.Driver;
 using Pole.Workloads;
 
@@ -6,13 +7,15 @@ namespace Pole.Features.ResourceDeployments.Contracts;
 
 public sealed record PlacementRequest(
     string? IsolationScopeId,
-    string? DeploymentTargetId);
+    string? DeploymentTargetId
+);
 
 public sealed record ResourceDeploymentEndpointDto(
     string Kind,
     string Host,
     int Port,
-    string Scheme)
+    string Scheme
+)
 {
     public static ResourceDeploymentEndpointDto Create(
         string kind,
@@ -29,38 +32,39 @@ public sealed record ResourceDeploymentEndpointDto(
         if (string.IsNullOrWhiteSpace(scheme))
             throw new ArgumentException("Endpoint scheme is required.", nameof(scheme));
 
-        return new ResourceDeploymentEndpointDto(
-            kind.Trim(),
-            host.Trim(),
-            port,
-            scheme.Trim().ToLowerInvariant());
+        return new ResourceDeploymentEndpointDto(kind.Trim(), host.Trim(), port, scheme.Trim().ToLowerInvariant());
     }
 }
 
 public sealed record ComputeProfileReference(
     string ComputeProfileId,
-    long ComputeProfileRevision);
+    long ComputeProfileRevision
+);
 
 public sealed record ComputeResourceValuesDto(
     long CpuMillis,
-    long MemoryMi);
+    long MemoryMi
+);
 
 public sealed record ComputeExtendedResourceDto(
     string Name,
-    long Quantity);
+    long Quantity
+);
 
 public sealed record ComputeConfigurationSummaryDto(
     ComputeProfileReference Profile,
     string DisplayName,
     ComputeResourceValuesDto Requests,
     ComputeResourceValuesDto Limits,
-    ImmutableList<ComputeExtendedResourceDto> ExtendedResources);
+    ImmutableList<ComputeExtendedResourceDto> ExtendedResources
+);
 
 public sealed record CurrentResourceDeploymentComputeDto(
     string DeploymentTargetId,
-    ComputeConfigurationSummaryDto Compute);
+    ComputeConfigurationSummaryDto Compute
+);
 
-[method: System.Text.Json.Serialization.JsonConstructor]
+[method: JsonConstructor]
 public sealed record PlacementSummaryDto(
     string DeploymentId,
     string IsolationScopeId,
@@ -77,13 +81,15 @@ public sealed record PlacementSummaryDto(
     ResourceDeploymentIngressConfiguration? Ingress,
     long DeploymentRevision,
     ResourceDeploymentDesiredOperation DesiredOperation,
-    ResourceDeploymentIsolationDto Isolation);
+    ResourceDeploymentIsolationDto Isolation
+);
 
 public sealed record ResourceDeploymentIsolationDto(
     string Enforcement,
     string Readiness,
     string Reason,
-    DateTime? LastCheckedAtUtc);
+    DateTime? LastCheckedAtUtc
+);
 
 public sealed record ResourceDeploymentDto(
     string Id,
@@ -92,11 +98,12 @@ public sealed record ResourceDeploymentDto(
     string ResourceGroupId,
     PlacementSummaryDto Placement,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc
+);
 
 /// <summary>
-/// Internal workload-runtime projection for resolving a persisted physical placement.
-/// Kubernetes namespaces are deliberately kept out of tenant-facing placement summaries.
+///     Internal workload-runtime projection for resolving a persisted physical placement.
+///     Kubernetes namespaces are deliberately kept out of tenant-facing placement summaries.
 /// </summary>
 public sealed record ResourceDeploymentRuntimePlacementDto(
     string DeploymentId,
@@ -109,21 +116,29 @@ public sealed record ResourceDeploymentRuntimePlacementDto(
     ResourceDeploymentComputeConfiguration Compute,
     ResourceDeploymentStatus Status,
     ResourceDeploymentDesiredOperation DesiredOperation,
-    string IsolationScopeId);
+    string IsolationScopeId
+);
 
-public sealed record ResourceGroupHasUnfinishedDeployments(string ResourceGroupId);
+public sealed record ResourceGroupHasUnfinishedDeployments(
+    string ResourceGroupId
+);
 
 public sealed record IsolationScopeHasUnfinishedDeployments(
     string ResourceGroupId,
-    string IsolationScopeId);
+    string IsolationScopeId
+);
 
 public sealed record ComputeProfileReferencedByResourceDeployment(
-    string ComputeProfileId);
+    string ComputeProfileId
+);
 
-public sealed record CurrentResourceDeploymentComputeNotFound(string ResourceId);
+public sealed record CurrentResourceDeploymentComputeNotFound(
+    string ResourceId
+);
 
 public sealed record CurrentResourceDeploymentComputeCardinalityConflict(
-    string ResourceId);
+    string ResourceId
+);
 
 public union LoadCurrentResourceDeploymentComputeError(
     CurrentResourceDeploymentComputeNotFound,
@@ -134,34 +149,34 @@ public union LoadCurrentResourceDeploymentComputeOutcome(
     LoadCurrentResourceDeploymentComputeError);
 
 public sealed record ResourceGroupDeploymentsSettled;
+
 public union EnsureResourceGroupDeploymentsSettledOutcome(
     ResourceGroupDeploymentsSettled,
     ResourceGroupHasUnfinishedDeployments);
 
 public sealed record IsolationScopeDeploymentsSettled;
+
 public union EnsureIsolationScopeDeploymentsSettledOutcome(
     IsolationScopeDeploymentsSettled,
     IsolationScopeHasUnfinishedDeployments);
 
 public sealed record ComputeProfileUnreferenced;
+
 public union EnsureComputeProfileUnreferencedOutcome(
     ComputeProfileUnreferenced,
     ComputeProfileReferencedByResourceDeployment);
 
-public delegate Task<EnsureResourceGroupDeploymentsSettledOutcome>
-    EnsureNoUnfinishedResourceGroupDeployments(
+public delegate Task<EnsureResourceGroupDeploymentsSettledOutcome> EnsureNoUnfinishedResourceGroupDeployments(
     EnsureNoUnfinishedResourceGroupDeploymentsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<EnsureIsolationScopeDeploymentsSettledOutcome>
-    EnsureNoUnfinishedIsolationScopeDeployments(
+public delegate Task<EnsureIsolationScopeDeploymentsSettledOutcome> EnsureNoUnfinishedIsolationScopeDeployments(
     EnsureNoUnfinishedIsolationScopeDeploymentsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
 
-public delegate Task<EnsureComputeProfileUnreferencedOutcome>
-    EnsureComputeProfileUnreferenced(
+public delegate Task<EnsureComputeProfileUnreferencedOutcome> EnsureComputeProfileUnreferenced(
     string computeProfileId,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
@@ -170,13 +185,11 @@ public delegate Task<PlacementSummaryDto?> LoadResourceDeployment(
     LoadResourceDeploymentRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<IReadOnlyDictionary<string, PlacementSummaryDto>>
-    LoadResourceDeployments(
+public delegate Task<IReadOnlyDictionary<string, PlacementSummaryDto>> LoadResourceDeployments(
     LoadResourceDeploymentsRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<LoadCurrentResourceDeploymentComputeOutcome>
-    LoadCurrentResourceDeploymentCompute(
+public delegate Task<LoadCurrentResourceDeploymentComputeOutcome> LoadCurrentResourceDeploymentCompute(
     LoadCurrentResourceDeploymentComputeRequest request,
     CancellationToken cancellationToken = default);
 
@@ -191,10 +204,10 @@ public sealed record ResourceDeploymentConnectionPlacement(
     string DeploymentTargetId,
     string RuntimeCellId,
     string KubernetesNamespace,
-    bool DeletionRequested);
+    bool DeletionRequested
+);
 
-public delegate Task<IReadOnlyList<ResourceDeploymentConnectionPlacement>>
-    LoadResourceDeploymentConnectionPlacements(
+public delegate Task<IReadOnlyList<ResourceDeploymentConnectionPlacement>> LoadResourceDeploymentConnectionPlacements(
     LoadResourceDeploymentConnectionPlacementsRequest request,
     IClientSessionHandle session,
     CancellationToken cancellationToken = default);
@@ -203,13 +216,11 @@ public delegate Task<PlacementSummaryDto?> LoadExactResourceDeployment(
     LoadExactResourceDeploymentRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<ResourceDeploymentRuntimePlacementDto?>
-    LoadExactResourceDeploymentRuntimePlacement(
+public delegate Task<ResourceDeploymentRuntimePlacementDto?> LoadExactResourceDeploymentRuntimePlacement(
     LoadExactResourceDeploymentRuntimePlacementRequest request,
     CancellationToken cancellationToken = default);
 
-public delegate Task<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>
-    LoadResourceDeploymentRuntimePlacements(
+public delegate Task<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>> LoadResourceDeploymentRuntimePlacements(
     LoadResourceDeploymentRuntimePlacementsRequest request,
     CancellationToken cancellationToken = default);
 
@@ -217,63 +228,73 @@ public delegate Task<IReadOnlyList<string>> LoadResourceDeploymentTargetIds(
     ResourceTypeId resourceType,
     CancellationToken cancellationToken = default);
 
-public delegate Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>>
-    LoadResourceDeploymentSets(
+public delegate Task<IReadOnlyDictionary<string, IReadOnlyList<PlacementSummaryDto>>> LoadResourceDeploymentSets(
     LoadResourceDeploymentSetsRequest request,
     CancellationToken cancellationToken = default);
 
 public sealed record EnsureNoUnfinishedResourceGroupDeploymentsRequest(
     string TenantId,
-    string ResourceGroupId);
+    string ResourceGroupId
+);
 
 public sealed record EnsureNoUnfinishedIsolationScopeDeploymentsRequest(
     string TenantId,
     string ResourceGroupId,
-    string IsolationScopeId);
+    string IsolationScopeId
+);
 
 public sealed record LoadResourceDeploymentRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record LoadResourceDeploymentsRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    IReadOnlyCollection<string> ResourceIds);
+    IReadOnlyCollection<string> ResourceIds
+);
 
 public sealed record LoadCurrentResourceDeploymentComputeRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record LoadResourceDeploymentSetRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record LoadResourceDeploymentConnectionPlacementsRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public sealed record LoadExactResourceDeploymentRequest(
     string TenantId,
     ResourceTypeId ResourceType,
     string ResourceId,
-    string DeploymentId);
+    string DeploymentId
+);
 
 public sealed record LoadExactResourceDeploymentRuntimePlacementRequest(
     string TenantId,
     ResourceTypeId ResourceType,
     string ResourceId,
-    string DeploymentId);
+    string DeploymentId
+);
 
 public sealed record LoadResourceDeploymentRuntimePlacementsRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    IReadOnlyCollection<string> ResourceIds);
+    IReadOnlyCollection<string> ResourceIds
+);
 
 public sealed record LoadResourceDeploymentSetsRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    IReadOnlyCollection<string> ResourceIds);
+    IReadOnlyCollection<string> ResourceIds
+);

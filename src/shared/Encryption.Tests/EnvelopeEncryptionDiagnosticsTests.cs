@@ -1,4 +1,3 @@
-
 namespace Pole.Encryption.Tests;
 
 public sealed class EnvelopeEncryptionDiagnosticsTests
@@ -11,15 +10,21 @@ public sealed class EnvelopeEncryptionDiagnosticsTests
         const string tenantId = "sensitive-tenant-id";
         const string objectId = "sensitive-object-id";
         var context = EnvelopeEncryptionContext.ForTenant(
-            tenantId, "git-provider", objectId, "sensitive-field-name", 1);
+            tenantId,
+            "git-provider",
+            objectId,
+            "sensitive-field-name",
+            1);
         using var encryption = TestEncryptionService.Create(
-            "primary", 1, new TestKey("primary", 1, files.WriteKey("primary.key")));
+            "primary",
+            1,
+            new TestKey("primary", 1, files.WriteKey("primary.key")));
         var encryptedResult = await encryption.Service.EncryptStringAsync(plaintext, context);
         var encrypted = Assert.IsType<EncryptedValue>(encryptedResult.Value);
         var clone = EncryptionTestData.CloneEnvelope(encrypted);
         var tampered = clone with
         {
-            AuthenticationTag = EncryptionTestData.FlipFirstByte(clone.AuthenticationTag)
+            AuthenticationTag = EncryptionTestData.FlipFirstByte(clone.AuthenticationTag),
         };
 
         var result = await encryption.Service.DecryptStringAsync(tampered, context);
@@ -31,7 +36,10 @@ public sealed class EnvelopeEncryptionDiagnosticsTests
         Assert.DoesNotContain(objectId, diagnostic, StringComparison.Ordinal);
         Assert.DoesNotContain("sensitive-field-name", diagnostic, StringComparison.Ordinal);
         Assert.DoesNotContain(Convert.ToBase64String(tampered.Ciphertext), diagnostic, StringComparison.Ordinal);
-        Assert.DoesNotContain(Convert.ToBase64String(tampered.WrappedDataEncryptionKey), diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            Convert.ToBase64String(tampered.WrappedDataEncryptionKey),
+            diagnostic,
+            StringComparison.Ordinal);
     }
 
     [Fact]

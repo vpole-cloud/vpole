@@ -4,13 +4,16 @@ using Pole.Features.GitProviders.Events;
 
 namespace Pole.Features.GitProviders.Application.Consumers;
 
-public sealed class ScheduleGitOpsOnRepositoryPush(IGitSourceScheduler scheduler)
-    : IConsumer<GitRepositoryPushReceived>
+public sealed class ScheduleGitOpsOnRepositoryPush(
+    IGitSourceScheduler scheduler
+) : IConsumer<GitRepositoryPushReceived>
 {
     public Task Consume(ConsumeContext<GitRepositoryPushReceived> context)
     {
         var message = context.Message;
-        return scheduler.RequestRepositorySyncAsync(new(message.EventCore.TenantId,
+        return scheduler.RequestRepositorySyncAsync(
+            new RepositorySyncSignal(
+                message.EventCore.TenantId,
                 message.Provider,
                 message.ConnectionId,
                 message.ExternalRepositoryId,

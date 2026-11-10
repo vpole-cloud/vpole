@@ -8,64 +8,52 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ComputeProfiles.Application;
 using Pole.Features.ComputeProfiles.Application.Endpoints;
-using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.ComputeProfiles.Migrations;
 using Pole.Features.ContainerRegistries.Application;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.DeploymentTargets.Migrations;
 using Pole.Features.Domains.Application;
 using Pole.Features.Domains.Application.Common;
-using Pole.Features.Domains.Migrations;
 using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
+using Pole.Features.Functions.Migrations;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.GitOps.Application;
 using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.Outbox.Application;
-using Pole.Features.Outbox.Application.Mongo;
-using Pole.Features.Outbox.Migrations;
 using Pole.Features.Postgres.Application;
+using Pole.Features.Postgres.Migrations;
 using Pole.Features.PrivateAccess.Application;
 using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.RedisServices.Application;
+using Pole.Features.RedisServices.Migrations;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceConnections.Migrations;
 using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Migrations;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.ResourceGroups.Migrations;
 using Pole.Features.Search.Application;
 using Pole.Features.Search.Application.Common;
 using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Migrations;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Common;
 using Pole.Features.SourceBuilds.Application.Jobs;
-using Pole.Features.SourceBuilds.Migrations;
 using Pole.Features.StorageProfiles.Application;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Discovery;
-using Pole.Features.StorageProfiles.Migrations;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Middleware;
@@ -77,15 +65,13 @@ using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Migrations;
 using Pole.Observability;
 using Pole.Platform.Hosting;
-using Pole.Server.Extensions;
+using Pole.Testing;
 
 namespace Pole.Tests.Integration.Infrastructure;
 
 public sealed class TestApiApplication : IAsyncDisposable
 {
     public const string GitHubWebhookSecret = "synthetic-api-integration-webhook-key";
-    private readonly WebApplication _app;
-    private readonly string _encryptionKeyDirectory;
 
     private static readonly Assembly[] Assemblies =
     [
@@ -108,8 +94,11 @@ public sealed class TestApiApplication : IAsyncDisposable
         typeof(SearchEndpoints).Assembly,
         typeof(StorageProfileEndpoints).Assembly,
         typeof(TenantEndpoints).Assembly,
-        typeof(UserEndpoints).Assembly
+        typeof(UserEndpoints).Assembly,
     ];
+
+    private readonly WebApplication _app;
+    private readonly string _encryptionKeyDirectory;
 
     private TestApiApplication(
         WebApplication app,
@@ -133,34 +122,32 @@ public sealed class TestApiApplication : IAsyncDisposable
     public FakeGitHubAppClient GitHubClient { get; }
     private TestDeploymentTargetLookup DeploymentTargetLookup { get; }
 
-    public void RejectNewDeploymentTargetWorkloads() =>
-        DeploymentTargetLookup.RejectNewWorkloads = true;
+    public async ValueTask DisposeAsync()
+    {
+        await _app.StopAsync();
+        await _app.DisposeAsync();
+        Directory.Delete(_encryptionKeyDirectory, recursive: true);
+    }
 
-    public void AddEligibleDeploymentTarget(
-        string deploymentTargetId,
-        string publicBaseDomain) =>
-        DeploymentTargetLookup.AddEligibleTarget(
-            deploymentTargetId,
-            publicBaseDomain);
+    public void RejectNewDeploymentTargetWorkloads() => DeploymentTargetLookup.RejectNewWorkloads = true;
 
-    public void RejectDeploymentTargetReferenceRemoval() =>
-        DeploymentTargetLookup.RejectReferenceRemoval = true;
+    public void AddEligibleDeploymentTarget(string deploymentTargetId, string publicBaseDomain) =>
+        DeploymentTargetLookup.AddEligibleTarget(deploymentTargetId, publicBaseDomain);
+
+    public void RejectDeploymentTargetReferenceRemoval() => DeploymentTargetLookup.RejectReferenceRemoval = true;
 
     public void SetPrivateAccessTargetState(
         bool enabled,
         bool deletionRequested,
         NetworkPolicyReadiness readiness) =>
-        DeploymentTargetLookup.SetPrivateAccessTargetState(
-            enabled,
-            deletionRequested,
-            readiness);
+        DeploymentTargetLookup.SetPrivateAccessTargetState(enabled, deletionRequested, readiness);
 
     public static async Task<TestApiApplication> StartAsync(
         TestDatabaseScope fixture,
         IntegrationTestScope testScope,
         bool privateAccessEnabled = false,
         Action<IServiceCollection>? configureTestServices = null,
-        Pole.Testing.TestTimings? timings = null)
+        TestTimings? timings = null)
     {
         await fixture.PrepareAsync();
         using var keyTiming = timings?.Measure("api.encryption-key");
@@ -182,23 +169,25 @@ public sealed class TestApiApplication : IAsyncDisposable
 
         keyTiming?.Dispose();
         using var registrationTiming = timings?.Measure("api.services.register");
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
-        {
-            EnvironmentName = Environments.Development
-        });
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["EnvelopeEncryption:ActiveProviderId"] = LocalKeyFileKeyEncryptionProvider.StableProviderId,
-            ["EnvelopeEncryption:LocalKeyFile:ActiveKeyId"] = "api-integration",
-            ["EnvelopeEncryption:LocalKeyFile:ActiveKeyVersion"] = "1",
-            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "api-integration",
-            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
-            ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath,
-            ["DeploymentTargets:Bootstrap:Enabled"] = "false",
-            ["GitHubWebhook:Secret"] = GitHubWebhookSecret,
-            ["PrivateAccess:Enabled"] = privateAccessEnabled.ToString(),
-            ["kubernetes:NamespaceNamePrefix"] = "test"
-        });
+        var builder = WebApplication.CreateBuilder(
+            new WebApplicationOptions
+            {
+                EnvironmentName = Environments.Development,
+            });
+        builder.Configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["EnvelopeEncryption:ActiveProviderId"] = LocalKeyFileKeyEncryptionProvider.StableProviderId,
+                ["EnvelopeEncryption:LocalKeyFile:ActiveKeyId"] = "api-integration",
+                ["EnvelopeEncryption:LocalKeyFile:ActiveKeyVersion"] = "1",
+                ["EnvelopeEncryption:LocalKeyFile:Keys:0:Id"] = "api-integration",
+                ["EnvelopeEncryption:LocalKeyFile:Keys:0:Version"] = "1",
+                ["EnvelopeEncryption:LocalKeyFile:Keys:0:Path"] = encryptionKeyPath,
+                ["DeploymentTargets:Bootstrap:Enabled"] = "false",
+                ["GitHubWebhook:Secret"] = GitHubWebhookSecret,
+                ["PrivateAccess:Enabled"] = privateAccessEnabled.ToString(),
+                ["kubernetes:NamespaceNamePrefix"] = "test",
+            });
 
         builder.WebHost.UseTestServer();
         builder.Services.AddPoleHttpJson();
@@ -206,14 +195,12 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddSingleton(fixture.Database);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<MongoRunTransaction>();
-        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk") { TenantId = testScope.TenantId };
+        var storageDiscovery = new TestStorageDiscoveryService("standard", "fast", "bulk")
+            { TenantId = testScope.TenantId };
         builder.Services.AddSingleton(storageDiscovery);
-        builder.Services.AddSingleton<DiscoverKubernetesStorageClasses>(
-            storageDiscovery.GetStorageClassesAsync);
-        builder.Services.AddSingleton<DiscoverKubernetesStorageClassNames>(
-            storageDiscovery.GetStorageClassNamesAsync);
-        builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumes>(
-            storageDiscovery.GetPersistentVolumesAsync);
+        builder.Services.AddSingleton<DiscoverKubernetesStorageClasses>(storageDiscovery.GetStorageClassesAsync);
+        builder.Services.AddSingleton<DiscoverKubernetesStorageClassNames>(storageDiscovery.GetStorageClassNamesAsync);
+        builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumes>(storageDiscovery.GetPersistentVolumesAsync);
         builder.Services.AddSingleton<DiscoverKubernetesPersistentVolumeClaims>(
             storageDiscovery.GetPersistentVolumeClaimsAsync);
         builder.Services.AddOutboxPersistence();
@@ -222,10 +209,8 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddResourceDeploymentsFeature(builder.Configuration);
         builder.Services.AddResourceGroupsFeature(builder.Configuration);
         builder.Services.AddResourceConnectionsFeature();
-        builder.Services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ =>
-            (request, cancellationToken) =>
-                Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(
-                    new RuntimeCellIngressBaselineReady()));
+        builder.Services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ => (request, cancellationToken) =>
+            Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(new RuntimeCellIngressBaselineReady()));
         builder.Services.AddRedisServicesFeature();
         builder.Services.AddPostgresFeature(builder.Configuration);
         builder.Services.AddSecretsFeature();
@@ -239,15 +224,14 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.AddStorageProfilesFeature();
         builder.Services.AddWebServicesFeature();
         builder.Services.AddQuotasFeature(builder.Configuration);
-        builder.Services.AddFeatureMigrations("pole.postgres", typeof(
-            Pole.Features.Postgres.Migrations.PostgresNameIndexesMigration).Assembly);
-        builder.Services.AddFeatureMigrations("pole.redis", typeof(
-            Pole.Features.RedisServices.Migrations.RedisNameIndexesMigration).Assembly);
-        builder.Services.AddMigrations([
+        builder.Services.AddFeatureMigrations("pole.postgres", typeof(PostgresNameIndexesMigration).Assembly);
+        builder.Services.AddFeatureMigrations("pole.redis", typeof(RedisNameIndexesMigration).Assembly);
+        builder.Services.AddMigrations(
+        [
             .. PolePlatform.MigrationAssemblies,
-            typeof(Pole.Features.WebServices.Migrations.WebServiceSchemaValidationMigration).Assembly,
-            typeof(Pole.Features.Functions.Migrations.FunctionAppsInitialMigration).Assembly,
-            typeof(Pole.Features.ResourceConnections.Migrations.ResourceConnectionIndexesMigration).Assembly
+            typeof(WebServiceSchemaValidationMigration).Assembly,
+            typeof(FunctionAppsInitialMigration).Assembly,
+            typeof(ResourceConnectionIndexesMigration).Assembly,
         ]);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature(builder.Configuration);
@@ -256,8 +240,7 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<ProbeDeploymentTargetConnection>();
         var deploymentTargetProbe = new TestDeploymentTargetProbe();
         builder.Services.AddSingleton(deploymentTargetProbe);
-        builder.Services.AddSingleton<ProbeDeploymentTargetConnection>(
-            deploymentTargetProbe.InvokeAsync);
+        builder.Services.AddSingleton<ProbeDeploymentTargetConnection>(deploymentTargetProbe.InvokeAsync);
         builder.Services.RemoveAll<LookupDeploymentTarget>();
         builder.Services.RemoveAll<LookupDefaultDeploymentTarget>();
         builder.Services.RemoveAll<ListEligibleDeploymentTargetsForNewWorkload>();
@@ -269,24 +252,20 @@ public sealed class TestApiApplication : IAsyncDisposable
         builder.Services.RemoveAll<AdmitDeploymentTargetPublicIngressForDomainReservation>();
         builder.Services.RemoveAll<ApplyDeploymentTargetReferenceChanges>();
         var deploymentTargetLookup = new TestDeploymentTargetLookup();
-        builder.Services.AddSingleton<LookupDeploymentTarget>(
-            deploymentTargetLookup.LookupAsync);
-        builder.Services.AddSingleton<LookupDefaultDeploymentTarget>(
-            deploymentTargetLookup.LookupDefaultAsync);
+        builder.Services.AddSingleton<LookupDeploymentTarget>(deploymentTargetLookup.LookupAsync);
+        builder.Services.AddSingleton<LookupDefaultDeploymentTarget>(deploymentTargetLookup.LookupDefaultAsync);
         builder.Services.AddSingleton<ListEligibleDeploymentTargetsForNewWorkload>(
             deploymentTargetLookup.ListEligibleAsync);
         builder.Services.AddSingleton<AdmitDefaultDeploymentTargetForNewWorkload>(
             deploymentTargetLookup.AdmitDefaultForNewWorkloadAsync);
-        builder.Services.AddSingleton<AdmitDeploymentTargetForWorkload>(
-            deploymentTargetLookup.AdmitForWorkloadAsync);
+        builder.Services.AddSingleton<AdmitDeploymentTargetForWorkload>(deploymentTargetLookup.AdmitForWorkloadAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetForNewWorkload>(
             deploymentTargetLookup.AdmitForWorkloadPlacementAsync);
         builder.Services.AddSingleton<AdmitDeploymentTargetPublicIngressForNewWorkload>(
             deploymentTargetLookup.AdmitForNewWorkloadAsync);
         builder.Services.AddSingleton<ListEligiblePublicIngressDeploymentTargetsForNewWorkload>(
             deploymentTargetLookup.ListEligiblePublicIngressForNewWorkloadAsync);
-        builder.Services.AddSingleton<
-            AdmitDeploymentTargetPublicIngressForDomainReservation>(
+        builder.Services.AddSingleton<AdmitDeploymentTargetPublicIngressForDomainReservation>(
             deploymentTargetLookup.AdmitForDomainReservationAsync);
         builder.Services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
             deploymentTargetLookup.ApplyChangesOutcomeAsync);
@@ -303,16 +282,17 @@ public sealed class TestApiApplication : IAsyncDisposable
         var gitHubClient = new FakeGitHubAppClient();
         builder.Services.RemoveAll<IGitHubAppClient>();
         builder.Services.AddSingleton<IGitHubAppClient>(gitHubClient);
-        builder.Services.AddSingleton(new GitHubAppOptions
-        {
-            Enabled = true,
-            ClientId = "test-client-id",
-            ClientSecret = "test-client-secret",
-            AppSlug = "pole-test",
-            PrivateKeyPath = "not-used-by-fake.pem",
-            PublicBaseUrl = "https://pole.test",
-            FrontendBaseUrl = "http://localhost:5173"
-        });
+        builder.Services.AddSingleton(
+            new GitHubAppOptions
+            {
+                Enabled = true,
+                ClientId = "test-client-id",
+                ClientSecret = "test-client-secret",
+                AppSlug = "pole-test",
+                PrivateKeyPath = "not-used-by-fake.pem",
+                PublicBaseUrl = "https://pole.test",
+                FrontendBaseUrl = "http://localhost:5173",
+            });
         builder.Services.AddValidatorsFromAssemblies(Assemblies);
         builder.Services.AddPoleMediator(Assemblies);
         builder.Services
@@ -322,25 +302,26 @@ public sealed class TestApiApplication : IAsyncDisposable
                 _ => { });
         builder.Services.AddAuthorization(options =>
         {
-            options.AddPolicy(Policy.Admin,
-                policy =>
-                    policy.RequireClaim(Claims.Roles, Roles.Admin));
+            options.AddPolicy(Policy.Admin, policy => policy.RequireClaim(Claims.Roles, Roles.Admin));
         });
         builder.Services.AddCors(options =>
         {
-            options.AddPolicy("frontend-dev",
-                policy =>
-                    policy.WithOrigins("http://localhost:5173")
-                        .AllowAnyHeader()
-                        .AllowAnyMethod()
-                        .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
+            options.AddPolicy(
+                "frontend-dev",
+                policy => policy.WithOrigins("http://localhost:5173")
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .WithExposedHeaders(TraceHeaders.CorrelationId, TraceHeaders.TraceId));
         });
 
         configureTestServices?.Invoke(builder.Services);
         registrationTiming?.Dispose();
         WebApplication app;
         using (timings?.Measure("api.services.build"))
+        {
             app = builder.Build();
+        }
+
         using var mappingTiming = timings?.Measure("api.endpoints.map");
         app.UseTraceContext();
         app.UseCors("frontend-dev");
@@ -348,10 +329,9 @@ public sealed class TestApiApplication : IAsyncDisposable
         app.UseAuthorization();
         app.UseMiddleware<TenantContextMiddleware>();
         app.MapGitHubCallbackEndpoints();
-        var api = app.MapGroup("/api/v1").RequireTenantContext()
-            .RequireAuthorization();
-        api
-            .MapGitOpsEndpoints().MapSecretEndpoints()
+        var api = app.MapGroup("/api/v1").RequireTenantContext().RequireAuthorization();
+        api.MapGitOpsEndpoints()
+            .MapSecretEndpoints()
             .MapPrivateAccessEndpoints()
             .MapResourceGroupEndpoints()
             .MapContainerRegistryEndpoints()
@@ -381,28 +361,16 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapUpdateComputeProfileEndpoint()
             .MapDeleteComputeProfileEndpoint();
 
-        api.MapGroup("/compute-profiles")
-            .WithTags("ComputeProfiles")
-            .MapGetAvailableComputeProfilesEndpoint();
+        api.MapGroup("/compute-profiles").WithTags("ComputeProfiles").MapGetAvailableComputeProfilesEndpoint();
 
         mappingTiming?.Dispose();
         using (timings?.Measure("api.host.start"))
+        {
             await app.StartAsync();
+        }
 
-        return new TestApiApplication(
-            app,
-            gitHubClient,
-            deploymentTargetLookup,
-            encryptionKeyDirectory,
-            testScope);
+        return new TestApiApplication(app, gitHubClient, deploymentTargetLookup, encryptionKeyDirectory, testScope);
     }
 
     public Task StopAsync(CancellationToken cancellationToken = default) => _app.StopAsync(cancellationToken);
-
-    public async ValueTask DisposeAsync()
-    {
-        await _app.StopAsync();
-        await _app.DisposeAsync();
-        Directory.Delete(_encryptionKeyDirectory, recursive: true);
-    }
 }

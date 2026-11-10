@@ -13,7 +13,7 @@ public static class FunctionGatewayEndpointMapping
             HttpMethods.Patch,
             HttpMethods.Delete,
             HttpMethods.Head,
-            HttpMethods.Options
+            HttpMethods.Options,
         ],
         StringComparer.OrdinalIgnoreCase);
 
@@ -32,7 +32,7 @@ public static class FunctionGatewayEndpointMapping
             return;
         }
 
-        var path = (remaining.Value ?? string.Empty).TrimStart('/');
+        var path = (remaining.Value ?? "").TrimStart('/');
         if (path.Length == 0)
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -41,16 +41,17 @@ public static class FunctionGatewayEndpointMapping
 
         var separator = path.IndexOf('/');
         var functionRoute = separator < 0 ? path : path[..separator];
-        var handlerPath = separator < 0 ? string.Empty : path[(separator + 1)..];
+        var handlerPath = separator < 0 ? "" : path[(separator + 1)..];
         var gateway = context.RequestServices.GetService<IFunctionHttpGateway>();
         if (gateway is null)
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            await context.Response.WriteAsJsonAsync(new FunctionGatewayError(
-                "function_runtime_unavailable",
-                "The Function runtime is not configured."), context.RequestAborted);
+            await context.Response.WriteAsJsonAsync(
+                new FunctionGatewayError("function_runtime_unavailable", "The Function runtime is not configured."),
+                context.RequestAborted);
             return;
         }
+
         await gateway.InvokeAsync(context, functionRoute, handlerPath, context.RequestAborted);
     }
 }

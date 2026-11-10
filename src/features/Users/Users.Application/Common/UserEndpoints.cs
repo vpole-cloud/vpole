@@ -12,13 +12,8 @@ public static class UserEndpoints
 
     public static IEndpointRouteBuilder MapUserEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGroup(Route)
-            .WithoutTenantContext()
-            .WithTags("Users")
-            .RequireAuthorization()
-            .MapCreateUserEndpoint();
+        app.MapGroup(Route).WithoutTenantContext().WithTags("Users").RequireAuthorization().MapCreateUserEndpoint();
 
         return app;
     }
 }
-

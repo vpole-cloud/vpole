@@ -1,11 +1,5 @@
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.Functions.Application;
 using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Declarations;
-using Pole.Features.Functions.Application.Invocations;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Application.FunctionApps;
@@ -19,7 +13,8 @@ internal sealed class MongoPersistCreatedFunctionApp(
     IMongoCollection<FunctionApp> functionApps,
     IMongoCollection<FunctionRevision> functionRevisions,
     IMongoCollection<FunctionRouteBinding> functionRouteBindings,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task InvokeAsync(
         IClientSessionHandle session,
@@ -29,23 +24,14 @@ internal sealed class MongoPersistCreatedFunctionApp(
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(created);
 
-        await functionRouteBindings.InsertOneAsync(
-            session,
-            created.RouteBinding,
-            cancellationToken: cancellationToken);
-        await functionApps.InsertOneAsync(
-            session,
-            created.FunctionApp,
-            cancellationToken: cancellationToken);
-        await functionRevisions.InsertOneAsync(
-            session,
-            created.Revision,
-            cancellationToken: cancellationToken);
+        await functionRouteBindings.InsertOneAsync(session, created.RouteBinding, cancellationToken: cancellationToken);
+        await functionApps.InsertOneAsync(session, created.FunctionApp, cancellationToken: cancellationToken);
+        await functionRevisions.InsertOneAsync(session, created.Revision, cancellationToken: cancellationToken);
         await storeOutboxWrites(
             session,
             [
                 OutboxWrite.Create(created.FunctionApp.ToCreatedEvent(created.Revision)),
-                OutboxWrite.Create(created.Revision.ToRevisionCreatedEvent(created.FunctionApp))
+                OutboxWrite.Create(created.Revision.ToRevisionCreatedEvent(created.FunctionApp)),
             ],
             cancellationToken);
     }

@@ -14,14 +14,17 @@ public sealed class FeatureProjectNamespaceTests
             .ToArray();
 
         Assert.NotEmpty(projects);
-        Assert.All(projects, path =>
-        {
-            var project = XDocument.Load(path);
-            var expected = $"Pole.Features.{Path.GetFileNameWithoutExtension(path)}";
-            var actual = project.Descendants("RootNamespace").Select(element => element.Value).ToArray();
+        Assert.All(
+            projects,
+            path =>
+            {
+                var project = XDocument.Load(path);
+                var expected = $"Pole.Features.{Path.GetFileNameWithoutExtension(path)}";
+                var actual = project.Descendants("RootNamespace").Select(element => element.Value).ToArray();
 
-            Assert.True(actual.Length == 1 && actual[0] == expected,
-                $"{Path.GetRelativePath(directory, path)} must explicitly declare RootNamespace '{expected}'.");
-        });
+                Assert.True(
+                    actual.Length == 1 && actual[0] == expected,
+                    $"{Path.GetRelativePath(directory, path)} must explicitly declare RootNamespace '{expected}'.");
+            });
     }
 }

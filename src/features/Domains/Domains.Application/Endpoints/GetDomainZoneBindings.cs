@@ -22,13 +22,18 @@ public static class GetDomainZoneBindings
 {
     public static IEndpointRouteBuilder MapGetDomainZoneBindingsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/bindings", async (IMediator mediator,
-            [AsParameters] GetDomainZoneBindingsRequest request, CancellationToken cancellationToken) =>
-            (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
-            {
-                GetDomainZoneBindingsResponse response => Results.Ok(response),
-                DomainZoneNotFound error => MapDomainZoneNotFound(error)
-            })).WithName("GetDomainZoneBindings").Produces<GetDomainZoneBindingsResponse>()
+        app.MapGet(
+                "/{Id}/bindings",
+                async (
+                        IMediator mediator, [AsParameters] GetDomainZoneBindingsRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                    {
+                        GetDomainZoneBindingsResponse response => Results.Ok(response),
+                        DomainZoneNotFound error => MapDomainZoneNotFound(error),
+                    }))
+            .WithName("GetDomainZoneBindings")
+            .Produces<GetDomainZoneBindingsResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
         return app;
     }
@@ -38,25 +43,25 @@ public sealed record GetDomainZoneBindingsRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
     [FromQuery] int PageNumber = 1,
-    [FromQuery] int PageSize = 50)
-    : IMediatorRequest<GetDomainZoneBindingsOutcome>, ITenantReadOperation;
+    [FromQuery] int PageSize = 50
+) : IMediatorRequest<GetDomainZoneBindingsOutcome>, ITenantReadOperation;
 
 public sealed record DomainZoneBindingUsage(
     HostnameBindingSnapshot Binding,
     string? ResourceDisplayName,
     string? ResourceGroupId,
     PlacementSummaryDto? Placement,
-    GitResourceStatus? GitOps);
+    GitResourceStatus? GitOps
+);
 
 public sealed record GetDomainZoneBindingsResponse(
     IReadOnlyList<DomainZoneBindingUsage> Items,
     long TotalCount,
     int PageNumber,
-    int PageSize);
+    int PageSize
+);
 
-public union GetDomainZoneBindingsOutcome(
-    GetDomainZoneBindingsResponse,
-    DomainZoneNotFound);
+public union GetDomainZoneBindingsOutcome(GetDomainZoneBindingsResponse, DomainZoneNotFound);
 
 public sealed class GetDomainZoneBindingsValidator : AbstractValidator<GetDomainZoneBindingsRequest>
 {
@@ -70,21 +75,33 @@ public sealed class GetDomainZoneBindingsValidator : AbstractValidator<GetDomain
 }
 
 public sealed class GetDomainZoneBindingsHandler(
-    LoadTenantDomainZone loadZone, LoadDomainZoneBindingPage loadBindings,
-    LoadRegisteredResource loadResource, LoadExactResourceDeployment loadDeployment, IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetDomainZoneBindingsRequest, GetDomainZoneBindingsOutcome>
+    LoadTenantDomainZone loadZone,
+    LoadDomainZoneBindingPage loadBindings,
+    LoadRegisteredResource loadResource,
+    LoadExactResourceDeployment loadDeployment,
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetDomainZoneBindingsRequest, GetDomainZoneBindingsOutcome>
 {
     public async Task<GetDomainZoneBindingsOutcome> HandleAsync(
-        GetDomainZoneBindingsRequest request, CancellationToken cancellationToken = default)
+        GetDomainZoneBindingsRequest request,
+        CancellationToken cancellationToken = default)
     {
         var zone = await loadZone(request.TenantId, request.Id, cancellationToken);
         if (zone is DomainZoneNotFound missing)
             return missing;
 
-        var page = await loadBindings(request.TenantId, request.Id,
-            request.PageNumber, request.PageSize, cancellationToken);
-        var statuses = await git.StatusesAsync(new(request.TenantId, "HostnameBinding",
-            page.Items.Select(item => item.Id).ToArray()), cancellationToken);
+        var page = await loadBindings(
+            request.TenantId,
+            request.Id,
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
+        var statuses = await git.StatusesAsync(
+            new LoadGitResourceStatusesRequest(
+                request.TenantId,
+                "HostnameBinding",
+                page.Items.Select(item => item.Id).ToArray()),
+            cancellationToken);
         var items = new List<DomainZoneBindingUsage>();
         var owners = new Dictionary<(string Type, string Id), RegisteredResource?>();
         foreach (var binding in page.Items)
@@ -102,19 +119,26 @@ public sealed class GetDomainZoneBindingsHandler(
                 owners.Add(key, owner);
             }
 
-            var deployment = owner is null ? null : await loadDeployment(
-                new LoadExactResourceDeploymentRequest(
-                    TenantId: request.TenantId,
-                    ResourceType: resourceType,
-                    ResourceId: binding.ResourceId,
-                    DeploymentId: binding.ResourceDeploymentId),
-                cancellationToken: cancellationToken);
+            var deployment = owner is null
+                ? null
+                : await loadDeployment(
+                    new LoadExactResourceDeploymentRequest(
+                        TenantId: request.TenantId,
+                        ResourceType: resourceType,
+                        ResourceId: binding.ResourceId,
+                        DeploymentId: binding.ResourceDeploymentId),
+                    cancellationToken: cancellationToken);
 
             if (deployment?.DeploymentTargetId != binding.DeploymentTargetId)
                 deployment = null;
 
-            items.Add(new DomainZoneBindingUsage(binding, owner?.DisplayName, owner?.ResourceGroupId, deployment,
-                statuses.GetValueOrDefault(binding.Id)));
+            items.Add(
+                new DomainZoneBindingUsage(
+                    binding,
+                    owner?.DisplayName,
+                    owner?.ResourceGroupId,
+                    deployment,
+                    statuses.GetValueOrDefault(binding.Id)));
         }
 
         return new GetDomainZoneBindingsResponse(items, page.TotalCount, request.PageNumber, request.PageSize);

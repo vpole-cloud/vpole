@@ -1,6 +1,6 @@
-using Pole.Architecture;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Architecture;
 using Pole.Database;
 using Pole.Features.SourceBuilds.Application.Mongo;
 using Pole.Features.SourceBuilds.Domain;
@@ -11,36 +11,46 @@ public sealed record SourceBuildExecutionIdentity(
     string TenantId,
     string BuildJobId,
     string WorkerId,
-    long Attempt);
+    long Attempt
+);
 
 public delegate Task<bool> RenewSourceBuildExecution(
     SourceBuildExecutionIdentity identity,
     CancellationToken cancellationToken = default);
 
-[ViolateArchitecture(ArchitectureRules.RawBson,
+[ViolateArchitecture(
+    ArchitectureRules.RawBson,
     "Build leases calculate expiry with $$NOW in MongoDB; renewal must preserve the atomic computed update.")]
 internal static class SourceBuildExecutionLease
 {
     internal const int LeaseMilliseconds = 120_000;
 
-    internal static BsonValue Expiry =>
-        new BsonDocument("$add", new BsonArray { "$$NOW", LeaseMilliseconds });
+    internal static BsonValue Expiry => new BsonDocument("$add", new BsonArray { "$$NOW", LeaseMilliseconds });
 
-    internal static UpdateDefinition<SourceBuildJob> Renewal() =>
-        new PipelineUpdateDefinition<SourceBuildJob>(new[]
+    internal static UpdateDefinition<SourceBuildJob> Renewal() => new PipelineUpdateDefinition<SourceBuildJob>(
+        new[]
         {
-            new BsonDocument("$set", new BsonDocument(MongoFields.Field<SourceBuildJob, DateTime>(
-                job => ((ClaimedSourceBuildExecution)job.Execution).ExpiresAtUtc), Expiry))
+            new BsonDocument(
+                "$set",
+                new BsonDocument(
+                    MongoFields.Field<SourceBuildJob, DateTime>(job =>
+                        ((ClaimedSourceBuildExecution)job.Execution).ExpiresAtUtc),
+                    Expiry)),
         });
 }
 
-internal sealed class MongoRenewSourceBuildExecution(IMongoCollection<SourceBuildJob> jobs)
+internal sealed class MongoRenewSourceBuildExecution(
+    IMongoCollection<SourceBuildJob> jobs
+)
 {
-    public async Task<bool> InvokeAsync(SourceBuildExecutionIdentity identity,
+    public async Task<bool> InvokeAsync(
+        SourceBuildExecutionIdentity identity,
         CancellationToken cancellationToken = default)
     {
-        var result = await jobs.UpdateOneAsync(SourceBuildJobFilters.OwnedLease(identity),
-            SourceBuildExecutionLease.Renewal(), cancellationToken: cancellationToken);
+        var result = await jobs.UpdateOneAsync(
+            SourceBuildJobFilters.OwnedLease(identity),
+            SourceBuildExecutionLease.Renewal(),
+            cancellationToken: cancellationToken);
         return result.MatchedCount == 1;
     }
 }

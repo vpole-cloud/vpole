@@ -12,14 +12,14 @@ module PostgresClusterEvents =
         | PostgresDeploymentMode.StatefulSet -> PostgresDeploymentModeSnapshot.StatefulSet
         | _ -> invalidArg (nameof mode) $"Unsupported PostgreSQL deployment mode '{mode}'."
 
-    let private toSnapshotSpec (spec : PostgresClusterSpec) : PostgresClusterSpecSnapshot =
+    let private toSnapshotSpec (spec: PostgresClusterSpec) : PostgresClusterSpecSnapshot =
         { Instances = spec.Instances
           Storage = spec.Storage
           StorageProfileId = spec.StorageProfileId
           Version = spec.Version
           DeploymentMode = toSnapshotDeploymentMode spec.DeploymentMode }
 
-    let created (cluster : PostgresCluster) : PostgresClusterCreatedEvent =
+    let created (cluster: PostgresCluster) : PostgresClusterCreatedEvent =
         { EventCore = EventCore.Create(cluster.TenantId)
           ClusterId = cluster.Id
           Name = cluster.Name
@@ -27,7 +27,7 @@ module PostgresClusterEvents =
           ResourceRevision = cluster.Revision
           Spec = toSnapshotSpec cluster.Spec }
 
-    let deleted (cluster : PostgresCluster) : PostgresClusterDeletedEvent =
+    let deleted (cluster: PostgresCluster) : PostgresClusterDeletedEvent =
         { EventCore = EventCore.Create(cluster.TenantId)
           ClusterId = cluster.Id
           Name = cluster.Name
@@ -35,14 +35,11 @@ module PostgresClusterEvents =
           ResourceRevision = cluster.Revision
           Spec = toSnapshotSpec cluster.Spec }
 
-    let updated (previous : PostgresCluster) (next : PostgresCluster) : PostgresClusterUpdatedEvent =
+    let updated (previous: PostgresCluster) (next: PostgresCluster) : PostgresClusterUpdatedEvent =
         { EventCore = EventCore.Create(next.TenantId)
           ClusterId = next.Id
           Name = next.Name
           GroupId = next.GroupId
           ResourceRevision = next.Revision
           Changes =
-            { Spec =
-                UpdateLog<PostgresClusterSpecSnapshot>.Of(
-                    toSnapshotSpec previous.Spec,
-                    toSnapshotSpec next.Spec) } }
+            { Spec = UpdateLog<PostgresClusterSpecSnapshot>.Of(toSnapshotSpec previous.Spec, toSnapshotSpec next.Spec) } }

@@ -6,17 +6,15 @@ namespace Pole.Features.ContainerRegistries.Application.Common;
 
 public static class ContainerRegistryHttpMappings
 {
-    public static HttpProblem MapRewrapRejected(RegistryCredentialRewrapRejected _) =>
-        new(
-            (int)HttpStatusCode.Conflict,
-            PoleProblemTypeId.FromCode("container-registries.credentials.rewrap-rejected"),
-            "Container registry credentials could not be rewrapped",
-            "container-registries.credentials.rewrap-rejected");
+    public static HttpProblem MapRewrapRejected(RegistryCredentialRewrapRejected _) => new(
+        (int)HttpStatusCode.Conflict,
+        PoleProblemTypeId.FromCode("container-registries.credentials.rewrap-rejected"),
+        "Container registry credentials could not be rewrapped",
+        "container-registries.credentials.rewrap-rejected");
 
-    public static HttpProblem MapRewrapFailed(RegistryCredentialRewrapFailed _) =>
-        new(
-            (int)HttpStatusCode.InternalServerError,
-            PoleProblemTypeId.FromCode("container-registries.credentials.rewrap-failed"),
-            "Container registry credentials could not be rewrapped",
-            "container-registries.credentials.rewrap-failed");
+    public static HttpProblem MapRewrapFailed(RegistryCredentialRewrapFailed _) => new(
+        (int)HttpStatusCode.InternalServerError,
+        PoleProblemTypeId.FromCode("container-registries.credentials.rewrap-failed"),
+        "Container registry credentials could not be rewrapped",
+        "container-registries.credentials.rewrap-failed");
 }

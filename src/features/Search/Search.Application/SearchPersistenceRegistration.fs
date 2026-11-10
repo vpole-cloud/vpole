@@ -8,16 +8,23 @@ open Pole.Features.Search.Domain
 
 [<RequireQualifiedAccess>]
 module internal SearchPersistenceRegistration =
-    let registerCollections (services : IServiceCollection) =
+    let registerCollections (services: IServiceCollection) =
         services.TryAddSingleton<IMongoCollection<SearchDocument>>(
             Func<IServiceProvider, IMongoCollection<SearchDocument>>(fun sp ->
-                sp.GetRequiredService<IMongoDatabase>().GetCollection<SearchDocument>("SearchDocuments")))
+                sp.GetRequiredService<IMongoDatabase>().GetCollection<SearchDocument>("SearchDocuments"))
+        )
         |> ignore
+
         services.TryAddSingleton<IMongoCollection<SearchSourceDocument>>(
             Func<IServiceProvider, IMongoCollection<SearchSourceDocument>>(fun sp ->
-                sp.GetRequiredService<IMongoDatabase>().GetCollection<SearchSourceDocument>("SearchSourceDocuments")))
+                sp.GetRequiredService<IMongoDatabase>().GetCollection<SearchSourceDocument>("SearchSourceDocuments"))
+        )
         |> ignore
+
         services.TryAddSingleton<IMongoCollection<SearchProjectionVersionDocument>>(
             Func<IServiceProvider, IMongoCollection<SearchProjectionVersionDocument>>(fun sp ->
-                sp.GetRequiredService<IMongoDatabase>().GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions")))
+                sp
+                    .GetRequiredService<IMongoDatabase>()
+                    .GetCollection<SearchProjectionVersionDocument>("SearchProjectionVersions"))
+        )
         |> ignore

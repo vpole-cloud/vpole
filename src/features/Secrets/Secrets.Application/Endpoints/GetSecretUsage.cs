@@ -8,18 +8,9 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Primitives;
 using Pole.Mediator;
 using Pole.Validation;
 using Pole.Workloads;
@@ -27,14 +18,12 @@ using static Pole.Features.Secrets.Application.SecretHttpMappings;
 
 namespace Pole.Features.Secrets.Application.Endpoints;
 
-public union GetSecretUsageOutcome(
-    SecretUsage[],
-    SecretMissing);
+public union GetSecretUsageOutcome(SecretUsage[], SecretMissing);
 
 public sealed record GetSecretUsageRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetSecretUsageOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetSecretUsageOutcome>, ITenantReadOperation;
 
 public sealed class GetSecretUsageValidator : AbstractValidator<GetSecretUsageRequest>
 {
@@ -47,8 +36,8 @@ public sealed class GetSecretUsageValidator : AbstractValidator<GetSecretUsageRe
 public sealed class GetSecretUsageHandler(
     LoadSecretById load,
     LoadResourceDeploymentSet loadDeployments,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetSecretUsageRequest, GetSecretUsageOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetSecretUsageRequest, GetSecretUsageOutcome>
 {
     public async Task<GetSecretUsageOutcome> HandleAsync(
         GetSecretUsageRequest request,
@@ -67,24 +56,28 @@ public sealed class GetSecretUsageHandler(
                     ResourceType: ResourceTypeId.Create(binding.Consumer.ResourceType),
                     ResourceId: binding.Consumer.ResourceId),
                 cancellationToken: cancellationToken);
-            usages.Add(new(
-                SecretBindingDto.From(binding) with
-                {
-                    GitOps = await git.StatusAsync(
-                        new LoadGitResourceStatusRequest(
-                            TenantId: request.TenantId,
-                            Kind: "SecretBinding",
-                            ResourceId: binding.Id),
-                        ct: cancellationToken)
-                },
-                deployments.Where(x =>
-                    binding.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
-                    x.IsolationScopeId == secret.IsolationScopeId &&
-                    x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
-                    (binding.Selection is AllSecretDeployments ||
-                     binding.Selection is SelectedSecretDeployments selected && selected.DeploymentIds.Contains(x.DeploymentId)))
-                    .Select(x => x.DeploymentId).ToArray()));
+            usages.Add(
+                new SecretUsage(
+                    SecretBindingDto.From(binding) with
+                    {
+                        GitOps = await git.StatusAsync(
+                            new LoadGitResourceStatusRequest(
+                                TenantId: request.TenantId,
+                                Kind: "SecretBinding",
+                                ResourceId: binding.Id),
+                            ct: cancellationToken),
+                    },
+                    deployments.Where(x =>
+                            binding.Usage == SecretBindingUsage.Runtime &&
+                            x.IsolationScopeId == secret.IsolationScopeId &&
+                            x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
+                            (binding.Selection is AllSecretDeployments ||
+                                (binding.Selection is SelectedSecretDeployments selected &&
+                                    selected.DeploymentIds.Contains(x.DeploymentId))))
+                        .Select(x => x.DeploymentId)
+                        .ToArray()));
         }
+
         return usages.ToArray();
     }
 }
@@ -93,15 +86,14 @@ public static class GetSecretUsageEndpoint
 {
     public static IEndpointRouteBuilder MapGetSecretUsageEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/usage", async (
-                IMediator mediator,
-                [AsParameters] GetSecretUsageRequest request,
-                CancellationToken ct) =>
-                (await mediator.Send(request, ct))
-                .ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}/usage",
+                async (
+                    IMediator mediator, [AsParameters] GetSecretUsageRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     SecretUsage[] usage => Results.Ok(usage),
-                    SecretMissing error => MapMissing(error)
+                    SecretMissing error => MapMissing(error),
                 }))
             .WithName("GetSecretUsage");
 
@@ -111,7 +103,8 @@ public static class GetSecretUsageEndpoint
 
 public sealed record SecretUsage(
     SecretBindingDto Binding,
-    string[] AffectedDeploymentIds);
+    string[] AffectedDeploymentIds
+);
 
 public sealed record SecretBindingDto(
     string Id,
@@ -121,7 +114,8 @@ public sealed record SecretBindingDto(
     bool AllDeployments,
     string[] DeploymentIds,
     ImmutableDictionary<string, string> KeyMappings,
-    GitResourceStatus? GitOps = null)
+    GitResourceStatus? GitOps = null
+)
 {
     public static SecretBindingDto From(SecretBinding binding) => new(
         binding.Id,

@@ -3,22 +3,15 @@ using Pole.Database;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.Declarations;
-using Pole.Features.WebServices.Application.Hostnames;
 using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Domain;
-using Pole.ResultType;
 
 namespace Pole.Features.WebServices.Application.Lifecycle;
 
 public sealed record WebServiceDeletionFinalized;
 
-public union FinalizeWebServiceDeletionOutcome(
-    WebServiceDeletionFinalized,
-    WebServiceFinalizationError);
+public union FinalizeWebServiceDeletionOutcome(WebServiceDeletionFinalized, WebServiceFinalizationError);
 
 public delegate Task<FinalizeWebServiceDeletionOutcome> FinalizeWebServiceDeletion(
     string tenantId,
@@ -32,19 +25,17 @@ internal sealed class MongoFinalizeWebServiceDeletion(
     DeleteHostnameBindingsForResource deleteHostnameBindingsForResource,
     IResourceRegistrar resourceRegistrar,
     RunMongoOutcomeTransaction<FinalizeWebServiceDeletionOutcome> runMongoTransaction,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public Task<FinalizeWebServiceDeletionOutcome> InvokeAsync(
         string tenantId,
         string webServiceId,
-        CancellationToken cancellationToken = default) =>
-        runMongoTransaction(async (transaction, ct) =>
+        CancellationToken cancellationToken = default) => runMongoTransaction(
+        async (transaction, ct) =>
         {
-            var webServiceFilter = WebServiceFilters.InLifecycle<DeletingWebServiceLifecycle>(
-                tenantId,
-                webServiceId);
-            var webService = await webServices.Find(transaction.Session, webServiceFilter)
-                .FirstOrDefaultAsync(ct);
+            var webServiceFilter = WebServiceFilters.InLifecycle<DeletingWebServiceLifecycle>(tenantId, webServiceId);
+            var webService = await webServices.Find(transaction.Session, webServiceFilter).FirstOrDefaultAsync(ct);
             if (webService is null)
                 return transaction.Commit(new WebServiceDeletionFinalized());
 
@@ -56,9 +47,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 session: transaction.Session,
                 cancellationToken: ct);
             if (readiness is not ResourceDeploymentFinalizationReadiness.Ready)
-            {
                 return transaction.Commit(new WebServiceDeletionFinalized());
-            }
 
             var deleted = await webServices.DeleteOneAsync(
                 transaction.Session,
@@ -76,9 +65,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 session: transaction.Session,
                 cancellationToken: ct);
             if (registration is ResourceRegistrationMutationError registrationError)
-            {
                 return transaction.Abort(new WebServiceFinalizationError(registrationError));
-            }
 
             var bindingCleanup = await deleteHostnameBindingsForResource(
                 new DeleteHostnameBindingsForResourceRequest(
@@ -88,9 +75,7 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 session: transaction.Session,
                 cancellationToken: ct);
             if (bindingCleanup is HostnameBindingCleanupError bindingCleanupError)
-            {
                 return transaction.Abort(new WebServiceFinalizationError(bindingCleanupError));
-            }
 
             var purge = await purgeDeletedResourceDeployments(
                 new PurgeDeletedResourceDeploymentsRequest(
@@ -100,13 +85,9 @@ internal sealed class MongoFinalizeWebServiceDeletion(
                 session: transaction.Session,
                 cancellationToken: ct);
             if (purge is ResourceDeploymentFinalizationConflict conflict)
-            {
                 return transaction.Abort(new WebServiceFinalizationError(conflict));
-            }
-            await storeOutboxWrites(
-                transaction.Session,
-                [OutboxWrite.Create(webService.ToDeleteEvent())],
-                ct);
+            await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(webService.ToDeleteEvent())], ct);
             return transaction.Commit(new WebServiceDeletionFinalized());
-        }, cancellationToken);
+        },
+        cancellationToken);
 }

@@ -1,17 +1,18 @@
 using System.Net;
 using k8s;
 using k8s.Autorest;
+using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 
 namespace Pole.Features.RedisServices.Application.Kubernetes;
 
-public sealed record RedisKubernetesApplyFailed(string Message);
+public sealed record RedisKubernetesApplyFailed(
+    string Message
+);
 
 public sealed record RedisKubernetesApplied;
 
-public union RedisKubernetesApplyOutcome(
-    RedisKubernetesApplied,
-    RedisKubernetesApplyFailed);
+public union RedisKubernetesApplyOutcome(RedisKubernetesApplied, RedisKubernetesApplyFailed);
 
 public static class RedisKubernetesResourceManager
 {
@@ -87,8 +88,7 @@ public static class RedisKubernetesResourceManager
                         statefulSet.Metadata.Name,
                         redis.Namespace,
                         cancellationToken: cancellationToken);
-                    statefulSet.Metadata.ResourceVersion =
-                        existing.Metadata.ResourceVersion;
+                    statefulSet.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
                     await kubernetes.AppsV1.ReplaceNamespacedStatefulSetAsync(
                         statefulSet,
                         statefulSet.Metadata.Name,
@@ -124,8 +124,7 @@ public static class RedisKubernetesResourceManager
         }
         catch (Exception)
         {
-            return new RedisKubernetesApplyFailed(
-                $"Unable to apply Redis in Kubernetes while {stage}.");
+            return new RedisKubernetesApplyFailed($"Unable to apply Redis in Kubernetes while {stage}.");
         }
     }
 
@@ -135,37 +134,30 @@ public static class RedisKubernetesResourceManager
         string @namespace,
         CancellationToken cancellationToken = default)
     {
-        await KubernetesExtensions.DeleteIfExistsAsync(() =>
-            kubernetes.AppsV1.DeleteNamespacedStatefulSetAsync(
-                name: redisName,
-                namespaceParameter: @namespace,
-                cancellationToken: cancellationToken));
+        await KubernetesExtensions.DeleteIfExistsAsync(() => kubernetes.AppsV1.DeleteNamespacedStatefulSetAsync(
+            name: redisName,
+            namespaceParameter: @namespace,
+            cancellationToken: cancellationToken));
 
-        await KubernetesExtensions.DeleteIfExistsAsync(() =>
-            kubernetes.CoreV1.DeleteNamespacedServiceAsync(
-                name: RedisInKubernetes.BuildServiceName(redisName),
-                namespaceParameter: @namespace,
-                cancellationToken: cancellationToken));
+        await KubernetesExtensions.DeleteIfExistsAsync(() => kubernetes.CoreV1.DeleteNamespacedServiceAsync(
+            name: RedisInKubernetes.BuildServiceName(redisName),
+            namespaceParameter: @namespace,
+            cancellationToken: cancellationToken));
     }
 
-    private static async Task CreateOrReplaceAsync(
-        Func<Task> createCall,
-        Func<Task> replaceCall)
+    private static async Task CreateOrReplaceAsync(Func<Task> createCall, Func<Task> replaceCall)
     {
         try
         {
             await createCall();
         }
-        catch (HttpOperationException ex)
-            when (ex.Response?.StatusCode == HttpStatusCode.Conflict)
+        catch (HttpOperationException ex) when (ex.Response?.StatusCode == HttpStatusCode.Conflict)
         {
             await replaceCall();
         }
     }
 
-    private static void PreserveServiceOwnedFields(
-        k8s.Models.V1Service desired,
-        k8s.Models.V1Service existing)
+    private static void PreserveServiceOwnedFields(V1Service desired, V1Service existing)
     {
         desired.Metadata.ResourceVersion = existing.Metadata.ResourceVersion;
         desired.Spec.ClusterIP = existing.Spec.ClusterIP;

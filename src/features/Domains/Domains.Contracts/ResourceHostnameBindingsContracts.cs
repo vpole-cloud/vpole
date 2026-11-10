@@ -6,7 +6,8 @@ namespace Pole.Features.Domains.Contracts;
 public sealed record LoadHostnameBindingsForResourceInTransactionRequest(
     string TenantId,
     ResourceTypeId ResourceType,
-    string ResourceId);
+    string ResourceId
+);
 
 public delegate Task<IReadOnlyList<HostnameBindingSnapshot>> LoadHostnameBindingsForResourceInTransaction(
     LoadHostnameBindingsForResourceInTransactionRequest request,

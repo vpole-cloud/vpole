@@ -6,13 +6,15 @@ public sealed record RepositorySyncSignal(
     string ConnectionId,
     string ExternalRepositoryId,
     string Branch,
-    string SignalId);
+    string SignalId
+);
 
 public sealed record GitDependencyWakeSignal(
     string TenantId,
     ResourceAddress Address,
     string ResourceId,
-    string SignalId);
+    string SignalId
+);
 
 // Integration adapters own their events. GitOps receives only durable, tenant-scoped scheduling intents.
 public interface IGitSourceScheduler

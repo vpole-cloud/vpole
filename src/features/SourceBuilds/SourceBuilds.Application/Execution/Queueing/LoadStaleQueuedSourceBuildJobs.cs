@@ -9,16 +9,17 @@ public delegate Task<IReadOnlyList<string>> LoadStaleQueuedSourceBuildJobs(
     int limit,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadStaleQueuedSourceBuildJobs(IMongoCollection<SourceBuildJob> jobs)
+internal sealed class MongoLoadStaleQueuedSourceBuildJobs(
+    IMongoCollection<SourceBuildJob> jobs
+)
 {
     public async Task<IReadOnlyList<string>> InvokeAsync(
         DateTime cutoffUtc,
         int limit,
-        CancellationToken cancellationToken = default) =>
-        await jobs
-            .Find(SourceBuildJobFilters.RecoverableBefore(cutoffUtc))
-            .SortBy(item => item.UpdatedAtUtc)
-            .Limit(limit)
-            .Project(item => item.Id)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await jobs
+        .Find(SourceBuildJobFilters.RecoverableBefore(cutoffUtc))
+        .SortBy(item => item.UpdatedAtUtc)
+        .Limit(limit)
+        .Project(item => item.Id)
+        .ToListAsync(cancellationToken);
 }

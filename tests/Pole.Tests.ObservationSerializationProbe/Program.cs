@@ -36,14 +36,16 @@ try
     var instances = diagnosticsKind == "Available"
         ? roundTrip["Diagnostics"]["Available"]["Instances"].AsBsonArray.Count
         : 0;
-    Console.WriteLine(JsonSerializer.Serialize(new
-    {
-        ObservationKind = observationKind,
-        DiagnosticsKind = diagnosticsKind,
-        Pods = pods,
-        Instances = instances,
-        Hash = Convert.ToHexString(SHA256.HashData(roundTrip.ToBson()))
-    }));
+    Console.WriteLine(
+        JsonSerializer.Serialize(
+            new
+            {
+                ObservationKind = observationKind,
+                DiagnosticsKind = diagnosticsKind,
+                Pods = pods,
+                Instances = instances,
+                Hash = Convert.ToHexString(SHA256.HashData(roundTrip.ToBson())),
+            }));
     return 0;
 }
 catch

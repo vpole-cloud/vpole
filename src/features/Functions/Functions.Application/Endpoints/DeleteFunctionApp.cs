@@ -4,15 +4,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Quotas.Contracts;
@@ -20,7 +15,6 @@ using Pole.Features.Quotas.Contracts.HttpMapping;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Contracts.HttpMapping;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 using static Pole.Features.Functions.Application.Common.FunctionAppHttpMappings;
 
@@ -30,43 +24,45 @@ public static class DeleteFunctionApp
 {
     public static IEndpointRouteBuilder MapDeleteFunctionAppEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] DeleteFunctionAppRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteFunctionAppRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    DeleteFunctionAppResponse response => Results.Accepted(value: response),
-                    DeleteFunctionAppError error => MapDeleteError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        DeleteFunctionAppResponse response => Results.Accepted(value: response),
+                        DeleteFunctionAppError error => MapDeleteError(error),
+                    });
+                })
             .WithName("DeleteFunctionApp")
             .Produces<DeleteFunctionAppResponse>(StatusCodes.Status202Accepted);
         return app;
     }
 
-    private static HttpProblem MapDeleteError(DeleteFunctionAppError error) =>
-        error switch
-        {
-            FunctionSecretBindingRemovalRequired bindings => MapSecretBindingRemovalRequired(bindings),
-            FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
-            FunctionAppNotFound notFound => MapNotFound(notFound),
-            FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
-            FunctionAppDeletionChanged changed => MapDeletionChanged(changed),
-            ResourceDeploymentMutationError deployment =>
-                ResourceDeploymentContractHttpMappings.MapMutationError(deployment),
-            QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota)
-        };
+    private static HttpProblem MapDeleteError(DeleteFunctionAppError error) => error switch
+    {
+        FunctionSecretBindingRemovalRequired bindings => MapSecretBindingRemovalRequired(bindings),
+        FunctionAppGitOwnedConfiguration owned => MapGitOwned(owned),
+        FunctionAppNotFound notFound => MapNotFound(notFound),
+        FunctionAppResourceDeploymentMissing missing => MapResourceDeploymentMissing(missing),
+        FunctionAppDeletionChanged changed => MapDeletionChanged(changed),
+        ResourceDeploymentMutationError deployment => ResourceDeploymentContractHttpMappings.MapMutationError(
+            deployment),
+        QuotaExecutionError quota => QuotaContractHttpMappings.MapExecutionError(quota),
+    };
 }
 
 public sealed record DeleteFunctionAppRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<DeleteFunctionAppOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<DeleteFunctionAppOutcome>, ITenantWriteOperation;
 
-public sealed record DeleteFunctionAppResponse(string FunctionAppId);
+public sealed record DeleteFunctionAppResponse(
+    string FunctionAppId
+);
 
 public union DeleteFunctionAppError(
     FunctionSecretBindingRemovalRequired,
@@ -77,32 +73,29 @@ public union DeleteFunctionAppError(
     ResourceDeploymentMutationError,
     QuotaExecutionError);
 
-public union DeleteFunctionAppOutcome(
-    DeleteFunctionAppResponse,
-    DeleteFunctionAppError);
+public union DeleteFunctionAppOutcome(DeleteFunctionAppResponse, DeleteFunctionAppError);
 
 public sealed class DeleteFunctionAppHandler(
     LoadFunctionAppById loadFunctionAppById,
     ApplyFunctionAppDeletion deleteWorkflow,
     LoadExactResourceDeploymentRuntimePlacement loadDeploymentPlacement,
     IQuotaAdmissionExecutor quotaAdmissionExecutor,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<DeleteFunctionAppRequest, DeleteFunctionAppOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<DeleteFunctionAppRequest, DeleteFunctionAppOutcome>
 {
     public async Task<DeleteFunctionAppOutcome> HandleAsync(
         DeleteFunctionAppRequest request,
         CancellationToken cancellationToken = default)
     {
-        var app = await loadFunctionAppById(
-            request.TenantId,
-            request.Id,
-            cancellationToken);
+        var app = await loadFunctionAppById(request.TenantId, request.Id, cancellationToken);
         if (app is null)
             return new DeleteFunctionAppError(new FunctionAppNotFound(request.Id));
         if (app.DesiredState == FunctionAppDesiredState.Deleting)
             return new DeleteFunctionAppResponse(app.Id);
 
-        if (await git.StatusAsync(new(app.TenantId, "FunctionApp", app.Id), cancellationToken) is not null)
+        if (await git.StatusAsync(
+                new LoadGitResourceStatusRequest(app.TenantId, "FunctionApp", app.Id),
+                cancellationToken) is not null)
             return new DeleteFunctionAppError(new FunctionAppGitOwnedConfiguration(app.Id));
 
         var deployment = await loadDeploymentPlacement(
@@ -113,22 +106,11 @@ public sealed class DeleteFunctionAppHandler(
                 DeploymentId: app.Placement.ResourceDeploymentId),
             cancellationToken: cancellationToken);
         if (deployment is null ||
-            !string.Equals(
-                deployment.RuntimeCellId,
-                app.Placement.RuntimeCellId,
-                StringComparison.Ordinal) ||
-            !string.Equals(
-                deployment.DeploymentTargetId,
-                app.Placement.DeploymentTargetId,
-                StringComparison.Ordinal))
-        {
-            return new DeleteFunctionAppError(
-                new FunctionAppResourceDeploymentMissing(app.Id));
-        }
+            !string.Equals(deployment.RuntimeCellId, app.Placement.RuntimeCellId, StringComparison.Ordinal) ||
+            !string.Equals(deployment.DeploymentTargetId, app.Placement.DeploymentTargetId, StringComparison.Ordinal))
+            return new DeleteFunctionAppError(new FunctionAppResourceDeploymentMissing(app.Id));
 
-        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
-            FunctionQuotaAllocation,
-            DeleteFunctionAppOutcome>(
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync(
             new ExecuteQuotaAdmissionRequest<FunctionQuotaAllocation, DeleteFunctionAppOutcome>(
                 TenantId: app.TenantId,
                 ResourceKey: FunctionAppQuotaResourceKey.Create(app.Id),
@@ -136,17 +118,21 @@ public sealed class DeleteFunctionAppHandler(
                 QuotaError: quotaError => new DeleteFunctionAppError(quotaError),
                 MutationCallback: async (transaction, ct) =>
                 {
-                    var deleted = await deleteWorkflow(new(app,
-                        new ResourceDeploymentExactMutationRequest(
-                            app.TenantId,
-                            FunctionResourceDeployment.ResourceType,
-                            app.Id,
-                            app.Placement.ResourceDeploymentId,
-                            deployment.DeploymentRevision,
-                            new ComputeProfileReference(
-                                deployment.Compute.ComputeProfileId,
-                                deployment.Compute.ComputeProfileRevision),
-                            ResourceRevision: app.NextRevisionNumber)), transaction.Session, ct);
+                    var deleted = await deleteWorkflow(
+                        new ApplyFunctionAppDeletionRequest(
+                            app,
+                            new ResourceDeploymentExactMutationRequest(
+                                app.TenantId,
+                                FunctionResourceDeployment.ResourceType,
+                                app.Id,
+                                app.Placement.ResourceDeploymentId,
+                                deployment.DeploymentRevision,
+                                new ComputeProfileReference(
+                                    deployment.Compute.ComputeProfileId,
+                                    deployment.Compute.ComputeProfileRevision),
+                                ResourceRevision: app.NextRevisionNumber)),
+                        transaction.Session,
+                        ct);
                     if (deleted is FunctionSecretBindingRemovalRequired bindings)
                         return transaction.Abort(new DeleteFunctionAppError(bindings));
                     if (deleted is FunctionAppDeletionChanged changed)
@@ -162,9 +148,7 @@ public sealed class DeleteFunctionAppHandler(
     }
 }
 
-public sealed class DeleteFunctionAppRequestValidator
-    : AbstractValidator<DeleteFunctionAppRequest>
+public sealed class DeleteFunctionAppRequestValidator : AbstractValidator<DeleteFunctionAppRequest>
 {
-    public DeleteFunctionAppRequestValidator() =>
-        RuleFor(request => request.Id).MongoObjectId("Function App ID");
+    public DeleteFunctionAppRequestValidator() => RuleFor(request => request.Id).MongoObjectId("Function App ID");
 }

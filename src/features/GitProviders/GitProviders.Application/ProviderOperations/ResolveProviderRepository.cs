@@ -12,11 +12,13 @@ public sealed record ResolveProviderRepositoryRequest(
     string TenantId,
     string ConnectionId,
     string RepositoryId,
-    string Branch);
+    string Branch
+);
 
 public sealed record ResolvedProviderRepository(
     ProviderRepository Repository,
-    string CommitSha);
+    string CommitSha
+);
 
 public union ResolveProviderRepositoryOutcome(
     ResolvedProviderRepository,
@@ -33,7 +35,8 @@ public delegate Task<ResolveProviderRepositoryOutcome> ResolveProviderRepository
 internal sealed class GitHubResolveProviderRepository(
     LoadTenantIdentity loadTenant,
     LoadGitProviderConnection loadConnection,
-    IGitHubAppClient client)
+    IGitHubAppClient client
+)
 {
     public async Task<ResolveProviderRepositoryOutcome> InvokeAsync(
         ResolveProviderRepositoryRequest request,
@@ -53,7 +56,9 @@ internal sealed class GitHubResolveProviderRepository(
         try
         {
             repository = await client.GetRepositoryAsync(
-                connection.ExternalInstallationId, request.RepositoryId, cancellationToken);
+                connection.ExternalInstallationId,
+                request.RepositoryId,
+                cancellationToken);
         }
         catch (GitHubApiException exception) when (AccessDenied(exception))
         {
@@ -71,7 +76,10 @@ internal sealed class GitHubResolveProviderRepository(
         try
         {
             var commit = await client.ResolveCommitAsync(
-                new(new(connection.ExternalInstallationId, repository), request.Branch), cancellationToken);
+                new GitHubResolveCommitRequest(
+                    new GitHubRepositoryAccess(connection.ExternalInstallationId, repository),
+                    request.Branch),
+                cancellationToken);
             return commit is { Length: 40 } && commit.All(char.IsAsciiHexDigit)
                 ? new ResolvedProviderRepository(repository, commit.ToLowerInvariant())
                 : new SourceRepositoryUnavailable();
@@ -90,12 +98,11 @@ internal sealed class GitHubResolveProviderRepository(
         }
     }
 
-    private static bool AccessDenied(GitHubApiException exception) =>
-        !exception.IsRateLimited &&
+    private static bool AccessDenied(GitHubApiException exception) => !exception.IsRateLimited &&
         (exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ||
-         exception.StatusCode == HttpStatusCode.NotFound && exception.Target == GitHubRequestTarget.Installation);
+            (exception.StatusCode == HttpStatusCode.NotFound && exception.Target == GitHubRequestTarget.Installation));
 
     private static bool Temporary(Exception exception, CancellationToken cancellationToken) =>
         exception is GitHubApiException or HttpRequestException or JsonException ||
-        exception is OperationCanceledException && !cancellationToken.IsCancellationRequested;
+        (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
 }

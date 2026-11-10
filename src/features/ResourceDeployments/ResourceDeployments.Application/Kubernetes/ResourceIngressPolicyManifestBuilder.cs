@@ -38,10 +38,10 @@ internal static class ResourceIngressPolicyManifestBuilder
                         .Select(port => new V1NetworkPolicyPort
                         {
                             Protocol = "TCP",
-                            Port = port.Value
+                            Port = port.Value,
                         })
-                        .ToList()
-                }
+                        .ToList(),
+                },
             ];
         return new V1NetworkPolicy
         {
@@ -57,19 +57,21 @@ internal static class ResourceIngressPolicyManifestBuilder
                     [DeploymentGenerationAnnotation] = request.DeploymentDesiredGeneration.ToString(
                         CultureInfo.InvariantCulture),
                     [TargetConfigurationRevisionAnnotation] = request.TargetWorkloadConfigurationRevision.ToString(
-                        CultureInfo.InvariantCulture)
-                }
+                        CultureInfo.InvariantCulture),
+                },
             },
             Spec = new V1NetworkPolicySpec
             {
                 PodSelector = new V1LabelSelector
                 {
                     MatchLabels = destinationLabels.ToDictionary(
-                        label => label.Key, label => label.Value, StringComparer.Ordinal)
+                        label => label.Key,
+                        label => label.Value,
+                        StringComparer.Ordinal),
                 },
                 PolicyTypes = ["Ingress"],
-                Ingress = ingress
-            }
+                Ingress = ingress,
+            },
         };
     }
 
@@ -81,20 +83,22 @@ internal static class ResourceIngressPolicyManifestBuilder
             ["pole.io/deployment-target-id"] = request.DeploymentTargetId,
             ["pole.io/resource-id"] = request.ResourceId,
             ["pole.io/resource-deployment-id"] = request.ResourceDeploymentId,
-            [PolicyPurposeLabel] = request.Purpose
+            [PolicyPurposeLabel] = request.Purpose,
         };
 
     private static ResourceIngressPolicyNetworkSource ValidateSource(ResourceIngressPolicyNetworkSource source) =>
         source switch
         {
             ResourceIngressPolicyPodSource pod when IsValidPodSource(pod) => pod,
-            ResourceIngressPolicyPodSource =>
-                throw new ArgumentException("Ingress pod source must have an exact DNS namespace and labels.", nameof(source)),
+            ResourceIngressPolicyPodSource => throw new ArgumentException(
+                "Ingress pod source must have an exact DNS namespace and labels.",
+                nameof(source)),
             ResourceIngressPolicyCidrSource cidr when IPNetwork.TryParse(cidr.Cidr, out var network) &&
-                                                        network.PrefixLength > 0 => cidr,
-            ResourceIngressPolicyCidrSource =>
-                throw new ArgumentException("Ingress source CIDR must be bounded.", nameof(source)),
-            null => throw new ArgumentNullException(nameof(source))
+                network.PrefixLength > 0 => cidr,
+            ResourceIngressPolicyCidrSource => throw new ArgumentException(
+                "Ingress source CIDR must be bounded.",
+                nameof(source)),
+            null => throw new ArgumentNullException(nameof(source)),
         };
 
     private static bool IsValidPodSource(ResourceIngressPolicyPodSource pod)
@@ -105,9 +109,7 @@ internal static class ResourceIngressPolicyManifestBuilder
                     KubernetesValueGuard.DnsLabel(pod.Namespace, nameof(pod)),
                     pod.Namespace,
                     StringComparison.Ordinal))
-            {
                 return false;
-            }
             ValidateLabels(pod.PodLabels);
             return true;
         }
@@ -122,38 +124,33 @@ internal static class ResourceIngressPolicyManifestBuilder
         if (labels.Count == 0)
             throw new ArgumentException("Ingress selectors must contain at least one label.", nameof(labels));
         foreach (var (key, value) in labels)
-        {
             if (!string.Equals(KubernetesValueGuard.LabelKey(key, nameof(labels)), key, StringComparison.Ordinal) ||
                 !string.Equals(KubernetesValueGuard.LabelValue(value, nameof(labels)), value, StringComparison.Ordinal))
-            {
                 throw new ArgumentException("Ingress selector labels must be exact Kubernetes labels.", nameof(labels));
-            }
-        }
     }
 
-    private static V1NetworkPolicyPeer ToPeer(ResourceIngressPolicyNetworkSource source) =>
-        source switch
+    private static V1NetworkPolicyPeer ToPeer(ResourceIngressPolicyNetworkSource source) => source switch
+    {
+        ResourceIngressPolicyPodSource pod => new V1NetworkPolicyPeer
         {
-            ResourceIngressPolicyPodSource pod => new V1NetworkPolicyPeer
+            NamespaceSelector = new V1LabelSelector
             {
-                NamespaceSelector = new V1LabelSelector
+                MatchLabels = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    MatchLabels = new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["kubernetes.io/metadata.name"] = pod.Namespace
-                    }
+                    ["kubernetes.io/metadata.name"] = pod.Namespace,
                 },
-                PodSelector = new V1LabelSelector
-                {
-                    MatchLabels = pod.PodLabels.ToDictionary(
-                        label => label.Key,
-                        label => label.Value,
-                        StringComparer.Ordinal)
-                }
             },
-            ResourceIngressPolicyCidrSource cidr => new V1NetworkPolicyPeer
+            PodSelector = new V1LabelSelector
             {
-                IpBlock = new V1IPBlock { Cidr = cidr.Cidr }
-            }
-        };
+                MatchLabels = pod.PodLabels.ToDictionary(
+                    label => label.Key,
+                    label => label.Value,
+                    StringComparer.Ordinal),
+            },
+        },
+        ResourceIngressPolicyCidrSource cidr => new V1NetworkPolicyPeer
+        {
+            IpBlock = new V1IPBlock { Cidr = cidr.Cidr },
+        },
+    };
 }

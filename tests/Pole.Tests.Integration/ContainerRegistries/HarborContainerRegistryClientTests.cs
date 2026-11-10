@@ -3,8 +3,8 @@ using System.Text;
 using Pole.Features.ContainerRegistries.Application.Common;
 using Pole.Features.ContainerRegistries.Application.Harbor;
 using Pole.Features.ContainerRegistries.Contracts;
-using Pole.ResultType;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.ContainerRegistries;
 
@@ -24,9 +24,9 @@ public sealed class HarborContainerRegistryClientTests
             if (request.Method == HttpMethod.Get && path == "/api/v2.0/projects")
             {
                 projectLookups++;
-                return Json(HttpStatusCode.OK, projectLookups == 1
-                    ? "[]"
-                    : """[{ "project_id": 17, "name": "pole-test" }]""");
+                return Json(
+                    HttpStatusCode.OK,
+                    projectLookups == 1 ? "[]" : """[{ "project_id": 17, "name": "pole-test" }]""");
             }
 
             if (request.Method == HttpMethod.Post && path == "/api/v2.0/projects")
@@ -43,9 +43,11 @@ public sealed class HarborContainerRegistryClientTests
             var id = robotBodies.Count == 1 ? 21 : 22;
             var name = robotBodies.Count == 1 ? "robot$build" : "robot$runtime";
             var secret = robotBodies.Count == 1 ? "build-secret" : "pull-secret";
-            return Json(HttpStatusCode.Created, $$"""
-                { "id": {{id}}, "name": "{{name}}", "secret": "{{secret}}", "expires_at": -1 }
-                """);
+            return Json(
+                HttpStatusCode.Created,
+                $$"""
+                  { "id": {{id}}, "name": "{{name}}", "secret": "{{secret}}", "expires_at": -1 }
+                  """);
         });
         var client = CreateClient(handler);
 
@@ -77,7 +79,9 @@ public sealed class HarborContainerRegistryClientTests
             robotRequests++;
             _ = await request.Content!.ReadAsStringAsync();
             return robotRequests == 1
-                ? Json(HttpStatusCode.Created, """
+                ? Json(
+                    HttpStatusCode.Created,
+                    """
                     { "id": 21, "name": "robot$build", "secret": "build-secret", "expires_at": -1 }
                     """)
                 : Json(HttpStatusCode.InternalServerError, """{ "message": "build-secret leaked upstream" }""");
@@ -101,17 +105,16 @@ public sealed class HarborContainerRegistryClientTests
         {
             var path = request.RequestUri!.AbsolutePath;
             if (request.Method == HttpMethod.Get)
-            {
-                return Task.FromResult(Json(
-                    HttpStatusCode.OK,
-                    """[{ "project_id": 17, "name": "pole-test" }]"""));
-            }
+                return Task.FromResult(Json(HttpStatusCode.OK, """[{ "project_id": 17, "name": "pole-test" }]"""));
 
             robotRequests++;
             return robotRequests == 1
-                ? Task.FromResult(Json(HttpStatusCode.Created, """
-                    { "id": 21, "name": "robot$build", "secret": "build-secret", "expires_at": -1 }
-                    """))
+                ? Task.FromResult(
+                    Json(
+                        HttpStatusCode.Created,
+                        """
+                        { "id": 21, "name": "robot$build", "secret": "build-secret", "expires_at": -1 }
+                        """))
                 : Task.FromException<HttpResponseMessage>(new TaskCanceledException("simulated timeout"));
         });
         var client = CreateClient(handler);
@@ -132,9 +135,7 @@ public sealed class HarborContainerRegistryClientTests
             Assert.Equal(
                 "/api/v2.0/projects/pole-test/repositories/service%252Fapi/artifacts/build-42",
                 request.RequestUri!.AbsolutePath);
-            return Task.FromResult(Json(
-                HttpStatusCode.OK,
-                """{ "digest": "sha256:abc", "size": 1234 }"""));
+            return Task.FromResult(Json(HttpStatusCode.OK, """{ "digest": "sha256:abc", "size": 1234 }"""));
         });
         var client = CreateClient(handler);
 
@@ -157,21 +158,22 @@ public sealed class HarborContainerRegistryClientTests
         {
             var path = request.RequestUri!.AbsolutePath;
             calls.Add($"{request.Method} {path}");
-            return Task.FromResult((request.Method, path) switch
-            {
-                ({ } method, "/api/v2.0/robots/21") when method == HttpMethod.Delete =>
-                    new HttpResponseMessage(HttpStatusCode.InternalServerError),
-                ({ } method, "/api/v2.0/robots/22") when method == HttpMethod.Delete =>
-                    new HttpResponseMessage(HttpStatusCode.NotFound),
-                _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
-            });
+            return Task.FromResult(
+                (request.Method, path) switch
+                {
+                    ({ } method, "/api/v2.0/robots/21") when method == HttpMethod.Delete => new HttpResponseMessage(
+                        HttpStatusCode.InternalServerError),
+                    ({ } method, "/api/v2.0/robots/22") when method == HttpMethod.Delete => new HttpResponseMessage(
+                        HttpStatusCode.NotFound),
+                    _ => throw new XunitException($"Unexpected Harbor request: {request.Method} {path}"),
+                });
         });
         var client = CreateClient(handler);
 
         var result = await client.DeleteRobotCredentialsAsync(
         [
             new RegistryRobotCleanupTarget("pole-test", $"pole-build-{AttemptId}", "21"),
-            new RegistryRobotCleanupTarget("pole-test", $"pole-runtime-{AttemptId}", "22")
+            new RegistryRobotCleanupTarget("pole-test", $"pole-runtime-{AttemptId}", "22"),
         ]);
 
         var failed = Assert.IsType<ContainerRegistryProviderError>(result.Value);
@@ -179,7 +181,7 @@ public sealed class HarborContainerRegistryClientTests
         Assert.Equal(
             [
                 "DELETE /api/v2.0/robots/21",
-                "DELETE /api/v2.0/robots/22"
+                "DELETE /api/v2.0/robots/22",
             ],
             calls);
         Assert.DoesNotContain(calls, call => call.Contains("/projects/", StringComparison.Ordinal));
@@ -195,27 +197,29 @@ public sealed class HarborContainerRegistryClientTests
         {
             var path = request.RequestUri!.AbsolutePath;
             calls.Add($"{request.Method} {path}{request.RequestUri.Query}");
-            return Task.FromResult((request.Method, path) switch
-            {
-                ({ } method, "/api/v2.0/robots") when method == HttpMethod.Get =>
-                    Json(HttpStatusCode.OK, $$"""
-                        [
-                          {
-                            "id": 21,
-                            "name": "custom-prefix-project+{{robotName}}",
-                            "permissions": [{ "namespace": "project" }]
-                          },
-                          {
-                            "id": 22,
-                            "name": "custom-prefix-other-project+{{robotName}}",
-                            "permissions": [{ "namespace": "other-project" }]
-                          }
-                        ]
-                        """),
-                ({ } method, "/api/v2.0/robots/21") when method == HttpMethod.Delete =>
-                    new HttpResponseMessage(HttpStatusCode.NoContent),
-                _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
-            });
+            return Task.FromResult(
+                (request.Method, path) switch
+                {
+                    ({ } method, "/api/v2.0/robots") when method == HttpMethod.Get => Json(
+                        HttpStatusCode.OK,
+                        $$"""
+                          [
+                            {
+                              "id": 21,
+                              "name": "custom-prefix-project+{{robotName}}",
+                              "permissions": [{ "namespace": "project" }]
+                            },
+                            {
+                              "id": 22,
+                              "name": "custom-prefix-other-project+{{robotName}}",
+                              "permissions": [{ "namespace": "other-project" }]
+                            }
+                          ]
+                          """),
+                    ({ } method, "/api/v2.0/robots/21") when method == HttpMethod.Delete => new HttpResponseMessage(
+                        HttpStatusCode.NoContent),
+                    _ => throw new XunitException($"Unexpected Harbor request: {request.Method} {path}"),
+                });
         });
         var client = CreateClient(handler);
 
@@ -227,7 +231,7 @@ public sealed class HarborContainerRegistryClientTests
         Assert.Equal(
             [
                 $"GET /api/v2.0/robots?q=name%3D{robotName}&page=1&page_size=100",
-                "DELETE /api/v2.0/robots/21"
+                "DELETE /api/v2.0/robots/21",
             ],
             calls);
     }
@@ -242,17 +246,20 @@ public sealed class HarborContainerRegistryClientTests
             calls.Add($"{request.Method} {path}{request.RequestUri.Query}");
             return (request.Method, path) switch
             {
-                ({ } method, "/api/v2.0/projects/17") when method == HttpMethod.Get =>
-                    Task.FromResult(Json(HttpStatusCode.OK, """{ "project_id": 17, "name": "pole-test" }""")),
+                ({ } method, "/api/v2.0/projects/17") when method == HttpMethod.Get => Task.FromResult(
+                    Json(HttpStatusCode.OK, """{ "project_id": 17, "name": "pole-test" }""")),
                 ({ } method, "/api/v2.0/projects/pole-test/repositories") when method == HttpMethod.Get =>
-                    Task.FromResult(Json(HttpStatusCode.OK, """
-                        [{ "name": "pole-test/web-services/service-1" }]
-                        """)),
-                ({ } method, "/api/v2.0/projects/pole-test/repositories/web-services%252Fservice-1") when method == HttpMethod.Delete =>
-                    Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)),
-                ({ } method, "/api/v2.0/projects/17") when method == HttpMethod.Delete =>
-                    Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)),
-                _ => throw new Xunit.Sdk.XunitException($"Unexpected Harbor request: {request.Method} {path}")
+                    Task.FromResult(
+                        Json(
+                            HttpStatusCode.OK,
+                            """
+                            [{ "name": "pole-test/web-services/service-1" }]
+                            """)),
+                ({ } method, "/api/v2.0/projects/pole-test/repositories/web-services%252Fservice-1") when
+                    method == HttpMethod.Delete => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)),
+                ({ } method, "/api/v2.0/projects/17") when method == HttpMethod.Delete => Task.FromResult(
+                    new HttpResponseMessage(HttpStatusCode.OK)),
+                _ => throw new XunitException($"Unexpected Harbor request: {request.Method} {path}"),
             };
         });
         var client = CreateClient(handler);
@@ -265,7 +272,7 @@ public sealed class HarborContainerRegistryClientTests
                 "GET /api/v2.0/projects/17",
                 "GET /api/v2.0/projects/pole-test/repositories?page=1&page_size=100",
                 "DELETE /api/v2.0/projects/pole-test/repositories/web-services%252Fservice-1",
-                "DELETE /api/v2.0/projects/17"
+                "DELETE /api/v2.0/projects/17",
             ],
             calls);
     }
@@ -276,10 +283,7 @@ public sealed class HarborContainerRegistryClientTests
         var client = CreateClient(new ThrowingHandler());
 
         var result = await client.GetArtifactAsync(
-            new GetRegistryArtifactRequest(
-                ProjectName: "pole-test",
-                RepositoryName: "service",
-                Reference: "tag"));
+            new GetRegistryArtifactRequest(ProjectName: "pole-test", RepositoryName: "service", Reference: "tag"));
 
         var failed = Assert.IsType<ContainerRegistryArtifactLookupError>(result.Value);
         var providerError = Assert.IsType<ContainerRegistryProviderError>(failed.Value);
@@ -287,31 +291,29 @@ public sealed class HarborContainerRegistryClientTests
         Assert.DoesNotContain("admin-secret", failed.ToString(), StringComparison.Ordinal);
     }
 
-    private static HarborContainerRegistryClient CreateClient(HttpMessageHandler handler) =>
-        new(
-            new HttpClient(handler),
-            new HarborOptions
-            {
-                Enabled = true,
-                BaseUrl = "https://harbor.test",
-                RegistryHost = "harbor.test",
-                Username = "admin",
-                Password = "admin-secret"
-            });
-
-    private static HttpResponseMessage Json(HttpStatusCode statusCode, string json) =>
-        new(statusCode)
+    private static HarborContainerRegistryClient CreateClient(HttpMessageHandler handler) => new(
+        new HttpClient(handler),
+        new HarborOptions
         {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        };
+            Enabled = true,
+            BaseUrl = "https://harbor.test",
+            RegistryHost = "harbor.test",
+            Username = "admin",
+            Password = "admin-secret",
+        });
 
-    private sealed class DelegateHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responseFactory)
-        : HttpMessageHandler
+    private static HttpResponseMessage Json(HttpStatusCode statusCode, string json) => new(statusCode)
+    {
+        Content = new StringContent(json, Encoding.UTF8, "application/json"),
+    };
+
+    private sealed class DelegateHandler(
+        Func<HttpRequestMessage, Task<HttpResponseMessage>> responseFactory
+    ) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            CancellationToken cancellationToken) =>
-            responseFactory(request);
+            CancellationToken cancellationToken) => responseFactory(request);
     }
 
     private sealed class ThrowingHandler : HttpMessageHandler

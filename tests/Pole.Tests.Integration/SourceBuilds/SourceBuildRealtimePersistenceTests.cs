@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +6,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.GitProviders.Application;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.SourceBuilds.Application;
 using Pole.Features.SourceBuilds.Application.Configurations;
@@ -24,13 +22,14 @@ using Xunit;
 namespace Pole.Tests.Integration.SourceBuilds;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class SourceBuildRealtimePersistenceTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
+    private const string EventName = "pole.source-builds/v1/source-build-job-state-changed";
+
     protected override void ConfigureServices(IServiceCollection services) =>
         services.AddGitProvidersFeature(new ConfigurationBuilder().Build());
-
-    private const string EventName = "pole.source-builds/v1/source-build-job-state-changed";
 
     [Fact]
     public async Task QueueAndClaim_CommitImmutableHints_AndOnlyOneClaimSucceeds()
@@ -39,7 +38,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         var service = (await Mediator.Send(SourceBuildTestData.CreateTargetRequest(Data, group.Id))).AssertSuccess();
         var job = Job() with
         {
-            WebServiceId = service.WebServiceId
+            WebServiceId = service.WebServiceId,
         };
         var configuration = SourceBuildConfigurationFactory.Create(
             job.TenantId,
@@ -48,23 +47,30 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
             job.WebServiceId,
             job.Recipe,
             new ManualSourceBuildConfigurationOrigin(Data.UserId),
-            new(job.ConfigurationId, job.CreatedAtUtc));
+            new SourceBuildConfigurationFactory.CreateOptions(job.ConfigurationId, job.CreatedAtUtc));
         await SourceBuildTestData.SeedRepositoryAsync(DbContext, configuration, Data.UserId);
-        Assert.IsType<SourceBuildConfiguration>((await Services.GetRequiredService<CreateSourceBuildConfiguration>()(
-            new(configuration, 1))).Value);
+        Assert.IsType<SourceBuildConfiguration>(
+            (await Services.GetRequiredService<CreateSourceBuildConfiguration>()(
+                new CreateSourceBuildConfigurationCommand(configuration, 1))).Value);
         var requested = new SourceBuildRequestedEvent(job.Id) { EventCore = EventCore.Create(job.TenantId) };
         Assert.IsType<SourceBuildJob>((await Services.GetRequiredService<QueueSourceBuildJob>()(job, requested)).Value);
         var claim = Services.GetRequiredService<ClaimQueuedSourceBuildJob>();
-        var results = await Task.WhenAll(claim(new(job.Id, Guid.NewGuid().ToString("N"))),
-            claim(new(job.Id, Guid.NewGuid().ToString("N"))));
+        var results = await Task.WhenAll(
+            claim(new ClaimSourceBuildJobRequest(job.Id, Guid.NewGuid().ToString("N"))),
+            claim(new ClaimSourceBuildJobRequest(job.Id, Guid.NewGuid().ToString("N"))));
         Assert.Single(results, result => result is not null);
-        Assert.Null(await claim(new(job.Id, "second")));
-        var envelopes = await DbContext.OutboxMessages.Find(x => x.TenantId == Data.TenantId && x.EventType == EventName).ToListAsync();
+        Assert.Null(await claim(new ClaimSourceBuildJobRequest(job.Id, "second")));
+        var envelopes = await DbContext.OutboxMessages
+            .Find(x => x.TenantId == Data.TenantId && x.EventType == EventName)
+            .ToListAsync();
         Assert.Equal(2, envelopes.Count);
-        Assert.Equal(["Cloning", "Queued"],
+        Assert.Equal(
+            ["Cloning", "Queued"],
             envelopes.Select(envelope => JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(
-                envelope.PayloadJson,
-                EventExtensions.SerializerOptions)!.State).Order().ToArray());
+                    envelope.PayloadJson,
+                    EventExtensions.SerializerOptions)!.State)
+                .Order()
+                .ToArray());
         Assert.All(envelopes, envelope => Assert.Equal(job.TenantId, envelope.TenantId));
     }
 
@@ -77,37 +83,47 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         await using var scope = provider.CreateAsyncScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             scope.ServiceProvider.GetRequiredService<ClaimQueuedSourceBuildJob>()(
-                new(job.Id, "worker")));
+                new ClaimSourceBuildJobRequest(job.Id, "worker")));
         Assert.IsType<QueuedSourceBuild>(
             (await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync()).State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == Data.TenantId && x.EventType == EventName));
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(x =>
+                x.TenantId == Data.TenantId && x.EventType == EventName));
     }
 
     [Theory]
     [InlineData("Succeeded", "Succeeded")]
     [InlineData("Failed", "Failed")]
-    public async Task DeploymentCompletion_IsTenantScopedAndDuplicateSafe_AndOmitsFailurePayload(string outcome,
+    public async Task DeploymentCompletion_IsTenantScopedAndDuplicateSafe_AndOmitsFailurePayload(
+        string outcome,
         string state)
     {
         var job = DeployingJob();
         await DbContext.SourceBuildJobs.InsertOneAsync(job);
-        var completion = new SourceBuildDeploymentCompletion(job.TenantId,
+        var completion = new SourceBuildDeploymentCompletion(
+            job.TenantId,
             "release-pilot",
             outcome,
             "sensitive failure detail",
             job.UpdatedAtUtc.AddSeconds(1));
         var complete = Services.GetRequiredService<CompleteSourceBuildJobOnDeployment>();
-        await complete(completion with
-        {
-            TenantId = ObjectId.GenerateNewId().ToString()
-        });
-        Assert.IsType<DeployingSourceBuild>((await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync())
-            .State);
+        await complete(
+            completion with
+            {
+                TenantId = ObjectId.GenerateNewId().ToString(),
+            });
+        Assert.IsType<DeployingSourceBuild>(
+            (await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync()).State);
         await complete(completion);
         await complete(completion);
-        var envelope = await DbContext.OutboxMessages.Find(x => x.TenantId == Data.TenantId && x.EventType == EventName).SingleAsync();
-        Assert.Equal(state,
-            JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(envelope.PayloadJson,
+        var envelope = await DbContext.OutboxMessages
+            .Find(x => x.TenantId == Data.TenantId && x.EventType == EventName)
+            .SingleAsync();
+        Assert.Equal(
+            state,
+            JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(
+                envelope.PayloadJson,
                 EventExtensions.SerializerOptions)!.State);
         Assert.DoesNotContain("sensitive failure detail", envelope.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain("image-pilot", envelope.PayloadJson, StringComparison.Ordinal);
@@ -122,10 +138,18 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         await using var scope = provider.CreateAsyncScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             scope.ServiceProvider.GetRequiredService<CompleteSourceBuildJobOnDeployment>()(
-                new(job.TenantId, "release-pilot", "Succeeded", null, job.UpdatedAtUtc.AddSeconds(1))));
-        Assert.IsType<DeployingSourceBuild>((await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync())
-            .State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == Data.TenantId && x.EventType == EventName));
+                new SourceBuildDeploymentCompletion(
+                    job.TenantId,
+                    "release-pilot",
+                    "Succeeded",
+                    null,
+                    job.UpdatedAtUtc.AddSeconds(1))));
+        Assert.IsType<DeployingSourceBuild>(
+            (await DbContext.SourceBuildJobs.Find(x => x.Id == job.Id).SingleAsync()).State);
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(x =>
+                x.TenantId == Data.TenantId && x.EventType == EventName));
     }
 
     [Fact]
@@ -133,34 +157,43 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
     {
         var current = Job().StartCloning(DateTime.UtcNow.AddMinutes(-1)) with
         {
-            Execution = new ClaimedSourceBuildExecution("worker", 1, DateTime.UtcNow.AddMinutes(2))
+            Execution = new ClaimedSourceBuildExecution("worker", 1, DateTime.UtcNow.AddMinutes(2)),
         };
         await DbContext.SourceBuildJobs.InsertOneAsync(current);
         var next = current.StartAnalyzing(current.UpdatedAtUtc.AddSeconds(1));
         using (TraceContext.Push(TraceContext.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "correlation-pilot")))
+        {
             Assert.True(await Services.GetRequiredService<TryPersistSourceBuildJob>()(current, next));
-        Assert.False(await Services.GetRequiredService<TryPersistSourceBuildJob>()(
-            current,
-            current.Fail(SourceBuildPhase.Cloning,
-                "test",
-                "sensitive failure detail",
-                next.UpdatedAtUtc.AddSeconds(1))));
+        }
+
+        Assert.False(
+            await Services.GetRequiredService<TryPersistSourceBuildJob>()(
+                current,
+                current.Fail(
+                    SourceBuildPhase.Cloning,
+                    "test",
+                    "sensitive failure detail",
+                    next.UpdatedAtUtc.AddSeconds(1))));
         var foreign = current with
         {
-            TenantId = ObjectId.GenerateNewId().ToString()
+            TenantId = ObjectId.GenerateNewId().ToString(),
         };
-        Assert.False(await Services.GetRequiredService<TryPersistSourceBuildJob>()(foreign,
-            foreign.StartAnalyzing(next.UpdatedAtUtc.AddSeconds(1))));
+        Assert.False(
+            await Services.GetRequiredService<TryPersistSourceBuildJob>()(
+                foreign,
+                foreign.StartAnalyzing(next.UpdatedAtUtc.AddSeconds(1))));
 
         Assert.IsType<AnalyzingSourceBuild>(
             (await DbContext.SourceBuildJobs.Find(x => x.Id == current.Id).SingleAsync()).State);
-        var envelope = await DbContext.OutboxMessages.Find(x => x.TenantId == Data.TenantId && x.EventType == EventName).SingleAsync();
+        var envelope = await DbContext.OutboxMessages
+            .Find(x => x.TenantId == Data.TenantId && x.EventType == EventName)
+            .SingleAsync();
         Assert.Equal(current.TenantId, envelope.TenantId);
         Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", envelope.TraceId);
         Assert.Equal("correlation-pilot", envelope.CorrelationId);
-        var message =
-            JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(envelope.PayloadJson,
-                EventExtensions.SerializerOptions)!;
+        var message = JsonSerializer.Deserialize<SourceBuildJobStateChangedEvent>(
+            envelope.PayloadJson,
+            EventExtensions.SerializerOptions)!;
         Assert.Equal(next.Id, message.BuildJobId);
         Assert.Equal(next.WebServiceId, message.WebServiceId);
         Assert.Equal("Analyzing", message.State);
@@ -174,7 +207,8 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         });
         await consumer.HandleAsync(message);
         await consumer.HandleAsync(message);
-        Assert.All(notices,
+        Assert.All(
+            notices,
             notice => Assert.Equal(new RealtimeChange("source-builds", next.TenantId, next.WebServiceId), notice));
     }
 
@@ -183,7 +217,7 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
     {
         var current = Job().StartCloning(DateTime.UtcNow.AddMinutes(-1)) with
         {
-            Execution = new ClaimedSourceBuildExecution("worker", 1, DateTime.UtcNow.AddMinutes(2))
+            Execution = new ClaimedSourceBuildExecution("worker", 1, DateTime.UtcNow.AddMinutes(2)),
         };
         await DbContext.SourceBuildJobs.InsertOneAsync(current);
         await using var provider = FailingOutboxProvider();
@@ -193,16 +227,23 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
                 current,
                 current.StartAnalyzing(current.UpdatedAtUtc.AddSeconds(1))));
 
-        Assert.IsType<CloningSourceBuild>((await DbContext.SourceBuildJobs.Find(x => x.Id == current.Id).SingleAsync())
-            .State);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(x => x.TenantId == Data.TenantId && x.EventType == EventName));
+        Assert.IsType<CloningSourceBuild>(
+            (await DbContext.SourceBuildJobs.Find(x => x.Id == current.Id).SingleAsync()).State);
+        Assert.Equal(
+            0,
+            await DbContext.OutboxMessages.CountDocumentsAsync(x =>
+                x.TenantId == Data.TenantId && x.EventType == EventName));
     }
 
     private ServiceProvider FailingOutboxProvider()
     {
-        var registrations = new ServiceCollection().AddLogging().AddSingleton(Fixture.Client)
-            .AddSingleton(Fixture.Database).AddSingleton<MongoRunTransaction>();
-        registrations.AddSingleton<StoreOutboxWrites>(async (session, writes, ct) =>
+        var registrations = new ServiceCollection().AddLogging()
+            .AddSingleton(Fixture.Client)
+            .AddSingleton(Fixture.Database)
+            .AddSingleton<MongoRunTransaction>();
+        registrations.AddSingleton<StoreOutboxWrites>(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected outbox failure.");
@@ -222,15 +263,19 @@ public sealed class SourceBuildRealtimePersistenceTests(MongoReplicaSetFixture f
         new SourceBuildRecipe("FROM scratch"),
         Data.UserId,
         null,
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow.AddMinutes(-2)));
+        new SourceBuildJobFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow.AddMinutes(-2)));
 
     private SourceBuildJob DeployingJob()
     {
         var job = Job();
         var now = job.UpdatedAtUtc;
-        return job.StartCloning(now.AddSeconds(1)).StartAnalyzing(now.AddSeconds(2)).StartBuilding(now.AddSeconds(3))
+        return job.StartCloning(now.AddSeconds(1))
+            .StartAnalyzing(now.AddSeconds(2))
+            .StartBuilding(now.AddSeconds(3))
             .StartPushing(SourceBuildArtifactFactory.Create("image-pilot", "digest-pilot"), now.AddSeconds(4))
-            .StartDeploying(SourceBuildArtifactFactory.Create("image-pilot", "digest-pilot"), "release-pilot",
+            .StartDeploying(
+                SourceBuildArtifactFactory.Create("image-pilot", "digest-pilot"),
+                "release-pilot",
                 now.AddSeconds(5));
     }
 }

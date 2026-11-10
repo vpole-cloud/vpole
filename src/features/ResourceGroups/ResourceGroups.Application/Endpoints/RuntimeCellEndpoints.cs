@@ -5,7 +5,5 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public static class RuntimeCellEndpoints
 {
     public static IEndpointRouteBuilder MapRuntimeCellEndpoints(this IEndpointRouteBuilder app) =>
-        app.MapGetRuntimeCellsEndpoint()
-            .MapGetRuntimeCellEndpoint()
-            .MapRetryRuntimeCellEndpoint();
+        app.MapGetRuntimeCellsEndpoint().MapGetRuntimeCellEndpoint().MapRetryRuntimeCellEndpoint();
 }

@@ -9,25 +9,39 @@ public sealed class ResourceDeploymentObservationLifecycle(
     ResourceDeploymentObservationOptions options,
     ResourceDeploymentObservationContextLoader contexts,
     IResourceDeploymentObservationStore store,
-    ResourceDeploymentObservationWakeup wakeup) : IRealtimeTopicLifecycle
+    ResourceDeploymentObservationWakeup wakeup
+) : IRealtimeTopicLifecycle
 {
     public string Topic => "runtime-observations";
 
-    public Task<bool> SubscribeAsync(RealtimeSubscription subscription,
+    public Task<bool> SubscribeAsync(
+        RealtimeSubscription subscription,
         ClaimsPrincipal principal,
-        CancellationToken cancellationToken) =>
-        PutAsync(subscription, false, cancellationToken);
+        CancellationToken cancellationToken) => PutAsync(subscription, false, cancellationToken);
 
-    public Task<bool> RenewAsync(RealtimeSubscription subscription,
+    public Task<bool> RenewAsync(
+        RealtimeSubscription subscription,
         ClaimsPrincipal principal,
-        CancellationToken cancellationToken) =>
-        PutAsync(subscription, true, cancellationToken);
+        CancellationToken cancellationToken) => PutAsync(subscription, true, cancellationToken);
 
-    private async Task<bool> PutAsync(RealtimeSubscription subscription, bool renew, CancellationToken ct)
+    public async Task UnsubscribeAsync(RealtimeSubscription subscription, CancellationToken cancellationToken)
+    {
+        if (Identity(subscription) is not { } identity)
+            return;
+        await store.RemoveDemandAsync(identity, cancellationToken);
+        wakeup.Notify();
+    }
+
+    private async Task<bool> PutAsync(
+        RealtimeSubscription subscription,
+        bool renew,
+        CancellationToken ct)
     {
         if (!options.Enabled || Identity(subscription) is not { } identity)
             return false;
-        var context = await contexts.LoadWatchAsync(new(identity.TenantId, identity.DeploymentId), ct);
+        var context = await contexts.LoadWatchAsync(
+            new ObservationIdentity(identity.TenantId, identity.DeploymentId),
+            ct);
         if (context is null)
         {
             await store.RemoveDemandAsync(identity, ct);
@@ -41,21 +55,15 @@ public sealed class ResourceDeploymentObservationLifecycle(
             : await store.PutDemandAsync(demand, context, ct);
         wakeup.Notify();
         return outcome.Value is ObservationMutationAccepted &&
-               await store.LoadFreshSnapshotAsync(context, ct) is not null;
-    }
-
-    public async Task UnsubscribeAsync(RealtimeSubscription subscription, CancellationToken cancellationToken)
-    {
-        if (Identity(subscription) is not { } identity)
-            return;
-        await store.RemoveDemandAsync(identity, cancellationToken);
-        wakeup.Notify();
+            await store.LoadFreshSnapshotAsync(context, ct) is not null;
     }
 
     private static ObservationDemandIdentity? Identity(RealtimeSubscription subscription) =>
-        ObjectId.TryParse(subscription.Request.TenantId, out var tenant) &&
-        ObjectId.TryParse(subscription.Request.ResourceId, out var deployment)
-            ? new(tenant.ToString(),
+        ObjectId.TryParse(subscription.Request.TenantId, out var tenant) && ObjectId.TryParse(
+            subscription.Request.ResourceId,
+            out var deployment)
+            ? new ObservationDemandIdentity(
+                tenant.ToString(),
                 deployment.ToString(),
                 subscription.Id,
                 subscription.ConnectionId,

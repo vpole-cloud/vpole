@@ -8,7 +8,8 @@ public sealed record ResourceDeploymentReconciliationRequestedEvent(
     string ResourceDeploymentId,
     string RuntimeCellId,
     long Generation,
-    long ResourceRevision = 1) : IPoleEvent
+    long ResourceRevision = 1
+) : IPoleEvent
 {
     public string? ResourceType { get; init; }
 
@@ -24,7 +25,8 @@ public sealed record ResourceDeploymentDeletionRequestedEvent(
     string ResourceDeploymentId,
     string RuntimeCellId,
     long Generation,
-    long ResourceRevision = 1) : IPoleEvent
+    long ResourceRevision = 1
+) : IPoleEvent
 {
     public string? ResourceType { get; init; }
 
@@ -42,7 +44,8 @@ public sealed record ResourceDeploymentAppliedEvent(
     string ResourceId,
     string RuntimeCellId,
     long Generation,
-    long ResourceRevision = 1) : IPoleEvent
+    long ResourceRevision = 1
+) : IPoleEvent
 {
     public string? ResourceGroupId { get; init; }
 
@@ -59,7 +62,8 @@ public sealed record ResourceDeploymentFailedEvent(
     string Operation,
     string FailureCode,
     bool Retryable,
-    long ResourceRevision = 1) : IPoleEvent
+    long ResourceRevision = 1
+) : IPoleEvent
 {
     public string? ResourceGroupId { get; init; }
 
@@ -73,7 +77,8 @@ public sealed record ResourceDeploymentDeletedEvent(
     string ResourceId,
     string RuntimeCellId,
     long Generation,
-    long ResourceRevision = 1) : IPoleEvent
+    long ResourceRevision = 1
+) : IPoleEvent
 {
     public string? ResourceGroupId { get; init; }
 
@@ -89,18 +94,17 @@ public sealed record ResourceDeploymentReconciliationStartedEvent(
     string RuntimeCellId,
     long Generation,
     string Operation,
-    long ResourceRevision) : IPoleEvent
+    long ResourceRevision
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }
 
 public static class ResourceDeploymentPendingKey
 {
-    public static string Apply(string deploymentId, long generation) =>
-        Create(deploymentId, generation, "apply");
+    public static string Apply(string deploymentId, long generation) => Create(deploymentId, generation, "apply");
 
-    public static string Delete(string deploymentId, long generation) =>
-        Create(deploymentId, generation, "delete");
+    public static string Delete(string deploymentId, long generation) => Create(deploymentId, generation, "delete");
 
     private static string Create(
         string deploymentId,

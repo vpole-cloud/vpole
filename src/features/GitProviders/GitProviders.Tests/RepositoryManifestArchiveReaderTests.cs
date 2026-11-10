@@ -79,9 +79,11 @@ public sealed class RepositoryManifestArchiveReaderTests
     public async Task RejectsSelectedSubmodulesAndGitSymlinks(string type, string mode)
     {
         using var archive = Archive(File("root/manifests/a.yaml", "a"));
-        var tree = new GitHubCommitTree([
-            new("manifests", "tree", "040000"), new("manifests/link", type, mode)
-        ], false);
+        var tree = new GitHubCommitTree(
+            [
+                new GitHubTreeEntry("manifests", "tree", "040000"), new GitHubTreeEntry("manifests/link", type, mode),
+            ],
+            false);
         AssertRejected(await Read(archive, tree), RepositorySnapshotRejection.UnsafeArchive);
     }
 
@@ -99,7 +101,8 @@ public sealed class RepositoryManifestArchiveReaderTests
     public async Task RejectsInvalidEncodingAndEverySizeBoundary()
     {
         using var invalid = Archive(Bytes("root/manifests/a.yaml", [0xff]));
-        AssertRejected(await Read(invalid, Tree("manifests/a.yaml")),
+        AssertRejected(
+            await Read(invalid, Tree("manifests/a.yaml")),
             RepositorySnapshotRejection.InvalidManifestEncoding);
         using var archive = Archive(File("root/manifests/a.yaml", "value"));
         var tree = Tree("manifests/a.yaml");
@@ -107,17 +110,18 @@ public sealed class RepositoryManifestArchiveReaderTests
         {
             new RepositoryArchiveOptions { MaxCompressedBytes = 1 },
             new RepositoryArchiveOptions { MaxDecompressedBytes = 1 },
-            new RepositoryArchiveOptions { MaxEntries = 1 }
+            new RepositoryArchiveOptions { MaxEntries = 1 },
         };
         foreach (var option in options)
             AssertRejected(await Read(archive, tree, options: option), RepositorySnapshotRejection.SizeLimit);
 
-        using var large = Archive(File("root/manifests/a.yaml",
-            new string('a', SnapshotInputLimits.MaximumContentBytes + 4)));
+        using var large = Archive(
+            File("root/manifests/a.yaml", new string('a', SnapshotInputLimits.MaximumContentBytes + 4)));
         AssertRejected(await Read(large, tree), RepositorySnapshotRejection.SizeLimit);
         AssertRejected(await Read(archive, tree with { Truncated = true }), RepositorySnapshotRejection.SizeLimit);
         var many = Enumerable.Range(0, SnapshotInputLimits.MaximumFiles + 1)
-            .Select(index => $"manifests/{index}.yaml").ToArray();
+            .Select(index => $"manifests/{index}.yaml")
+            .ToArray();
         AssertRejected(await Read(archive, Tree(many)), RepositorySnapshotRejection.SizeLimit);
     }
 
@@ -147,17 +151,20 @@ public sealed class RepositoryManifestArchiveReaderTests
     {
         using var tar = new MemoryStream();
         using (var writer = new TarWriter(tar, leaveOpen: true))
+        {
             writer.WriteEntry(new GnuTarEntry(TarEntryType.RegularFile, "root/file"));
+        }
 
         var bytes = tar.ToArray();
         bytes[156] = (byte)type;
         Encoding.ASCII.GetBytes(Convert.ToString(length, 8).PadLeft(11, '0') + "\0", bytes.AsSpan(124, 12));
         bytes.AsSpan(148, 8).Fill((byte)' ');
-        var checksum = bytes.AsSpan(0, 512).ToArray().Sum(value => (int)value);
+        var checksum = bytes.AsSpan(0, 512).ToArray().Sum(value => value);
         Encoding.ASCII.GetBytes(Convert.ToString(checksum, 8).PadLeft(6, '0') + "\0 ", bytes.AsSpan(148, 8));
         using var archive = Compress(bytes);
 
-        AssertRejected(await Read(archive, new GitHubCommitTree([], false), ""),
+        AssertRejected(
+            await Read(archive, new GitHubCommitTree([], false), ""),
             RepositorySnapshotRejection.UnsafeArchive);
     }
 
@@ -171,18 +178,19 @@ public sealed class RepositoryManifestArchiveReaderTests
             ["GNU.sparse.major"] = "1",
             ["GNU.sparse.minor"] = "0",
             ["GNU.sparse.name"] = path,
-            ["GNU.sparse.realsize"] = "65536"
+            ["GNU.sparse.realsize"] = "65536",
         };
         // Zero data segments: the packed 512-byte map represents a 64 KiB hole.
         var map = new byte[512];
         Encoding.ASCII.GetBytes("0\n", map);
         var sparse = new PaxTarEntry(TarEntryType.RegularFile, path, attributes)
         {
-            DataStream = new MemoryStream(map)
+            DataStream = new MemoryStream(map),
         };
         using var archive = Archive(File("root/manifests/readme.txt", "text"), sparse);
         var options = new RepositoryArchiveOptions { MaxDecompressedBytes = 16384 };
-        AssertRejected(await Read(archive, Tree("manifests/readme.txt"), options: options),
+        AssertRejected(
+            await Read(archive, Tree("manifests/readme.txt"), options: options),
             RepositorySnapshotRejection.UnsafeArchive);
     }
 
@@ -192,8 +200,10 @@ public sealed class RepositoryManifestArchiveReaderTests
         using var archive = Archive(File("root/manifests/a.yaml", "a"));
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new RepositoryManifestArchiveReader(new())
-            .ReadAsync(new(archive, new string('a', 40), "manifests", Tree("manifests/a.yaml")), cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new RepositoryManifestArchiveReader(new RepositoryArchiveOptions()).ReadAsync(
+                new ReadManifestArchiveRequest(archive, new string('a', 40), "manifests", Tree("manifests/a.yaml")),
+                cancellation.Token));
     }
 
     private static Task<ReadRepositorySnapshotOutcome> Read(
@@ -201,8 +211,9 @@ public sealed class RepositoryManifestArchiveReaderTests
         GitHubCommitTree tree,
         string directory = "manifests",
         RepositoryArchiveOptions? options = null) =>
-        new RepositoryManifestArchiveReader(options ?? new()).ReadAsync(
-            new(archive, new string('a', 40), directory, tree), default);
+        new RepositoryManifestArchiveReader(options ?? new RepositoryArchiveOptions()).ReadAsync(
+            new ReadManifestArchiveRequest(archive, new string('a', 40), directory, tree),
+            default);
 
     private static void AssertRejected(ReadRepositorySnapshotOutcome outcome, RepositorySnapshotRejection reason) =>
         Assert.Equal(reason, Assert.IsType<RepositorySnapshotRejected>(outcome.Value).Reason);
@@ -210,9 +221,13 @@ public sealed class RepositoryManifestArchiveReaderTests
     internal static GitHubCommitTree Tree(params string[] files)
     {
         var directories = files.SelectMany(path => Enumerable.Range(1, path.Split('/').Length - 1)
-            .Select(count => string.Join('/', path.Split('/').Take(count)))).Distinct(StringComparer.Ordinal);
-        return new GitHubCommitTree(directories.Select(path => new GitHubTreeEntry(path, "tree", "040000"))
-            .Concat(files.Select(path => new GitHubTreeEntry(path, "blob", "100644"))).ToArray(), false);
+                .Select(count => string.Join('/', path.Split('/').Take(count))))
+            .Distinct(StringComparer.Ordinal);
+        return new GitHubCommitTree(
+            directories.Select(path => new GitHubTreeEntry(path, "tree", "040000"))
+                .Concat(files.Select(path => new GitHubTreeEntry(path, "blob", "100644")))
+                .ToArray(),
+            false);
     }
 
     internal static MemoryStream Archive(params TarEntry[] entries)
@@ -232,7 +247,9 @@ public sealed class RepositoryManifestArchiveReaderTests
     {
         var result = new MemoryStream();
         using (var gzip = new GZipStream(result, CompressionMode.Compress, leaveOpen: true))
+        {
             gzip.Write(tar);
+        }
 
         result.Position = 0;
         return result;
@@ -240,8 +257,8 @@ public sealed class RepositoryManifestArchiveReaderTests
 
     internal static TarEntry File(string path, string content) => Bytes(path, Encoding.UTF8.GetBytes(content));
 
-    private static TarEntry Bytes(string path, byte[] content) =>
-        new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = new MemoryStream(content) };
+    private static TarEntry Bytes(string path, byte[] content) => new PaxTarEntry(TarEntryType.RegularFile, path)
+        { DataStream = new MemoryStream(content) };
 
     private static TarEntry Link(string path, TarEntryType type) =>
         new PaxTarEntry(type, path) { LinkName = "root/target" };

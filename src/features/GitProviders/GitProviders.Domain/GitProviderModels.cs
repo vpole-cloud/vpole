@@ -8,19 +8,19 @@ namespace Pole.Features.GitProviders.Domain;
 
 public enum GitProviderKind
 {
-    GitHub
+    GitHub,
 }
 
 public enum GitProviderAccountType
 {
     User,
-    Organization
+    Organization,
 }
 
 public enum GitProviderRepositorySelection
 {
     All,
-    Selected
+    Selected,
 }
 
 public sealed record GitProviderConnection(
@@ -38,15 +38,11 @@ public sealed record GitProviderConnection(
     string CreatedByUserId,
     long ReferenceFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned;
+    DateTime UpdatedAtUtc
+) : ITenantOwned;
 
 public static class GitProviderConnectionFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc,
-        DateTime UpdatedAtUtc);
-
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow, DateTime.UtcNow);
 
@@ -60,21 +56,26 @@ public static class GitProviderConnectionFactory
         GitProviderAccountType accountType,
         GitProviderRepositorySelection repositorySelection,
         string createdByUserId,
-        CreateOptions options) =>
-        new(
-            options.Id,
-            tenantId,
-            ResourceTechnicalName.Require(technicalName),
-            provider,
-            externalInstallationId,
-            accountId,
-            accountLogin,
-            accountType,
-            repositorySelection,
-            createdByUserId,
-            0,
-            options.CreatedAtUtc,
-            options.UpdatedAtUtc);
+        CreateOptions options) => new(
+        options.Id,
+        tenantId,
+        ResourceTechnicalName.Require(technicalName),
+        provider,
+        externalInstallationId,
+        accountId,
+        accountLogin,
+        accountType,
+        repositorySelection,
+        createdByUserId,
+        0,
+        options.CreatedAtUtc,
+        options.UpdatedAtUtc);
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        DateTime UpdatedAtUtc
+    );
 }
 
 public sealed record GitHubSetupAttempt(
@@ -86,38 +87,37 @@ public sealed record GitHubSetupAttempt(
     string TechnicalName,
     GitHubSetupState State,
     DateTime CreatedAtUtc,
-    DateTime ExpiresAtUtc) : ITenantOwned;
+    DateTime ExpiresAtUtc
+) : ITenantOwned;
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(
-    typeof(AwaitingGitHubInstallation),
-    typeof(AwaitingGitHubOAuth),
-    typeof(ConsumedGitHubSetup))]
+[BsonKnownTypes(typeof(AwaitingGitHubInstallation), typeof(AwaitingGitHubOAuth), typeof(ConsumedGitHubSetup))]
 public abstract record GitHubSetupState;
 
-public sealed record AwaitingGitHubInstallation(string InstallStateHash) : GitHubSetupState;
+public sealed record AwaitingGitHubInstallation(
+    string InstallStateHash
+) : GitHubSetupState;
 
 public sealed record AwaitingGitHubOAuth(
     string OAuthStateHash,
     string ProtectedCodeVerifier,
-    GitHubInstallationMetadata Installation) : GitHubSetupState;
+    GitHubInstallationMetadata Installation
+) : GitHubSetupState;
 
-public sealed record ConsumedGitHubSetup(DateTime ConsumedAtUtc) : GitHubSetupState;
+public sealed record ConsumedGitHubSetup(
+    DateTime ConsumedAtUtc
+) : GitHubSetupState;
 
 public sealed record GitHubInstallationMetadata(
     string ExternalInstallationId,
     string AccountId,
     string AccountLogin,
     GitProviderAccountType AccountType,
-    GitProviderRepositorySelection RepositorySelection);
+    GitProviderRepositorySelection RepositorySelection
+);
 
 public static class GitHubSetupAttemptFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc,
-        DateTime ExpiresAtUtc);
-
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow, DateTime.UtcNow.AddMinutes(10));
 
@@ -126,29 +126,34 @@ public static class GitHubSetupAttemptFactory
         string initiatedByUserId,
         string technicalName,
         string installStateHash,
-        CreateOptions options) =>
-        new(
-            options.Id,
-            tenantId,
-            initiatedByUserId,
-            ResourceTechnicalName.Require(technicalName),
-            new AwaitingGitHubInstallation(installStateHash),
-            options.CreatedAtUtc,
-            options.ExpiresAtUtc);
+        CreateOptions options) => new(
+        options.Id,
+        tenantId,
+        initiatedByUserId,
+        ResourceTechnicalName.Require(technicalName),
+        new AwaitingGitHubInstallation(installStateHash),
+        options.CreatedAtUtc,
+        options.ExpiresAtUtc);
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        DateTime ExpiresAtUtc
+    );
 }
 
 public enum SourceBuildPlanKind
 {
     Dockerfile,
     DotNet,
-    Node
+    Node,
 }
 
 public enum SourceBuildPlanConfidence
 {
     High,
     Medium,
-    Low
+    Low,
 }
 
 public sealed record SourceBuildPlan(
@@ -162,14 +167,16 @@ public sealed record SourceBuildPlan(
     ImmutableList<string> Warnings,
     ImmutableList<string> Commands,
     string? StartCommand,
-    string DockerfilePreview);
+    string DockerfilePreview
+);
 
 public sealed record SourceRepositoryAnalysis(
     string Branch,
     string CommitSha,
     DateTime AnalyzedAtUtc,
     ImmutableList<string> DetectedFiles,
-    ImmutableList<SourceBuildPlan> Candidates);
+    ImmutableList<SourceBuildPlan> Candidates
+);
 
 public sealed record SourceRepository(
     [property: BsonId]
@@ -186,15 +193,11 @@ public sealed record SourceRepository(
     long Revision,
     long ReferenceFence,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc) : ITenantOwned;
+    DateTime UpdatedAtUtc
+) : ITenantOwned;
 
 public static class SourceRepositoryFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc,
-        DateTime UpdatedAtUtc);
-
     public static CreateOptions DefaultOptions =>
         new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow, DateTime.UtcNow);
 
@@ -214,7 +217,7 @@ public static class SourceRepositoryFactory
         ArgumentException.ThrowIfNullOrWhiteSpace(externalRepositoryId);
         ArgumentException.ThrowIfNullOrWhiteSpace(branch);
 
-        return new(
+        return new SourceRepository(
             options.Id,
             tenantId,
             ResourceTechnicalName.Require(technicalName),
@@ -229,4 +232,10 @@ public static class SourceRepositoryFactory
             options.CreatedAtUtc,
             options.UpdatedAtUtc);
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc,
+        DateTime UpdatedAtUtc
+    );
 }

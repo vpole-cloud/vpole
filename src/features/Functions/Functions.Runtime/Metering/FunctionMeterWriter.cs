@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Pole.Features.Functions.Application.Common;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Runtime.Metering;
 using Pole.Features.Functions.Domain;
 
@@ -17,18 +15,15 @@ public interface IFunctionMeterWriter
 
 public sealed class FunctionMeterWriter(
     PersistFunctionMeterEvent persistMeterEvent,
-    ILogger<FunctionMeterWriter> logger) : IFunctionMeterWriter
+    ILogger<FunctionMeterWriter> logger
+) : IFunctionMeterWriter
 {
-    public async Task WriteAsync(
-        FunctionMeterEvent meterEvent,
-        CancellationToken cancellationToken = default)
+    public async Task WriteAsync(FunctionMeterEvent meterEvent, CancellationToken cancellationToken = default)
     {
         await persistMeterEvent(meterEvent, cancellationToken);
     }
 
-    public async Task TryWriteAsync(
-        FunctionMeterEvent meterEvent,
-        CancellationToken cancellationToken = default)
+    public async Task TryWriteAsync(FunctionMeterEvent meterEvent, CancellationToken cancellationToken = default)
     {
         try
         {

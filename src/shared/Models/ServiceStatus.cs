@@ -2,7 +2,7 @@
 
 namespace Pole.Features.Shared.Models;
 
-[BsonDiscriminator(RootClass =  true)]
+[BsonDiscriminator(RootClass = true)]
 [BsonKnownTypes(typeof(Provisioning), typeof(Running), typeof(Failed), typeof(Stopped))]
 public abstract record ServiceStatus
 {
@@ -10,6 +10,11 @@ public abstract record ServiceStatus
 }
 
 public sealed record Provisioning : ServiceStatus;
+
 public sealed record Running : ServiceStatus;
-public sealed record Failed(string Reason) : ServiceStatus;
+
+public sealed record Failed(
+    string Reason
+) : ServiceStatus;
+
 public sealed record Stopped : ServiceStatus;

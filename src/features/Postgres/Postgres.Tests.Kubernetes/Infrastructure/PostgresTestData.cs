@@ -1,5 +1,3 @@
-using Pole.Testing;
-
 namespace Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 
 internal static class PostgresTestData

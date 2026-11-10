@@ -1,18 +1,14 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Features.DeploymentTargets.Application.Bootstrap;
 
-public delegate Task BootstrapDeploymentTargets(
-    CancellationToken cancellationToken = default);
+public delegate Task BootstrapDeploymentTargets(CancellationToken cancellationToken = default);
 
 internal sealed class DeploymentTargetBootstrapper(
     LoadDeploymentTargetBootstrapState loadBootstrapState,
@@ -22,7 +18,8 @@ internal sealed class DeploymentTargetBootstrapper(
     DeploymentTargetOptions options,
     IHostEnvironment environment,
     TimeProvider timeProvider,
-    ILogger<DeploymentTargetBootstrapper> logger)
+    ILogger<DeploymentTargetBootstrapper> logger
+)
 {
     public async Task InvokeAsync(CancellationToken cancellationToken = default)
     {
@@ -32,8 +29,7 @@ internal sealed class DeploymentTargetBootstrapper(
             if (current.DefaultTargetExists)
                 return;
 
-            throw new InvalidOperationException(
-                "Deployment-target settings reference a target that does not exist.");
+            throw new InvalidOperationException("Deployment-target settings reference a target that does not exist.");
         }
 
         if (current.FirstTarget is not null)
@@ -67,10 +63,7 @@ internal sealed class DeploymentTargetBootstrapper(
             input,
             cancellationToken);
         if (preparedResult is not PreparedDeploymentTargetConnection)
-        {
-            throw new InvalidOperationException(
-                "The local deployment-target connection could not be prepared.");
-        }
+            throw new InvalidOperationException("The local deployment-target connection could not be prepared.");
 
         var prepared = (PreparedDeploymentTargetConnection)preparedResult.Value;
         using (prepared)
@@ -80,10 +73,8 @@ internal sealed class DeploymentTargetBootstrapper(
                 prepared.Connection.Version,
                 cancellationToken: cancellationToken);
             if (!observation.IsUsable || observation.ClusterIdentity is null)
-            {
                 throw new InvalidOperationException(
                     $"The local deployment target could not be validated ({observation.Health.FailureCode}).");
-            }
 
             var createdAtUtc = timeProvider.GetUtcNow().UtcDateTime;
             var target = DeploymentTargetFactory.Create(
@@ -120,17 +111,16 @@ internal sealed class DeploymentTargetBootstrapper(
         throw new InvalidOperationException("The default deployment target could not be bootstrapped.");
     }
 
-    private async Task<DeploymentTargetConnectionInput> CreateBootstrapInputAsync(
-        CancellationToken cancellationToken)
+    private async Task<DeploymentTargetConnectionInput> CreateBootstrapInputAsync(CancellationToken cancellationToken)
     {
         var mode = options.Bootstrap.Mode switch
         {
-            DeploymentTargetBootstrapMode.Auto when environment.IsDevelopment() => DeploymentTargetBootstrapMode.Kubeconfig,
+            DeploymentTargetBootstrapMode.Auto when environment.IsDevelopment() => DeploymentTargetBootstrapMode
+                .Kubeconfig,
             DeploymentTargetBootstrapMode.Auto => DeploymentTargetBootstrapMode.InCluster,
             DeploymentTargetBootstrapMode.InCluster => DeploymentTargetBootstrapMode.InCluster,
             DeploymentTargetBootstrapMode.Kubeconfig => DeploymentTargetBootstrapMode.Kubeconfig,
-            _ => throw new InvalidOperationException(
-                "The deployment-target bootstrap mode is not supported.")
+            _ => throw new InvalidOperationException("The deployment-target bootstrap mode is not supported."),
         };
         if (mode == DeploymentTargetBootstrapMode.InCluster)
             return new InClusterConnectionInput();
@@ -144,16 +134,13 @@ internal sealed class DeploymentTargetBootstrapper(
                 throw new InvalidOperationException();
             kubeconfig = await File.ReadAllTextAsync(path, cancellationToken);
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                              or InvalidOperationException)
         {
-            throw new InvalidOperationException(
-                "The development bootstrap kubeconfig could not be read.");
+            throw new InvalidOperationException("The development bootstrap kubeconfig could not be read.");
         }
 
-        return new KubeconfigConnectionInput(
-            kubeconfig,
-            options.Bootstrap.KubeconfigContext);
+        return new KubeconfigConnectionInput(kubeconfig, options.Bootstrap.KubeconfigContext);
     }
 
     private DeploymentTargetWorkloadConfiguration CreateWorkloadConfiguration()
@@ -175,10 +162,7 @@ internal sealed class DeploymentTargetBootstrapper(
         if (!string.IsNullOrWhiteSpace(configuredPath))
         {
             if (!Path.IsPathFullyQualified(configuredPath))
-            {
-                throw new InvalidOperationException(
-                    "Development bootstrap requires an absolute kubeconfig path.");
-            }
+                throw new InvalidOperationException("Development bootstrap requires an absolute kubeconfig path.");
 
             return configuredPath;
         }
@@ -190,16 +174,11 @@ internal sealed class DeploymentTargetBootstrapper(
                 Path.PathSeparator,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (candidates.Length != 1)
-            {
                 throw new InvalidOperationException(
                     "Development bootstrap requires one explicit kubeconfig file, not a merged KUBECONFIG list.");
-            }
 
             if (!Path.IsPathFullyQualified(candidates[0]))
-            {
-                throw new InvalidOperationException(
-                    "Development bootstrap requires an absolute KUBECONFIG file path.");
-            }
+                throw new InvalidOperationException("Development bootstrap requires an absolute KUBECONFIG file path.");
 
             return candidates[0];
         }
@@ -209,5 +188,4 @@ internal sealed class DeploymentTargetBootstrapper(
             throw new InvalidOperationException("A development bootstrap kubeconfig path is required.");
         return Path.Combine(userProfile, ".kube", "config");
     }
-
 }

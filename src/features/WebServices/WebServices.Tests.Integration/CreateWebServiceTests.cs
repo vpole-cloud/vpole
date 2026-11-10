@@ -1,15 +1,11 @@
-using System.Collections.Immutable;
 using System.Text.Json;
-using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Testing;
 using Pole.Features.Tenants.Testing;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Domain;
@@ -22,10 +18,12 @@ using Xunit;
 namespace Pole.Features.WebServices.Tests.Integration;
 
 [Collection(nameof(WebServicesMongoCollection))]
-public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAsyncLifetime
+public sealed class CreateWebServiceTests(
+    WebServicesMongoFixture fixture
+) : IAsyncLifetime
 {
-    private CreateWebServicePlatform _platform = null!;
     private ResourceGroupTestData _groups = null!;
+    private CreateWebServicePlatform _platform = null!;
 
     public async Task InitializeAsync()
     {
@@ -35,13 +33,15 @@ public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAs
         var group = await _groups.CreateAsync(tenant);
         _platform = new CreateWebServicePlatform(group);
     }
+
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Create_PublicRequestsGeneratedHostnameAndMultiTargetPlacement()
     {
         var request = Request();
-        var outcome = await Send(request with { Body = request.Body with { Exposure = WebServiceExposureMode.Public } });
+        var outcome = await Send(
+            request with { Body = request.Body with { Exposure = WebServiceExposureMode.Public } });
         var created = Assert.IsType<CreateWebServiceResponse>(outcome.Value);
         var service = await fixture.WebServices.Find(item => item.Id == created.WebServiceId).SingleAsync();
         Assert.Equal(request.TenantId, service.TenantId);
@@ -62,15 +62,22 @@ public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAs
         Assert.Equal(placement.DeploymentId, binding.ResourceDeploymentId);
         Assert.Equal("webservice-" + service.Id, binding.RelativeName);
         Assert.Equal(binding.RelativeName + ".apps.test.local", Assert.Single(placement.Ingress!.Hostnames));
-        await _groups.AssertRegisteredAsync(request.TenantId, _platform.GroupId,
-            WebServiceResourceDeployment.ResourceType, service.Id, service.Name);
+        await _groups.AssertRegisteredAsync(
+            request.TenantId,
+            _platform.GroupId,
+            WebServiceResourceDeployment.ResourceType,
+            service.Id,
+            service.Name);
         var release = await fixture.Releases.Find(item => item.WebServiceId == service.Id).SingleAsync();
         Assert.Equal(WebServiceReleaseAction.Create, release.Action);
         Assert.Equal(placement.DeploymentId, Assert.Single(release.Deployments).ResourceDeploymentId);
-        var message = await fixture.OutboxMessages.Find(item =>
-            item.EventType == "pole.web-services/v1/web-service-created").SingleAsync();
+        var message = await fixture.OutboxMessages
+            .Find(item => item.EventType == "pole.web-services/v1/web-service-created")
+            .SingleAsync();
         Assert.Equal(request.TenantId, message.TenantId);
-        var payload = JsonSerializer.Deserialize<WebServiceCreatedEvent>(message.PayloadJson, EventExtensions.SerializerOptions);
+        var payload = JsonSerializer.Deserialize<WebServiceCreatedEvent>(
+            message.PayloadJson,
+            EventExtensions.SerializerOptions);
         Assert.NotNull(payload);
         Assert.Equal(service.Id, payload.WebServiceId);
         var snapshot = Assert.Single(payload.Deployments);
@@ -98,14 +105,20 @@ public sealed class CreateWebServiceTests(WebServicesMongoFixture fixture) : IAs
         var unavailable = ObjectId.GenerateNewId().ToString();
         _platform.Targets.AddIneligiblePublicIngressTarget(unavailable, "apps.missing-source.test.local");
         var request = Request();
-        var outcome = await Send(request with
-        {
-            Body = request.Body with
+        var outcome = await Send(
+            request with
             {
-                Exposure = WebServiceExposureMode.Public,
-                Placement = new(null, [new(TestPlatformDefaults.DeploymentTargetId), new(unavailable)])
-            }
-        });
+                Body = request.Body with
+                {
+                    Exposure = WebServiceExposureMode.Public,
+                    Placement = new WebServicePlacementRequest(
+                        null,
+                        [
+                            new WebServiceDeploymentTargetRequest(TestPlatformDefaults.DeploymentTargetId),
+                            new WebServiceDeploymentTargetRequest(unavailable),
+                        ]),
+                },
+            });
         var error = Assert.IsType<CreateWebServiceError>(outcome.Value);
         var placement = Assert.IsType<CreateWebServicePlacementError>(error.Value);
         Assert.Equal(unavailable, Assert.IsType<CreateWebServiceTargetUnavailable>(placement.Value).DeploymentTargetId);

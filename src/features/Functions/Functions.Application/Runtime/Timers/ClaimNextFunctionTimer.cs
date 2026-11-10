@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -13,7 +11,8 @@ public delegate Task<FunctionTimerState?> ClaimNextFunctionTimer(
 
 public sealed class MongoClaimNextFunctionTimer(
     IMongoCollection<FunctionTimerState> functionTimerStates,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<FunctionTimerState?> InvokeAsync(
         string ownerId,
@@ -28,13 +27,11 @@ public sealed class MongoClaimNextFunctionTimer(
             now.AddSeconds(leaseSeconds));
         return await functionTimerStates.FindOneAndUpdateAsync(
             FunctionTimerSchedulerFilters.ClaimableAt(now),
-            Builders<FunctionTimerState>.Update
-                .Set(timer => timer.Lease, lease)
-                .Set(timer => timer.UpdatedAtUtc, now),
+            Builders<FunctionTimerState>.Update.Set(timer => timer.Lease, lease).Set(timer => timer.UpdatedAtUtc, now),
             new FindOneAndUpdateOptions<FunctionTimerState>
             {
                 ReturnDocument = ReturnDocument.After,
-                Sort = Builders<FunctionTimerState>.Sort.Ascending(timer => timer.NextOccurrenceUtc)
+                Sort = Builders<FunctionTimerState>.Sort.Ascending(timer => timer.NextOccurrenceUtc),
             },
             cancellationToken);
     }

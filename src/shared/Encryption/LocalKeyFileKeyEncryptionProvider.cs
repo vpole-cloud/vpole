@@ -11,15 +11,15 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
     private const int DataEncryptionKeySizeBytes = 32;
     private const int NonceSizeBytes = 12;
     private const int TagSizeBytes = 16;
+    private readonly object _keyAccessLock = new();
 
     private readonly Dictionary<KeyEncryptionKeyIdentity, byte[]> _keys;
-    private readonly object _keyAccessLock = new();
     private bool _disposed;
 
     public LocalKeyFileKeyEncryptionProvider(IOptions<LocalKeyFileOptions> options)
     {
         var configuration = options.Value;
-        ActiveKey = new(
+        ActiveKey = new KeyEncryptionKeyDescriptor(
             new KeyEncryptionKeyIdentity(configuration.ActiveKeyId, configuration.ActiveKeyVersion),
             Algorithm,
             AlgorithmVersion);
@@ -29,11 +29,9 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
             foreach (var configuredKey in configuration.Keys)
             {
                 if (!LocalKeyFileReader.TryRead(configuredKey.Path, out var keyMaterial))
-                {
                     throw new InvalidOperationException(
                         "A configured LocalKeyFile key became unavailable after startup validation.");
-                }
-                _keys.Add(new(configuredKey.Id, configuredKey.Version), keyMaterial);
+                _keys.Add(new KeyEncryptionKeyIdentity(configuredKey.Id, configuredKey.Version), keyMaterial);
             }
         }
         catch
@@ -41,6 +39,18 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
             foreach (var key in _keys.Values)
                 CryptographicOperations.ZeroMemory(key);
             throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_keyAccessLock)
+        {
+            if (_disposed)
+                return;
+            foreach (var key in _keys.Values)
+                CryptographicOperations.ZeroMemory(key);
+            _disposed = true;
         }
     }
 
@@ -57,12 +67,9 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
         lock (_keyAccessLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (keyDescriptor != ActiveKey ||
-                dataEncryptionKey.Length != DataEncryptionKeySizeBytes ||
+            if (keyDescriptor != ActiveKey || dataEncryptionKey.Length != DataEncryptionKeySizeBytes ||
                 !_keys.TryGetValue(keyDescriptor.Identity, out var key))
-            {
                 return ValueTask.FromResult<DataEncryptionKeyWrappingOutcome>(KeyWrapFailure());
-            }
 
             try
             {
@@ -96,14 +103,10 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!string.Equals(algorithm, Algorithm, StringComparison.Ordinal) ||
-                algorithmVersion != AlgorithmVersion ||
-                wrappedDataEncryptionKey.Length != DataEncryptionKeySizeBytes ||
-                nonce.Length != NonceSizeBytes ||
-                authenticationTag.Length != TagSizeBytes ||
+                algorithmVersion != AlgorithmVersion || wrappedDataEncryptionKey.Length != DataEncryptionKeySizeBytes ||
+                nonce.Length != NonceSizeBytes || authenticationTag.Length != TagSizeBytes ||
                 !_keys.TryGetValue(keyIdentity, out var key))
-            {
                 return ValueTask.FromResult<DataEncryptionKeyUnwrappingOutcome>(KeyUnwrapFailure());
-            }
 
             var dataEncryptionKey = new byte[DataEncryptionKeySizeBytes];
             try
@@ -122,18 +125,6 @@ public sealed class LocalKeyFileKeyEncryptionProvider : IKeyEncryptionProvider, 
                 CryptographicOperations.ZeroMemory(dataEncryptionKey);
                 return ValueTask.FromResult<DataEncryptionKeyUnwrappingOutcome>(KeyUnwrapFailure());
             }
-        }
-    }
-
-    public void Dispose()
-    {
-        lock (_keyAccessLock)
-        {
-            if (_disposed)
-                return;
-            foreach (var key in _keys.Values)
-                CryptographicOperations.ZeroMemory(key);
-            _disposed = true;
         }
     }
 

@@ -7,8 +7,6 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.ResourceRegistrations;
 using Pole.Mediator;
@@ -20,18 +18,19 @@ public static class GetResourceGroup
 {
     public static IEndpointRouteBuilder MapGetResourceGroupEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}", async (
-                IMediator mediator,
-                [AsParameters] GetResourceGroupRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] GetResourceGroupRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ResourceGroupDto group => Results.Ok(group),
-                    ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ResourceGroupDto group => Results.Ok(group),
+                        ResourceGroupNotFound error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("GetResourceGroup")
             .WithSummary("Retrieves a resource group in the selected tenant.")
             .Produces<ResourceGroupDto>()
@@ -42,25 +41,24 @@ public static class GetResourceGroup
 
 public sealed record GetResourceGroupRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetResourceGroupOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetResourceGroupOutcome>, ITenantReadOperation;
 
-public union GetResourceGroupOutcome(
-    ResourceGroupDto,
-    ResourceGroupNotFound);
+public union GetResourceGroupOutcome(ResourceGroupDto, ResourceGroupNotFound);
 
 public sealed class GetResourceGroupHandler(
     LoadResourceGroup loadResourceGroup,
     LoadResourceRegistrationCount loadResourceRegistrationCount,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetResourceGroupRequest, GetResourceGroupOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetResourceGroupRequest, GetResourceGroupOutcome>
 {
     public async Task<GetResourceGroupOutcome> HandleAsync(
         GetResourceGroupRequest request,
         CancellationToken cancellationToken = default)
     {
         var group = await loadResourceGroup(request.TenantId, request.Id, cancellationToken);
-        if (group is null) return new ResourceGroupNotFound(request.Id);
+        if (group is null)
+            return new ResourceGroupNotFound(request.Id);
         return group.ToDto(await loadResourceRegistrationCount(request.TenantId, request.Id, cancellationToken)) with
         {
             GitOps = await git.StatusAsync(
@@ -68,7 +66,7 @@ public sealed class GetResourceGroupHandler(
                     TenantId: request.TenantId,
                     Kind: "ResourceGroup",
                     ResourceId: group.Id),
-                ct: cancellationToken)
+                ct: cancellationToken),
         };
     }
 }

@@ -1,13 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
+using MongoDB.Bson;
 using Pole.Features.ResourceDeployments.Application.Endpoints;
 using Pole.Features.ResourceDeployments.Application.Jobs;
-using Pole.Features.ResourceDeployments.Application.Mongo;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Tests.Integration.Infrastructure;
@@ -17,16 +11,16 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 
 [Collection(IntegrationTestCollection.Tenant3)]
 public sealed class ResourceDeploymentCreationContractTests(
-    MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
+    private static readonly ResourceTypeId TestResourceType = ResourceTypeId.Create("pole/test-resource");
+
+    private readonly string DeploymentId = ObjectId.GenerateNewId().ToString();
+    private readonly string ResourceGroupId = ObjectId.GenerateNewId().ToString();
+    private readonly string ResourceId = ObjectId.GenerateNewId().ToString();
+    private readonly string TargetId = ObjectId.GenerateNewId().ToString();
     private string TenantId => Data.TenantId;
-    private readonly string ResourceId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private readonly string ResourceGroupId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private readonly string DeploymentId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private readonly string TargetId = MongoDB.Bson.ObjectId.GenerateNewId().ToString();
-    private static readonly ResourceTypeId TestResourceType =
-        ResourceTypeId.Create("pole/test-resource");
 
     [Fact]
     public async Task CreateSet_RejectsEmptyAndDuplicateDeploymentSets()
@@ -34,12 +28,8 @@ public sealed class ResourceDeploymentCreationContractTests(
         var create = Services.GetRequiredService<CreateResourceDeploymentSet>();
         var deployment = CreateRequest();
 
-        await AssertStructuralRequestRejectedAsync(
-            create,
-            new CreateResourceDeploymentSetRequest([]));
-        await AssertStructuralRequestRejectedAsync(
-            create,
-            new CreateResourceDeploymentSetRequest([null!]));
+        await AssertStructuralRequestRejectedAsync(create, new CreateResourceDeploymentSetRequest([]));
+        await AssertStructuralRequestRejectedAsync(create, new CreateResourceDeploymentSetRequest([null!]));
         await AssertStructuralRequestRejectedAsync(
             create,
             new CreateResourceDeploymentSetRequest([deployment, deployment]));
@@ -86,20 +76,16 @@ public sealed class ResourceDeploymentCreationContractTests(
     [Fact]
     public async Task ReferenceCapabilities_RequireCallerOwnedTransaction()
     {
-        var resourceGroupGuard = Services
-            .GetRequiredService<EnsureNoUnfinishedResourceGroupDeployments>();
-        var computeProfileGuard = Services
-            .GetRequiredService<EnsureComputeProfileUnreferenced>();
+        var resourceGroupGuard = Services.GetRequiredService<EnsureNoUnfinishedResourceGroupDeployments>();
+        var computeProfileGuard = Services.GetRequiredService<EnsureComputeProfileUnreferenced>();
         using var session = await DbContext.Client.StartSessionAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            resourceGroupGuard(
-                new EnsureNoUnfinishedResourceGroupDeploymentsRequest(
-                    TenantId: TenantId,
-                    ResourceGroupId: ResourceGroupId),
-                session: session));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            computeProfileGuard("507f1f77bcf86cd799439019", session));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => resourceGroupGuard(
+            new EnsureNoUnfinishedResourceGroupDeploymentsRequest(TenantId: TenantId, ResourceGroupId: ResourceGroupId),
+            session: session));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => computeProfileGuard(
+            "507f1f77bcf86cd799439019",
+            session));
     }
 
     private async Task AssertStructuralRequestRejectedAsync(
@@ -110,8 +96,7 @@ public sealed class ResourceDeploymentCreationContractTests(
         session.StartTransaction();
         try
         {
-            await Assert.ThrowsAsync<ArgumentException>(() =>
-                create(request, session));
+            await Assert.ThrowsAsync<ArgumentException>(() => create(request, session));
         }
         finally
         {
@@ -120,19 +105,15 @@ public sealed class ResourceDeploymentCreationContractTests(
         }
     }
 
-    private CreateResourceDeploymentRequest CreateRequest() =>
-        new(
-            DeploymentId,
-            TenantId,
-            TestResourceType,
-            ResourceId,
-            ResourceGroupId,
-            IsolationScopeId: null,
-            new ResolvedResourceDeploymentTarget(
-                TargetId,
-                WorkloadConfigurationRevision: 1,
-                Ingress: null),
-            ResourceDeploymentTestData.ContractCompute(TargetId),
-            Storage: null,
-            ResourcePlacementCapability.MultiTarget);
+    private CreateResourceDeploymentRequest CreateRequest() => new(
+        DeploymentId,
+        TenantId,
+        TestResourceType,
+        ResourceId,
+        ResourceGroupId,
+        IsolationScopeId: null,
+        new ResolvedResourceDeploymentTarget(TargetId, WorkloadConfigurationRevision: 1, Ingress: null),
+        ResourceDeploymentTestData.ContractCompute(TargetId),
+        Storage: null,
+        ResourcePlacementCapability.MultiTarget);
 }

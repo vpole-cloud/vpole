@@ -10,22 +10,20 @@ public union CreateSourceBuildWorkspaceError(
     SourceBuildRepositoryArchiveInvalid,
     SourceBuildWorkspaceArchiveLimitExceeded);
 
-public union CreateSourceBuildWorkspaceOutcome(
-    SourceBuildWorkspace,
-    CreateSourceBuildWorkspaceError);
+public union CreateSourceBuildWorkspaceOutcome(SourceBuildWorkspace, CreateSourceBuildWorkspaceError);
 
-public delegate Task<CreateSourceBuildWorkspaceOutcome>
-    CreateSourceBuildWorkspace(
-        string tenantId,
-        string sourceRepositoryId,
-        string commitSha,
-        string buildJobId,
-        CancellationToken cancellationToken = default);
+public delegate Task<CreateSourceBuildWorkspaceOutcome> CreateSourceBuildWorkspace(
+    string tenantId,
+    string sourceRepositoryId,
+    string commitSha,
+    string buildJobId,
+    CancellationToken cancellationToken = default);
 
 public sealed class SourceBuildWorkspaceService(
     DownloadSourceRepositoryArchive downloadSourceRepositoryArchive,
     ExtractRepositoryArchive extractRepositoryArchive,
-    SourceBuildExecutionOptions options)
+    SourceBuildExecutionOptions options
+)
 {
     public async Task<CreateSourceBuildWorkspaceOutcome> InvokeAsync(
         string tenantId,
@@ -82,6 +80,7 @@ public sealed class SourceBuildWorkspaceService(
                     options.MaxExtractedFiles,
                     cancellationToken);
             }
+
             if (extraction is SourceBuildRepositoryArchiveInvalid extractionFailure)
             {
                 await DeleteWorkspaceAsync(buildRoot);
@@ -115,7 +114,10 @@ public sealed class SourceBuildWorkspaceService(
         return Task.CompletedTask;
     }
 
-    private sealed class SizeLimitedWriteStream(Stream inner, long maxBytes) : Stream
+    private sealed class SizeLimitedWriteStream(
+        Stream inner,
+        long maxBytes
+    ) : Stream
     {
         private long _written;
 
@@ -123,14 +125,28 @@ public sealed class SourceBuildWorkspaceService(
         public override bool CanSeek => false;
         public override bool CanWrite => true;
         public override long Length => _written;
-        public override long Position { get => _written; set => throw new NotSupportedException(); }
+
+        public override long Position
+        {
+            get => _written;
+            set => throw new NotSupportedException();
+        }
+
         public override void Flush() => inner.Flush();
         public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override int Read(
+            byte[] buffer,
+            int offset,
+            int count) => throw new NotSupportedException();
+
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
 
-        public override void Write(byte[] buffer, int offset, int count)
+        public override void Write(
+            byte[] buffer,
+            int offset,
+            int count)
         {
             EnsureCapacity(count);
             inner.Write(buffer, offset, count);

@@ -25,7 +25,8 @@ public sealed record AddTenantMemberRequest(
 public sealed record AddTenantMemberRequestBody(
     string UserId,
     string Email,
-    TenantRole Role);
+    TenantRole Role
+);
 
 public union AddTenantMemberOutcome(
     TenantMemberDto,
@@ -33,8 +34,8 @@ public union AddTenantMemberOutcome(
     TenantMemberAlreadyExists);
 
 public sealed class AddTenantMemberHandler(
-    PersistAddedTenantMember persistAddedTenantMember)
-    : IMediatorOutcomeHandler<AddTenantMemberRequest, AddTenantMemberOutcome>
+    PersistAddedTenantMember persistAddedTenantMember
+) : IMediatorOutcomeHandler<AddTenantMemberRequest, AddTenantMemberOutcome>
 {
     public async Task<AddTenantMemberOutcome> HandleAsync(
         AddTenantMemberRequest request,
@@ -50,7 +51,7 @@ public sealed class AddTenantMemberHandler(
         {
             TenantMember added => added.ToDto(),
             TenantNotFound error => error,
-            TenantMemberAlreadyExists error => error
+            TenantMemberAlreadyExists error => error,
         };
     }
 }
@@ -70,21 +71,22 @@ public static class AddTenantMemberEndpoint
 {
     public static IEndpointRouteBuilder MapAddTenantMemberEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{TenantId}/members", async (
-                IMediator mediator,
-                [AsParameters] AddTenantMemberRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/{TenantId}/members",
+                async (
+                    IMediator mediator, [AsParameters] AddTenantMemberRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    TenantMemberDto member => Results.Created(
-                        $"/api/v1/tenants/{member.TenantId}/members/{member.Id}",
-                        member),
-                    TenantNotFound error => MapTenantNotFound(error),
-                    TenantMemberAlreadyExists error => MapMemberAlreadyExists(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        TenantMemberDto member => Results.Created(
+                            $"/api/v1/tenants/{member.TenantId}/members/{member.Id}",
+                            member),
+                        TenantNotFound error => MapTenantNotFound(error),
+                        TenantMemberAlreadyExists error => MapMemberAlreadyExists(error),
+                    });
+                })
             .WithName("AddTenantMember")
             .Produces<TenantMemberDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound)

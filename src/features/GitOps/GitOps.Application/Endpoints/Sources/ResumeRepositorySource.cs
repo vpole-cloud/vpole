@@ -15,14 +15,16 @@ using Pole.Validation;
 namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record ResumeRepositorySourceBody(long ExpectedRevision);
+public sealed record ResumeRepositorySourceBody(
+    long ExpectedRevision
+);
 
 public sealed record ResumeRepositorySourceRequest(
     [FromBody] ResumeRepositorySourceBody Body,
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
-    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId)
-    : IMediatorRequest<ResumeRepositorySourceOutcome>, ITenantWriteOperation;
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
+) : IMediatorRequest<ResumeRepositorySourceOutcome>, ITenantWriteOperation;
 
 public union ResumeRepositorySourceOutcome(
     RepositorySourceView,
@@ -36,13 +38,14 @@ public sealed class ResumeRepositorySourceValidator : AbstractValidator<ResumeRe
     {
         RuleFor(item => item.Id).MongoObjectId("Source ID");
         RuleFor(item => item.Body).NotNull();
-        When(item => item.Body is not null,
-            () => RuleFor(item => item.Body.ExpectedRevision).GreaterThan(0));
+        When(item => item.Body is not null, () => RuleFor(item => item.Body.ExpectedRevision).GreaterThan(0));
     }
 }
 
-public sealed class ResumeRepositorySourceHandler(GitSourceLifecycleStore lifecycle, GitRepositoryQueries queries)
-    : IMediatorOutcomeHandler<ResumeRepositorySourceRequest, ResumeRepositorySourceOutcome>
+public sealed class ResumeRepositorySourceHandler(
+    GitSourceLifecycleStore lifecycle,
+    GitRepositoryQueries queries
+) : IMediatorOutcomeHandler<ResumeRepositorySourceRequest, ResumeRepositorySourceOutcome>
 {
     public async Task<ResumeRepositorySourceOutcome> HandleAsync(
         ResumeRepositorySourceRequest request,
@@ -50,15 +53,18 @@ public sealed class ResumeRepositorySourceHandler(GitSourceLifecycleStore lifecy
     {
         var tenantId = ObjectId.Parse(request.TenantId).ToString();
         var sourceId = ObjectId.Parse(request.Id).ToString();
-        var outcome = await lifecycle.ResumeAsync(new(tenantId, sourceId, request.Body.ExpectedRevision,
-            request.CurrentUserId.Value), cancellationToken);
+        var outcome = await lifecycle.ResumeAsync(
+            new ChangeGitSourceActivity(tenantId, sourceId, request.Body.ExpectedRevision, request.CurrentUserId.Value),
+            cancellationToken);
         return outcome switch
         {
-            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken)
-                is { } current ? current : new GitSourceNotFound(),
+            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken) is
+                { } current
+                ? current
+                : new GitSourceNotFound(),
             GitSourceNotFound missing => missing,
             GitSourceRevisionConflict stale => stale,
-            GitSourceInactive inactive => inactive
+            GitSourceInactive inactive => inactive,
         };
     }
 }
@@ -67,15 +73,18 @@ public static class ResumeRepositorySourceEndpoint
 {
     public static IEndpointRouteBuilder MapResumeRepositorySourceEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{Id}/resume",
-                async (IMediator mediator, [AsParameters] ResumeRepositorySourceRequest request,
+        app.MapPost(
+                "/{Id}/resume",
+                async (
+                    IMediator mediator, [AsParameters] ResumeRepositorySourceRequest request,
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-                    {
-                        RepositorySourceView value => Results.Ok(value),
-                        GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
-                        GitSourceRevisionConflict stale => RepositoryHttpMappings.Map(stale),
-                        GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive)
-                    })).WithName("ResumeGitRepositorySource")
+                {
+                    RepositorySourceView value => Results.Ok(value),
+                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
+                    GitSourceRevisionConflict stale => RepositoryHttpMappings.Map(stale),
+                    GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive),
+                }))
+            .WithName("ResumeGitRepositorySource")
             .WithMetadata(new RequestSizeLimitAttribute(SnapshotHttpLimits.MaximumSourceRequestBytes));
         return app;
     }

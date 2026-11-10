@@ -12,7 +12,8 @@ public sealed class RedisRealtimeTicketStore(
     RealtimeRedisConnection connection,
     IDataProtectionProvider protection,
     RealtimeOptions options,
-    TimeProvider clock) : IRealtimeTicketStore
+    TimeProvider clock
+) : IRealtimeTicketStore
 {
     private readonly IDataProtector _protector = protection.CreateProtector(
         "Pole.Realtime.RedisTicketStore",
@@ -23,7 +24,8 @@ public sealed class RedisRealtimeTicketStore(
     {
         var sessionId = GetSessionId(ticket);
         var sanitized = Sanitize(ticket);
-        var stored = await connection.Database.StringSetAsync(RealtimeRedisKeys.Ticket(sessionId),
+        var stored = await connection.Database.StringSetAsync(
+            RealtimeRedisKeys.Ticket(sessionId),
             Protect(sanitized),
             sanitized.Properties.ExpiresUtc!.Value - clock.GetUtcNow(),
             When.NotExists);
@@ -38,7 +40,8 @@ public sealed class RedisRealtimeTicketStore(
             throw new InvalidOperationException("The realtime session identity cannot change.");
         var sanitized = Sanitize(ticket);
         // XX fences renewal against concurrent logout; renewal never recreates a removed ticket.
-        var renewed = await connection.Database.StringSetAsync(RealtimeRedisKeys.Ticket(key),
+        var renewed = await connection.Database.StringSetAsync(
+            RealtimeRedisKeys.Ticket(key),
             Protect(sanitized),
             sanitized.Properties.ExpiresUtc!.Value - clock.GetUtcNow(),
             When.Exists);
@@ -81,23 +84,24 @@ public sealed class RedisRealtimeTicketStore(
     {
         var now = clock.GetUtcNow();
         var expiry = ticket.Properties.ExpiresUtc ??
-                     throw new InvalidOperationException("Realtime tickets require an expiry.");
+            throw new InvalidOperationException("Realtime tickets require an expiry.");
         var maximum = now + options.SessionLifetime;
         if (expiry > maximum)
             expiry = maximum;
         if (expiry <= now)
             throw new InvalidOperationException("An expired realtime ticket cannot be stored.");
-        var claims = ticket.Principal.Claims.Where(claim => claim.Type is
-            "iss" or Claims.UserId or "sid" or Claims.Roles or RealtimeFeature.SessionClaim);
-        var principal =
-            new ClaimsPrincipal(new ClaimsIdentity(claims, RealtimeFeature.CookieScheme, Claims.UserId, Claims.Roles));
-        return new AuthenticationTicket(principal,
+        var claims = ticket.Principal.Claims.Where(claim =>
+            claim.Type is "iss" or Claims.UserId or "sid" or Claims.Roles or RealtimeFeature.SessionClaim);
+        var principal = new ClaimsPrincipal(
+            new ClaimsIdentity(claims, RealtimeFeature.CookieScheme, Claims.UserId, Claims.Roles));
+        return new AuthenticationTicket(
+            principal,
             new AuthenticationProperties
             {
                 IssuedUtc = ticket.Properties.IssuedUtc ?? now,
                 ExpiresUtc = expiry,
                 AllowRefresh = false,
-                IsPersistent = false
+                IsPersistent = false,
             },
             RealtimeFeature.CookieScheme);
     }

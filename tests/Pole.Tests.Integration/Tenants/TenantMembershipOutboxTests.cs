@@ -4,7 +4,6 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Members;
@@ -18,8 +17,9 @@ using Xunit;
 namespace Pole.Tests.Integration.Tenants;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
-    : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.Identity)
+public sealed class TenantMembershipOutboxTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture, IntegrationSchemaProfile.Identity)
 {
     private const string EventType = "pole.tenants/v1/membership-changed";
 
@@ -34,7 +34,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
         var eventsBefore = await DbContext.CountAllOutboxMessagesAsync(EventType);
 
         var result = await Services.GetRequiredService<PersistUpdatedTenantMemberRole>()(
-            new(tenant.Id, selected.Id, TenantRole.Admin));
+            new UpdateTenantMemberRole(tenant.Id, selected.Id, TenantRole.Admin));
 
         Assert.Equal(TenantRole.Admin, Assert.IsType<TenantMember>(result.Value).Role);
         var stored = await DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
@@ -55,20 +55,21 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
         Assert.IsType<TenantMember>((await add(member)).Value);
         Assert.IsType<TenantMemberAlreadyExists>((await add(member)).Value);
         var update = Services.GetRequiredService<PersistUpdatedTenantMemberRole>();
-        await update(new(tenant.Id, member.Id, TenantRole.Viewer));
-        await update(new(tenant.Id, member.Id, TenantRole.Viewer));
-        await Services.GetRequiredService<PersistRemovedTenantMember>()(new(tenant.Id, member.Id));
+        await update(new UpdateTenantMemberRole(tenant.Id, member.Id, TenantRole.Viewer));
+        await update(new UpdateTenantMemberRole(tenant.Id, member.Id, TenantRole.Viewer));
+        await Services.GetRequiredService<PersistRemovedTenantMember>()(new RemoveTenantMember(tenant.Id, member.Id));
         var records = await DbContext.OutboxMessages.Find(message => message.EventType == EventType).ToListAsync();
         Assert.Equal(4, records.Count);
-        Assert.All(records,
+        Assert.All(
+            records,
             record =>
             {
                 Assert.Equal(tenant.Id, record.TenantId);
                 Assert.DoesNotContain("private@example.test", record.PayloadJson);
                 Assert.DoesNotContain("Viewer", record.PayloadJson);
-                var payload =
-                    JsonSerializer.Deserialize<TenantMembershipChangedEvent>(record.PayloadJson,
-                        EventExtensions.SerializerOptions)!;
+                var payload = JsonSerializer.Deserialize<TenantMembershipChangedEvent>(
+                    record.PayloadJson,
+                    EventExtensions.SerializerOptions)!;
                 Assert.Equal(tenant.Id, payload.EventCore.TenantId);
                 Assert.Contains(payload.UserId, new[] { "owner-subject", "new-subject" });
             });
@@ -100,7 +101,7 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
             if (operation != "add")
                 tenant = tenant with
                 {
-                    Members = tenant.Members.Add(member)
+                    Members = tenant.Members.Add(member),
                 };
             await DbContext.Tenants.InsertOneAsync(tenant);
         }
@@ -108,9 +109,11 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
         var before = await DbContext.Tenants.Find(candidate => candidate.Id == tenant.Id).SingleOrDefaultAsync();
         var services = new ServiceCollection();
         services.AddSingleton(Fixture.Database);
-        services.AddSingleton<IMongoClient>(Fixture.Client);
+        services.AddSingleton(Fixture.Client);
         services.AddSingleton<MongoRunTransaction>();
-        services.AddSingleton<StoreOutboxWrites>(async (session, writes, ct) =>
+        services.AddSingleton<StoreOutboxWrites>(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("outbox unavailable");
@@ -124,21 +127,18 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
             "add" => async () =>
             {
                 await scope.ServiceProvider.GetRequiredService<PersistAddedTenantMember>()(member);
-            }
-            ,
+            },
             "update" => async () =>
             {
-                await scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>()(new(tenant.Id,
-                    member.Id,
-                    TenantRole.Viewer));
-            }
-            ,
+                await scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>()(
+                    new UpdateTenantMemberRole(tenant.Id, member.Id, TenantRole.Viewer));
+            },
             "remove" => async () =>
             {
-                await scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>()(new(tenant.Id, member.Id));
-            }
-            ,
-            _ => throw new ArgumentException(nameof(operation))
+                await scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>()(
+                    new RemoveTenantMember(tenant.Id, member.Id));
+            },
+            _ => throw new ArgumentException(nameof(operation)),
         };
         await Assert.ThrowsAsync<InvalidOperationException>(mutate);
         var after = await DbContext.Tenants.Find(candidate => candidate.Id == tenant.Id).SingleOrDefaultAsync();
@@ -156,21 +156,20 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
         var second = TenantFactory.CreateMember(tenant.Id, "second-owner", "second@example.test", TenantRole.Owner);
         tenant = tenant with
         {
-            Members = tenant.Members.Add(second)
+            Members = tenant.Members.Add(second),
         };
         await DbContext.Tenants.InsertOneAsync(tenant);
         using var firstScope = Services.CreateScope();
         using var secondScope = Services.CreateScope();
         var outcomes = await Task.WhenAll(
-            firstScope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>()(new(tenant.Id,
-                tenant.Members[0].Id,
-                TenantRole.Viewer)),
-            secondScope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>()(new(tenant.Id,
-                second.Id,
-                TenantRole.Viewer)));
+            firstScope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>()(
+                new UpdateTenantMemberRole(tenant.Id, tenant.Members[0].Id, TenantRole.Viewer)),
+            secondScope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>()(
+                new UpdateTenantMemberRole(tenant.Id, second.Id, TenantRole.Viewer)));
         Assert.Single(outcomes, outcome => outcome.Value is TenantMember);
         Assert.Single(outcomes, outcome => outcome.Value is TenantLastOwner);
-        Assert.Single((await DbContext.Tenants.Find(candidate => candidate.Id == tenant.Id).SingleAsync()).Members,
+        Assert.Single(
+            (await DbContext.Tenants.Find(candidate => candidate.Id == tenant.Id).SingleAsync()).Members,
             value => value.Role == TenantRole.Owner);
         Assert.Equal(1, await DbContext.CountAllOutboxMessagesAsync(EventType));
     }
@@ -184,11 +183,12 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
             notices.Add(change);
             return Task.CompletedTask;
         });
-        await consumer.HandleAsync(new("owner-subject")
-        {
-            EventCore = EventCore.Create(Data.TenantId)
-        });
-        Assert.Equal(new("tenant-access", ResourceId: "owner-subject"), Assert.Single(notices));
+        await consumer.HandleAsync(
+            new TenantMembershipChangedEvent("owner-subject")
+            {
+                EventCore = EventCore.Create(Data.TenantId),
+            });
+        Assert.Equal(new RealtimeChange("tenant-access", ResourceId: "owner-subject"), Assert.Single(notices));
     }
 
     private static Tenant CreateTenant()
@@ -198,8 +198,8 @@ public sealed class TenantMembershipOutboxTests(MongoReplicaSetFixture fixture)
         {
             Members =
             [
-                TenantFactory.CreateMember(tenant.Id, "owner-subject", "owner@example.test", TenantRole.Owner)
-            ]
+                TenantFactory.CreateMember(tenant.Id, "owner-subject", "owner@example.test", TenantRole.Owner),
+            ],
         };
     }
 }

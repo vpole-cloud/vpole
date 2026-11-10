@@ -2,18 +2,11 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
+using Pole.Features.Secrets.Primitives;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Projections;
@@ -23,7 +16,8 @@ internal sealed class ConsumerSecretProjectionResolver(
     LoadExactResourceDeploymentRuntimePlacement loadPlacement,
     LoadSecretById loadSecret,
     LoadSecretProjections loadProjections,
-    SecretProjectionReconciler reconcile)
+    SecretProjectionReconciler reconcile
+)
 {
     public async Task<EnsureConsumerSecretProjectionsOutcome> InvokeAsync(
         EnsureConsumerSecretProjectionsRequest request,
@@ -45,8 +39,7 @@ internal sealed class ConsumerSecretProjectionResolver(
                 ResourceId: request.ConsumerId,
                 DeploymentId: request.DeploymentId),
             cancellationToken: ct);
-        if (resource is null ||
-            placement is null ||
+        if (resource is null || placement is null ||
             placement.DesiredOperation == ResourceDeploymentDesiredOperation.Delete)
             return new ConsumerSecretReferenceUnavailable(
                 request.References.First().SecretId,
@@ -76,9 +69,12 @@ internal sealed class ConsumerSecretProjectionResolver(
                     ResourceId: request.ConsumerId,
                     DeploymentId: request.DeploymentId),
                 cancellationToken: ct);
-            if (latestPlacement is null ||
-                !IsAuthorized(latest, latestBinding, resource.ResourceGroupId, latestPlacement, secretReferences) ||
-                latestBinding.Id != binding.Id)
+            if (latestPlacement is null || !IsAuthorized(
+                    latest,
+                    latestBinding,
+                    resource.ResourceGroupId,
+                    latestPlacement,
+                    secretReferences) || latestBinding.Id != binding.Id)
                 return new ConsumerSecretReferenceUnavailable(
                     secretId,
                     ConsumerSecretReferenceError.SecretBindingUnavailable);
@@ -86,47 +82,43 @@ internal sealed class ConsumerSecretProjectionResolver(
             var projections = await loadProjections(request.TenantId, secretId, ct);
             var projection = projections.SingleOrDefault(item =>
                 item.DeploymentId == request.DeploymentId && item.BindingId == latestBinding.Id);
-            if (projection is null ||
-                projection.State is not ReadySecretProjection ||
+            if (projection is null || projection.State is not ReadySecretProjection ||
                 !SecretProjectionAuthority.MatchesPlacement(latestPlacement, projection) ||
                 !SecretProjectionAuthority.MatchesScope(latest, projection) ||
                 !SecretProjectionAuthority.MatchesConsumer(latestBinding, projection) ||
-                projection.DesiredRevision != latest.Revision ||
-                projection.DesiredVersion != latest.CurrentVersion ||
+                projection.DesiredRevision != latest.Revision || projection.DesiredVersion != latest.CurrentVersion ||
                 projection.AppliedVersion != latest.CurrentVersion)
                 return new ConsumerSecretProjectionPending(secretId);
 
             foreach (var reference in secretReferences)
-            {
-                keys.Add(new ConsumerSecretProjectionKey(
-                    secretId,
-                    reference.Key,
-                    projection.KubernetesName,
-                    latestBinding.ProjectedKey(reference.Key),
-                    latest.CurrentVersion));
-            }
+                keys.Add(
+                    new ConsumerSecretProjectionKey(
+                        secretId,
+                        reference.Key,
+                        projection.KubernetesName,
+                        latestBinding.ProjectedKey(reference.Key),
+                        latest.CurrentVersion));
         }
+
         return new ConsumerSecretProjectionKeys(keys.ToImmutable());
     }
 
-    private static SecretBinding? FindBinding(Secret? secret, ResourceTypeId type, string id) =>
-        secret?.Bindings.SingleOrDefault(binding =>
-            binding.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.Runtime &&
-            binding.Consumer.ResourceType == type.Value && binding.Consumer.ResourceId == id);
+    private static SecretBinding? FindBinding(
+        Secret? secret,
+        ResourceTypeId type,
+        string id) => secret?.Bindings.SingleOrDefault(binding =>
+        binding.Usage == SecretBindingUsage.Runtime && binding.Consumer.ResourceType == type.Value &&
+        binding.Consumer.ResourceId == id);
 
     private static bool IsAuthorized(
         [NotNullWhen(true)] Secret? secret,
         [NotNullWhen(true)] SecretBinding? binding,
         string groupId,
         ResourceDeploymentRuntimePlacementDto placement,
-        IEnumerable<ConsumerSecretKeyReference> references) =>
-        secret is not null &&
-        binding is not null &&
-        placement.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
-        secret.ResourceGroupId == groupId &&
+        IEnumerable<ConsumerSecretKeyReference> references) => secret is not null && binding is not null &&
+        placement.DesiredOperation != ResourceDeploymentDesiredOperation.Delete && secret.ResourceGroupId == groupId &&
         secret.IsolationScopeId == placement.IsolationScopeId &&
         SecretProjectionAuthority.IncludesDeployment(binding.Selection, placement.DeploymentId) &&
-        references.All(reference =>
-            secret.HasValue(reference.Key) && ConsumerSecretReferenceAuthority.IncludesKey(secret, binding,
-                reference.Key));
+        references.All(reference => secret.HasValue(reference.Key) &&
+            ConsumerSecretReferenceAuthority.IncludesKey(secret, binding, reference.Key));
 }

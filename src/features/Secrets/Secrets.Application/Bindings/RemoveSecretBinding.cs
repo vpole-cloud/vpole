@@ -2,15 +2,8 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
 using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
@@ -34,14 +27,16 @@ public sealed record RemoveSecretBindingMutation(
     string SecretId,
     string BindingId,
     DeclarationVersionToken? Expected,
-    GitLifecycleAuthority? Authority);
+    GitLifecycleAuthority? Authority
+);
 
 internal sealed class MongoRemoveSecretBinding(
     IMongoCollection<Secret> secrets,
     MongoRunTransaction transactions,
     StoreSecretChange publish,
     TimeProvider clock,
-    IGitOpsMutations git)
+    IGitOpsMutations git
+)
 {
     public Task<RemoveSecretBindingResult> InvokeAsync(
         string tenantId,
@@ -49,12 +44,16 @@ internal sealed class MongoRemoveSecretBinding(
         string bindingId,
         CancellationToken ct)
     {
-        return transactions.InvokeOutcomeAsync<RemoveSecretBindingResult>(async (tx, token) =>
-        {
-            var result = await ExecuteAsync(new(tenantId, id, SecretIdentity.ObjectId(bindingId), null, null),
-                tx.Session, token);
-            return result is Secret ? tx.Commit(result) : tx.Abort(result);
-        }, ct);
+        return transactions.InvokeOutcomeAsync<RemoveSecretBindingResult>(
+            async (tx, token) =>
+            {
+                var result = await ExecuteAsync(
+                    new RemoveSecretBindingMutation(tenantId, id, SecretIdentity.ObjectId(bindingId), null, null),
+                    tx.Session,
+                    token);
+                return result is Secret ? tx.Commit(result) : tx.Abort(result);
+            },
+            ct);
     }
 
     public async Task<RemoveSecretBindingResult> ExecuteAsync(
@@ -71,9 +70,15 @@ internal sealed class MongoRemoveSecretBinding(
             return new SecretMissing();
         if (request.Expected is { } expected && !SecretPlanningFence.Matches(current, expected))
             return new SecretGitOwned();
-        if (!await git.AuthorizeAsync(new(request.TenantId, "SecretBinding", request.BindingId,
-                Lifecycle: request.Authority,
-                LifecycleEffect: request.Authority is null ? null : GitLifecycleMutationEffect.Remove), session, ct))
+        if (!await git.AuthorizeAsync(
+                new AuthorizeGitResourceMutationRequest(
+                    request.TenantId,
+                    "SecretBinding",
+                    request.BindingId,
+                    Lifecycle: request.Authority,
+                    LifecycleEffect: request.Authority is null ? null : GitLifecycleMutationEffect.Remove),
+                session,
+                ct))
             return new SecretGitOwned();
         if (current.Management is ProviderManagedSecret owner && owner.BindingId == request.BindingId)
             return new SecretManagedByProvider();
@@ -81,7 +86,10 @@ internal sealed class MongoRemoveSecretBinding(
             return current;
 
         var detached = current.Detach(request.BindingId, clock.GetUtcNow().UtcDateTime);
-        var replaced = await secrets.ReplaceOneAsync(session, SecretFilters.AtPlanningVersion(current), detached,
+        var replaced = await secrets.ReplaceOneAsync(
+            session,
+            SecretFilters.AtPlanningVersion(current),
+            detached,
             cancellationToken: ct);
         if (replaced.ModifiedCount != 1)
             return new SecretGitOwned();

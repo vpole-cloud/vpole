@@ -1,17 +1,13 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
-using Pole.Features.Functions.Application.FunctionApps;
-using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Application.Usage;
 
 public sealed record FunctionUsageSnapshot(
     DateTimeOffset? AggregatedThroughUtc,
-    IReadOnlyList<FunctionUsageBucket> Buckets);
+    IReadOnlyList<FunctionUsageBucket> Buckets
+);
 
 public delegate Task<FunctionUsageSnapshot> LoadFunctionUsage(
     FunctionApp functionApp,
@@ -21,7 +17,8 @@ public delegate Task<FunctionUsageSnapshot> LoadFunctionUsage(
 
 internal sealed class MongoLoadFunctionUsage(
     IMongoCollection<FunctionUsageBucket> functionUsageBuckets,
-    IMongoCollection<FunctionMeterEvent> functionMeterEvents)
+    IMongoCollection<FunctionMeterEvent> functionMeterEvents
+)
 {
     public async Task<FunctionUsageSnapshot> InvokeAsync(
         FunctionApp functionApp,
@@ -29,12 +26,10 @@ internal sealed class MongoLoadFunctionUsage(
         DateTimeOffset? toUtc,
         CancellationToken cancellationToken = default)
     {
-        var buckets = await functionUsageBuckets
-            .Find(FunctionUsageFilters.ForRange(functionApp, fromUtc, toUtc))
+        var buckets = await functionUsageBuckets.Find(FunctionUsageFilters.ForRange(functionApp, fromUtc, toUtc))
             .SortBy(bucket => bucket.HourUtc)
             .ToListAsync(cancellationToken);
-        var aggregatedThrough = await functionMeterEvents
-            .Find(FunctionUsageFilters.AggregatedFor(functionApp))
+        var aggregatedThrough = await functionMeterEvents.Find(FunctionUsageFilters.AggregatedFor(functionApp))
             .SortByDescending(meter => meter.AggregatedAtUtc)
             .Project(meter => meter.AggregatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);

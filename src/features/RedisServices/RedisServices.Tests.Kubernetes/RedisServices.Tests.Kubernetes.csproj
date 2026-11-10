@@ -1,24 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <AssemblyName>Pole.Features.RedisServices.Tests.Kubernetes</AssemblyName>
-    <RootNamespace>Pole.Features.RedisServices.Tests.Kubernetes</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="KubernetesClient" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="StackExchange.Redis" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="../RedisServices.Application/RedisServices.Application.csproj" />
-    <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>Pole.Features.RedisServices.Tests.Kubernetes</AssemblyName>
+        <RootNamespace>Pole.Features.RedisServices.Tests.Kubernetes</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="KubernetesClient"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="StackExchange.Redis"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../RedisServices.Application/RedisServices.Application.csproj"/>
+        <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj"/>
+    </ItemGroup>
 </Project>

@@ -5,38 +5,39 @@ using MongoDB.Driver.Core.Events;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceDeployments.Domain.Observation;
 using Pole.Features.ResourceDeployments.Events;
+using Pole.Features.ResourceDeployments.Migrations;
 using Pole.Observability;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class ResourceDeploymentObservationStoreTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     private const string EventName = "pole.resource-deployments/v1/resource-deployment-observation-changed";
 
     private IMongoCollection<ObservationControlDocument> Controls =>
-        Fixture.Database.GetCollection<ObservationControlDocument>(MongoResourceDeploymentObservationStore
-            .ControlsCollection);
+        Fixture.Database.GetCollection<ObservationControlDocument>(
+            MongoResourceDeploymentObservationStore.ControlsCollection);
 
     private IMongoCollection<ObservationDemandDocument> Demands =>
-        Fixture.Database.GetCollection<ObservationDemandDocument>(MongoResourceDeploymentObservationStore
-            .DemandsCollection);
+        Fixture.Database.GetCollection<ObservationDemandDocument>(
+            MongoResourceDeploymentObservationStore.DemandsCollection);
 
     private IMongoCollection<ObservationSnapshotDocument> Snapshots =>
-        Fixture.Database.GetCollection<ObservationSnapshotDocument>(MongoResourceDeploymentObservationStore
-            .SnapshotsCollection);
+        Fixture.Database.GetCollection<ObservationSnapshotDocument>(
+            MongoResourceDeploymentObservationStore.SnapshotsCollection);
 
     private IMongoCollection<BsonDocument> Targets => Fixture.Database.GetCollection<BsonDocument>("DeploymentTargets");
     public override Task InitializeAsync() => base.InitializeAsync();
@@ -52,8 +53,8 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             {
                 SubscriptionId = "$interest",
                 ConnectionId = "$$NOW",
-                SessionId = "$SessionId"
-            }
+                SessionId = "$SessionId",
+            },
         };
         var store = Store();
         Assert.IsType<ObservationMutationAccepted>((await store.PutDemandAsync(demand, seeded.Context)).Value);
@@ -62,11 +63,18 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Equal("$SessionId", persisted.SessionId);
         var owner = Assert.IsType<ObservationOwnership>((await store.ClaimLeaseAsync(seeded.Context, "replica")).Value);
         const string binding = "$ObservationVersion";
-        var source = Assert.IsType<ObservationSourceState>((await store.SetSourceStateAsync(owner.Lease,
-            seeded.Context, owner.SourceControlVersion, true, binding)).Value);
-        Assert.IsType<ResourceDeploymentSharedObservation>((await store.TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context, source.SourceControlVersion, binding, Sample() with { BindingId = binding })).Value);
-        var control = await store.LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        var source = Assert.IsType<ObservationSourceState>(
+            (await store.SetSourceStateAsync(owner.Lease, seeded.Context, owner.SourceControlVersion, true, binding))
+            .Value);
+        Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await store.TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                source.SourceControlVersion,
+                binding,
+                Sample() with { BindingId = binding })).Value);
+        var control = await store.LoadControlAsync(
+            new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId));
         Assert.Equal(binding, control!.BindingId);
         Assert.NotNull(await store.LoadFreshSnapshotAsync(seeded.Context));
     }
@@ -90,6 +98,7 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             document["Pin"] = ObservationValueMappings.Pin(context).ToBsonDocument();
             document["BindingId"] = "owned-controller";
         }
+
         control["LeaseExpiresAtUtc"] = now.AddSeconds(30);
         control["UpdatedAtUtc"] = now;
         snapshot["CheckedAtUtc"] = now;
@@ -98,28 +107,46 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         demand["DeploymentId"] = ObjectId.Parse(context.Deployment.Id);
         demand["OriginalExpiresAtUtc"] = now.AddMinutes(5);
         demand["ExpiresAtUtc"] = now.AddMinutes(1);
-        await Fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.ControlsCollection)
+        await Fixture.Database
+            .GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.ControlsCollection)
             .InsertOneAsync(control);
-        await Fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.DemandsCollection)
+        await Fixture.Database
+            .GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.DemandsCollection)
             .InsertOneAsync(demand);
-        await Fixture.Database.GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
+        await Fixture.Database
+            .GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
             .InsertOneAsync(snapshot);
 
         var store = Store();
-        var loaded = await store.LoadControlAsync(new(context.Deployment.TenantId, context.Deployment.Id));
+        var loaded = await store.LoadControlAsync(
+            new ObservationIdentity(context.Deployment.TenantId, context.Deployment.Id));
         Assert.Equal(8, loaded!.ObservationVersion);
         Assert.Equal(8, (await store.LoadFreshSnapshotAsync(context))!.ObservationVersion);
-        var lease = new ObservationLease(context.Deployment.TenantId, context.Deployment.Id, "replica", "lease-token", 6);
+        var lease = new ObservationLease(
+            context.Deployment.TenantId,
+            context.Deployment.Id,
+            "replica",
+            "lease-token",
+            6);
         Assert.IsType<ObservationMutationAccepted>((await store.RenewLeaseAsync(lease, context)).Value);
-        Assert.IsType<ObservationMutationAccepted>((await store.RenewDemandAsync(
-            new(new(context.Deployment.TenantId, context.Deployment.Id, "interest", "connection", "session"),
-                now.AddMinutes(10)), context)).Value);
-        var committed = Assert.IsType<ResourceDeploymentSharedObservation>((await store.TryCommitSnapshotAsync(
-            lease, context, 7, "owned-controller", Sample())).Value);
+        Assert.IsType<ObservationMutationAccepted>(
+            (await store.RenewDemandAsync(
+                new ObservationDemand(
+                    new ObservationDemandIdentity(
+                        context.Deployment.TenantId,
+                        context.Deployment.Id,
+                        "interest",
+                        "connection",
+                        "session"),
+                    now.AddMinutes(10)),
+                context)).Value);
+        var committed = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await store.TryCommitSnapshotAsync(lease, context, 7, "owned-controller", Sample())).Value);
         Assert.Equal(9, committed.ObservationVersion);
         var written = await Fixture.Database
             .GetCollection<BsonDocument>(MongoResourceDeploymentObservationStore.SnapshotsCollection)
-            .Find(new BsonDocument("_id", ObjectId.Parse(context.Deployment.Id))).SingleAsync();
+            .Find(new BsonDocument("_id", ObjectId.Parse(context.Deployment.Id)))
+            .SingleAsync();
         Assert.Equal(snapshot.Names, written.Names);
         Assert.Equal(snapshot["Pin"], written["Pin"]);
         Assert.Equal(9, written["ObservationVersion"].AsInt64);
@@ -134,19 +161,22 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var owner = Assert.IsType<ObservationOwnership>(
             (await store.ClaimLeaseAsync(seeded.Context, "replica-a")).Value);
         Assert.Null(await store.LoadFreshSnapshotAsync(seeded.Context));
-        var source = Assert.IsType<ObservationSourceState>((await store.SetSourceStateAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            true,
-            "owned-controller")).Value);
-        using var trace =
-            TraceContext.Push(TraceContext.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "observation-store"));
-        var snapshot = Assert.IsType<ResourceDeploymentSharedObservation>((await store.TryCommitSnapshotAsync(
-            owner.Lease,
-            seeded.Context,
-            source.SourceControlVersion,
-            "owned-controller",
-            Sample())).Value);
+        var source = Assert.IsType<ObservationSourceState>(
+            (await store.SetSourceStateAsync(
+                owner.Lease,
+                seeded.Context,
+                owner.SourceControlVersion,
+                true,
+                "owned-controller")).Value);
+        using var trace
+            = TraceContext.Push(TraceContext.Create("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "observation-store"));
+        var snapshot = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await store.TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                source.SourceControlVersion,
+                "owned-controller",
+                Sample())).Value);
         Assert.Equal(2, snapshot.ObservationVersion);
         Assert.IsType<ObservedWorkload>(snapshot.Observation);
         Assert.IsType<AvailableWorkloadDiagnostics>(snapshot.Diagnostics);
@@ -157,9 +187,9 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             .Single(item => item.CorrelationId == "observation-store");
         Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", envelope.TraceId);
         Assert.Equal("observation-store", envelope.CorrelationId);
-        var message =
-            JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(envelope.PayloadJson,
-                EventExtensions.SerializerOptions)!;
+        var message = JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(
+            envelope.PayloadJson,
+            EventExtensions.SerializerOptions)!;
         Assert.Equal(seeded.Context.Deployment.TenantId, message.EventCore.TenantId);
         Assert.Equal(seeded.Context.Deployment.Id, message.DeploymentId);
         Assert.Equal(seeded.Context.Deployment.ResourceId, message.ResourceId);
@@ -176,27 +206,35 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
         var before = await Controls.Find(item => item.Id == seeded.Context.Deployment.Id).SingleAsync();
-        var deploymentBefore = await Fixture.DbContext.ResourceDeployments
-            .Find(item => item.Id == seeded.Context.Deployment.Id).SingleAsync();
+        var deploymentBefore = await Fixture.DbContext
+            .ResourceDeployments
+            .Find(item => item.Id == seeded.Context.Deployment.Id)
+            .SingleAsync();
         var targetBefore = await Targets.Find(TargetId(seeded.Context)).SingleAsync();
-        var failing = Store(async (session, writes, ct) =>
+        var failing = Store(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected observation outbox failure.");
         });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.TryCommitSnapshotAsync(owner.Lease,
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.TryCommitSnapshotAsync(
+            owner.Lease,
             seeded.Context,
             owner.SourceControlVersion,
             "owned-controller",
             Sample()));
         Assert.Equal(before, await Controls.Find(item => item.Id == before.Id).SingleAsync());
-        Assert.Equal(deploymentBefore.ReferenceFence,
+        Assert.Equal(
+            deploymentBefore.ReferenceFence,
             (await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == before.Id).SingleAsync())
             .ReferenceFence);
-        Assert.Equal(targetBefore["ObservationFence"],
+        Assert.Equal(
+            targetBefore["ObservationFence"],
             (await Targets.Find(TargetId(seeded.Context)).SingleAsync())["ObservationFence"]);
         Assert.Empty(await Snapshots.Find(FilterDefinition<ObservationSnapshotDocument>.Empty).ToListAsync());
-        Assert.Equal(1,
+        Assert.Equal(
+            1,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
     }
 
@@ -205,31 +243,36 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         Assert.IsType<ObservationMutationAccepted>((await Store().PutDemandAsync(seeded.Demand, seeded.Context)).Value);
-        var claims = await Task.WhenAll(Enumerable.Range(0, 8)
-            .Select(index => Store().ClaimLeaseAsync(seeded.Context, $"replica-{index}")));
+        var claims = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(index => Store().ClaimLeaseAsync(seeded.Context, $"replica-{index}")));
         var owner = Assert.Single(claims.Select(claim => claim.Value).OfType<ObservationOwnership>());
-        Assert.Equal(7,
+        Assert.Equal(
+            7,
             claims.Count(claim => claim.Value is ObservationStoreRejected { Reason: ObservationStoreRejection.Busy }));
-        var source = Assert.IsType<ObservationSourceState>((await Store().SetSourceStateAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            true,
-            "owned-controller")).Value);
+        var source = Assert.IsType<ObservationSourceState>(
+            (await Store()
+                .SetSourceStateAsync(owner.Lease, seeded.Context, owner.SourceControlVersion, true, "owned-controller"))
+            .Value);
         Assert.IsType<ObservationMutationAccepted>((await Store().RenewLeaseAsync(owner.Lease, seeded.Context)).Value);
         Assert.IsType<ObservationMutationAccepted>(
             (await Store().RenewDemandAsync(seeded.Demand, seeded.Context)).Value);
-        var unchanged = Assert.IsType<ObservationSourceState>((await Store().SetSourceStateAsync(owner.Lease,
-            seeded.Context,
-            source.SourceControlVersion,
-            true,
-            "owned-controller")).Value);
+        var unchanged = Assert.IsType<ObservationSourceState>(
+            (await Store()
+                .SetSourceStateAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    source.SourceControlVersion,
+                    true,
+                    "owned-controller")).Value);
         Assert.Equal(source.SourceControlVersion, unchanged.SourceControlVersion);
-        var control =
-            await Store().LoadControlAsync(new(seeded.Context.Deployment.TenantId, seeded.Context.Deployment.Id));
+        var control = await Store()
+            .LoadControlAsync(
+                new ObservationIdentity(seeded.Context.Deployment.TenantId, seeded.Context.Deployment.Id));
         Assert.Equal(owner.Lease.Epoch, control!.Epoch);
         Assert.Equal(source.SourceControlVersion, control.SourceControlVersion);
         Assert.Equal(1, control.ObservationVersion);
-        Assert.Equal(1,
+        Assert.Equal(
+            1,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
     }
 
@@ -241,14 +284,18 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample());
+        await Store()
+            .TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                owner.SourceControlVersion,
+                "owned-controller",
+                Sample());
         var before = await Controls.Find(item => item.Id == seeded.Context.Deployment.Id).SingleAsync();
         await Targets.UpdateOneAsync(TargetId(seeded.Context), Builders<BsonDocument>.Update.Set("Enabled", false));
-        var failing = Store(async (session, writes, ct) =>
+        var failing = Store(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             throw new InvalidOperationException("Injected negative-transition outbox failure.");
@@ -260,7 +307,8 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Mutate(failing));
         Assert.Equal(before, await Controls.Find(item => item.Id == before.Id).SingleAsync());
-        Assert.Equal(2,
+        Assert.Equal(
+            2,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
         await Mutate(Store());
         var after = await Controls.Find(item => item.Id == before.Id).SingleAsync();
@@ -276,11 +324,13 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var repeated = await Controls.Find(item => item.Id == before.Id).SingleAsync();
         Assert.Equal(after.ObservationVersion, repeated.ObservationVersion);
         Assert.Equal(after.Epoch, repeated.Epoch);
-        Assert.Equal(3,
+        Assert.Equal(
+            3,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
         var messages = await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync();
         var notice = messages.Select(item =>
-                JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(item.PayloadJson,
+                JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(
+                    item.PayloadJson,
                     EventExtensions.SerializerOptions)!)
             .Single(item => item.ObservationVersion == 3);
         Assert.Equal(seeded.Context.Deployment.TenantId, notice.EventCore.TenantId);
@@ -292,20 +342,25 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     public async Task Representative_NoDemandOrUnhealthySourceNeverPersistsSnapshot()
     {
         var seeded = await SeedAsync();
-        AssertRejected(ObservationStoreRejection.NoDemand,
+        AssertRejected(
+            ObservationStoreRejection.NoDemand,
             (await Store().ClaimLeaseAsync(seeded.Context, "replica-a")).Value);
         await Store().PutDemandAsync(seeded.Demand, seeded.Context);
-        var owner = Assert.IsType<ObservationOwnership>((await Store().ClaimLeaseAsync(seeded.Context, "replica-a"))
-            .Value);
-        AssertRejected(ObservationStoreRejection.BindingChanged,
-            (await Store().TryCommitSnapshotAsync(owner.Lease,
-                seeded.Context,
-                owner.SourceControlVersion,
-                "owned-controller",
-                Sample())).Value);
+        var owner = Assert.IsType<ObservationOwnership>(
+            (await Store().ClaimLeaseAsync(seeded.Context, "replica-a")).Value);
+        AssertRejected(
+            ObservationStoreRejection.BindingChanged,
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         Assert.Null(await Store().LoadFreshSnapshotAsync(seeded.Context));
         Assert.Equal(0, await Snapshots.CountDocumentsAsync(FilterDefinition<ObservationSnapshotDocument>.Empty));
-        Assert.Equal(0,
+        Assert.Equal(
+            0,
             await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(item => item.EventType == EventName));
     }
 
@@ -314,36 +369,44 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var old = await StartAsync(seeded);
-        var snapshot = Assert.IsType<ResourceDeploymentSharedObservation>((await Store().TryCommitSnapshotAsync(
-            old.Lease,
-            seeded.Context,
-            old.SourceControlVersion,
-            "owned-controller",
-            Sample())).Value);
-        await Controls.UpdateOneAsync(item => item.Id == old.Lease.DeploymentId,
+        var snapshot = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    old.Lease,
+                    seeded.Context,
+                    old.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
+        await Controls.UpdateOneAsync(
+            item => item.Id == old.Lease.DeploymentId,
             Builders<ObservationControlDocument>.Update.Set(item => item.LeaseExpiresAtUtc, DateTime.UnixEpoch));
-        var next = Assert.IsType<ObservationOwnership>((await Store().ClaimLeaseAsync(seeded.Context, "replica-b"))
-            .Value);
+        var next = Assert.IsType<ObservationOwnership>(
+            (await Store().ClaimLeaseAsync(seeded.Context, "replica-b")).Value);
         Assert.True(next.Lease.Epoch > old.Lease.Epoch);
-        var control = await Store().LoadControlAsync(new(next.Lease.TenantId, next.Lease.DeploymentId));
+        var control = await Store()
+            .LoadControlAsync(new ObservationIdentity(next.Lease.TenantId, next.Lease.DeploymentId));
         Assert.False(control!.SourceHealthy);
         Assert.Equal(snapshot.ObservationVersion + 1, control.ObservationVersion);
-        AssertRejected(ObservationStoreRejection.LeaseLost,
+        AssertRejected(
+            ObservationStoreRejection.LeaseLost,
             (await Store().RenewLeaseAsync(old.Lease, seeded.Context)).Value);
         AssertRejected(ObservationStoreRejection.LeaseLost, (await Store().ReleaseLeaseAsync(old.Lease)).Value);
-        AssertRejected(ObservationStoreRejection.LeaseLost,
-            (await Store().TryCommitSnapshotAsync(old.Lease,
-                seeded.Context,
-                old.SourceControlVersion,
-                "owned-controller",
-                Sample())).Value);
-        AssertRejected(ObservationStoreRejection.LeaseLost,
-            (await Store().SetSourceStateAsync(old.Lease,
-                seeded.Context,
-                old.SourceControlVersion,
-                false,
-                null)).Value);
-        Assert.Equal(control, await Store().LoadControlAsync(new(next.Lease.TenantId, next.Lease.DeploymentId)));
+        AssertRejected(
+            ObservationStoreRejection.LeaseLost,
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    old.Lease,
+                    seeded.Context,
+                    old.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
+        AssertRejected(
+            ObservationStoreRejection.LeaseLost,
+            (await Store().SetSourceStateAsync(old.Lease, seeded.Context, old.SourceControlVersion, false, null))
+            .Value);
+        Assert.Equal(
+            control,
+            await Store().LoadControlAsync(new ObservationIdentity(next.Lease.TenantId, next.Lease.DeploymentId)));
         Assert.Equal(3, await EventCountAsync());
         Assert.Equal(0, (await Targets.Find(TargetId(seeded.Context)).SingleAsync())["ReferenceFence"].AsInt64);
     }
@@ -353,51 +416,63 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample());
+        await Store()
+            .TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                owner.SourceControlVersion,
+                "owned-controller",
+                Sample());
         var second = seeded.Demand with
         {
             Identity = seeded.Demand.Identity with
             {
                 SubscriptionId = "second",
                 ConnectionId = "connection-b",
-                SessionId = "session-b"
-            }
+                SessionId = "session-b",
+            },
         };
         await Store().PutDemandAsync(second, seeded.Context);
-        await Store().RemoveDemandAsync(seeded.Demand.Identity with
-        {
-            SessionId = "unrelated-session"
-        });
+        await Store()
+            .RemoveDemandAsync(
+                seeded.Demand.Identity with
+                {
+                    SessionId = "unrelated-session",
+                });
         Assert.Equal(2, await Demands.CountDocumentsAsync(FilterDefinition<ObservationDemandDocument>.Empty));
         await Store().RemoveDemandAsync(seeded.Demand.Identity);
-        var retained = await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        var retained = await Store()
+            .LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId));
         Assert.Equal(owner.Lease.Epoch, retained!.Epoch);
         Assert.True(retained.SourceHealthy);
         var serverBefore = await ServerNowAsync();
         await Store().RemoveDemandAsync(second.Identity);
-        var removed = await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        var removed = await Store()
+            .LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId));
         Assert.True(removed!.Epoch > owner.Lease.Epoch);
         Assert.True(removed.ObservationVersion > retained.ObservationVersion);
         Assert.False(removed.SourceHealthy);
         Assert.Null(removed.LeaseExpiresAtUtc);
         var expiredSnapshot = await Snapshots.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync();
-        Assert.InRange(expiredSnapshot.ExpiresAtUtc!.Value,
+        Assert.InRange(
+            expiredSnapshot.ExpiresAtUtc!.Value,
             serverBefore.AddSeconds(300),
             (await ServerNowAsync()).AddSeconds(300));
-        AssertRejected(ObservationStoreRejection.NoDemand,
-            (await Store().TryCommitSnapshotAsync(owner.Lease,
-                seeded.Context,
-                owner.SourceControlVersion,
-                "owned-controller",
-                Sample())).Value);
+        AssertRejected(
+            ObservationStoreRejection.NoDemand,
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         AssertRejected(ObservationStoreRejection.LeaseLost, (await Store().ReleaseLeaseAsync(owner.Lease)).Value);
         await Store().RemoveDemandAsync(second.Identity);
         await Store().ReapExpiredDemandsAsync(32);
-        Assert.Equal(removed, await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId)));
+        Assert.Equal(
+            removed,
+            await Store().LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId)));
         Assert.Empty((await Store().ScanDemandsAsync(null, 32)).Items);
         Assert.Equal(2, await EventCountAsync());
     }
@@ -409,24 +484,31 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample());
-        if (ttlAlreadyDeleted)
-            await Demands.DeleteManyAsync(FilterDefinition<ObservationDemandDocument>.Empty);
-        else
-            await Demands.UpdateManyAsync(FilterDefinition<ObservationDemandDocument>.Empty,
-                Builders<ObservationDemandDocument>.Update.Set(item => item.ExpiresAtUtc, DateTime.UnixEpoch));
-        AssertRejected(ObservationStoreRejection.NoDemand,
-            (await Store().RenewLeaseAsync(owner.Lease, seeded.Context)).Value);
-        AssertRejected(ObservationStoreRejection.NoDemand,
-            (await Store().TryCommitSnapshotAsync(owner.Lease,
+        await Store()
+            .TryCommitSnapshotAsync(
+                owner.Lease,
                 seeded.Context,
                 owner.SourceControlVersion,
                 "owned-controller",
-                Sample())).Value);
+                Sample());
+        if (ttlAlreadyDeleted)
+            await Demands.DeleteManyAsync(FilterDefinition<ObservationDemandDocument>.Empty);
+        else
+            await Demands.UpdateManyAsync(
+                FilterDefinition<ObservationDemandDocument>.Empty,
+                Builders<ObservationDemandDocument>.Update.Set(item => item.ExpiresAtUtc, DateTime.UnixEpoch));
+        AssertRejected(
+            ObservationStoreRejection.NoDemand,
+            (await Store().RenewLeaseAsync(owner.Lease, seeded.Context)).Value);
+        AssertRejected(
+            ObservationStoreRejection.NoDemand,
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         await Store().ReapExpiredDemandsAsync(32);
         var control = await Controls.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync();
         Assert.True(control.Epoch > owner.Lease.Epoch);
@@ -437,8 +519,8 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Equal(0, await Demands.CountDocumentsAsync(FilterDefinition<ObservationDemandDocument>.Empty));
         Assert.IsType<ObservationMutationAccepted>(
             (await Store().RenewDemandAsync(seeded.Demand, seeded.Context)).Value);
-        var next = Assert.IsType<ObservationOwnership>((await Store().ClaimLeaseAsync(seeded.Context, "replica-b"))
-            .Value);
+        var next = Assert.IsType<ObservationOwnership>(
+            (await Store().ClaimLeaseAsync(seeded.Context, "replica-b")).Value);
         Assert.True(next.Lease.Epoch > owner.Lease.Epoch);
         AssertRejected(ObservationStoreRejection.LeaseLost, (await Store().ReleaseLeaseAsync(owner.Lease)).Value);
     }
@@ -451,19 +533,23 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var first = 0;
-        var paused = Store(fence: async (request, session, ct) =>
-        {
-            var result = await FenceTargetAsync(request, session, ct);
-            if (Interlocked.Exchange(ref first, 1) == 0)
+        var paused = Store(
+            fence: async (
+                request, session,
+                ct) =>
             {
-                entered.SetResult();
-                await resume.Task.WaitAsync(ct);
-            }
+                var result = await FenceTargetAsync(request, session, ct);
+                if (Interlocked.Exchange(ref first, 1) == 0)
+                {
+                    entered.SetResult();
+                    await resume.Task.WaitAsync(ct);
+                }
 
-            return result;
-        });
+                return result;
+            });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var pending = paused.TryCommitSnapshotAsync(owner.Lease,
+        var pending = paused.TryCommitSnapshotAsync(
+            owner.Lease,
             seeded.Context,
             owner.SourceControlVersion,
             "owned-controller",
@@ -482,7 +568,8 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         AssertRejected(ObservationStoreRejection.NoDemand, (await pending).Value);
         Assert.Equal(0, await Snapshots.CountDocumentsAsync(FilterDefinition<ObservationSnapshotDocument>.Empty));
         Assert.Equal(1, await EventCountAsync());
-        Assert.False((await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId)))!
+        Assert.False(
+            (await Store().LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId)))!
             .SourceHealthy);
     }
 
@@ -504,13 +591,17 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample());
+        await Store()
+            .TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                owner.SourceControlVersion,
+                "owned-controller",
+                Sample());
         if (mutation == "purge")
+        {
             await Fixture.DbContext.ResourceDeployments.DeleteOneAsync(item => item.Id == owner.Lease.DeploymentId);
+        }
         else
         {
             var change = mutation switch
@@ -518,41 +609,53 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                 "revision" => Builders<ResourceDeployment>.Update.Inc(item => item.Revision, 1),
                 "generation" => Builders<ResourceDeployment>.Update.Inc(item => item.DesiredGeneration, 1),
                 "resource-revision" => Builders<ResourceDeployment>.Update.Inc(item => item.ResourceRevision, 1),
-                "resource" => Builders<ResourceDeployment>.Update.Set(item => item.ResourceId,
+                "resource" => Builders<ResourceDeployment>.Update.Set(
+                    item => item.ResourceId,
                     ObjectId.GenerateNewId().ToString()),
-                "group" => Builders<ResourceDeployment>.Update.Set(item => item.ResourceGroupId,
+                "group" => Builders<ResourceDeployment>.Update.Set(
+                    item => item.ResourceGroupId,
                     ObjectId.GenerateNewId().ToString()),
-                "isolation" => Builders<ResourceDeployment>.Update.Set(item => item.IsolationScopeId,
+                "isolation" => Builders<ResourceDeployment>.Update.Set(
+                    item => item.IsolationScopeId,
                     ObjectId.GenerateNewId().ToString()),
-                "runtime-cell" => Builders<ResourceDeployment>.Update.Set(item => item.RuntimeCellId,
+                "runtime-cell" => Builders<ResourceDeployment>.Update.Set(
+                    item => item.RuntimeCellId,
                     ObjectId.GenerateNewId().ToString()),
-                "target" => Builders<ResourceDeployment>.Update.Set(item => item.ResolvedPlacement.DeploymentTargetId,
+                "target" => Builders<ResourceDeployment>.Update.Set(
+                    item => item.ResolvedPlacement.DeploymentTargetId,
                     ObjectId.GenerateNewId().ToString()),
-                "namespace" => Builders<ResourceDeployment>.Update.Set(item =>
-                        item.ResolvedPlacement.KubernetesNamespace,
+                "namespace" => Builders<ResourceDeployment>.Update.Set(
+                    item => item.ResolvedPlacement.KubernetesNamespace,
                     "changed-namespace"),
-                "target-configuration" => Builders<ResourceDeployment>.Update.Inc(item =>
-                        item.ResolvedPlacement.TargetWorkloadConfigurationRevision,
+                "target-configuration" => Builders<ResourceDeployment>.Update.Inc(
+                    item => item.ResolvedPlacement.TargetWorkloadConfigurationRevision,
                     1),
                 "fixed-replicas" => Builders<ResourceDeployment>.Update.Inc(item => item.FixedReplicas, 1),
-                "compute" => Builders<ResourceDeployment>.Update.Inc(item =>
-                        item.ResolvedPlacement.Compute.ComputeProfileRevision,
+                "compute" => Builders<ResourceDeployment>.Update.Inc(
+                    item => item.ResolvedPlacement.Compute.ComputeProfileRevision,
                     1),
-                _ => throw new InvalidOperationException("Unknown test mutation.")
+                _ => throw new InvalidOperationException("Unknown test mutation."),
             };
-            await Fixture.DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
+            await Fixture.DbContext.ResourceDeployments.UpdateOneAsync(
+                item => item.Id == owner.Lease.DeploymentId,
                 change);
         }
 
-        var before = await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
-        AssertRejected(ObservationStoreRejection.Superseded,
-            (await Store().TryCommitSnapshotAsync(owner.Lease,
-                seeded.Context,
-                owner.SourceControlVersion,
-                "owned-controller",
-                Sample())).Value);
+        var before = await Store()
+            .LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        AssertRejected(
+            ObservationStoreRejection.Superseded,
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         Assert.Null(await Store().LoadFreshSnapshotAsync(seeded.Context));
-        Assert.Equal(before, await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId)));
+        Assert.Equal(
+            before,
+            await Store().LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId)));
         Assert.Equal(2, await EventCountAsync());
     }
 
@@ -565,36 +668,41 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample());
+        await Store()
+            .TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                owner.SourceControlVersion,
+                "owned-controller",
+                Sample());
         if (mutation == "missing")
             await Targets.DeleteOneAsync(TargetId(seeded.Context));
         else
-            await Targets.UpdateOneAsync(TargetId(seeded.Context),
+            await Targets.UpdateOneAsync(
+                TargetId(seeded.Context),
                 mutation switch
                 {
                     "rotation" => Builders<BsonDocument>.Update.Inc("Connection.Version", 1L),
                     "disabled" => Builders<BsonDocument>.Update.Set("Enabled", false),
                     "deletion" => Builders<BsonDocument>.Update.Set("DeletionRequestedAtUtc", DateTime.UtcNow),
-                    _ => throw new InvalidOperationException("Unknown target mutation.")
+                    _ => throw new InvalidOperationException("Unknown target mutation."),
                 });
-        AssertRejected(ObservationStoreRejection.TargetUnavailable,
-            (await Store().TryCommitSnapshotAsync(owner.Lease,
-                seeded.Context,
-                owner.SourceControlVersion,
-                "owned-controller",
-                Sample())).Value);
+        AssertRejected(
+            ObservationStoreRejection.TargetUnavailable,
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         Assert.Null(await Store().LoadFreshSnapshotAsync(seeded.Context));
-        var source = Assert.IsType<ObservationSourceState>((await Store().SetSourceStateAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            false,
-            null)).Value);
+        var source = Assert.IsType<ObservationSourceState>(
+            (await Store().SetSourceStateAsync(owner.Lease, seeded.Context, owner.SourceControlVersion, false, null))
+            .Value);
         Assert.True(source.SourceControlVersion > owner.SourceControlVersion);
-        Assert.False((await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId)))!
+        Assert.False(
+            (await Store().LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId)))!
             .SourceHealthy);
         Assert.Equal(3, await EventCountAsync());
     }
@@ -604,28 +712,35 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample());
-        var old = await Fixture.DbContext.ResourceDeployments.Find(item => item.Id == owner.Lease.DeploymentId)
+        await Store()
+            .TryCommitSnapshotAsync(
+                owner.Lease,
+                seeded.Context,
+                owner.SourceControlVersion,
+                "owned-controller",
+                Sample());
+        var old = await Fixture.DbContext
+            .ResourceDeployments
+            .Find(item => item.Id == owner.Lease.DeploymentId)
             .SingleAsync();
-        var next = old.RequestReconciliation(old.ResolvedPlacement,
+        var next = old.RequestReconciliation(
+            old.ResolvedPlacement,
             true,
             DateTime.UtcNow,
             resourceRevision: old.ResourceRevision + 1);
         await Fixture.DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == old.Id, next);
         var context = new ResourceDeploymentObservationContext(next.ToReconciliationSnapshot(), next.Revision, 1);
         await Store().PutDemandAsync(seeded.Demand, context);
-        var control = await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        var control = await Store()
+            .LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId));
         Assert.False(control!.SourceHealthy);
         Assert.True(control.Epoch > owner.Lease.Epoch);
         Assert.Equal(3, control.ObservationVersion);
         AssertRejected(ObservationStoreRejection.LeaseLost, (await Store().ReleaseLeaseAsync(owner.Lease)).Value);
         var notices = await Fixture.DbContext.OutboxMessages.Find(item => item.EventType == EventName).ToListAsync();
         var changed = notices.Select(item =>
-                JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(item.PayloadJson,
+                JsonSerializer.Deserialize<ResourceDeploymentObservationChangedEvent>(
+                    item.PayloadJson,
                     EventExtensions.SerializerOptions)!)
             .Single(item => item.ObservationVersion == 3);
         Assert.Equal(next.Revision, changed.DeploymentRevision);
@@ -639,30 +754,33 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        var first = Assert.IsType<ResourceDeploymentSharedObservation>((await Store().TryCommitSnapshotAsync(
-            owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample())).Value);
+        var first = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         await Store().RemoveDemandAsync(seeded.Demand.Identity);
         Assert.NotNull((await Snapshots.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync()).ExpiresAtUtc);
         await Store().PutDemandAsync(seeded.Demand, seeded.Context);
         Assert.Null((await Snapshots.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync()).ExpiresAtUtc);
         await Snapshots.DeleteOneAsync(item => item.Id == owner.Lease.DeploymentId);
-        var next = Assert.IsType<ObservationOwnership>((await Store().ClaimLeaseAsync(seeded.Context, "replica-b"))
+        var next = Assert.IsType<ObservationOwnership>(
+            (await Store().ClaimLeaseAsync(seeded.Context, "replica-b")).Value);
+        var source = Assert.IsType<ObservationSourceState>(
+            (await Store()
+                .SetSourceStateAsync(next.Lease, seeded.Context, next.SourceControlVersion, true, "owned-controller"))
             .Value);
-        var source = Assert.IsType<ObservationSourceState>((await Store().SetSourceStateAsync(next.Lease,
-            seeded.Context,
-            next.SourceControlVersion,
-            true,
-            "owned-controller")).Value);
-        var snapshot = Assert.IsType<ResourceDeploymentSharedObservation>((await Store().TryCommitSnapshotAsync(
-            next.Lease,
-            seeded.Context,
-            source.SourceControlVersion,
-            "owned-controller",
-            Sample())).Value);
+        var snapshot = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    next.Lease,
+                    seeded.Context,
+                    source.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         Assert.True(snapshot.ObservationVersion > first.ObservationVersion);
         Assert.True(snapshot.CheckedAtUtc >= first.CheckedAtUtc);
         Assert.True(next.Lease.Epoch > owner.Lease.Epoch);
@@ -676,34 +794,39 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var before = await ServerNowAsync();
         var farFuture = seeded.Demand with
         {
-            ExpiresAtUtc = DateTimeOffset.MaxValue
+            ExpiresAtUtc = DateTimeOffset.MaxValue,
         };
         await Store().PutDemandAsync(farFuture, seeded.Context);
         var demand = await Demands.Find(FilterDefinition<ObservationDemandDocument>.Empty).SingleAsync();
         Assert.InRange(demand.ExpiresAtUtc, before.AddSeconds(60), (await ServerNowAsync()).AddSeconds(60));
         var shortBound = new DateTimeOffset((await ServerNowAsync()).AddSeconds(10));
-        await Store().RenewDemandAsync(farFuture with
-        {
-            ExpiresAtUtc = shortBound
-        }, seeded.Context);
+        await Store()
+            .RenewDemandAsync(
+                farFuture with
+                {
+                    ExpiresAtUtc = shortBound,
+                },
+                seeded.Context);
         await Store().RenewDemandAsync(farFuture, seeded.Context);
         demand = await Demands.Find(FilterDefinition<ObservationDemandDocument>.Empty).SingleAsync();
         Assert.InRange(Math.Abs((demand.OriginalExpiresAtUtc - shortBound.UtcDateTime).TotalMilliseconds), 0, 1);
         Assert.True(demand.ExpiresAtUtc <= demand.OriginalExpiresAtUtc);
         before = await ServerNowAsync();
-        var owner = Assert.IsType<ObservationOwnership>((await Store().ClaimLeaseAsync(seeded.Context, "replica-a"))
-            .Value);
-        var control = await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId));
-        Assert.InRange(control!.LeaseExpiresAtUtc!.Value,
+        var owner = Assert.IsType<ObservationOwnership>(
+            (await Store().ClaimLeaseAsync(seeded.Context, "replica-a")).Value);
+        var control = await Store()
+            .LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId));
+        Assert.InRange(
+            control!.LeaseExpiresAtUtc!.Value,
             before.AddSeconds(30),
             (await ServerNowAsync()).AddSeconds(30));
         var past = seeded.Demand with
         {
             Identity = seeded.Demand.Identity with
             {
-                SubscriptionId = "past-clock"
+                SubscriptionId = "past-clock",
             },
-            ExpiresAtUtc = DateTimeOffset.UnixEpoch
+            ExpiresAtUtc = DateTimeOffset.UnixEpoch,
         };
         AssertRejected(ObservationStoreRejection.NoDemand, (await Store().PutDemandAsync(past, seeded.Context)).Value);
         Assert.Equal(1, await Demands.CountDocumentsAsync(FilterDefinition<ObservationDemandDocument>.Empty));
@@ -716,24 +839,32 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        var first = Assert.IsType<ResourceDeploymentSharedObservation>((await Store().TryCommitSnapshotAsync(
-            owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample())).Value);
+        var first = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         var before = await Snapshots.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync();
-        await Snapshots.UpdateOneAsync(item => item.Id == before.Id,
-            Builders<ObservationSnapshotDocument>.Update.Set(item => item.CheckedAtUtc,
+        await Snapshots.UpdateOneAsync(
+            item => item.Id == before.Id,
+            Builders<ObservationSnapshotDocument>.Update.Set(
+                item => item.CheckedAtUtc,
                 future ? DateTime.UnixEpoch.AddDays(50000) : DateTime.UnixEpoch));
         Assert.Null(await Store().LoadFreshSnapshotAsync(seeded.Context));
-        var next = Assert.IsType<ResourceDeploymentSharedObservation>((await Store().TryCommitSnapshotAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            "owned-controller",
-            Sample())).Value);
+        var next = Assert.IsType<ResourceDeploymentSharedObservation>(
+            (await Store()
+                .TryCommitSnapshotAsync(
+                    owner.Lease,
+                    seeded.Context,
+                    owner.SourceControlVersion,
+                    "owned-controller",
+                    Sample())).Value);
         Assert.Equal(first.ObservationVersion + 1, next.ObservationVersion);
-        Assert.Equal(before.Fingerprint,
+        Assert.Equal(
+            before.Fingerprint,
             (await Snapshots.Find(item => item.Id == before.Id).SingleAsync()).Fingerprint);
         Assert.NotNull(await Store().LoadFreshSnapshotAsync(seeded.Context));
     }
@@ -745,14 +876,17 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var owner = await StartAsync(seeded);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var paused = Store(async (session, writes, ct) =>
+        var paused = Store(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             entered.TrySetResult();
             await resume.Task.WaitAsync(ct);
         });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var pending = paused.TryCommitSnapshotAsync(owner.Lease,
+        var pending = paused.TryCommitSnapshotAsync(
+            owner.Lease,
             seeded.Context,
             owner.SourceControlVersion,
             "owned-controller",
@@ -762,8 +896,10 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         {
             await entered.Task.WaitAsync(timeout.Token);
             Assert.Equal(0, await Snapshots.CountDocumentsAsync(FilterDefinition<ObservationSnapshotDocument>.Empty));
-            Assert.Equal(1,
-                (await Store().LoadControlAsync(new(owner.Lease.TenantId, owner.Lease.DeploymentId)))!
+            Assert.Equal(
+                1,
+                (await Store()
+                    .LoadControlAsync(new ObservationIdentity(owner.Lease.TenantId, owner.Lease.DeploymentId)))!
                 .ObservationVersion);
             Assert.Equal(1, await EventCountAsync());
         }
@@ -782,16 +918,22 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Controls.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
-            Builders<ObservationControlDocument>.Update.Set(item => item.LeaseExpiresAtUtc,
+        await Controls.UpdateOneAsync(
+            item => item.Id == owner.Lease.DeploymentId,
+            Builders<ObservationControlDocument>.Update.Set(
+                item => item.LeaseExpiresAtUtc,
                 (await ServerNowAsync()).AddSeconds(1)));
-        var delayed = Store(async (session, writes, ct) =>
+        var delayed = Store(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             await Task.Delay(TimeSpan.FromMilliseconds(1400), ct);
         });
-        AssertRejected(ObservationStoreRejection.LeaseLost,
-            (await delayed.TryCommitSnapshotAsync(owner.Lease,
+        AssertRejected(
+            ObservationStoreRejection.LeaseLost,
+            (await delayed.TryCommitSnapshotAsync(
+                owner.Lease,
                 seeded.Context,
                 owner.SourceControlVersion,
                 "owned-controller",
@@ -805,16 +947,22 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
     {
         var seeded = await SeedAsync();
         var owner = await StartAsync(seeded);
-        await Demands.UpdateManyAsync(FilterDefinition<ObservationDemandDocument>.Empty,
-            Builders<ObservationDemandDocument>.Update.Set(item => item.ExpiresAtUtc,
+        await Demands.UpdateManyAsync(
+            FilterDefinition<ObservationDemandDocument>.Empty,
+            Builders<ObservationDemandDocument>.Update.Set(
+                item => item.ExpiresAtUtc,
                 (await ServerNowAsync()).AddSeconds(1)));
-        var delayed = Store(async (session, writes, ct) =>
+        var delayed = Store(async (
+            session, writes,
+            ct) =>
         {
             await Fixture.StoreOutboxWrites(session, writes, ct);
             await Task.Delay(TimeSpan.FromMilliseconds(1400), ct);
         });
-        AssertRejected(ObservationStoreRejection.NoDemand,
-            (await delayed.TryCommitSnapshotAsync(owner.Lease,
+        AssertRejected(
+            ObservationStoreRejection.NoDemand,
+            (await delayed.TryCommitSnapshotAsync(
+                owner.Lease,
                 seeded.Context,
                 owner.SourceControlVersion,
                 "owned-controller",
@@ -832,10 +980,12 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         var owner = await StartAsync(seeded);
         var expiry = (await ServerNowAsync()).AddSeconds(1);
         if (demandExpires)
-            await Demands.UpdateManyAsync(FilterDefinition<ObservationDemandDocument>.Empty,
+            await Demands.UpdateManyAsync(
+                FilterDefinition<ObservationDemandDocument>.Empty,
                 Builders<ObservationDemandDocument>.Update.Set(item => item.ExpiresAtUtc, expiry));
         else
-            await Controls.UpdateOneAsync(item => item.Id == owner.Lease.DeploymentId,
+            await Controls.UpdateOneAsync(
+                item => item.Id == owner.Lease.DeploymentId,
                 Builders<ObservationControlDocument>.Update.Set(item => item.LeaseExpiresAtUtc, expiry));
         var before = await Controls.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync();
         var settings = Fixture.Client.Settings.Clone();
@@ -868,18 +1018,21 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
                 MongoResourceDeploymentObservationStore.SnapshotsCollection),
             database.GetCollection<ResourceDeployment>("ResourceDeployments"),
             new MongoRunTransaction(client),
-            (request, session, ct) => new MongoFenceDeploymentTargetObservation(
-                    database.GetCollection<Pole.Features.DeploymentTargets.Domain.DeploymentTarget>(
-                        "DeploymentTargets"))
-                .InvokeAsync(request, session, ct),
+            (
+                request, session,
+                ct) => new MongoFenceDeploymentTargetObservation(
+                database.GetCollection<DeploymentTarget>("DeploymentTargets")).InvokeAsync(request, session, ct),
             Fixture.StoreOutboxWrites);
-        AssertRejected(demandExpires ? ObservationStoreRejection.NoDemand : ObservationStoreRejection.LeaseLost,
-            (await delayed.SetSourceStateAsync(owner.Lease,
+        AssertRejected(
+            demandExpires ? ObservationStoreRejection.NoDemand : ObservationStoreRejection.LeaseLost,
+            (await delayed.SetSourceStateAsync(
+                owner.Lease,
                 seeded.Context,
                 owner.SourceControlVersion,
                 true,
                 "owned-controller")).Value);
-        Assert.Equal(before.ToBsonDocument(),
+        Assert.Equal(
+            before.ToBsonDocument(),
             (await Controls.Find(item => item.Id == owner.Lease.DeploymentId).SingleAsync()).ToBsonDocument());
         Assert.Equal(1, await EventCountAsync());
         Assert.True(updates >= 1);
@@ -894,14 +1047,16 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         foreach (var seeded in new[] { one, two, three })
         {
             await Store().PutDemandAsync(seeded.Demand, seeded.Context);
-            await Store().PutDemandAsync(seeded.Demand with
-            {
-                Identity = seeded.Demand.Identity with
-                {
-                    SubscriptionId = "additional"
-                }
-            },
-                seeded.Context);
+            await Store()
+                .PutDemandAsync(
+                    seeded.Demand with
+                    {
+                        Identity = seeded.Demand.Identity with
+                        {
+                            SubscriptionId = "additional",
+                        },
+                    },
+                    seeded.Context);
         }
 
         var first = await Store().ScanDemandsAsync(null, 2);
@@ -912,14 +1067,16 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         Assert.Null(last.NextCursor);
         Assert.Equal(3, first.Items.Concat(last.Items).Select(item => item.DeploymentId).Distinct().Count());
         Assert.All(first.Items.Concat(last.Items), item => Assert.Equal(Data.TenantId, item.TenantId));
-        Assert.Null(await Store()
-            .LoadControlAsync(new(ObjectId.GenerateNewId().ToString(), one.Context.Deployment.Id)));
+        Assert.Null(
+            await Store()
+                .LoadControlAsync(
+                    new ObservationIdentity(ObjectId.GenerateNewId().ToString(), one.Context.Deployment.Id)));
         var foreign = one.Context with
         {
             Deployment = one.Context.Deployment with
             {
-                TenantId = ObjectId.GenerateNewId().ToString()
-            }
+                TenantId = ObjectId.GenerateNewId().ToString(),
+            },
         };
         Assert.Null(await Store().LoadFreshSnapshotAsync(foreign));
         Assert.Equal(0, await EventCountAsync());
@@ -932,18 +1089,18 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
         (await Fixture.Database.RunCommandAsync<BsonDocument>(new BsonDocument("hello", 1)))["localTime"]
         .ToUniversalTime();
 
-    private MongoResourceDeploymentObservationStore Store(StoreOutboxWrites? writes = null,
-        FenceDeploymentTargetObservation? fence = null) =>
-        new(Fixture.Database.GetCollection<ObservationControlDocument>(
-                MongoResourceDeploymentObservationStore.ControlsCollection),
-            Fixture.Database.GetCollection<ObservationDemandDocument>(
-                MongoResourceDeploymentObservationStore.DemandsCollection),
-            Fixture.Database.GetCollection<ObservationSnapshotDocument>(
-                MongoResourceDeploymentObservationStore.SnapshotsCollection),
-            Fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments"),
-            new MongoRunTransaction(Fixture.Client),
-            fence ?? FenceTargetAsync,
-            writes ?? Fixture.StoreOutboxWrites);
+    private MongoResourceDeploymentObservationStore
+        Store(StoreOutboxWrites? writes = null, FenceDeploymentTargetObservation? fence = null) => new(
+        Fixture.Database.GetCollection<ObservationControlDocument>(
+            MongoResourceDeploymentObservationStore.ControlsCollection),
+        Fixture.Database.GetCollection<ObservationDemandDocument>(
+            MongoResourceDeploymentObservationStore.DemandsCollection),
+        Fixture.Database.GetCollection<ObservationSnapshotDocument>(
+            MongoResourceDeploymentObservationStore.SnapshotsCollection),
+        Fixture.Database.GetCollection<ResourceDeployment>("ResourceDeployments"),
+        new MongoRunTransaction(Fixture.Client),
+        fence ?? FenceTargetAsync,
+        writes ?? Fixture.StoreOutboxWrites);
 
     private Task<FenceDeploymentTargetObservationOutcome> FenceTargetAsync(
         DeploymentTargetObservationFenceRequest request,
@@ -954,16 +1111,17 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
 
     private async Task<SeededObservation> SeedAsync()
     {
-        await new Pole.Features.ResourceDeployments.Migrations.ResourceDeploymentObservationIndexMigration()
-            .Up(Fixture.Database);
+        await new ResourceDeploymentObservationIndexMigration().Up(Fixture.Database);
         var now = DateTime.UtcNow.AddMinutes(-1);
         var target = ObjectId.GenerateNewId().ToString();
-        var deployment = ResourceDeploymentFactory.Create(Data.TenantId,
+        var deployment = ResourceDeploymentFactory.Create(
+            Data.TenantId,
             ResourceTypeId.Create("pole/web-service"),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
-            ResolvedResourcePlacement.Create(ObjectId.GenerateNewId().ToString(),
+            ResolvedResourcePlacement.Create(
+                ObjectId.GenerateNewId().ToString(),
                 target,
                 "pole-observation-test",
                 1,
@@ -977,39 +1135,50 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             ResourceDeploymentFactory.DefaultOptions with
             {
                 Id = ObjectId.GenerateNewId().ToString(),
-                CreatedAtUtc = now
+                CreatedAtUtc = now,
             });
         await Fixture.DbContext.ResourceDeployments.InsertOneAsync(deployment);
-        await Targets.InsertOneAsync(new BsonDocument
-        {
-            { "_id", ObjectId.Parse(target) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
-            { "Connection", new BsonDocument("Version", 1L) }, { "ObservationFence", 0L }, { "ReferenceFence", 0L }
-        });
-        var context =
-            new ResourceDeploymentObservationContext(deployment.ToReconciliationSnapshot(), deployment.Revision, 1);
-        return new(context,
-            new(new(Data.TenantId, deployment.Id, Guid.NewGuid().ToString("N"), "connection-a", "session-a"),
+        await Targets.InsertOneAsync(
+            new BsonDocument
+            {
+                { "_id", ObjectId.Parse(target) }, { "Enabled", true }, { "DeletionRequestedAtUtc", BsonNull.Value },
+                { "Connection", new BsonDocument("Version", 1L) }, { "ObservationFence", 0L }, { "ReferenceFence", 0L },
+            });
+        var context = new ResourceDeploymentObservationContext(
+            deployment.ToReconciliationSnapshot(),
+            deployment.Revision,
+            1);
+        return new SeededObservation(
+            context,
+            new ObservationDemand(
+                new ObservationDemandIdentity(
+                    Data.TenantId,
+                    deployment.Id,
+                    Guid.NewGuid().ToString("N"),
+                    "connection-a",
+                    "session-a"),
                 DateTimeOffset.UtcNow.AddMinutes(20)));
     }
 
     private async Task<ObservationOwnership> StartAsync(SeededObservation seeded)
     {
         Assert.IsType<ObservationMutationAccepted>((await Store().PutDemandAsync(seeded.Demand, seeded.Context)).Value);
-        var owner = Assert.IsType<ObservationOwnership>((await Store().ClaimLeaseAsync(seeded.Context, "replica-a"))
+        var owner = Assert.IsType<ObservationOwnership>(
+            (await Store().ClaimLeaseAsync(seeded.Context, "replica-a")).Value);
+        var source = Assert.IsType<ObservationSourceState>(
+            (await Store()
+                .SetSourceStateAsync(owner.Lease, seeded.Context, owner.SourceControlVersion, true, "owned-controller"))
             .Value);
-        var source = Assert.IsType<ObservationSourceState>((await Store().SetSourceStateAsync(owner.Lease,
-            seeded.Context,
-            owner.SourceControlVersion,
-            true,
-            "owned-controller")).Value);
         return owner with
         {
-            SourceControlVersion = source.SourceControlVersion
+            SourceControlVersion = source.SourceControlVersion,
         };
     }
 
-    private static ResourceDeploymentBoundObservation Sample() => new("owned-controller",
-        new ObservedWorkload(true,
+    private static ResourceDeploymentBoundObservation Sample() => new(
+        "owned-controller",
+        new ObservedWorkload(
+            true,
             true,
             1,
             1,
@@ -1017,26 +1186,38 @@ public sealed class ResourceDeploymentObservationStoreTests(MongoReplicaSetFixtu
             1,
             1,
             false,
-            [new("pod-a", "Running", true, true, 0, [])],
+            [new ObservedWorkloadPod("pod-a", "Running", true, true, 0, [])],
             [],
             null))
     {
-        Diagnostics = new AvailableWorkloadDiagnostics([
-                new("pod-uid", "pod-a", "Running", true, true, 0, [], [new("app", "Application", false)], false)
+        Diagnostics = new AvailableWorkloadDiagnostics(
+            [
+                new DiagnosticWorkloadInstance(
+                    "pod-uid",
+                    "pod-a",
+                    "Running",
+                    true,
+                    true,
+                    0,
+                    [],
+                    [new DiagnosticWorkloadContainer("app", "Application", false)],
+                    false),
             ],
             false,
             [],
             false,
-            null)
+            null),
     };
 
-    private static void AssertRejected(ObservationStoreRejection expected, object? actual) =>
-        Assert.Equal(expected, Assert.IsType<ObservationStoreRejected>(actual).Reason);
+    private static void AssertRejected(ObservationStoreRejection expected, object? actual) => Assert.Equal(
+        expected,
+        Assert.IsType<ObservationStoreRejected>(actual).Reason);
 
     private static FilterDefinition<BsonDocument> TargetId(ResourceDeploymentObservationContext context) =>
         new BsonDocument("_id", ObjectId.Parse(context.Deployment.Placement.DeploymentTargetId));
 
     private sealed record SeededObservation(
         ResourceDeploymentObservationContext Context,
-        ObservationDemand Demand);
+        ObservationDemand Demand
+    );
 }

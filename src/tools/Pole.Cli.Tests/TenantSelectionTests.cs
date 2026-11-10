@@ -1,4 +1,3 @@
-using Pole.Cli;
 using Pole.Cli.Api;
 using Xunit;
 
@@ -10,7 +9,7 @@ public sealed class TenantSelectionTests
     [
         new("tenant-1", "Production", "Owner", true),
         new("tenant-2", "Shared", "Member", false),
-        new("tenant-3", "Shared", "Owner", false)
+        new("tenant-3", "Shared", "Owner", false),
     ];
 
     [Fact]
@@ -46,7 +45,7 @@ public sealed class TenantSelectionTests
         var tenants = new[]
         {
             new TenantDto("target", "Other", "Owner", false),
-            new TenantDto("other", "target", "Member", false)
+            new TenantDto("other", "target", "Member", false),
         };
 
         var selected = Assert.IsType<TenantSelectionFound>(TenantSelection.Resolve("target", tenants));

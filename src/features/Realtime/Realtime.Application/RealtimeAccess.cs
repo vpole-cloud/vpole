@@ -9,12 +9,14 @@ namespace Pole.Features.Realtime.Application;
 public sealed class RealtimeAccess(
     LoadTenantMember loadMember,
     LoadTenantIdentity loadTenant,
-    RealtimeTopicRegistry registry)
+    RealtimeTopicRegistry registry
+)
 {
     public RealtimeTopic? FindTopic(string name) => registry.Find(name);
     public bool IsAvailable(string name) => registry.Find(name) is not null && registry.IsEnabled(name);
 
-    public async Task<bool> AllowsAsync(ClaimsPrincipal principal,
+    public async Task<bool> AllowsAsync(
+        ClaimsPrincipal principal,
         RealtimeSubscriptionRequest request,
         CancellationToken cancellationToken)
     {
@@ -34,10 +36,7 @@ public sealed class RealtimeAccess(
         if (admin)
             return await loadTenant(request.TenantId!, cancellationToken) is TenantIdentitySnapshot;
         return await loadMember(
-            new LoadTenantMemberRequest(
-                request.TenantId!,
-                principal.FindFirstValue(Claims.UserId)!),
-            cancellationToken: cancellationToken)
-            is TenantMemberSnapshot;
+            new LoadTenantMemberRequest(request.TenantId!, principal.FindFirstValue(Claims.UserId)!),
+            cancellationToken: cancellationToken) is TenantMemberSnapshot;
     }
 }

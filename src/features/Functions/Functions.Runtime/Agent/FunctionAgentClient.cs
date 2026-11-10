@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Pole.Features.Functions.Domain;
 using Pole.Features.Functions.Runtime.Endpoints;
@@ -12,7 +11,8 @@ namespace Pole.Features.Functions.Runtime.Agent;
 public sealed record FunctionAgentProtocolResponse<T>(
     HttpStatusCode StatusCode,
     T? Value,
-    FunctionProtocolError? Error)
+    FunctionProtocolError? Error
+)
 {
     public bool IsSuccess => Value is not null && (int)StatusCode is >= 200 and < 300;
 }
@@ -57,7 +57,8 @@ public interface IFunctionAgentClient
 
 public sealed class FunctionAgentClient(
     HttpClient httpClient,
-    IFunctionAgentTokenIssuer tokenIssuer) : IFunctionAgentClient
+    IFunctionAgentTokenIssuer tokenIssuer
+) : IFunctionAgentClient
 {
     private const int MaxProtocolResponseBytes = 4 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = PoleFunctionProtocolJson.CreateOptions();
@@ -66,53 +67,50 @@ public sealed class FunctionAgentClient(
         FunctionEndpoint endpoint,
         FunctionApp app,
         FunctionRevision revision,
-        CancellationToken cancellationToken) =>
-        SendAsync<FunctionAgentMetadataResponse>(
-            HttpMethod.Get,
-            endpoint,
-            app,
-            revision,
-            PoleFunctionProtocol.MetadataPath,
-            PoleFunctionAgentToken.Operations.Metadata,
-            content: null,
-            attempt: null,
-            attemptId: null,
-            cancellationToken);
+        CancellationToken cancellationToken) => SendAsync<FunctionAgentMetadataResponse>(
+        HttpMethod.Get,
+        endpoint,
+        app,
+        revision,
+        PoleFunctionProtocol.MetadataPath,
+        PoleFunctionAgentToken.Operations.Metadata,
+        content: null,
+        attempt: null,
+        attemptId: null,
+        cancellationToken);
 
     public Task<FunctionAgentProtocolResponse<FunctionAgentStatusResponse>> GetStatusAsync(
         FunctionEndpoint endpoint,
         FunctionApp app,
         FunctionRevision revision,
-        CancellationToken cancellationToken) =>
-        SendAsync<FunctionAgentStatusResponse>(
-            HttpMethod.Get,
-            endpoint,
-            app,
-            revision,
-            PoleFunctionProtocol.AgentStatusPath,
-            PoleFunctionAgentToken.Operations.AgentStatus,
-            content: null,
-            attempt: null,
-            attemptId: null,
-            cancellationToken);
+        CancellationToken cancellationToken) => SendAsync<FunctionAgentStatusResponse>(
+        HttpMethod.Get,
+        endpoint,
+        app,
+        revision,
+        PoleFunctionProtocol.AgentStatusPath,
+        PoleFunctionAgentToken.Operations.AgentStatus,
+        content: null,
+        attempt: null,
+        attemptId: null,
+        cancellationToken);
 
     public Task<FunctionAgentProtocolResponse<ReserveFunctionAttemptResponse>> ReserveAsync(
         FunctionEndpoint endpoint,
         FunctionApp app,
         FunctionRevision revision,
         ReserveFunctionAttemptRequest request,
-        CancellationToken cancellationToken) =>
-        SendAsync<ReserveFunctionAttemptResponse>(
-            HttpMethod.Post,
-            endpoint,
-            app,
-            revision,
-            PoleFunctionProtocol.ReserveAttemptPath,
-            PoleFunctionAgentToken.Operations.ReserveAttempt,
-            JsonContent.Create(request, options: JsonOptions),
-            request.Attempt,
-            request.Attempt.AttemptId,
-            cancellationToken);
+        CancellationToken cancellationToken) => SendAsync<ReserveFunctionAttemptResponse>(
+        HttpMethod.Post,
+        endpoint,
+        app,
+        revision,
+        PoleFunctionProtocol.ReserveAttemptPath,
+        PoleFunctionAgentToken.Operations.ReserveAttempt,
+        JsonContent.Create(request, options: JsonOptions),
+        request.Attempt,
+        request.Attempt.AttemptId,
+        cancellationToken);
 
     public Task<FunctionAgentProtocolResponse<StartFunctionAttemptResponse>> ExecuteAsync(
         FunctionEndpoint endpoint,
@@ -120,18 +118,17 @@ public sealed class FunctionAgentClient(
         FunctionRevision revision,
         string attemptId,
         ExecuteFunctionAttemptRequest request,
-        CancellationToken cancellationToken) =>
-        SendAsync<StartFunctionAttemptResponse>(
-            HttpMethod.Post,
-            endpoint,
-            app,
-            revision,
-            PoleFunctionProtocol.ExecuteAttemptPath(attemptId),
-            PoleFunctionAgentToken.Operations.ExecuteAttempt,
-            JsonContent.Create(request, options: JsonOptions),
-            attempt: null,
-            attemptId,
-            cancellationToken);
+        CancellationToken cancellationToken) => SendAsync<StartFunctionAttemptResponse>(
+        HttpMethod.Post,
+        endpoint,
+        app,
+        revision,
+        PoleFunctionProtocol.ExecuteAttemptPath(attemptId),
+        PoleFunctionAgentToken.Operations.ExecuteAttempt,
+        JsonContent.Create(request, options: JsonOptions),
+        attempt: null,
+        attemptId,
+        cancellationToken);
 
     public Task<FunctionAgentProtocolResponse<FunctionAttemptStatusResponse>> ObserveAsync(
         FunctionEndpoint endpoint,
@@ -139,18 +136,17 @@ public sealed class FunctionAgentClient(
         FunctionRevision revision,
         string attemptId,
         int waitUpToMilliseconds,
-        CancellationToken cancellationToken) =>
-        SendAsync<FunctionAttemptStatusResponse>(
-            HttpMethod.Get,
-            endpoint,
-            app,
-            revision,
-            $"{PoleFunctionProtocol.AttemptStatusPath(attemptId)}?waitUpToMs={Math.Max(0, waitUpToMilliseconds)}",
-            PoleFunctionAgentToken.Operations.ObserveAttempt,
-            content: null,
-            attempt: null,
-            attemptId,
-            cancellationToken);
+        CancellationToken cancellationToken) => SendAsync<FunctionAttemptStatusResponse>(
+        HttpMethod.Get,
+        endpoint,
+        app,
+        revision,
+        $"{PoleFunctionProtocol.AttemptStatusPath(attemptId)}?waitUpToMs={Math.Max(0, waitUpToMilliseconds)}",
+        PoleFunctionAgentToken.Operations.ObserveAttempt,
+        content: null,
+        attempt: null,
+        attemptId,
+        cancellationToken);
 
     private async Task<FunctionAgentProtocolResponse<T>> SendAsync<T>(
         HttpMethod method,
@@ -168,14 +164,15 @@ public sealed class FunctionAgentClient(
             throw new InvalidOperationException("Function Agent endpoint is missing its Pod UID.");
 
         using var request = new HttpRequestMessage(method, BuildUri(endpoint, path)) { Content = content };
-        var token = tokenIssuer.Issue(new FunctionAgentTokenDescriptor(
-            app.TenantId,
-            app.Id,
-            revision.Id,
-            endpoint.TargetUid,
-            operation,
-            attempt,
-            attemptId));
+        var token = tokenIssuer.Issue(
+            new FunctionAgentTokenDescriptor(
+                app.TenantId,
+                app.Id,
+                revision.Id,
+                endpoint.TargetUid,
+                operation,
+                attempt,
+                attemptId));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var response = await httpClient.SendAsync(
             request,
@@ -194,15 +191,15 @@ public sealed class FunctionAgentClient(
         var emptyAuthenticationError = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized => new FunctionProtocolError(
-                "agent_unauthorized", "Function Agent rejected authentication."),
+                "agent_unauthorized",
+                "Function Agent rejected authentication."),
             HttpStatusCode.Forbidden => new FunctionProtocolError(
-                "agent_forbidden", "Function Agent rejected authorization."),
-            _ => null
+                "agent_forbidden",
+                "Function Agent rejected authorization."),
+            _ => null,
         };
-        var error = await DeserializeAsync(
-                        response.Content, cancellationToken, emptyAuthenticationError) ??
-                    new FunctionProtocolError(
-                        "invalid_agent_response", "Function Agent returned an invalid error response.");
+        var error = await DeserializeAsync(response.Content, cancellationToken, emptyAuthenticationError) ??
+            new FunctionProtocolError("invalid_agent_response", "Function Agent returned an invalid error response.");
         return new FunctionAgentProtocolResponse<T>(response.StatusCode, default, error);
     }
 
@@ -240,43 +237,48 @@ public sealed class FunctionAgentClient(
         var builder = new UriBuilder(Uri.UriSchemeHttp, endpoint.Address, endpoint.Port)
         {
             Path = separator < 0 ? path : path[..separator],
-            Query = separator < 0 ? string.Empty : path[(separator + 1)..]
+            Query = separator < 0 ? "" : path[(separator + 1)..],
         };
         return builder.Uri;
     }
 }
 
-public sealed class FunctionAgentProtocolException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+public sealed class FunctionAgentProtocolException(
+    string message,
+    Exception? innerException = null
+) : Exception(message, innerException);
 
 internal sealed class FunctionAgentResponseTooLargeException : Exception;
 
-internal sealed class BoundedResponseStream(Stream inner, long maxBytes) : Stream
+internal sealed class BoundedResponseStream(
+    Stream inner,
+    long maxBytes
+) : Stream
 {
-    private long bytesRead;
-
-    public long BytesRead => bytesRead;
+    public long BytesRead { get; private set; }
 
     public override bool CanRead => inner.CanRead;
     public override bool CanSeek => false;
     public override bool CanWrite => false;
     public override long Length => throw new NotSupportedException();
+
     public override long Position
     {
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
     }
 
-    public override int Read(byte[] buffer, int offset, int count)
+    public override int Read(
+        byte[] buffer,
+        int offset,
+        int count)
     {
         var read = inner.Read(buffer, offset, count);
         Count(read);
         return read;
     }
 
-    public override async ValueTask<int> ReadAsync(
-        Memory<byte> buffer,
-        CancellationToken cancellationToken = default)
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         var read = await inner.ReadAsync(buffer, cancellationToken);
         Count(read);
@@ -287,8 +289,7 @@ internal sealed class BoundedResponseStream(Stream inner, long maxBytes) : Strea
         byte[] buffer,
         int offset,
         int count,
-        CancellationToken cancellationToken) =>
-        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 
     protected override void Dispose(bool disposing)
     {
@@ -305,13 +306,17 @@ internal sealed class BoundedResponseStream(Stream inner, long maxBytes) : Strea
 
     private void Count(int read)
     {
-        bytesRead += read;
-        if (bytesRead > maxBytes)
+        BytesRead += read;
+        if (BytesRead > maxBytes)
             throw new FunctionAgentResponseTooLargeException();
     }
 
     public override void Flush() => throw new NotSupportedException();
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    public override void Write(
+        byte[] buffer,
+        int offset,
+        int count) => throw new NotSupportedException();
 }

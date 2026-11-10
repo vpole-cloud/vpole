@@ -2,17 +2,18 @@ using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.Analysis;
 
-public union AnalyzeRepositorySourceOutcome(
-    SourceRepositoryAnalysis,
-    RepositorySourceSnapshotTooLarge);
+public union AnalyzeRepositorySourceOutcome(SourceRepositoryAnalysis, RepositorySourceSnapshotTooLarge);
 
-public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
+public sealed class RepositorySourceAnalyzer(
+    TimeProvider timeProvider
+)
 {
     public AnalyzeRepositorySourceOutcome Analyze(RepositorySourceSnapshot snapshot)
     {
@@ -44,7 +45,7 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
         {
             var root = NormalizeRoot(Path.GetDirectoryName(path));
             var warnings = new List<string>();
-            var preview = snapshot.FileContents.GetValueOrDefault(path, string.Empty);
+            var preview = snapshot.FileContents.GetValueOrDefault(path, "");
             if (string.IsNullOrWhiteSpace(preview))
                 warnings.Add("The Dockerfile could not be loaded for preview.");
 
@@ -67,46 +68,42 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
     {
         var solutionFiles = snapshot.Paths
             .Where(path => path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
-                           path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
+                path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         foreach (var path in snapshot.Paths.Where(path =>
-                     path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
-                     path.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase)))
+                     path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || path.EndsWith(
+                         ".fsproj",
+                         StringComparison.OrdinalIgnoreCase)))
         {
             var root = NormalizeRoot(Path.GetDirectoryName(path));
             var projectName = Path.GetFileNameWithoutExtension(path);
             var targetFramework = "net11.0";
             var assemblyName = projectName;
-            var outputType = string.Empty;
-            var sdk = string.Empty;
+            var outputType = "";
+            var sdk = "";
             var warnings = new List<string>();
             var signals = new List<string> { path };
 
             if (snapshot.FileContents.TryGetValue(path, out var projectFile))
-            {
                 try
                 {
                     var document = XDocument.Parse(projectFile);
-                    sdk = document.Root?.Attribute("Sdk")?.Value ?? string.Empty;
+                    sdk = document.Root?.Attribute("Sdk")?.Value ?? "";
                     targetFramework = FindProperty(document, "TargetFramework") ??
-                                      FindProperty(document, "TargetFrameworks")?.Split(';')[0] ??
-                                      targetFramework;
+                        FindProperty(document, "TargetFrameworks")?.Split(';')[0] ?? targetFramework;
                     assemblyName = FindProperty(document, "AssemblyName") ?? assemblyName;
-                    outputType = FindProperty(document, "OutputType") ?? string.Empty;
+                    outputType = FindProperty(document, "OutputType") ?? "";
                     if (!string.IsNullOrWhiteSpace(sdk))
                         signals.Add($"SDK: {sdk}");
                     signals.Add($"Target: {targetFramework}");
                 }
-                catch (Exception exception) when (exception is System.Xml.XmlException or InvalidOperationException)
+                catch (Exception exception) when (exception is XmlException or InvalidOperationException)
                 {
                     warnings.Add("The project file could not be parsed; defaults were inferred from its path.");
                 }
-            }
             else
-            {
                 warnings.Add("The project file could not be loaded; defaults were inferred from its path.");
-            }
 
             var nearbySolution = solutionFiles.FirstOrDefault(solution =>
                 IsAtOrAbove(Path.GetDirectoryName(solution), root));
@@ -116,7 +113,8 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
             var isWeb = sdk.Contains("Web", StringComparison.OrdinalIgnoreCase);
             var isExecutable = isWeb || outputType.Equals("Exe", StringComparison.OrdinalIgnoreCase);
             if (!isExecutable)
-                warnings.Add("This project does not declare a web or executable output; confirm that it can run as a service.");
+                warnings.Add(
+                    "This project does not declare a web or executable output; confirm that it can run as a service.");
 
             var runtimeVersion = GetDotNetRuntimeVersion(targetFramework);
             var startCommand = $"dotnet {assemblyName}.dll";
@@ -133,7 +131,7 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
                 warnings.ToImmutableList(),
                 [
                     $"dotnet restore \"{path}\"",
-                    $"dotnet publish \"{path}\" -c Release -o /app/publish"
+                    $"dotnet publish \"{path}\" -c Release -o /app/publish",
                 ],
                 startCommand,
                 dockerfile);
@@ -153,15 +151,12 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
             var dependencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string? declaredPackageManager = null;
             if (snapshot.FileContents.TryGetValue(path, out var packageJson))
-            {
                 try
                 {
                     using var document = JsonDocument.Parse(packageJson);
                     if (document.RootElement.TryGetProperty("scripts", out var scriptElement))
-                    {
                         foreach (var script in scriptElement.EnumerateObject())
-                            scripts[script.Name] = script.Value.GetString() ?? string.Empty;
-                    }
+                            scripts[script.Name] = script.Value.GetString() ?? "";
                     AddDependencyNames(document.RootElement, "dependencies", dependencies);
                     AddDependencyNames(document.RootElement, "devDependencies", dependencies);
                     if (document.RootElement.TryGetProperty("packageManager", out var packageManagerElement))
@@ -171,18 +166,15 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
                 {
                     warnings.Add("package.json could not be parsed.");
                 }
-            }
             else
-            {
                 warnings.Add("package.json could not be loaded.");
-            }
 
             var packageManager = DetectPackageManager(snapshot.Paths, root, declaredPackageManager);
             var installCommand = packageManager switch
             {
                 "pnpm" => "pnpm install --frozen-lockfile",
                 "yarn" => "yarn install --frozen-lockfile",
-                _ => HasAtRoot(snapshot.Paths, root, "package-lock.json") ? "npm ci" : "npm install"
+                _ => HasAtRoot(snapshot.Paths, root, "package-lock.json") ? "npm ci" : "npm install",
             };
             var buildCommand = scripts.ContainsKey("build") ? $"{packageManager} run build" : null;
             var startCommand = scripts.ContainsKey("start") ? $"{packageManager} run start" : null;
@@ -213,30 +205,33 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
         }
     }
 
-    private static string? FindProperty(XDocument document, string localName) =>
-        document.Descendants().FirstOrDefault(element => element.Name.LocalName == localName)?.Value;
+    private static string? FindProperty(XDocument document, string localName) => document.Descendants()
+        .FirstOrDefault(element => element.Name.LocalName == localName)
+        ?.Value;
 
     private static string GetDotNetRuntimeVersion(string targetFramework)
     {
         var normalized = targetFramework.StartsWith("net", StringComparison.OrdinalIgnoreCase)
             ? targetFramework[3..]
-            : string.Empty;
+            : "";
         var major = new string(normalized.TakeWhile(char.IsDigit).ToArray());
         return string.IsNullOrWhiteSpace(major) ? "10.0" : $"{major}.0";
     }
 
-    private static string BuildDotNetDockerfile(string projectPath, string assemblyName, string runtimeVersion) =>
-        $"""
-        FROM mcr.microsoft.com/dotnet/sdk:{runtimeVersion} AS build
-        WORKDIR /src
-        COPY . .
-        RUN dotnet publish "{projectPath}" -c Release -o /app/publish
+    private static string BuildDotNetDockerfile(
+        string projectPath,
+        string assemblyName,
+        string runtimeVersion) => $"""
+                                   FROM mcr.microsoft.com/dotnet/sdk:{runtimeVersion} AS build
+                                   WORKDIR /src
+                                   COPY . .
+                                   RUN dotnet publish "{projectPath}" -c Release -o /app/publish
 
-        FROM mcr.microsoft.com/dotnet/aspnet:{runtimeVersion}
-        WORKDIR /app
-        COPY --from=build /app/publish .
-        ENTRYPOINT ["dotnet", "{assemblyName}.dll"]
-        """;
+                                   FROM mcr.microsoft.com/dotnet/aspnet:{runtimeVersion}
+                                   WORKDIR /app
+                                   COPY --from=build /app/publish .
+                                   ENTRYPOINT ["dotnet", "{assemblyName}.dll"]
+                                   """;
 
     private static string BuildNodeDockerfile(
         string root,
@@ -263,10 +258,14 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
         {
             builder.AppendLine($"# Add a production start script for {packageManager} before building this image.");
         }
+
         return builder.ToString();
     }
 
-    private static void AddDependencyNames(JsonElement root, string propertyName, HashSet<string> dependencies)
+    private static void AddDependencyNames(
+        JsonElement root,
+        string propertyName,
+        HashSet<string> dependencies)
     {
         if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Object)
             return;
@@ -293,15 +292,20 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
         IEnumerable<string> paths,
         string root)
     {
-        if (dependencies.Contains("next") || HasAtRoot(paths, root, "next.config.js") || HasAtRoot(paths, root, "next.config.mjs"))
+        if (dependencies.Contains("next") || HasAtRoot(paths, root, "next.config.js") ||
+            HasAtRoot(paths, root, "next.config.mjs"))
             yield return "Next.js";
-        if (dependencies.Contains("vite") || HasAtRoot(paths, root, "vite.config.ts") || HasAtRoot(paths, root, "vite.config.js"))
+        if (dependencies.Contains("vite") || HasAtRoot(paths, root, "vite.config.ts") ||
+            HasAtRoot(paths, root, "vite.config.js"))
             yield return "Vite";
         if (dependencies.Contains("react"))
             yield return "React";
     }
 
-    private static bool HasAtRoot(IEnumerable<string> paths, string root, string fileName)
+    private static bool HasAtRoot(
+        IEnumerable<string> paths,
+        string root,
+        string fileName)
     {
         var expected = root == "." ? fileName : $"{root.TrimEnd('/')}/{fileName}";
         return paths.Contains(expected, StringComparer.OrdinalIgnoreCase);
@@ -310,23 +314,23 @@ public sealed class RepositorySourceAnalyzer(TimeProvider timeProvider)
     private static bool IsAtOrAbove(string? candidateDirectory, string root)
     {
         var candidate = NormalizeRoot(candidateDirectory);
-        return root.Equals(candidate, StringComparison.OrdinalIgnoreCase) ||
-               root.StartsWith($"{candidate.TrimEnd('/')}/", StringComparison.OrdinalIgnoreCase) ||
-               candidate == ".";
+        return root.Equals(candidate, StringComparison.OrdinalIgnoreCase) || root.StartsWith(
+            $"{candidate.TrimEnd('/')}/",
+            StringComparison.OrdinalIgnoreCase) || candidate == ".";
     }
 
     private static bool IsBuildSignal(string path)
     {
         var fileName = Path.GetFileName(path);
         return fileName.StartsWith("Dockerfile", StringComparison.OrdinalIgnoreCase) ||
-               fileName.Equals("package.json", StringComparison.OrdinalIgnoreCase) ||
-               fileName is "package-lock.json" or "pnpm-lock.yaml" or "yarn.lock" ||
-               fileName.StartsWith("vite.config.", StringComparison.OrdinalIgnoreCase) ||
-               fileName.StartsWith("next.config.", StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
-               path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+            fileName.Equals("package.json", StringComparison.OrdinalIgnoreCase) ||
+            fileName is "package-lock.json" or "pnpm-lock.yaml" or "yarn.lock" ||
+            fileName.StartsWith("vite.config.", StringComparison.OrdinalIgnoreCase) ||
+            fileName.StartsWith("next.config.", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeRoot(string? root) =>

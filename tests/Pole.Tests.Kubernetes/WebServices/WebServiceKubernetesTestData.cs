@@ -8,11 +8,16 @@ internal static class WebServiceKubernetesTestData
     internal static WebServiceSpecDto Spec()
     {
         var probe = new ProbeConfigDto("/health", "8080", 5, 10, 5, 3, 1);
-        return new(new ImageInfoDto("docker.io", "nginx", "1.27"),
+        return new WebServiceSpecDto(
+            new ImageInfoDto("docker.io", "nginx", "1.27"),
             new WebServiceConfigDto
             {
-                EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add("ASPNETCORE_ENVIRONMENT", "Development"),
-                PortMappings = [new(80, "8080", "TCP", "http")]
-            }, null, new ProbeSpecDto(probe, probe, probe));
+                EnvironmentVariables = ImmutableDictionary<string, string>.Empty.Add(
+                    "ASPNETCORE_ENVIRONMENT",
+                    "Development"),
+                PortMappings = [new PortMappingDto(80, "8080", "TCP", "http")],
+            },
+            null,
+            new ProbeSpecDto(probe, probe, probe));
     }
 }

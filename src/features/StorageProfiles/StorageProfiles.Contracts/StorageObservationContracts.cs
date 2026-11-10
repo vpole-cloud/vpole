@@ -2,7 +2,8 @@ namespace Pole.Features.StorageProfiles.Contracts;
 
 public sealed record StorageObservationContext(
     string DeploymentTargetId,
-    long ConnectionVersion);
+    long ConnectionVersion
+);
 
 public sealed record StorageClassObservation(
     string Name,
@@ -10,14 +11,16 @@ public sealed record StorageClassObservation(
     bool IsDefault,
     string? ReclaimPolicy,
     string? VolumeBindingMode,
-    bool? AllowVolumeExpansion);
+    bool? AllowVolumeExpansion
+);
 
 public sealed record StorageOwnerObservation(
     string? TenantId,
     string? ResourceGroupId,
     string? ResourceType,
     string? ResourceId,
-    string? ResourceName);
+    string? ResourceName
+);
 
 public sealed record PersistentVolumeObservation(
     string Name,
@@ -27,7 +30,8 @@ public sealed record PersistentVolumeObservation(
     string? BoundClaimNamespace,
     string? BoundClaimName,
     string? ReclaimPolicy,
-    StorageOwnerObservation Owner);
+    StorageOwnerObservation Owner
+);
 
 public sealed record PersistentVolumeClaimObservation(
     string Name,
@@ -37,14 +41,16 @@ public sealed record PersistentVolumeClaimObservation(
     string? Status,
     string? StorageClassName,
     string? VolumeName,
-    StorageOwnerObservation Owner);
+    StorageOwnerObservation Owner
+);
 
 /// <summary>One bounded aggregate cut. Native specs, arbitrary metadata and parameters are excluded.</summary>
 public sealed record StorageInventoryObservation(
     StorageClassObservation[] StorageClasses,
     PersistentVolumeObservation[] PersistentVolumes,
     PersistentVolumeClaimObservation[] PersistentVolumeClaims,
-    bool Complete);
+    bool Complete
+);
 
 public sealed record StorageObservationSnapshot(
     string DeploymentTargetId,
@@ -54,19 +60,21 @@ public sealed record StorageObservationSnapshot(
     bool Complete,
     StorageClassObservation[] StorageClasses,
     PersistentVolumeObservation[] PersistentVolumes,
-    PersistentVolumeClaimObservation[] PersistentVolumeClaims);
+    PersistentVolumeClaimObservation[] PersistentVolumeClaims
+);
 
 public enum StorageObservationChangeKind
 {
     Ready,
     Changed,
-    Unavailable
+    Unavailable,
 }
 
 public sealed record StorageObservationChange(
     StorageObservationChangeKind Kind,
     string? SourceId = null,
-    StorageInventoryObservation? Inventory = null);
+    StorageInventoryObservation? Inventory = null
+);
 
 /// <summary>The storage owner supplies sanitized three-stream cuts and coverage transitions.</summary>
 public interface IStorageObservationSource

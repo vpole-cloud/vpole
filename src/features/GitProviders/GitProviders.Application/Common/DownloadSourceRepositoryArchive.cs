@@ -1,6 +1,6 @@
 using Pole.Features.GitProviders.Application.Connections;
-using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 
 namespace Pole.Features.GitProviders.Application.Common;
@@ -8,7 +8,8 @@ namespace Pole.Features.GitProviders.Application.Common;
 public sealed class SourceRepositoryArchiveDownloader(
     LoadSourceRepository loadSourceRepository,
     LoadGitProviderConnection loadGitProviderConnection,
-    DownloadProviderRepositoryArchive downloadProviderRepositoryArchive)
+    DownloadProviderRepositoryArchive downloadProviderRepositoryArchive
+)
 {
     public async Task<DownloadSourceRepositoryArchiveOutcome> InvokeAsync(
         DownloadSourceRepositoryArchiveRequest request,
@@ -16,22 +17,13 @@ public sealed class SourceRepositoryArchiveDownloader(
     {
         var repository = await loadSourceRepository(request.TenantId, request.SourceRepositoryId, cancellationToken);
         if (repository is null)
-        {
             return new DownloadSourceRepositoryArchiveError(
                 new SourceRepositoryBuildNotFound(request.SourceRepositoryId));
-        }
 
-        var connection = await loadGitProviderConnection(
-            request.TenantId,
-            repository.ConnectionId,
-            cancellationToken);
+        var connection = await loadGitProviderConnection(request.TenantId, repository.ConnectionId, cancellationToken);
         if (connection is null)
-        {
             return new DownloadSourceRepositoryArchiveError(
-                new SourceRepositoryBuildConnectionNotFound(
-                    repository.Id,
-                    repository.ConnectionId));
-        }
+                new SourceRepositoryBuildConnectionNotFound(repository.Id, repository.ConnectionId));
 
         var downloaded = await downloadProviderRepositoryArchive(
             connection,
@@ -42,8 +34,7 @@ public sealed class SourceRepositoryArchiveDownloader(
         return downloaded switch
         {
             ProviderRepositoryArchiveDownloaded => new SourceRepositoryArchiveDownloaded(),
-            GitProviderRepositoryAccessError error =>
-                new DownloadSourceRepositoryArchiveError(error)
+            GitProviderRepositoryAccessError error => new DownloadSourceRepositoryArchiveError(error),
         };
     }
 }

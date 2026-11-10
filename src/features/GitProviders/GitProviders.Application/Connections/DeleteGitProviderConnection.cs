@@ -23,7 +23,8 @@ internal sealed class MongoDeleteGitProviderConnection(
     IMongoCollection<GitProviderConnection> gitProviderConnections,
     IMongoCollection<SourceRepository> sourceRepositories,
     MongoRunTransaction transactions,
-    StoreOutboxWrites outbox)
+    StoreOutboxWrites outbox
+)
 {
     public async Task<PersistDeletedGitProviderConnectionOutcome> InvokeAsync(
         string tenantId,
@@ -32,22 +33,23 @@ internal sealed class MongoDeleteGitProviderConnection(
     {
         var connections = gitProviderConnections;
         var connectionFilter = GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId);
-        return await transactions.InvokeOutcomeAsync<PersistDeletedGitProviderConnectionOutcome>(async (tx, ct) =>
+        return await transactions.InvokeOutcomeAsync<PersistDeletedGitProviderConnectionOutcome>(
+            async (tx, ct) =>
             {
                 if (!await connections.Find(tx.Session, connectionFilter).AnyAsync(ct))
                     return tx.Abort(new GitProviderConnectionNotFound(connectionId));
 
                 var repositories = sourceRepositories;
-                if (await repositories
-                        .Find(tx.Session,
+                if (await repositories.Find(
+                            tx.Session,
                             GitProviderFilters.SourceRepositoriesByTenantAndConnection(tenantId, connectionId))
                         .AnyAsync(ct))
-                {
                     return tx.Abort(new GitProviderConnectionHasSourceRepositories(connectionId));
-                }
 
-                var deleted =
-                    await connections.FindOneAndDeleteAsync(tx.Session, connectionFilter, cancellationToken: ct);
+                var deleted = await connections.FindOneAndDeleteAsync(
+                    tx.Session,
+                    connectionFilter,
+                    cancellationToken: ct);
                 if (deleted is null)
                     return tx.Abort(new GitProviderConnectionNotFound(connectionId));
                 await outbox(tx.Session, [OutboxWrite.Create(deleted.ToChangedEvent())], ct);

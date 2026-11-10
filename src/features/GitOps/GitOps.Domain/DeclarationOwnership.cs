@@ -8,10 +8,11 @@ public sealed record DeclarationOwnership(
     string ResourceId,
     string DesiredHash,
     string? AppliedHash,
-    bool PendingRemoval)
+    bool PendingRemoval
+)
 {
-    public bool CanBeMutatedBy(GitSourceIdentity source, string resourceId) =>
-        TenantId == source.TenantId && SourceId == source.SourceId && ResourceId == resourceId;
+    public bool CanBeMutatedBy(GitSourceIdentity source, string resourceId) => TenantId == source.TenantId &&
+        SourceId == source.SourceId && ResourceId == resourceId;
 
     public DeclarationOwnership ObserveDesired(string hash) => this with { DesiredHash = hash, PendingRemoval = false };
 
@@ -24,7 +25,8 @@ public sealed record DeclarationOwnership(
 public sealed record DeclarationCompletion(
     string DesiredHash,
     bool FinalPhase,
-    bool Applied)
+    bool Applied
+)
 {
     // Null means preserve the previous applied hash, including when a newer configuration blocks.
     public string? AppliedHashUpdate => FinalPhase && Applied ? DesiredHash : null;

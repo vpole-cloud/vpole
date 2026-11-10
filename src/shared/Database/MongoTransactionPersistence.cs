@@ -1,48 +1,38 @@
 using MongoDB.Driver;
-using Pole.ResultType;
 
 namespace Pole.Database;
 
-public sealed class MongoRunTransaction(IMongoClient client)
+public sealed class MongoRunTransaction(
+    IMongoClient client
+)
 {
     public Task<TOutcome> InvokeOutcomeAsync<TOutcome>(
-        Func<
-            MongoTransactionContext<TOutcome>,
-            CancellationToken,
-            Task<MongoTransactionDecision<TOutcome>>> operation,
+        Func<MongoTransactionContext<TOutcome>, CancellationToken, Task<MongoTransactionDecision<TOutcome>>> operation,
         CancellationToken cancellationToken = default)
-        where TOutcome : notnull =>
-        MongoTransactionPersistence.RunOutcomeAsync(
-            client,
-            operation,
-            transactionOptions: null,
-            cancellationToken);
-
+        where TOutcome : notnull => MongoTransactionPersistence.RunOutcomeAsync(
+        client,
+        operation,
+        transactionOptions: null,
+        cancellationToken);
 }
 
 internal static class MongoTransactionPersistence
 {
     public static async Task<TOutcome> RunOutcomeAsync<TOutcome>(
         IMongoClient client,
-        Func<
-            MongoTransactionContext<TOutcome>,
-            CancellationToken,
-            Task<MongoTransactionDecision<TOutcome>>> operation,
+        Func<MongoTransactionContext<TOutcome>, CancellationToken, Task<MongoTransactionDecision<TOutcome>>> operation,
         TransactionOptions? transactionOptions = null,
         CancellationToken cancellationToken = default)
         where TOutcome : notnull
     {
-        using var session = await client.StartSessionAsync(
-            cancellationToken: cancellationToken);
+        using var session = await client.StartSessionAsync(cancellationToken: cancellationToken);
         var decision = await session.WithTransactionAsync(
             async (transactionSession, transactionCancellationToken) =>
             {
                 try
                 {
                     var context = new MongoTransactionContext<TOutcome>(transactionSession);
-                    var transactionDecision = await operation(
-                        context,
-                        transactionCancellationToken);
+                    var transactionDecision = await operation(context, transactionCancellationToken);
                     if (transactionDecision is MongoTransactionAbort<TOutcome>)
                         await AbortAsync(transactionSession);
 
@@ -52,7 +42,6 @@ internal static class MongoTransactionPersistence
                 {
                     // Abort before the driver marks the session aborted using the cancelled request token.
                     if (transactionSession.IsInTransaction)
-                    {
                         try
                         {
                             await AbortAsync(transactionSession);
@@ -61,7 +50,6 @@ internal static class MongoTransactionPersistence
                         {
                             original.Data["Pole.MongoTransaction.AbortFailure"] = cleanupFailure;
                         }
-                    }
 
                     throw;
                 }
@@ -72,7 +60,7 @@ internal static class MongoTransactionPersistence
         return decision switch
         {
             MongoTransactionCommit<TOutcome> commit => commit.Outcome,
-            MongoTransactionAbort<TOutcome> abort => abort.Outcome
+            MongoTransactionAbort<TOutcome> abort => abort.Outcome,
         };
     }
 

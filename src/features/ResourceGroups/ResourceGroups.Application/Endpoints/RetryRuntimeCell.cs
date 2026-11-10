@@ -3,16 +3,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
@@ -20,21 +16,19 @@ namespace Pole.Features.ResourceGroups.Application.Endpoints;
 public sealed record RetryRuntimeCellRequest(
     [FromRoute] string ResourceGroupId,
     [FromRoute] string CellId,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<RetryRuntimeCellOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<RetryRuntimeCellOutcome>, ITenantWriteOperation;
 
 public union RetryRuntimeCellError(
     RuntimeCellNotFound,
     RuntimeCellRetryRejected,
     ResourceGroupRevisionConflict);
 
-public union RetryRuntimeCellOutcome(
-    RuntimeCellDto,
-    RetryRuntimeCellError);
+public union RetryRuntimeCellOutcome(RuntimeCellDto, RetryRuntimeCellError);
 
 public sealed class RetryRuntimeCellHandler(
-    PersistRuntimeCellRetry persistRuntimeCellRetry)
-    : IMediatorOutcomeHandler<RetryRuntimeCellRequest, RetryRuntimeCellOutcome>
+    PersistRuntimeCellRetry persistRuntimeCellRetry
+) : IMediatorOutcomeHandler<RetryRuntimeCellRequest, RetryRuntimeCellOutcome>
 {
     public async Task<RetryRuntimeCellOutcome> HandleAsync(
         RetryRuntimeCellRequest request,
@@ -50,20 +44,17 @@ public sealed class RetryRuntimeCellHandler(
             RuntimeCell runtimeCell => runtimeCell.ToDto(),
             RuntimeCellNotFound error => new RetryRuntimeCellError(error),
             RuntimeCellRetryRejected error => new RetryRuntimeCellError(error),
-            ResourceGroupRevisionConflict error => new RetryRuntimeCellError(error)
+            ResourceGroupRevisionConflict error => new RetryRuntimeCellError(error),
         };
     }
 }
 
-public sealed class RetryRuntimeCellRequestValidator
-    : AbstractValidator<RetryRuntimeCellRequest>
+public sealed class RetryRuntimeCellRequestValidator : AbstractValidator<RetryRuntimeCellRequest>
 {
     public RetryRuntimeCellRequestValidator()
     {
-        RuleFor(request => request.ResourceGroupId)
-            .MongoObjectId("Resource group ID");
-        RuleFor(request => request.CellId)
-            .MongoObjectId("Runtime cell ID");
+        RuleFor(request => request.ResourceGroupId).MongoObjectId("Resource group ID");
+        RuleFor(request => request.CellId).MongoObjectId("Runtime cell ID");
     }
 }
 
@@ -71,18 +62,19 @@ public static class RetryRuntimeCellEndpoint
 {
     public static IEndpointRouteBuilder MapRetryRuntimeCellEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{ResourceGroupId}/runtime-cells/{CellId}/retry", async (
-                IMediator mediator,
-                [AsParameters] RetryRuntimeCellRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/{ResourceGroupId}/runtime-cells/{CellId}/retry",
+                async (
+                    IMediator mediator, [AsParameters] RetryRuntimeCellRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    RuntimeCellDto runtimeCell => Results.Accepted(value: runtimeCell),
-                    RetryRuntimeCellError error => ResourceGroupHttpMappings.Map(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        RuntimeCellDto runtimeCell => Results.Accepted(value: runtimeCell),
+                        RetryRuntimeCellError error => ResourceGroupHttpMappings.Map(error),
+                    });
+                })
             .WithName("RetryRuntimeCell")
             .WithSummary("Requests another attempt for a failed runtime cell.")
             .Produces<RuntimeCellDto>(StatusCodes.Status202Accepted)

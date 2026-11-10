@@ -1,21 +1,18 @@
-using System.Collections.Immutable;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Domain;
-using Pole.Features.GitOps.Application;
-using Pole.Features.GitOps.Compiler;
 using Pole.Features.GitOps.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Domain;
-using Pole.Tests.Integration.DeploymentTargets;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant1)]
-public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class WebServiceStageFiveTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task WebService_named_scope_admits_secret_binding_and_next_run_is_no_op()
@@ -24,11 +21,14 @@ public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : D
         var initial = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.Blocked, initial.Status);
         var service = await Service();
-        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "application-scope").SingleAsync();
+        var scope = await DbContext.IsolationScopes
+            .Find(item => item.TenantId == Data.TenantId && item.Name == "application-scope")
+            .SingleAsync();
         Assert.Equal(scope.Id, service.IsolationScopeId);
         Assert.IsType<PreparedWebServiceLifecycle>(service.Lifecycle);
         await Supply();
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
+        Assert.Equal(
+            RepositoryPipelineStatus.ConfigurationApplied,
             (await Pipeline.ResumeAsync(initial.Context!)).Status);
         var configured = await Service();
         var events = await BusinessEvents();
@@ -42,7 +42,8 @@ public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : D
     [Fact]
     public async Task WebService_named_scope_is_immutable_after_creation()
     {
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
+        Assert.Equal(
+            RepositoryPipelineStatus.ConfigurationApplied,
             (await Apply(StageFiveWebSnapshot(_ => { }))).Status);
         var initial = await Service();
         var result = await Apply(StageFiveWebSnapshot(_ => { }, scope: "different-scope"));
@@ -56,35 +57,46 @@ public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : D
     {
         var result = await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Public"));
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await WebServices.CountDocumentsAsync(Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await WebServices.CountDocumentsAsync(
+                Builders<WebService>.Filter.Eq(item => item.TenantId, Data.TenantId)));
         Assert.Equal(0, await Releases());
     }
 
     [Fact]
     public async Task WebService_autoscaling_repairs_managed_policy_without_reacting_to_runtime_observations()
     {
-        var files = StageFiveWebSnapshot(spec => spec["autoscaling"] = JsonNode.Parse("""
+        var files = StageFiveWebSnapshot(spec => spec["autoscaling"] = JsonNode.Parse(
+            """
             {"minReplicas":2,"maxReplicas":4,"metric":{"type":"cpu","targetAverageUtilization":70}}
             """));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
         var service = await Service();
-        Assert.Equal(new AutoscalingSpec(2, 4, new("cpu", 70)), service.Spec.Autoscaling);
+        Assert.Equal(new AutoscalingSpec(2, 4, new AutoscalingMetric("cpu", 70)), service.Spec.Autoscaling);
         var releases = await Releases();
-        await WebServices.ReplaceOneAsync(item => item.Id == service.Id, service with
-        {
-            Spec = service.Spec with { Autoscaling = new(1, 3, new("memory", 50)) },
-            Revision = service.Revision + 1
-        });
+        await WebServices.ReplaceOneAsync(
+            item => item.Id == service.Id,
+            service with
+            {
+                Spec = service.Spec with
+                {
+                    Autoscaling = new AutoscalingSpec(1, 3, new AutoscalingMetric("memory", 50)),
+                },
+                Revision = service.Revision + 1,
+            });
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
         var repaired = await Service();
         Assert.Equal(service.Spec.Autoscaling, repaired.Spec.Autoscaling);
         Assert.Equal(releases + 1, await Releases());
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == service.Id).SingleAsync();
-        await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == placement.Id, placement with
-        {
-            ObservedGeneration = placement.DesiredGeneration,
-            State = new AppliedResourceDeploymentState(placement.DesiredGeneration, DateTime.UtcNow)
-        });
+        await DbContext.ResourceDeployments.ReplaceOneAsync(
+            item => item.Id == placement.Id,
+            placement with
+            {
+                ObservedGeneration = placement.DesiredGeneration,
+                State = new AppliedResourceDeploymentState(placement.DesiredGeneration, DateTime.UtcNow),
+            });
         var events = await BusinessEvents();
         await Apply(files);
         Assert.Equal(repaired.Revision, (await Service()).Revision);
@@ -102,7 +114,8 @@ public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : D
         var files = StageFiveWebSnapshot(spec =>
         {
             if (scenario is "replicas-and-autoscaling" or "invalid-autoscaling")
-                spec["autoscaling"] = JsonNode.Parse("""
+                spec["autoscaling"] = JsonNode.Parse(
+                    """
                     {"minReplicas":1,"maxReplicas":4,"metric":{"type":"cpu","targetAverageUtilization":70}}
                     """);
             if (scenario == "replicas-and-autoscaling")
@@ -118,13 +131,17 @@ public sealed class WebServiceStageFiveTests(MongoReplicaSetFixture fixture) : D
             }
         });
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, (await Apply(files)).Status);
-        Assert.Equal(0, await Inventory.CountDocumentsAsync(Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await Inventory.CountDocumentsAsync(
+                Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 }
 
-
 [Collection(IntegrationTestCollection.Global)]
-public sealed class WebServiceStageFiveGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+public sealed class WebServiceStageFiveGlobalTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task WebService_public_exposure_creates_generated_ingress_and_repairs_then_no_ops()
@@ -143,15 +160,18 @@ public sealed class WebServiceStageFiveGlobalTests(MongoReplicaSetFixture fixtur
         await Apply(files);
         Assert.Equal(releases, await Releases());
         Assert.Equal(events, await BusinessEvents());
-        await WebServices.ReplaceOneAsync(item => item.Id == service.Id, service with
-        {
-            Exposure = service.Exposure with { Mode = WebServiceExposureMode.Private },
-            Revision = service.Revision + 1
-        });
+        await WebServices.ReplaceOneAsync(
+            item => item.Id == service.Id,
+            service with
+            {
+                Exposure = service.Exposure with { Mode = WebServiceExposureMode.Private },
+                Revision = service.Revision + 1,
+            });
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(files)).Status);
         Assert.Equal(WebServiceExposureMode.Public, (await Service()).Exposure.Mode);
         Assert.Equal(releases + 1, await Releases());
-        Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied,
+        Assert.Equal(
+            RepositoryPipelineStatus.ConfigurationApplied,
             (await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Private"))).Status);
         var privatePlacement = await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync();
         Assert.Null(privatePlacement.ResolvedPlacement.Ingress);
@@ -165,10 +185,16 @@ public sealed class WebServiceStageFiveGlobalTests(MongoReplicaSetFixture fixtur
         var result = await Apply(StageFiveWebSnapshot(spec => spec["exposure"] = "Public"));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
         Assert.Equal(1, await Releases());
-        Assert.Equal(1, await Fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("TenantDomainZones")
-            .CountDocumentsAsync(Builders<MongoDB.Bson.BsonDocument>.Filter.Empty));
-        Assert.Equal(1, await Fixture.Database.GetCollection<MongoDB.Bson.BsonDocument>("HostnameBindings")
-            .CountDocumentsAsync(Builders<MongoDB.Bson.BsonDocument>.Filter.Empty));
+        Assert.Equal(
+            1,
+            await Fixture.Database
+                .GetCollection<BsonDocument>("TenantDomainZones")
+                .CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty));
+        Assert.Equal(
+            1,
+            await Fixture.Database
+                .GetCollection<BsonDocument>("HostnameBindings")
+                .CountDocumentsAsync(Builders<BsonDocument>.Filter.Empty));
         Assert.False(rejectNextWebServiceRevision);
     }
 }

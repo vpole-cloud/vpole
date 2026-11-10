@@ -22,17 +22,29 @@ public sealed class HostnameBindingSchemaValidationMigration : IMigration
                 "_id", "TenantId", "TenantDomainZoneId", "DeploymentTargetId",
                 "ResourceType", "ResourceId", "ResourceDeploymentId", "RelativeName",
                 "Hostname", "Identity", "ReferenceFence",
-                "CreatedAtUtc"
+                "CreatedAtUtc",
             ],
             ("_id", DomainCollectionSchema.Type("objectId")),
             ("TenantId", DomainCollectionSchema.Type("objectId")),
             ("TenantDomainZoneId", DomainCollectionSchema.Type("objectId")),
             ("DeploymentTargetId", DomainCollectionSchema.Type("objectId")),
-            ("ResourceType", DomainCollectionSchema.String(1, 128, "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)+$")),
+            ("ResourceType",
+                DomainCollectionSchema.String(
+                    1,
+                    128,
+                    "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)+$")),
             ("ResourceId", DomainCollectionSchema.Type("objectId")),
             ("ResourceDeploymentId", DomainCollectionSchema.Type("objectId")),
-            ("RelativeName", DomainCollectionSchema.String(1, 253, "^(?:@|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$")),
-            ("Hostname", DomainCollectionSchema.String(1, 253, "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")),
+            ("RelativeName",
+                DomainCollectionSchema.String(
+                    1,
+                    253,
+                    "^(?:@|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$")),
+            ("Hostname",
+                DomainCollectionSchema.String(
+                    1,
+                    253,
+                    "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")),
             ("Identity", DomainCollectionSchema.Identity()),
             ("ReferenceFence", DomainCollectionSchema.Integer("long", 0)),
             ("CreatedAtUtc", DomainCollectionSchema.Type("date"))));

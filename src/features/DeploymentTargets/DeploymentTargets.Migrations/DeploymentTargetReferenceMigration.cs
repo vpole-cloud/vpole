@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.DeploymentTargets.Migrations;
 
@@ -14,23 +14,24 @@ public sealed class DeploymentTargetReferenceMigration : IMigration
     {
         var references = context.GetCollection<BsonDocument>("DeploymentTargetReferences");
         await references.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("DeploymentTargetId"),
-                new CreateIndexOptions
-                {
-                    Name = "IX_DeploymentTargetReferences_DeploymentTargetId"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys
-                    .Ascending("DeploymentTargetId")
-                    .Ascending("OwnerType")
-                    .Ascending("OwnerId"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Name = "UX_DeploymentTargetReferences_Target_Owner"
-                })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("DeploymentTargetId"),
+                    new CreateIndexOptions
+                    {
+                        Name = "IX_DeploymentTargetReferences_DeploymentTargetId",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys
+                        .Ascending("DeploymentTargetId")
+                        .Ascending("OwnerType")
+                        .Ascending("OwnerId"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Name = "UX_DeploymentTargetReferences_Target_Owner",
+                    }),
+            ],
+            cancellationToken);
     }
 }

@@ -4,15 +4,6 @@ using MongoDB.Driver;
 using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
@@ -28,7 +19,8 @@ internal sealed class MongoCreateBoundManagedSecret(
     AdmitResourceDeploymentReferences admitDeployments,
     IResourceRegistrar registrar,
     StoreSecretChange publish,
-    TimeProvider clock)
+    TimeProvider clock
+)
 {
     public async Task<ManagedSecretMutationOutcome> InvokeAsync(
         CreateBoundManagedSecretRequest request,
@@ -41,18 +33,17 @@ internal sealed class MongoCreateBoundManagedSecret(
         {
             ResourceGroupId = SecretIdentity.ObjectId(request.ResourceGroupId),
             IsolationScopeId = SecretIdentity.ObjectId(request.IsolationScopeId),
-            DeploymentId = SecretIdentity.ObjectId(request.DeploymentId)
+            DeploymentId = SecretIdentity.ObjectId(request.DeploymentId),
         };
         var consumerType = ResourceTypeId.Create(request.Prepared.Owner.ResourceType);
         if (await admitScope(
-            new AdmitResourceScopeReferenceRequest(
-                TenantId: request.Prepared.TenantId,
-                ResourceGroupId: request.ResourceGroupId,
-                IsolationScopeId: request.IsolationScopeId,
-                Consumer: new(consumerType, request.Prepared.Owner.ResourceId)),
-            session: session,
-            cancellationToken: ct) is ResourceScopeReferenceUnavailable ||
-            await admitDeployments(
+                new AdmitResourceScopeReferenceRequest(
+                    TenantId: request.Prepared.TenantId,
+                    ResourceGroupId: request.ResourceGroupId,
+                    IsolationScopeId: request.IsolationScopeId,
+                    Consumer: new ResourceScopeConsumerReference(consumerType, request.Prepared.Owner.ResourceId)),
+                session: session,
+                cancellationToken: ct) is ResourceScopeReferenceUnavailable || await admitDeployments(
                 new AdmitResourceDeploymentReferencesRequest(
                     TenantId: request.Prepared.TenantId,
                     ResourceGroupId: request.ResourceGroupId,
@@ -65,20 +56,32 @@ internal sealed class MongoCreateBoundManagedSecret(
                 cancellationToken: ct) is ResourceDeploymentReferenceUnavailable)
             return new ManagedSecretReferenceRejected();
         var now = clock.GetUtcNow().UtcDateTime;
-        var binding = SecretBinding.Create(ObjectId.GenerateNewId().ToString(), request.Prepared.Owner.ResourceType,
-            request.Prepared.Owner.ResourceId, new AllSecretDeployments(), []);
-        var secret = SecretFactory.CreateManaged(request.Prepared.SecretId, request.Prepared.TenantId,
-            request.ResourceGroupId, request.IsolationScopeId,
-            request.Prepared.Name, "Provider-managed credentials", request.Prepared.Keys, binding,
+        var binding = SecretBinding.Create(
+            ObjectId.GenerateNewId().ToString(),
+            request.Prepared.Owner.ResourceType,
+            request.Prepared.Owner.ResourceId,
+            new AllSecretDeployments(),
+            []);
+        var secret = SecretFactory.CreateManaged(
+            request.Prepared.SecretId,
+            request.Prepared.TenantId,
+            request.ResourceGroupId,
+            request.IsolationScopeId,
+            request.Prepared.Name,
+            "Provider-managed credentials",
+            request.Prepared.Keys,
+            binding,
             request.Prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
-                ? KubernetesSecretType.BasicAuthentication : KubernetesSecretType.Opaque, now);
+                ? KubernetesSecretType.BasicAuthentication
+                : KubernetesSecretType.Opaque,
+            now);
         if (await registrar.RegisterAsync(
-            new RegisterResourceRequest(
-                TenantId: secret.TenantId,
-                ResourceGroupId: secret.ResourceGroupId,
-                Resource: new(SecretResource.Type, secret.Id, secret.Name)),
-            session: session,
-            cancellationToken: ct) is ResourceRegistrationMutationError)
+                new RegisterResourceRequest(
+                    TenantId: secret.TenantId,
+                    ResourceGroupId: secret.ResourceGroupId,
+                    Resource: new ResourceRegistrationDescriptor(SecretResource.Type, secret.Id, secret.Name)),
+                session: session,
+                cancellationToken: ct) is ResourceRegistrationMutationError)
             return new ManagedSecretReferenceRejected();
         try
         {
@@ -88,9 +91,17 @@ internal sealed class MongoCreateBoundManagedSecret(
         {
             return new ManagedSecretChanged();
         }
-        await versions.InsertOneAsync(session, new SecretVersion($"{secret.Id}:1", secret.TenantId, secret.Id, 1,
-            JsonSerializer.Deserialize<EncryptedValue>(request.Prepared.EncryptedValues.AsSpan())!, now),
-                cancellationToken: ct);
+
+        await versions.InsertOneAsync(
+            session,
+            new SecretVersion(
+                $"{secret.Id}:1",
+                secret.TenantId,
+                secret.Id,
+                1,
+                JsonSerializer.Deserialize<EncryptedValue>(request.Prepared.EncryptedValues.AsSpan())!,
+                now),
+            cancellationToken: ct);
         await publish(session, secret, new SecretCreated(), ct);
         return new ManagedSecretMutationSucceeded();
     }

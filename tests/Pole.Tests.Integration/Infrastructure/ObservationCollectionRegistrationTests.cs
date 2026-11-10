@@ -30,7 +30,7 @@ public sealed class ObservationCollectionRegistrationTests
                 "ResourceDeploymentObservationSnapshots",
                 "StorageObservationControls",
                 "StorageObservationDemands",
-                "StorageObservationSnapshots"
+                "StorageObservationSnapshots",
             },
             new[]
             {
@@ -45,7 +45,7 @@ public sealed class ObservationCollectionRegistrationTests
                 provider.GetRequiredService<IMongoCollection<StorageObservationDemandDocument>>()
                     .CollectionNamespace.CollectionName,
                 provider.GetRequiredService<IMongoCollection<StorageObservationSnapshotDocument>>()
-                    .CollectionNamespace.CollectionName
+                    .CollectionNamespace.CollectionName,
             });
     }
 }

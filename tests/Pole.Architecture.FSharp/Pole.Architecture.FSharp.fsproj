@@ -1,17 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <AssemblyName>Pole.Architecture.FSharp</AssemblyName>
-    <RootNamespace>Pole.Architecture.FSharp</RootNamespace>
-    <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
-    <IsTestProject>false</IsTestProject>
-    <IsPackable>false</IsPackable>
-    <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
-  </PropertyGroup>
-  <ItemGroup>
-    <!-- Use the compiler service and core from the repository-pinned SDK together. -->
-    <Reference Include="FSharp.Compiler.Service" HintPath="$(MSBuildSDKsPath)/../FSharp/FSharp.Compiler.Service.dll" />
-    <Reference Include="FSharp.Core" HintPath="$(MSBuildSDKsPath)/../FSharp/FSharp.Core.dll" />
-    <Compile Include="RawBsonCheck.fs" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <AssemblyName>Pole.Architecture.FSharp</AssemblyName>
+        <RootNamespace>Pole.Architecture.FSharp</RootNamespace>
+        <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
+        <IsTestProject>false</IsTestProject>
+        <IsPackable>false</IsPackable>
+        <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- Use the compiler service and core from the repository-pinned SDK together. -->
+        <Reference Include="FSharp.Compiler.Service" HintPath="$(MSBuildSDKsPath)/../FSharp/FSharp.Compiler.Service.dll"/>
+        <Reference Include="FSharp.Core" HintPath="$(MSBuildSDKsPath)/../FSharp/FSharp.Core.dll"/>
+        <Compile Include="RawBsonCheck.fs"/>
+    </ItemGroup>
 </Project>

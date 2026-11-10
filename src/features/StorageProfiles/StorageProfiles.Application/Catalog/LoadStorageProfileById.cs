@@ -9,14 +9,12 @@ public delegate Task<StorageProfile?> LoadStorageProfileById(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadStorageProfileById(
-    IMongoCollection<StorageProfile> storageProfiles)
+    IMongoCollection<StorageProfile> storageProfiles
+)
 {
     public async Task<StorageProfile?> InvokeAsync(
         string storageProfileId,
-        CancellationToken cancellationToken = default)
-    {
-        return await storageProfiles
-            .Find(StorageProfileFilters.ById(storageProfileId))
-            .FirstOrDefaultAsync(cancellationToken);
-    }
+        CancellationToken cancellationToken = default) => await storageProfiles
+        .Find(StorageProfileFilters.ById(storageProfileId))
+        .FirstOrDefaultAsync(cancellationToken);
 }

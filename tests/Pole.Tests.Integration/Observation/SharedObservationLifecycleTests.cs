@@ -15,11 +15,13 @@ public sealed class SharedObservationLifecycleTests
         using var budget = new ObservationReadBudget(clock);
         var release = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = 0;
-        var reads = Enumerable.Range(0, 4).Select(_ => budget.ReadAsync(async ct =>
-        {
-            Interlocked.Increment(ref started);
-            return await release.Task.WaitAsync(ct);
-        })).ToArray();
+        var reads = Enumerable.Range(0, 4)
+            .Select(_ => budget.ReadAsync(async ct =>
+            {
+                Interlocked.Increment(ref started);
+                return await release.Task.WaitAsync(ct);
+            }))
+            .ToArray();
         Assert.Equal(4, started);
         var queued = budget.ReadAsync(_ =>
         {
@@ -84,8 +86,8 @@ public sealed class SharedObservationLifecycleTests
 
     private sealed class Session : IObservationSession
     {
-        private long version;
         private int reads;
+        private long version;
         internal string? SourceId { get; private set; }
         internal Channel<ObservationChange> Changes { get; } = Channel.CreateUnbounded<ObservationChange>();
         internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -93,8 +95,8 @@ public sealed class SharedObservationLifecycleTests
         internal TaskCompletionSource Recovered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Trailing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal TaskCompletionSource<ObservationSampleResult> First { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource<ObservationSampleResult> First { get; }
+            = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async IAsyncEnumerable<ObservationChange> WatchAsync([EnumeratorCancellation] CancellationToken ct)
         {
@@ -102,7 +104,10 @@ public sealed class SharedObservationLifecycleTests
                 yield return change;
         }
 
-        public Task<long?> SetSourceAsync(long expected, string? sourceId, CancellationToken ct)
+        public Task<long?> SetSourceAsync(
+            long expected,
+            string? sourceId,
+            CancellationToken ct)
         {
             Assert.Equal(version, expected);
             SourceId = sourceId;

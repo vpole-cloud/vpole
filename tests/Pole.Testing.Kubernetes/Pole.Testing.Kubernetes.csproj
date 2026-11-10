@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>false</IsTestProject>
-    <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../src/shared/Kubernetes/Kubernetes.csproj" />
-    <ProjectReference Include="../../src/features/DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>false</IsTestProject>
+        <PoleArchitectureRole>TestSupport</PoleArchitectureRole>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/shared/Kubernetes/Kubernetes.csproj"/>
+        <ProjectReference Include="../../src/features/DeploymentTargets/DeploymentTargets.Contracts/DeploymentTargets.Contracts.csproj"/>
+    </ItemGroup>
 </Project>

@@ -6,14 +6,9 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.ResourceDeployments.Application.Diagnostics;
-using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
-using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
-using Pole.Workloads;
 
 namespace Pole.Features.ResourceDeployments.Application.Endpoints;
 
@@ -25,13 +20,16 @@ public sealed record GetResourceDeploymentRuntimeLogsRequest(
     [FromQuery] long ExpectedRevision,
     [FromQuery] bool Follow = false,
     [FromQuery] bool Previous = false,
-    [FromQuery] int TailLines = 100) : IMediatorRequest<GetResourceDeploymentRuntimeLogsOutcome>, ITenantReadOperation;
+    [FromQuery] int TailLines = 100
+) : IMediatorRequest<GetResourceDeploymentRuntimeLogsOutcome>, ITenantReadOperation;
 
 public union GetResourceDeploymentRuntimeLogsOutcome(
     PreparedRuntimeLogSession,
     RuntimeLogsUnavailable,
     ResourceDeploymentNotFound);
-public sealed class GetResourceDeploymentRuntimeLogsValidator : AbstractValidator<GetResourceDeploymentRuntimeLogsRequest>
+
+public sealed class GetResourceDeploymentRuntimeLogsValidator
+    : AbstractValidator<GetResourceDeploymentRuntimeLogsRequest>
 {
     public GetResourceDeploymentRuntimeLogsValidator()
     {
@@ -43,32 +41,56 @@ public sealed class GetResourceDeploymentRuntimeLogsValidator : AbstractValidato
         RuleFor(request => request.TailLines).InclusiveBetween(1, 500);
     }
 }
-public sealed class GetResourceDeploymentRuntimeLogsHandler(ResourceDeploymentOperationsPersistence persistence, ResourceDeploymentDiagnostics diagnostics)
-    : IMediatorOutcomeHandler<GetResourceDeploymentRuntimeLogsRequest, GetResourceDeploymentRuntimeLogsOutcome>
+
+public sealed class GetResourceDeploymentRuntimeLogsHandler(
+    ResourceDeploymentOperationsPersistence persistence,
+    ResourceDeploymentDiagnostics diagnostics
+) : IMediatorOutcomeHandler<GetResourceDeploymentRuntimeLogsRequest, GetResourceDeploymentRuntimeLogsOutcome>
 {
-    public async Task<GetResourceDeploymentRuntimeLogsOutcome> HandleAsync(GetResourceDeploymentRuntimeLogsRequest request, CancellationToken cancellationToken = default)
+    public async Task<GetResourceDeploymentRuntimeLogsOutcome> HandleAsync(
+        GetResourceDeploymentRuntimeLogsRequest request,
+        CancellationToken cancellationToken = default)
     {
-        var deployment = await persistence.LoadAsync(request.TenantId, request.DeploymentId.ToLowerInvariant(), cancellationToken);
-        if (deployment is null) return new ResourceDeploymentNotFound(request.DeploymentId);
-        if (deployment.Revision != request.ExpectedRevision) return new RuntimeLogsUnavailable("Superseded");
-        return (await diagnostics.OpenAsync(deployment, new RuntimeLogSelection(request.InstanceUid, request.Container, request.Previous, request.Follow, request.TailLines), cancellationToken)) switch
-        {
-            PreparedRuntimeLogs ready => ready.Session,
-            RuntimeLogsUnavailable unavailable => unavailable
-        };
+        var deployment = await persistence.LoadAsync(
+            request.TenantId,
+            request.DeploymentId.ToLowerInvariant(),
+            cancellationToken);
+        if (deployment is null)
+            return new ResourceDeploymentNotFound(request.DeploymentId);
+        if (deployment.Revision != request.ExpectedRevision)
+            return new RuntimeLogsUnavailable("Superseded");
+        return await diagnostics.OpenAsync(
+                deployment,
+                new RuntimeLogSelection(
+                    request.InstanceUid,
+                    request.Container,
+                    request.Previous,
+                    request.Follow,
+                    request.TailLines),
+                cancellationToken) switch
+            {
+                PreparedRuntimeLogs ready => ready.Session,
+                RuntimeLogsUnavailable unavailable => unavailable,
+            };
     }
 }
+
 public static class GetResourceDeploymentRuntimeLogsEndpoint
 {
     public static IEndpointRouteBuilder MapGetResourceDeploymentRuntimeLogsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{DeploymentId}/runtime-logs", async (IMediator mediator, [FromServices] ResourceDeploymentDiagnostics diagnostics, [AsParameters] GetResourceDeploymentRuntimeLogsRequest request, CancellationToken ct) =>
-            (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-            {
-                PreparedRuntimeLogSession session => new RuntimeLogStreamResult(session, diagnostics),
-                RuntimeLogsUnavailable unavailable => Results.Conflict(unavailable),
-                ResourceDeploymentNotFound => Results.NotFound()
-            })).WithName("GetResourceDeploymentRuntimeLogs");
+        app.MapGet(
+                "/{DeploymentId}/runtime-logs",
+                async (
+                        IMediator mediator, [FromServices] ResourceDeploymentDiagnostics diagnostics,
+                        [AsParameters] GetResourceDeploymentRuntimeLogsRequest request, CancellationToken ct) =>
+                    (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+                    {
+                        PreparedRuntimeLogSession session => new RuntimeLogStreamResult(session, diagnostics),
+                        RuntimeLogsUnavailable unavailable => Results.Conflict(unavailable),
+                        ResourceDeploymentNotFound => Results.NotFound(),
+                    }))
+            .WithName("GetResourceDeploymentRuntimeLogs");
         return app;
     }
 }

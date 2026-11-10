@@ -15,10 +15,12 @@ namespace Pole.Features.SourceBuilds.Application.Endpoints.Configurations;
 
 public sealed record DeleteSourceBuildConfigurationRequest(
     [FromRoute] string ConfigurationId,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<DeleteSourceBuildConfigurationOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<DeleteSourceBuildConfigurationOutcome>, ITenantWriteOperation;
 
-public sealed record SourceBuildConfigurationDeleted(string ConfigurationId);
+public sealed record SourceBuildConfigurationDeleted(
+    string ConfigurationId
+);
 
 public union DeleteSourceBuildConfigurationOutcome(
     SourceBuildConfigurationDeleted,
@@ -28,10 +30,8 @@ public union DeleteSourceBuildConfigurationOutcome(
     SourceBuildConfigurationGitOwned);
 
 public sealed class DeleteSourceBuildConfigurationHandler(
-    DeleteSourceBuildConfiguration deleteSourceBuildConfiguration)
-    : IMediatorOutcomeHandler<
-        DeleteSourceBuildConfigurationRequest,
-        DeleteSourceBuildConfigurationOutcome>
+    DeleteSourceBuildConfiguration deleteSourceBuildConfiguration
+) : IMediatorOutcomeHandler<DeleteSourceBuildConfigurationRequest, DeleteSourceBuildConfigurationOutcome>
 {
     public async Task<DeleteSourceBuildConfigurationOutcome> HandleAsync(
         DeleteSourceBuildConfigurationRequest request,
@@ -43,12 +43,11 @@ public sealed class DeleteSourceBuildConfigurationHandler(
             cancellationToken);
         return deleted switch
         {
-            SourceBuildConfigurationRemovalRecorded =>
-                new SourceBuildConfigurationDeleted(request.ConfigurationId),
+            SourceBuildConfigurationRemovalRecorded => new SourceBuildConfigurationDeleted(request.ConfigurationId),
             SourceBuildConfigurationNotFound error => error,
             SourceBuildConfigurationHasActiveJobs error => error,
             SourceBuildConfigurationInUse error => error,
-            SourceBuildConfigurationGitOwned error => error
+            SourceBuildConfigurationGitOwned error => error,
         };
     }
 }
@@ -62,24 +61,24 @@ public sealed class DeleteSourceBuildConfigurationRequestValidator
 
 public static class DeleteSourceBuildConfigurationEndpoint
 {
-    public static IEndpointRouteBuilder MapDeleteSourceBuildConfigurationEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapDeleteSourceBuildConfigurationEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapDelete("/{ConfigurationId}", async (
-                IMediator mediator,
-                [AsParameters] DeleteSourceBuildConfigurationRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapDelete(
+                "/{ConfigurationId}",
+                async (
+                    IMediator mediator, [AsParameters] DeleteSourceBuildConfigurationRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    SourceBuildConfigurationDeleted => Results.NoContent(),
-                    SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
-                    SourceBuildConfigurationGitOwned error => MapConfigurationGitOwned(error),
-                    SourceBuildConfigurationInUse error => MapConfigurationInUse(error),
-                    SourceBuildConfigurationHasActiveJobs error => MapConfigurationHasActiveJobs(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        SourceBuildConfigurationDeleted => Results.NoContent(),
+                        SourceBuildConfigurationNotFound error => MapConfigurationNotFound(error),
+                        SourceBuildConfigurationGitOwned error => MapConfigurationGitOwned(error),
+                        SourceBuildConfigurationInUse error => MapConfigurationInUse(error),
+                        SourceBuildConfigurationHasActiveJobs error => MapConfigurationHasActiveJobs(error),
+                    });
+                })
             .WithName("DeleteSourceBuildConfiguration")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound)

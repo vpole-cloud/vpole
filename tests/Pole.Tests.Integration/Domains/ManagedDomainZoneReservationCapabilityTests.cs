@@ -2,16 +2,10 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Features.Domains.Migrations;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -19,7 +13,8 @@ namespace Pole.Tests.Integration.Domains;
 
 [Collection(IntegrationTestCollection.Global)]
 public sealed class ManagedDomainZoneReservationCapabilityTests(
-    MongoReplicaSetFixture fixture) : MongoIntegrationTestBase(fixture)
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override async Task InitializeAsync()
     {
@@ -110,12 +105,11 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             label: "invalid.label"));
     }
 
-    private async Task<CreateManagedDomainZoneOutcome>
-        CreateReservationAsync(
-            TargetCoordinator coordinator,
-            string? tenantId = null,
-            string? targetId = null,
-            string label = "api")
+    private async Task<CreateManagedDomainZoneOutcome> CreateReservationAsync(
+        TargetCoordinator coordinator,
+        string? tenantId = null,
+        string? targetId = null,
+        string label = "api")
     {
         var reservation = new MongoCreateManagedDomainZoneReservation(
             Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones"),
@@ -132,14 +126,17 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             {
                 var result = await reservation.InvokeAsync(
                     new CreateManagedDomainZoneCommand(
-                        ObjectId.GenerateNewId().ToString(), tenantId, targetId,
-                        "zone-" + ObjectId.GenerateNewId(), label, "apps.example.test", 1),
+                        ObjectId.GenerateNewId().ToString(),
+                        tenantId,
+                        targetId,
+                        "zone-" + ObjectId.GenerateNewId(),
+                        label,
+                        "apps.example.test",
+                        1),
                     context.Session,
                     cancellationToken);
 
-                return result is TenantDomainZoneSnapshot
-                    ? context.Commit(result)
-                    : context.Abort(result);
+                return result is TenantDomainZoneSnapshot ? context.Commit(result) : context.Abort(result);
             });
     }
 
@@ -157,7 +154,7 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
             CancellationToken cancellationToken = default)
         {
             RegistrationCalls += request.AddedDeploymentTargetIds.Count;
-            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+            return Task.FromResult(
                 RejectReference
                     ? new ApplyDeploymentTargetReferenceChangesOutcome(
                         new DeploymentTargetReferenceChangeRejected(
@@ -169,11 +166,10 @@ public sealed class ManagedDomainZoneReservationCapabilityTests(
         public Task<FenceDeploymentTargetWorkloadConfigurationsOutcome> FenceManyOutcomeAsync(
             IReadOnlyList<DeploymentTargetWorkloadConfigurationFenceRequest> requests,
             IClientSessionHandle session,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<FenceDeploymentTargetWorkloadConfigurationsOutcome>(
-                RejectFence
-                    ? new FenceDeploymentTargetWorkloadConfigurationsOutcome(
-                        new DeploymentTargetWorkloadConfigurationFenceRejected(requests))
-                    : new DeploymentTargetWorkloadConfigurationsFenced());
+            CancellationToken cancellationToken = default) => Task.FromResult(
+            RejectFence
+                ? new FenceDeploymentTargetWorkloadConfigurationsOutcome(
+                    new DeploymentTargetWorkloadConfigurationFenceRejected(requests))
+                : new DeploymentTargetWorkloadConfigurationsFenced());
     }
 }

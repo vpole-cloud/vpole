@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
 using k8s;
-using KubernetesClient = k8s.Kubernetes;
 using k8s.Models;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
@@ -15,17 +14,18 @@ using Pole.Features.Postgres.Domain;
 using Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Observation;
-using Pole.Testing;
-using Pole.Workloads;
 using Xunit;
 using Xunit.Abstractions;
+using KubernetesClient = k8s.Kubernetes;
 
 namespace Pole.Features.Postgres.Tests.Kubernetes;
 
 [Trait("Layer", "Kubernetes")]
 [Trait("Feature", "Postgres")]
-public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFixture fixture, ITestOutputHelper output)
-    : KubernetesIntegrationTestBase(fixture)
+public sealed class PostgresNativeObservationKubernetesTests(
+    KubernetesClusterFixture fixture,
+    ITestOutputHelper output
+) : KubernetesIntegrationTestBase(fixture)
 {
     [KubernetesFact]
     public Task Native_StatefulSet_source_observes_owned_Pod_UID_change_and_controller_fence() =>
@@ -39,7 +39,8 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         using var client = new KubernetesClient(Target.CreateConfiguration(), new KubernetesWatchHeaders());
-        var cluster = PostgresCluster.Create(PostgresTestData.TenantId,
+        var cluster = PostgresCluster.Create(
+            PostgresTestData.TenantId,
             "postgres-observation",
             Id(),
             17,
@@ -48,7 +49,8 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 1));
         var targetId = PostgresTestData.DefaultDeploymentTargetId;
         var metadata = new PostgresResourceDeploymentMetadata(Id(), Id(), Id(), targetId, 1);
-        var identity = new WorkloadIdentityLabels(cluster.TenantId,
+        var identity = new WorkloadIdentityLabels(
+            cluster.TenantId,
             cluster.GroupId,
             metadata.IsolationScopeId,
             metadata.RuntimeCellId,
@@ -56,12 +58,13 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
             "Postgres",
             cluster.Id,
             metadata.DeploymentId);
-        var compute = new ResourceDeploymentComputeConfiguration(PostgresTestData.DefaultComputeProfileId,
+        var compute = new ResourceDeploymentComputeConfiguration(
+            PostgresTestData.DefaultComputeProfileId,
             1,
             targetId,
             "test",
-            new(250, 256),
-            new(1000, 1024),
+            new ResourceDeploymentComputeResourceValues(250, 256),
+            new ResourceDeploymentComputeResourceValues(1000, 1024),
             ComputeArchitecture.Any,
             [],
             [],
@@ -69,7 +72,8 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
             [],
             [],
             null);
-        var context = new ResourceDeploymentObservationContext(new ResourceDeploymentReconciliationSnapshot(
+        var context = new ResourceDeploymentObservationContext(
+            new ResourceDeploymentReconciliationSnapshot(
                 metadata.DeploymentId,
                 cluster.TenantId,
                 PostgresResourceDeployment.ResourceType,
@@ -81,11 +85,13 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
                 1,
                 1,
                 DateTime.UtcNow,
-                new ResourceDeploymentResolvedPlacementSnapshot(targetId,
+                new ResourceDeploymentResolvedPlacementSnapshot(
+                    targetId,
                     1,
                     NamespaceName,
                     null,
-                    new ResourceDeploymentStorageConfiguration(PostgresTestData.DefaultStorageProfileId,
+                    new ResourceDeploymentStorageConfiguration(
+                        PostgresTestData.DefaultStorageProfileId,
                         1,
                         Target.StorageClassName),
                     compute)),
@@ -94,18 +100,20 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
         var settings = new PostgresSettings
         {
             OperatorImage = new PostgresImageSettings { Server = "ghcr.io", Name = "cloudnative-pg/postgresql" },
-            StatefulSetImage = new PostgresImageSettings { Server = "docker.io", Name = "postgres" }
+            StatefulSetImage = new PostgresImageSettings { Server = "docker.io", Name = "postgres" },
         };
         IPostgresClusterDeploymentManager manager = new PostgresClusterDeploymentManager(settings);
         using var projection = new ManagedProjectionFixture(client, cluster, NamespaceName);
         await projection.ApplyAsync(Guid.NewGuid().ToString("N")); // Ephemeral; never persisted or printed by the test.
-        await manager.ApplyAsync(client,
+        await manager.ApplyAsync(
+            client,
             cluster,
             projection.Credentials,
             NamespaceName,
             Target.StorageClassName,
-            new KubernetesComputeConfiguration(new(250, 256),
-                new(1000, 1024),
+            new KubernetesComputeConfiguration(
+                new KubernetesComputeResourceValues(250, 256),
+                new KubernetesComputeResourceValues(1000, 1024),
                 ComputeArchitecture.Any,
                 [],
                 [],
@@ -120,7 +128,9 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
         var binding = controller.Uid;
         AssertOwned(controller, identity);
         var provider = new ExactClient(client, targetId);
-        var load = new LoadPostgresClusterById((tenant, id, _) =>
+        var load = new LoadPostgresClusterById((
+            tenant, id,
+            _) =>
         {
             Assert.Equal(cluster.TenantId, tenant);
             Assert.Equal(cluster.Id, id);
@@ -141,21 +151,24 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
         {
             output.WriteLine("Readiness result kind: {0}", ready?.Observation.GetType().Name);
             if (ready?.Observation is ObservedWorkload summary)
-                output.WriteLine("Ready={0} current={1} desired={2} updated={3}",
+                output.WriteLine(
+                    "Ready={0} current={1} desired={2} updated={3}",
                     summary.Ready,
                     summary.CurrentReplicas,
                     summary.DesiredReplicas,
                     summary.UpdatedReplicas);
             if (mode == PostgresDeploymentMode.Operator)
             {
-                var native = await client.CustomObjects.GetNamespacedCustomObjectAsync("postgresql.cnpg.io",
+                var native = await client.CustomObjects.GetNamespacedCustomObjectAsync(
+                    "postgresql.cnpg.io",
                     "v1",
                     NamespaceName,
                     "clusters",
                     name,
                     cancellationToken: deadline.Token);
                 var json = JsonSerializer.SerializeToElement(native);
-                output.WriteLine("Controller generation: {0}",
+                output.WriteLine(
+                    "Controller generation: {0}",
                     json.GetProperty("metadata").GetProperty("generation").GetInt64());
                 if (json.TryGetProperty("status", out var status))
                 {
@@ -173,8 +186,8 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
                             var state = condition.GetProperty("status").GetString();
                             if (state is not ("True" or "False" or "Unknown"))
                                 state = "Unknown";
-                            var generation =
-                                condition.TryGetProperty("observedGeneration", out var value) &&
+                            var generation
+                                = condition.TryGetProperty("observedGeneration", out var value) &&
                                 value.ValueKind == JsonValueKind.Number
                                     ? value.GetInt64()
                                     : -1;
@@ -186,42 +199,47 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
 
         Assert.True(ready?.Observation is ObservedWorkload { Ready: true });
         var instance = Assert.Single(Assert.IsType<AvailableWorkloadDiagnostics>(ready!.Diagnostics).Instances);
-        var pod = await client.CoreV1.ReadNamespacedPodAsync(instance.Name,
+        var pod = await client.CoreV1.ReadNamespacedPodAsync(
+            instance.Name,
             NamespaceName,
             cancellationToken: deadline.Token);
         Assert.Equal(instance.Uid, pod.Metadata.Uid);
         AssertOwned(pod.Metadata, identity);
-        Assert.True(KubernetesOwnedWatchItem.ControlledBy(pod.Metadata,
-            binding,
-            mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
-            mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1"));
+        Assert.True(
+            KubernetesOwnedWatchItem.ControlledBy(
+                pod.Metadata,
+                binding,
+                mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
+                mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1"));
         var service = await client.CoreV1.ReadNamespacedServiceAsync(
             PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id),
             NamespaceName,
             cancellationToken: deadline.Token);
         AssertOwned(service.Metadata, identity);
         if (mode == PostgresDeploymentMode.Operator)
-            Assert.True(KubernetesOwnedWatchItem.ControlledBy(service.Metadata,
-                binding,
-                "Cluster",
-                "postgresql.cnpg.io/v1"));
-        var slices = await client.DiscoveryV1.ListNamespacedEndpointSliceAsync(NamespaceName,
+            Assert.True(
+                KubernetesOwnedWatchItem.ControlledBy(service.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
+        var slices = await client.DiscoveryV1.ListNamespacedEndpointSliceAsync(
+            NamespaceName,
             labelSelector: $"kubernetes.io/service-name={service.Metadata.Name}",
             cancellationToken: deadline.Token);
         Assert.NotEmpty(slices.Items);
-        Assert.All(slices.Items,
+        Assert.All(
+            slices.Items,
             slice => Assert.True(
                 KubernetesOwnedWatchItem.ControlledBy(slice.Metadata, service.Metadata.Uid, "Service", "v1")));
-        IResourceDeploymentObservationChangeSource source = new PostgresResourceDeploymentChangeSource(load,
+        IResourceDeploymentObservationChangeSource source = new PostgresResourceDeploymentChangeSource(
+            load,
             provider,
-            new LookupDeploymentTarget((id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(TargetDto(id))),
+            (id, _) => Task.FromResult<LookupDeploymentTargetOutcome>(TargetDto(id)),
             new Budget(),
             TimeProvider.System);
         using var watchLifetime = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         var changes = source.WatchAsync(context, watchLifetime.Token).GetAsyncEnumerator();
         try
         {
-            await NextAsync(changes,
+            await NextAsync(
+                changes,
                 ResourceDeploymentObservationChangeKind.SourceReady,
                 TimeSpan.FromSeconds(30),
                 watchLifetime);
@@ -229,32 +247,37 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
             var freshController = await ControllerAsync();
             Assert.Equal(binding, freshController.Uid);
             AssertOwned(freshController, identity);
-            var freshPod =
-                await client.CoreV1.ReadNamespacedPodAsync(instance.Name,
-                    NamespaceName,
-                    cancellationToken: deadline.Token);
+            var freshPod = await client.CoreV1.ReadNamespacedPodAsync(
+                instance.Name,
+                NamespaceName,
+                cancellationToken: deadline.Token);
             Assert.Equal(instance.Uid, freshPod.Metadata.Uid);
             AssertOwned(freshPod.Metadata, identity);
-            Assert.True(KubernetesOwnedWatchItem.ControlledBy(freshPod.Metadata,
-                binding,
-                mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
-                mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1"));
+            Assert.True(
+                KubernetesOwnedWatchItem.ControlledBy(
+                    freshPod.Metadata,
+                    binding,
+                    mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
+                    mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1"));
             var latency = Stopwatch.StartNew();
-            await client.CoreV1.DeleteNamespacedPodAsync(instance.Name,
+            await client.CoreV1.DeleteNamespacedPodAsync(
+                instance.Name,
                 NamespaceName,
                 body: new V1DeleteOptions
                 {
                     GracePeriodSeconds = 0,
-                    Preconditions = new V1Preconditions { Uid = instance.Uid }
+                    Preconditions = new V1Preconditions { Uid = instance.Uid },
                 },
                 cancellationToken: deadline.Token);
-            await NextAsync(changes,
+            await NextAsync(
+                changes,
                 ResourceDeploymentObservationChangeKind.Invalidated,
                 TimeSpan.FromSeconds(5),
                 watchLifetime);
             output.WriteLine("Native source hint latency: {0} ms", latency.ElapsedMilliseconds);
-            Assert.True(latency.Elapsed <=
-                        TimeSpan.FromSeconds(5)); // Native source boundary only; one sample is not p95/UI evidence.
+            Assert.True(
+                latency.Elapsed <=
+                TimeSpan.FromSeconds(5)); // Native source boundary only; one sample is not p95/UI evidence.
             Assert.Equal(binding, changes.Current.BindingId);
             var postDelete = await observer.ObserveBoundAsync(context, binding, deadline.Token);
             if (postDelete.Diagnostics is AvailableWorkloadDiagnostics after)
@@ -262,17 +285,21 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
             freshController = await ControllerAsync();
             Assert.Equal(binding, freshController.Uid);
             AssertOwned(freshController, identity);
-            var patch = new V1Patch(JsonSerializer.Serialize(new
-            {
-                metadata = new
-                {
-                    uid = binding,
-                    labels = new Dictionary<string, string> { ["pole.io/resource-id"] = "observation-test-foreign" }
-                }
-            }),
+            var patch = new V1Patch(
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        metadata = new
+                        {
+                            uid = binding,
+                            labels = new Dictionary<string, string>
+                                { ["pole.io/resource-id"] = "observation-test-foreign" },
+                        },
+                    }),
                 V1Patch.PatchType.MergePatch);
             if (mode == PostgresDeploymentMode.Operator)
-                await client.CustomObjects.PatchNamespacedCustomObjectAsync(patch,
+                await client.CustomObjects.PatchNamespacedCustomObjectAsync(
+                    patch,
                     "postgresql.cnpg.io",
                     "v1",
                     NamespaceName,
@@ -280,11 +307,13 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
                     name,
                     cancellationToken: deadline.Token);
             else
-                await client.AppsV1.PatchNamespacedStatefulSetAsync(patch,
+                await client.AppsV1.PatchNamespacedStatefulSetAsync(
+                    patch,
                     name,
                     NamespaceName,
                     cancellationToken: deadline.Token);
-            await NextAsync(changes,
+            await NextAsync(
+                changes,
                 ResourceDeploymentObservationChangeKind.BindingChanged,
                 TimeSpan.FromSeconds(5),
                 watchLifetime);
@@ -297,17 +326,20 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
             await changes.DisposeAsync();
         }
 
-        Assert.Equal(binding,
+        Assert.Equal(
+            binding,
             (await ControllerAsync()).Uid); // Cached target client remains caller-owned after source shutdown.
         // Base cleanup revalidates namespace UID/run/worktree; only this test's namespace, projections and PVCs are deleted.
 
         async Task<V1ObjectMeta> ControllerAsync()
         {
             if (mode == PostgresDeploymentMode.StatefulSet)
-                return (await client.AppsV1.ReadNamespacedStatefulSetAsync(name,
+                return (await client.AppsV1.ReadNamespacedStatefulSetAsync(
+                    name,
                     NamespaceName,
                     cancellationToken: deadline.Token)).Metadata;
-            var native = await client.CustomObjects.GetNamespacedCustomObjectAsync("postgresql.cnpg.io",
+            var native = await client.CustomObjects.GetNamespacedCustomObjectAsync(
+                "postgresql.cnpg.io",
                 "v1",
                 NamespaceName,
                 "clusters",
@@ -325,7 +357,8 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
         Assert.True(KubernetesWorkloadObservation.Owns(meta, identity));
     }
 
-    private static async Task NextAsync(IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
+    private static async Task NextAsync(
+        IAsyncEnumerator<ResourceDeploymentObservationChange> changes,
         ResourceDeploymentObservationChangeKind kind,
         TimeSpan timeout,
         CancellationTokenSource lifetime)
@@ -364,12 +397,14 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
 
     private static string Id() => ObjectId.GenerateNewId().ToString();
 
-    private static DeploymentTargetLookupDto TargetDto(string id) => new(id,
+    private static DeploymentTargetLookupDto TargetDto(string id) => new(
+        id,
         "test",
         "cluster",
         "kubeconfig",
         1,
-        new DeploymentTargetWorkloadConfigurationLookupDto(1,
+        new DeploymentTargetWorkloadConfigurationLookupDto(
+            1,
             null,
             new DeploymentTargetNetworkSourcesDto(ImmutableDictionary<string, DeploymentTargetNetworkSourceDto>.Empty)),
         1,
@@ -380,7 +415,10 @@ public sealed class PostgresNativeObservationKubernetesTests(KubernetesClusterFi
         TechnicalName: "test-target",
         NetworkPolicy: DeploymentTargetNetworkPolicyDto.Unknown);
 
-    private sealed class ExactClient(IKubernetes client, string target) : IKubernetesClientProvider
+    private sealed class ExactClient(
+        IKubernetes client,
+        string target
+    ) : IKubernetesClientProvider
     {
         public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
         {

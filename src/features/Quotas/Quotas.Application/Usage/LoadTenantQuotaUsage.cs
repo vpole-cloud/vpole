@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application;
 using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Domain;
 
@@ -10,12 +9,9 @@ public delegate Task<TenantQuotaUsage?> LoadTenantQuotaUsage(
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadTenantQuotaUsage(
-    IMongoCollection<TenantQuotaUsage> usages)
+    IMongoCollection<TenantQuotaUsage> usages
+)
 {
-    public async Task<TenantQuotaUsage?> InvokeAsync(
-        string tenantId,
-        CancellationToken cancellationToken = default) =>
-        await usages
-            .Find(QuotaUsageFilters.ByTenant(tenantId))
-            .FirstOrDefaultAsync(cancellationToken);
+    public async Task<TenantQuotaUsage?> InvokeAsync(string tenantId, CancellationToken cancellationToken = default) =>
+        await usages.Find(QuotaUsageFilters.ByTenant(tenantId)).FirstOrDefaultAsync(cancellationToken);
 }

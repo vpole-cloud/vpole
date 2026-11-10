@@ -2,11 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
 using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
@@ -44,26 +42,25 @@ public static class DomainPersistenceRegistration
             provider.GetRequiredService<MongoLoadTenantDomainZones>().InvokeAsync);
         services.AddScoped<MongoCreateManagedDomainZoneReservation>();
         services.AddScoped<CreateManagedDomainZoneReservation>(provider =>
-            provider.GetRequiredService<MongoCreateManagedDomainZoneReservation>()
-                .InvokeAsync);
+            provider.GetRequiredService<MongoCreateManagedDomainZoneReservation>().InvokeAsync);
         services.AddScoped<MongoDeleteManagedDomainZone>();
         services.AddScoped<DeleteManagedDomainZone>(provider =>
             provider.GetRequiredService<MongoDeleteManagedDomainZone>().InvokeAsync);
         services.AddScoped<MongoGetOrCreateGeneratedDomainZones>();
         services.AddScoped<GetOrCreateGeneratedDomainZones>(provider =>
             provider.GetRequiredService<MongoGetOrCreateGeneratedDomainZones>().InvokeAsync);
-        services.AddScoped<GetOrCreateGeneratedDomainZone>(provider =>
-            async (request, session, cancellationToken) =>
+        services.AddScoped<GetOrCreateGeneratedDomainZone>(provider => async (
+            request, session,
+            cancellationToken) =>
+        {
+            var result = await provider.GetRequiredService<MongoGetOrCreateGeneratedDomainZones>()
+                .InvokeAsync([request], session, cancellationToken);
+            return result switch
             {
-                var result = await provider
-                    .GetRequiredService<MongoGetOrCreateGeneratedDomainZones>()
-                    .InvokeAsync([request], session, cancellationToken);
-                return result switch
-                {
-                    IReadOnlyList<TenantDomainZoneSnapshot> zones => zones[0],
-                    GeneratedDomainZoneError error => error
-                };
-            });
+                IReadOnlyList<TenantDomainZoneSnapshot> zones => zones[0],
+                GeneratedDomainZoneError error => error,
+            };
+        });
 
         services.AddScoped<MongoLoadHostnameBindingsForDeployment>();
         services.AddScoped<MongoLoadDomainZoneBindingPage>();
@@ -73,8 +70,7 @@ public static class DomainPersistenceRegistration
             provider.GetRequiredService<MongoLoadHostnameBindingsForDeployment>().InvokeAsync);
         services.AddScoped<MongoLoadHostnameBindingsForDeploymentInTransaction>();
         services.AddScoped<LoadHostnameBindingsForDeploymentInTransaction>(provider =>
-            provider.GetRequiredService<MongoLoadHostnameBindingsForDeploymentInTransaction>()
-                .InvokeAsync);
+            provider.GetRequiredService<MongoLoadHostnameBindingsForDeploymentInTransaction>().InvokeAsync);
 
         services.AddScoped<MongoLoadHostnameBindingsForResourceInTransaction>();
         services.AddScoped<LoadHostnameBindingsForResourceInTransaction>(provider =>
@@ -84,18 +80,18 @@ public static class DomainPersistenceRegistration
         services.AddScoped<MongoCreateGeneratedHostnameBindings>();
         services.AddScoped<CreateGeneratedHostnameBindings>(provider =>
             provider.GetRequiredService<MongoCreateGeneratedHostnameBindings>().InvokeAsync);
-        services.AddScoped<CreateGeneratedHostnameBinding>(provider =>
-            async (request, session, cancellationToken) =>
+        services.AddScoped<CreateGeneratedHostnameBinding>(provider => async (
+            request, session,
+            cancellationToken) =>
+        {
+            var result = await provider.GetRequiredService<MongoCreateGeneratedHostnameBindings>()
+                .InvokeAsync([request], session, cancellationToken);
+            return result switch
             {
-                var result = await provider
-                    .GetRequiredService<MongoCreateGeneratedHostnameBindings>()
-                    .InvokeAsync([request], session, cancellationToken);
-                return result switch
-                {
-                    IReadOnlyList<HostnameBindingSnapshot> bindings => bindings[0],
-                    GeneratedHostnameBindingError error => error
-                };
-            });
+                IReadOnlyList<HostnameBindingSnapshot> bindings => bindings[0],
+                GeneratedHostnameBindingError error => error,
+            };
+        });
 
         services.AddScoped<MongoCreateCustomHostnameBinding>();
         services.AddScoped<CreateCustomHostnameBinding>(provider =>
@@ -110,15 +106,10 @@ public static class DomainPersistenceRegistration
         services.AddScoped<MongoDeleteHostnameBindingsForResource>();
         services.AddScoped<DeleteHostnameBindingsForResource>(provider =>
             provider.GetRequiredService<MongoDeleteHostnameBindingsForResource>().InvokeAsync);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<
-            CreateDomainZoneOutcome>>(provider =>
-            provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<
-                    CreateDomainZoneOutcome>);
-        services.TryAddSingleton<RunMongoOutcomeTransaction<
-            DeleteDomainZoneOutcome>>(provider =>
-            provider.GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<DeleteDomainZoneOutcome>);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<CreateDomainZoneOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
+        services.TryAddSingleton<RunMongoOutcomeTransaction<DeleteDomainZoneOutcome>>(provider =>
+            provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         return services;
     }
 }

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Contracts;
@@ -11,66 +12,75 @@ using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Secrets.Application;
 using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
 using Pole.Features.Secrets.Application.Consumers;
-using Pole.Features.Secrets.Application.Declarations;
 using Pole.Features.Secrets.Application.Endpoints;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Tests.Integration.Secrets;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+public sealed class SecretApiTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Projection_status_is_tenant_scoped_reference_only_and_canonicalizes_ids()
     {
         var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var response = await Client.PostAsJsonAsync("/api/v1/secrets/", new
-        {
-            resourceGroupId = group.Id,
-            isolationScopeId = group.DefaultIsolationScopeId,
-            name = "projection-status",
-            purpose = "status",
-            values = new { password = "private-status-value" }
-        });
+        var response = await Client.PostAsJsonAsync(
+            "/api/v1/secrets/",
+            new
+            {
+                resourceGroupId = group.Id,
+                isolationScopeId = group.DefaultIsolationScopeId,
+                name = "projection-status",
+                purpose = "status",
+                values = new { password = "private-status-value" },
+            });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var metadata = (await response.Content.ReadFromJsonAsync<SecretMetadata>())!;
-        var secret = await Fixture.Database.GetCollection<Secret>("Secrets").Find(x => x.Id == metadata.Id).SingleAsync();
-        var projection = SecretProjectionFactory.Create(secret,
-            SecretBinding.Create(ObjectId.GenerateNewId().ToString(), "pole/web-service", ObjectId.GenerateNewId().ToString(), new AllSecretDeployments(), []),
-            ObjectId.GenerateNewId().ToString(), "cell", "target", "private-namespace").Failed("ProjectionUnavailable");
+        var secret = await Fixture.Database
+            .GetCollection<Secret>("Secrets")
+            .Find(x => x.Id == metadata.Id)
+            .SingleAsync();
+        var projection = SecretProjectionFactory.Create(
+                secret,
+                SecretBinding.Create(
+                    ObjectId.GenerateNewId().ToString(),
+                    "pole/web-service",
+                    ObjectId.GenerateNewId().ToString(),
+                    new AllSecretDeployments(),
+                    []),
+                ObjectId.GenerateNewId().ToString(),
+                "cell",
+                "target",
+                "private-namespace")
+            .Failed("ProjectionUnavailable");
         await Fixture.Database.GetCollection<SecretProjection>("SecretProjections").InsertOneAsync(projection);
         var body = await Client.GetStringAsync($"/api/v1/secrets/{metadata.Id.ToUpperInvariant()}/projections");
-        var status = Assert.Single(JsonSerializer.Deserialize<SecretProjectionStatusDto[]>(body,
-            Pole.ASP.Helpers.PoleHttpJson.CreateSerializerOptions())!);
+        var status = Assert.Single(
+            JsonSerializer.Deserialize<SecretProjectionStatusDto[]>(body, PoleHttpJson.CreateSerializerOptions())!);
         Assert.Equal("Failed", status.Health);
         Assert.Equal("ProjectionUnavailable", status.FailureCode);
         Assert.Equal(projection.DeploymentId, status.ResourceDeploymentId);
         Assert.DoesNotContain("private-status-value", body);
         Assert.DoesNotContain("private-namespace", body);
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
-        Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync($"/api/v1/secrets/{metadata.Id}/projections")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await Client.GetAsync($"/api/v1/secrets/{metadata.Id}/projections")).StatusCode);
     }
 
     [Fact]
     public async Task WriteOnlyApiReturnsMetadata_ValidatesInput_AndPaginates()
     {
         var group = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+
         object Body(string name) => new
         {
             resourceGroupId = group.Id,
@@ -79,9 +89,10 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
             purpose = "api test",
             values = new Dictionary<string, string>
             {
-                ["password"] = "synthetic-api-password"
-            }
+                ["password"] = "synthetic-api-password",
+            },
         };
+
         var created = await Client.PostAsJsonAsync("/api/v1/secrets/", Body("one"));
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var metadata = await created.Content.ReadFromJsonAsync<SecretMetadata>();
@@ -99,7 +110,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         Assert.NotNull(firstPage);
         Assert.Single(firstPage.Items);
         Assert.NotNull(firstPage.NextCursor);
-        var nextPage = await Client.GetFromJsonAsync<SecretPage>($"/api/v1/secrets/?pageSize=1&after={firstPage.NextCursor}");
+        var nextPage
+            = await Client.GetFromJsonAsync<SecretPage>($"/api/v1/secrets/?pageSize=1&after={firstPage.NextCursor}");
         Assert.NotNull(nextPage);
         Assert.Single(nextPage.Items);
         Assert.Null(nextPage.NextCursor);
@@ -111,8 +123,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 expectedVersion = 1,
                 values = new
                 {
-                    password = "synthetic-rotated-password"
-                }
+                    password = "synthetic-rotated-password",
+                },
             });
         Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
         Assert.DoesNotContain("synthetic-rotated-password", await rotated.Content.ReadAsStringAsync());
@@ -123,16 +135,14 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 expectedVersion = 1,
                 values = new
                 {
-                    password = "synthetic-rotated-password"
-                }
+                    password = "synthetic-rotated-password",
+                },
             });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         await AssertProblemCode(stale, "secrets.version-conflict");
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync("/api/v1/secrets/bad-id")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync("/api/v1/secrets/?pageSize=0")).StatusCode);
-        Assert.Equal(
-            HttpStatusCode.NoContent,
-            (await Client.DeleteAsync($"/api/v1/secrets/{metadata.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Client.DeleteAsync($"/api/v1/secrets/{metadata.Id}")).StatusCode);
     }
 
     [Fact]
@@ -140,14 +150,16 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
     {
         var first = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("first"));
         var second = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup("second"));
+
         object Body(ResourceGroup group, string name) => new
         {
             resourceGroupId = group.Id,
             isolationScopeId = group.DefaultIsolationScopeId,
             name,
             purpose = "tenant name uniqueness",
-            values = new { password = "synthetic" }
+            values = new { password = "synthetic" },
         };
+
         using var created = await Client.PostAsJsonAsync("/api/v1/secrets/", Body(first, "shared-name"));
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         using var conflict = await Client.PostAsJsonAsync("/api/v1/secrets/", Body(second, " SHARED-NAME "));
@@ -167,8 +179,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
             purpose = "api test",
             values = new
             {
-                password = "synthetic-auth-password"
-            }
+                password = "synthetic-auth-password",
+            },
         };
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Assert.Equal(HttpStatusCode.BadRequest, (await Client.GetAsync("/api/v1/secrets/")).StatusCode);
@@ -176,17 +188,12 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         var tenant = await Fixture.DbContext.Tenants.Find(x => x.Id == Data.TenantId).SingleAsync();
         var viewer = tenant with
         {
-            Members = ImmutableList.Create(TenantFactory.CreateMember(
-                Data.TenantId,
-                Data.UserId,
-                Data.UserEmail,
-                TenantRole.Viewer))
+            Members = ImmutableList.Create(
+                TenantFactory.CreateMember(Data.TenantId, Data.UserId, Data.UserEmail, TenantRole.Viewer)),
         };
         await Fixture.DbContext.Tenants.ReplaceOneAsync(x => x.Id == tenant.Id, viewer);
         Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync("/api/v1/secrets/")).StatusCode);
-        Assert.Equal(
-            HttpStatusCode.Forbidden,
-            (await Client.PostAsJsonAsync("/api/v1/secrets/", body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Client.PostAsJsonAsync("/api/v1/secrets/", body)).StatusCode);
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, ObjectId.GenerateNewId().ToString());
         Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync("/api/v1/secrets/")).StatusCode);
@@ -214,8 +221,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 purpose = "normalization",
                 values = new
                 {
-                    password = "synthetic"
-                }
+                    password = "synthetic",
+                },
             });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var secret = await create.Content.ReadFromJsonAsync<SecretMetadata>();
@@ -241,8 +248,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 purpose = "normalization",
                 values = new
                 {
-                    password = "synthetic"
-                }
+                    password = "synthetic",
+                },
             });
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
         await AssertProblemCode(duplicate, "secrets.name-already-exists");
@@ -252,9 +259,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, group.TenantId.ToUpperInvariant());
         var deletedSecret = await Client.DeleteAsync($"/api/v1/secrets/{secret.Id.ToUpperInvariant()}");
         Assert.Equal(HttpStatusCode.NoContent, deletedSecret.StatusCode);
-        Assert.False(await Fixture.DbContext.ResourceRegistrations
-            .Find(x => x.ResourceId == secret.Id)
-            .AnyAsync());
+        Assert.False(await Fixture.DbContext.ResourceRegistrations.Find(x => x.ResourceId == secret.Id).AnyAsync());
         Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, group.TenantId);
         Assert.Equal(
@@ -276,8 +281,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 purpose = "normalization",
                 values = new
                 {
-                    password = "synthetic"
-                }
+                    password = "synthetic",
+                },
             });
         var secret = await create.Content.ReadFromJsonAsync<SecretMetadata>();
         Assert.NotNull(secret);
@@ -298,8 +303,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 deploymentIds = Array.Empty<string>(),
                 keyMappings = new Dictionary<string, string>
                 {
-                    ["missing"] = "MISSING"
-                }
+                    ["missing"] = "MISSING",
+                },
             });
         Assert.Equal(HttpStatusCode.Conflict, unknownKeys.StatusCode);
         await AssertProblemCode(unknownKeys, "secrets.unknown-keys");
@@ -312,12 +317,12 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 allDeployments = false,
                 deploymentIds = new[]
                 {
-                    deployment.DeploymentId.ToUpperInvariant()
+                    deployment.DeploymentId.ToUpperInvariant(),
                 },
                 keyMappings = new Dictionary<string, string>
                 {
-                    ["password"] = "PASSWORD"
-                }
+                    ["password"] = "PASSWORD",
+                },
             });
         Assert.Equal(HttpStatusCode.OK, bound.StatusCode);
         var removeMappedKey = await Client.PostAsJsonAsync(
@@ -327,8 +332,8 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 expectedVersion = 1,
                 values = new
                 {
-                    other = "replacement"
-                }
+                    other = "replacement",
+                },
             });
         Assert.Equal(HttpStatusCode.Conflict, removeMappedKey.StatusCode);
         await AssertProblemCode(removeMappedKey, "secrets.mapped-keys-required");
@@ -348,7 +353,7 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
                 consumerType = "pole/web-service",
                 consumerId = consumer.WebServiceId,
                 allDeployments = true,
-                deploymentIds = Array.Empty<string>()
+                deploymentIds = Array.Empty<string>(),
             });
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
         await AssertProblemCode(duplicate, "secrets.consumer-already-bound");
@@ -356,27 +361,29 @@ public sealed class SecretApiTests(MongoReplicaSetFixture fixture)
         using var serviceScope = services.CreateScope();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        await serviceScope.ServiceProvider.GetRequiredService<IResourceRegistrar>().UnregisterAsync(
-            new UnregisterResourceRequest(
-                TenantId: group.TenantId,
-                ResourceGroupId: group.Id,
-                ResourceTypeId: ResourceTypeId.Create("pole/web-service"),
-                ResourceId: consumer.WebServiceId),
-            session: session);
+        await serviceScope.ServiceProvider
+            .GetRequiredService<IResourceRegistrar>()
+            .UnregisterAsync(
+                new UnregisterResourceRequest(
+                    TenantId: group.TenantId,
+                    ResourceGroupId: group.Id,
+                    ResourceTypeId: ResourceTypeId.Create("pole/web-service"),
+                    ResourceId: consumer.WebServiceId),
+                session: session);
         await session.CommitTransactionAsync();
-        var cleanup = new RemoveSecretBindingsOnResourceUnregistered(serviceScope.ServiceProvider.GetRequiredService<RemoveConsumerSecretBindings>());
-        await cleanup.Handle(new ResourceUnregisteredEvent(group.Id, "pole/web-service", consumer.WebServiceId)
-        {
-            EventCore = EventCore.Create(group.TenantId)
-        });
+        var cleanup = new RemoveSecretBindingsOnResourceUnregistered(
+            serviceScope.ServiceProvider.GetRequiredService<RemoveConsumerSecretBindings>());
+        await cleanup.Handle(
+            new ResourceUnregisteredEvent(group.Id, "pole/web-service", consumer.WebServiceId)
+            {
+                EventCore = EventCore.Create(group.TenantId),
+            });
         var cleaned = await Client.GetFromJsonAsync<SecretUsage[]>($"/api/v1/secrets/{secret.Id}/usage");
         Assert.NotNull(cleaned);
         Assert.Empty(cleaned);
     }
 
-    private static async Task AssertProblemCode(
-        HttpResponseMessage response,
-        string expected)
+    private static async Task AssertProblemCode(HttpResponseMessage response, string expected)
     {
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(expected, body.RootElement.GetProperty("code").GetString());

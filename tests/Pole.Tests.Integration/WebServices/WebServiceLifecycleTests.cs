@@ -11,44 +11,35 @@ using Pole.Features.Domains.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Quotas.Domain;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
-using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
-using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.SourceBuilds.Contracts;
 using Pole.Features.SourceBuilds.Domain;
-using Pole.Features.WebServices.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.Declarations;
 using Pole.Features.WebServices.Application.Endpoints;
-using Pole.Features.WebServices.Application.Hostnames;
-using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
-using Pole.Features.WebServices.Application.SourceDelivery;
 using Pole.Features.WebServices.Domain;
 using Pole.Tests.Integration.GitOps;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.WebServices;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : IsolatedMediatorIntegrationTestBase(fixture)
+public sealed class WebServiceLifecycleTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedMediatorIntegrationTestBase(fixture)
 {
     private LifecycleOwnerAuthority? _authority;
-    private LifecycleOwnerAuthority authority => _authority ??= new(Data.TenantId);
+    private LifecycleOwnerAuthority authority => _authority ??= new LifecycleOwnerAuthority(Data.TenantId);
     private IMongoCollection<WebService> WebServices => Fixture.Database.GetCollection<WebService>("WebServices");
+
     private IDeclarativeResourceLifecycleProvider Provider =>
-        Services.GetServices<IDeclarativeResourceLifecycleProvider>()
-        .Single(item => item.Kind == "WebService");
+        Services.GetServices<IDeclarativeResourceLifecycleProvider>().Single(item => item.Kind == "WebService");
 
     protected override void ConfigureServices(IServiceCollection services)
     {
@@ -71,10 +62,14 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         var target = await targets.Find(item => item.Id == TestData.DefaultDeploymentTargetId).SingleAsync();
         var configuration = target.WorkloadConfiguration.Reconfigure(
             DeploymentTargetIngressConfiguration.Create("traefik", "letsencrypt", "apps.example.test"),
-            new(ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add("public-ingress",
-                DeploymentTargetPodNetworkSource.Create("ingress",
-                    new Dictionary<string, string> { ["app"] = "ingress" }))));
-        await targets.ReplaceOneAsync(item => item.Id == target.Id,
+            new DeploymentTargetNetworkSources(
+                ImmutableDictionary<string, DeploymentTargetNetworkSource>.Empty.Add(
+                    "public-ingress",
+                    DeploymentTargetPodNetworkSource.Create(
+                        "ingress",
+                        new Dictionary<string, string> { ["app"] = "ingress" }))));
+        await targets.ReplaceOneAsync(
+            item => item.Id == target.Id,
             target with { WorkloadConfiguration = configuration });
     }
 
@@ -85,33 +80,48 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
     {
         var current = await CreateService();
         var group = await DbContext.ResourceGroups.Find(_ => true).SingleAsync();
-        var secret = await ConsumerSecretDeletionTestData.InsertAsync(Fixture.Database, group,
-            WebServiceResourceDeployment.ResourceType, current.Id);
+        var secret = await ConsumerSecretDeletionTestData.InsertAsync(
+            Fixture.Database,
+            group,
+            WebServiceResourceDeployment.ResourceType,
+            current.Id);
         if (gitOwned)
             authority.Managed.Add(("SecretBinding", secret.Bindings.Single().Id));
         var before = await State();
-        var deleted = Assert.IsType<DeleteWebServiceOutcome>((await Mediator.Send(
-            new DeleteWebServiceRequest(current.Id, current.TenantId))).Value);
+        var deleted = Assert.IsType<DeleteWebServiceOutcome>(
+            (await Mediator.Send(new DeleteWebServiceRequest(current.Id, current.TenantId))).Value);
         if (gitOwned)
         {
             var error = Assert.IsType<DeleteWebServiceError>(deleted.Value);
-            Assert.Equal(WebServiceUpdateConflictReason.SecretBindingsRequireRemoval,
+            Assert.Equal(
+                WebServiceUpdateConflictReason.SecretBindingsRequireRemoval,
                 Assert.IsType<WebServiceUpdateConflict>(error.Value).Reason);
             Assert.Equal(409, WebServiceHttpMappings.MapError(error).StatusCode);
             Assert.Equal(before, await State());
             using var session = await Fixture.Client.StartSessionAsync();
             session.StartTransaction();
             var snapshot = await Snapshot(current, session);
-            Assert.IsType<GitLifecycleDependencyRetained>(Assert.IsType<DeclarationReadBlocked>((await
-                Provider.RemoveAsync(new(authority.Authority, snapshot.Resource, snapshot.Version), session,
-                    default)).Value).Failure);
+            Assert.IsType<GitLifecycleDependencyRetained>(
+                Assert.IsType<DeclarationReadBlocked>(
+                        (await Provider.RemoveAsync(
+                            new RemoveLifecycleResourceRequest(
+                                authority.Authority,
+                                snapshot.Resource,
+                                snapshot.Version),
+                            session,
+                            default)).Value)
+                    .Failure);
             await session.AbortTransactionAsync();
             Assert.Equal(before, await State());
         }
         else
+        {
             Assert.IsType<DeleteWebServiceResponse>(deleted.Value);
-        Assert.Single((await Fixture.Database.GetCollection<Secret>("Secrets")
-            .Find(item => item.Id == secret.Id).SingleAsync()).Bindings);
+        }
+
+        Assert.Single(
+            (await Fixture.Database.GetCollection<Secret>("Secrets").Find(item => item.Id == secret.Id).SingleAsync())
+            .Bindings);
     }
 
     [Fact]
@@ -122,25 +132,35 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var snapshot = await Snapshot(current, session);
-        Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(
-            new(authority.Authority, snapshot.Resource, snapshot.Version), session, default)).Value);
+        Assert.IsType<GitLifecycleRemovalRequested>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, snapshot.Resource, snapshot.Version),
+                session,
+                default)).Value);
         Assert.Equal(GitLifecycleMutationEffect.Remove, authority.Effect);
         await session.AbortTransactionAsync();
         Assert.Equal(before, await State());
 
         session.StartTransaction();
-        Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(
-            new(authority.Authority, snapshot.Resource, snapshot.Version), session, default)).Value);
+        Assert.IsType<GitLifecycleRemovalRequested>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, snapshot.Resource, snapshot.Version),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         Assert.IsType<DeletingWebServiceLifecycle>((await Load(current.Id)).Lifecycle);
-        Assert.All(await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).ToListAsync(),
+        Assert.All(
+            await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).ToListAsync(),
             item => Assert.Equal(ResourceDeploymentOperation.Delete, item.DesiredOperation));
         var after = await State();
         session.StartTransaction();
         var pending = await Snapshot(current, session);
         Assert.Equal(GitLifecyclePresence.Deleting, pending.Presence);
-        Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(
-            new(authority.Authority, pending.Resource, pending.Version), session, default)).Value);
+        Assert.IsType<GitLifecycleRemovalRequested>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, pending.Resource, pending.Version),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(after, await State());
     }
@@ -150,21 +170,30 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
     {
         var current = await CreateService();
         var create = Services.GetRequiredService<PersistResourceConnectionCreation>();
-        var connection = Assert.IsType<ResourceConnection>((await create(
-            new(current.TenantId, "self", WebServiceResourceDeployment.ResourceType, current.Id,
-                WebServiceResourceDeployment.ResourceType, current.Id, "http"))).Value);
+        var connection = Assert.IsType<ResourceConnection>(
+            (await create(
+                new CreateResourceConnectionCommand(
+                    current.TenantId,
+                    "self",
+                    WebServiceResourceDeployment.ResourceType,
+                    current.Id,
+                    WebServiceResourceDeployment.ResourceType,
+                    current.Id,
+                    "http"))).Value);
         var before = await State();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var snapshot = await Snapshot(current, session);
-        var result = await Provider.RemoveAsync(new(authority.Authority, snapshot.Resource, snapshot.Version), session,
+        var result = await Provider.RemoveAsync(
+            new RemoveLifecycleResourceRequest(authority.Authority, snapshot.Resource, snapshot.Version),
+            session,
             default);
         Assert.IsType<GitLifecycleDependencyRetained>(Assert.IsType<DeclarationReadBlocked>(result.Value).Failure);
         await session.AbortTransactionAsync();
         Assert.Equal(before, await State());
         var connections = Fixture.Database.GetCollection<ResourceConnection>("ResourceConnections");
-        Assert.IsType<ActiveResourceConnection>((await connections
-            .Find(item => item.Id == connection.Id).SingleAsync()).Lifecycle);
+        Assert.IsType<ActiveResourceConnection>(
+            (await connections.Find(item => item.Id == connection.Id).SingleAsync()).Lifecycle);
     }
 
     [Fact]
@@ -175,19 +204,24 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         session.StartTransaction();
         var snapshot = await Snapshot(current, session);
         await session.CommitTransactionAsync();
-        await WebServices.ReplaceOneAsync(item => item.Id == current.Id, current with
-        {
-            Spec = current.Spec with
+        await WebServices.ReplaceOneAsync(
+            item => item.Id == current.Id,
+            current with
             {
-                Config = current.Spec.Config with
+                Spec = current.Spec with
                 {
-                    EnvironmentVariables = current.Spec.Config.EnvironmentVariables.SetItem("CHANGED", "value")
-                }
-            }
-        });
+                    Config = current.Spec.Config with
+                    {
+                        EnvironmentVariables = current.Spec.Config.EnvironmentVariables.SetItem("CHANGED", "value"),
+                    },
+                },
+            });
         session.StartTransaction();
-        Assert.IsType<DeclarationPreconditionsChanged>((await Provider.RemoveAsync(
-            new(authority.Authority, snapshot.Resource, snapshot.Version), session, default)).Value);
+        Assert.IsType<DeclarationPreconditionsChanged>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, snapshot.Resource, snapshot.Version),
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
         Assert.IsType<ActiveWebServiceLifecycle>((await Load(current.Id)).Lifecycle);
     }
@@ -203,54 +237,77 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         {
             Spec = current.Spec with
             {
-                Image = Assert.IsType<ImageInfo>(current.Spec.Image) with { SecretName = "server-owned-pull-secret" }
-            }
+                Image = Assert.IsType<ImageInfo>(current.Spec.Image) with { SecretName = "server-owned-pull-secret" },
+            },
         };
         await WebServices.ReplaceOneAsync(item => item.Id == current.Id, current);
         var declaration = Declaration(current);
-        authority.References[new("ResourceGroup", "alpha")] = current.ResourceGroupId;
-        authority.References[new("DeploymentTarget", NamedCatalogTestData.TargetName)] =
-            TestData.DefaultDeploymentTargetId;
-        authority.References[new("ComputeProfile", NamedCatalogTestData.ProfileName)] =
-            TestData.DefaultComputeProfileId;
+        authority.References[new ResourceAddress("ResourceGroup", "alpha")] = current.ResourceGroupId;
+        authority.References[new ResourceAddress("DeploymentTarget", NamedCatalogTestData.TargetName)]
+            = TestData.DefaultDeploymentTargetId;
+        authority.References[new ResourceAddress("ComputeProfile", NamedCatalogTestData.ProfileName)]
+            = TestData.DefaultComputeProfileId;
         var before = await State();
         var previewProvider = Assert.IsAssignableFrom<IDeclarativeAdoptionPreviewProvider>(Provider);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var preview = Assert.IsType<GitLifecycleAdoptionPreview>((await previewProvider.PreviewAdoptionAsync(
-            new(current.TenantId, declaration, current.Id,
-                authority.References.Select(item => new GitPreviewResolvedReference(item.Key, item.Value)).ToArray()),
-            session, default)).Value);
+        var preview = Assert.IsType<GitLifecycleAdoptionPreview>(
+            (await previewProvider.PreviewAdoptionAsync(
+                new PreviewLifecycleAdoptionRequest(
+                    current.TenantId,
+                    declaration,
+                    current.Id,
+                    authority.References
+                        .Select(item => new GitPreviewResolvedReference(item.Key, item.Value))
+                        .ToArray()),
+                session,
+                default)).Value);
         Assert.DoesNotContain("server-owned-pull-secret", preview.Current.Projection.Configuration.GetRawText());
-        Assert.Contains(preview.ResolvedReferences, item => item.Address.Kind == "ComputeProfile" &&
-            item.ResourceId == TestData.DefaultComputeProfileId && item.Version is not null);
+        Assert.Contains(
+            preview.ResolvedReferences,
+            item => item.Address.Kind == "ComputeProfile" && item.ResourceId == TestData.DefaultComputeProfileId &&
+                item.Version is not null);
         await session.CommitTransactionAsync();
         Assert.Equal(before, await State());
 
         session.StartTransaction();
         var snapshot = await Snapshot(current, session);
-        var context = new GitMutationContext(current.TenantId, authority.Authority.SourceId, authority.Authority.RunId,
-            1, "https://example.test/source", new(1, 1, "worker", 1, new string('a', 40)));
+        var context = new GitMutationContext(
+            current.TenantId,
+            authority.Authority.SourceId,
+            authority.Authority.RunId,
+            1,
+            "https://example.test/source",
+            new GitExecutionAuthority(1, 1, "worker", 1, new string('a', 40)));
         var operation = new GitOperationInput(context, declaration, DeclarationPhase.Prepare, current.Id);
         var adoption = Assert.IsAssignableFrom<IDeclarativeResourceAdoptionProvider>(Provider);
-        var expected = new DeclarationVersionToken(snapshot.Version.Documents
-            .Concat(preview.Desired.Dependencies!.Documents).Distinct().ToArray());
+        var expected = new DeclarationVersionToken(
+            snapshot.Version.Documents.Concat(preview.Desired.Dependencies!.Documents).Distinct().ToArray());
         if (change is not null)
         {
             var changedDocument = change == "own"
                 ? $"WebService/{current.Id}"
                 : $"ComputeProfile/{TestData.DefaultComputeProfileId}/Policy";
-            expected = new(expected.Documents.Select(item => item.DocumentId == changedDocument
-                ? item with { Revision = item.Revision + 1 } : item).ToArray());
-            Assert.IsType<DeclarationPreconditionsChanged>((await adoption.AdoptAsync(
-                new(authority.Authority, operation, expected), session, default)).Value);
+            expected = new DeclarationVersionToken(
+                expected.Documents
+                    .Select(item =>
+                        item.DocumentId == changedDocument ? item with { Revision = item.Revision + 1 } : item)
+                    .ToArray());
+            Assert.IsType<DeclarationPreconditionsChanged>(
+                (await adoption.AdoptAsync(
+                    new AdoptLifecycleResourceRequest(authority.Authority, operation, expected),
+                    session,
+                    default)).Value);
             await session.AbortTransactionAsync();
             Assert.True(before == await State(), "Rejected adoption must roll back owner and dependency writes.");
             return;
         }
 
-        Assert.IsType<GitLifecycleResourceAdopted>((await adoption.AdoptAsync(
-            new(authority.Authority, operation, expected), session, default)).Value);
+        Assert.IsType<GitLifecycleResourceAdopted>(
+            (await adoption.AdoptAsync(
+                new AdoptLifecycleResourceRequest(authority.Authority, operation, expected),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         Assert.Equal(GitLifecycleMutationEffect.Adopt, authority.Effect);
         var adopted = await Load(current.Id);
@@ -270,16 +327,25 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         var spec = DeclarationJson.Read<WebServiceDeclaration>(declaration.Spec);
         declaration = declaration with
         {
-            Spec = DeclarationJson.Write(spec with { Placement = spec.Placement with { IsolationScope = "missing" } })
+            Spec = DeclarationJson.Write(spec with { Placement = spec.Placement with { IsolationScope = "missing" } }),
         };
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var references = Assert.IsAssignableFrom<IDeclarativePreviewReferenceProvider>(Provider);
-        var result = await references.ReadPreviewReferencesAsync(new(current.TenantId, declaration,
-            [new(new("ResourceGroup", "alpha"), current.ResourceGroupId)]), session, default);
+        var result = await references.ReadPreviewReferencesAsync(
+            new ReadPreviewReferencesRequest(
+                current.TenantId,
+                declaration,
+                [
+                    new GitPreviewResolvedReference(
+                        new ResourceAddress("ResourceGroup", "alpha"),
+                        current.ResourceGroupId),
+                ]),
+            session,
+            default);
         var unavailable = Assert.IsType<DeclarationReferenceUnavailable>(
             Assert.IsType<DeclarationReadBlocked>(result.Value).Failure);
-        Assert.Equal(new("IsolationScope", "missing"), unavailable.Address);
+        Assert.Equal(new ResourceAddress("IsolationScope", "missing"), unavailable.Address);
         await session.AbortTransactionAsync();
     }
 
@@ -288,20 +354,30 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
     [InlineData(true, false)]
     [InlineData(true, true)]
     public async Task Manual_delete_protects_git_owned_attachments_without_changing_unowned_cleanup(
-        bool managed, bool orphan)
+        bool managed,
+        bool orphan)
     {
         var current = await CreateService();
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).SingleAsync();
-        var zone = await Fixture.Database.GetCollection<TenantDomainZone>("TenantDomainZones")
-            .Find(item => item.TenantId == current.TenantId).SingleAsync();
+        var zone = await Fixture.Database
+            .GetCollection<TenantDomainZone>("TenantDomainZones")
+            .Find(item => item.TenantId == current.TenantId)
+            .SingleAsync();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var binding = Assert.IsType<HostnameBindingSnapshot>((await Services
-            .GetRequiredService<CreateCustomHostnameBinding>()(new(ObjectId.GenerateNewId().ToString(),
-                current.TenantId, zone.Id, placement.ResolvedPlacement.DeploymentTargetId,
-                WebServiceResourceDeployment.ResourceType,
-                current.Id, orphan ? ObjectId.GenerateNewId().ToString() : placement.Id,
-                "custom", "custom"), session)).Value);
+        var binding = Assert.IsType<HostnameBindingSnapshot>(
+            (await Services.GetRequiredService<CreateCustomHostnameBinding>()(
+                new CreateCustomHostnameBindingRequest(
+                    ObjectId.GenerateNewId().ToString(),
+                    current.TenantId,
+                    zone.Id,
+                    placement.ResolvedPlacement.DeploymentTargetId,
+                    WebServiceResourceDeployment.ResourceType,
+                    current.Id,
+                    orphan ? ObjectId.GenerateNewId().ToString() : placement.Id,
+                    "custom",
+                    "custom"),
+                session)).Value);
         await session.CommitTransactionAsync();
         if (managed)
             authority.Managed.Add(("HostnameBinding", binding.Id));
@@ -329,66 +405,132 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         bool awaitingArtifact)
     {
         var current = await CreateService();
-        var configuration = SourceBuildConfigurationFactory.Create(current.TenantId, "reviewed-build",
-            ObjectId.GenerateNewId().ToString(), current.Id, SourceBuildRecipe.Create("FROM scratch"),
-            new ManualSourceBuildConfigurationOrigin(Data.UserId), SourceBuildConfigurationFactory.DefaultOptions);
-        await Fixture.Database.GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
+        var configuration = SourceBuildConfigurationFactory.Create(
+            current.TenantId,
+            "reviewed-build",
+            ObjectId.GenerateNewId().ToString(),
+            current.Id,
+            SourceBuildRecipe.Create("FROM scratch"),
+            new ManualSourceBuildConfigurationOrigin(Data.UserId),
+            SourceBuildConfigurationFactory.DefaultOptions);
+        await Fixture.Database
+            .GetCollection<SourceBuildConfiguration>("SourceBuildConfigurations")
             .InsertOneAsync(configuration);
         var image = awaitingArtifact
             ? (WebServiceImage)WebServiceImageFactory.Pending(configuration.Id)
-            : DeliveredSourceBuildImage.Create(configuration.Id, Assert.IsType<ImageInfo>(current.Spec.Image),
-                "sha256:" + new string('a', 64), ObjectId.GenerateNewId().ToString(), 1);
+            : DeliveredSourceBuildImage.Create(
+                configuration.Id,
+                Assert.IsType<ImageInfo>(current.Spec.Image),
+                "sha256:" + new string('a', 64),
+                ObjectId.GenerateNewId().ToString(),
+                1);
         current = current with
         {
             Spec = current.Spec with { Image = image },
-            Lifecycle = awaitingArtifact ? new AwaitingFirstArtifactWebServiceLifecycle() : current.Lifecycle
+            Lifecycle = awaitingArtifact ? new AwaitingFirstArtifactWebServiceLifecycle() : current.Lifecycle,
         };
         await WebServices.ReplaceOneAsync(item => item.Id == current.Id, current);
         var webDependencies = Assert.IsAssignableFrom<IDeclarativeLifecycleDependencyProvider>(Provider);
         var buildLifecycle = Services.GetServices<IDeclarativeResourceLifecycleProvider>()
             .Single(item => item.Kind == "SourceBuildConfiguration");
         var buildDependencies = Assert.IsAssignableFrom<IDeclarativeLifecycleDependencyProvider>(buildLifecycle);
-        var web = new GitLifecycleResourceReference(new("WebService", current.Name), current.Id);
-        var build = new GitLifecycleResourceReference(new("SourceBuildConfiguration", configuration.TechnicalName),
+        var web = new GitLifecycleResourceReference(new ResourceAddress("WebService", current.Name), current.Id);
+        var build = new GitLifecycleResourceReference(
+            new ResourceAddress("SourceBuildConfiguration", configuration.TechnicalName),
             configuration.Id);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var imageEdge = Assert.Single(await webDependencies.ReadDependenciesAsync(new(current.TenantId, build),
-            session, default));
+        var imageEdge = Assert.Single(
+            await webDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(current.TenantId, build),
+                session,
+                default));
         Assert.Equal(web, imageEdge.Dependent);
         Assert.Equal(GitLifecycleDependencyOrder.AfterDependentRemovalRequested, imageEdge.Order);
-        var buildEdge = Assert.Single(await buildDependencies.ReadDependenciesAsync(new(current.TenantId, web),
-            session, default));
+        var buildEdge = Assert.Single(
+            await buildDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(current.TenantId, web),
+                session,
+                default));
         Assert.Equal(build, buildEdge.Dependent);
         Assert.Equal(GitLifecycleDependencyOrder.AfterRemovalRequested, buildEdge.Order);
-        Assert.IsType<DeclarationPreconditionsChanged>((await webDependencies.FenceDependenciesAsync(
-            new(current.TenantId, build, [imageEdge with { Order = GitLifecycleDependencyOrder.BeforeRemoval }]),
-            session, default)).Value);
-        var bound = Assert.IsType<GitLifecycleResourceSnapshot>((await buildLifecycle.ReadLifecycleAsync(
-            new(current.TenantId, build), session, default)).Value);
-        var beforeBegin = Assert.IsType<DeclarationReadBlocked>((await buildLifecycle.RemoveAsync(
-            new(authority.Authority, build, bound.Version), session, default)).Value);
+        Assert.IsType<DeclarationPreconditionsChanged>(
+            (await webDependencies.FenceDependenciesAsync(
+                new FenceLifecycleDependenciesRequest(
+                    current.TenantId,
+                    build,
+                    [imageEdge with { Order = GitLifecycleDependencyOrder.BeforeRemoval }]),
+                session,
+                default)).Value);
+        var bound = Assert.IsType<GitLifecycleResourceSnapshot>(
+            (await buildLifecycle.ReadLifecycleAsync(
+                new ReadLifecycleResourceRequest(current.TenantId, build),
+                session,
+                default)).Value);
+        var beforeBegin = Assert.IsType<DeclarationReadBlocked>(
+            (await buildLifecycle.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, build, bound.Version),
+                session,
+                default)).Value);
         Assert.IsType<GitLifecycleDependencyRetained>(beforeBegin.Failure);
         await session.AbortTransactionAsync();
 
         var deleting = current.BeginDeletion(DateTime.UtcNow);
         await WebServices.ReplaceOneAsync(item => item.Id == current.Id, deleting);
         session.StartTransaction();
-        Assert.Empty(await webDependencies.ReadDependenciesAsync(new(current.TenantId, build), session, default));
-        Assert.IsType<DeclarationPreconditionsChanged>((await webDependencies.FenceDependenciesAsync(
-            new(current.TenantId, build, [imageEdge]), session, default)).Value);
-        Assert.Single(await buildDependencies.ReadDependenciesAsync(new(current.TenantId, web), session, default));
-        Assert.IsType<SourceBuildWebServiceNotFound>((await Services.GetRequiredService<LoadSourceBuildTarget>()(
-            new(current.TenantId, current.Id), session, default)).Value);
-        Assert.Single(await webDependencies.ReadDependenciesAsync(new(current.TenantId,
-            new(new("ResourceGroup", "alpha"), current.ResourceGroupId)), session, default));
-        Assert.Single(await webDependencies.ReadDependenciesAsync(new(current.TenantId,
-            new(new("IsolationScope", "default"), current.IsolationScopeId)), session, default));
-        var ready = Assert.IsType<GitLifecycleResourceSnapshot>((await buildLifecycle.ReadLifecycleAsync(
-            new(current.TenantId, build), session, default)).Value);
-        Assert.IsType<GitLifecycleResourceRemoved>((await buildLifecycle.RemoveAsync(
-            new(authority.Authority, build, ready.Version), session, default)).Value);
-        Assert.Empty(await buildDependencies.ReadDependenciesAsync(new(current.TenantId, web), session, default));
+        Assert.Empty(
+            await webDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(current.TenantId, build),
+                session,
+                default));
+        Assert.IsType<DeclarationPreconditionsChanged>(
+            (await webDependencies.FenceDependenciesAsync(
+                new FenceLifecycleDependenciesRequest(current.TenantId, build, [imageEdge]),
+                session,
+                default)).Value);
+        Assert.Single(
+            await buildDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(current.TenantId, web),
+                session,
+                default));
+        Assert.IsType<SourceBuildWebServiceNotFound>(
+            (await Services.GetRequiredService<LoadSourceBuildTarget>()(
+                new SourceBuildTargetRequest(current.TenantId, current.Id),
+                session,
+                default)).Value);
+        Assert.Single(
+            await webDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(
+                    current.TenantId,
+                    new GitLifecycleResourceReference(
+                        new ResourceAddress("ResourceGroup", "alpha"),
+                        current.ResourceGroupId)),
+                session,
+                default));
+        Assert.Single(
+            await webDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(
+                    current.TenantId,
+                    new GitLifecycleResourceReference(
+                        new ResourceAddress("IsolationScope", "default"),
+                        current.IsolationScopeId)),
+                session,
+                default));
+        var ready = Assert.IsType<GitLifecycleResourceSnapshot>(
+            (await buildLifecycle.ReadLifecycleAsync(
+                new ReadLifecycleResourceRequest(current.TenantId, build),
+                session,
+                default)).Value);
+        Assert.IsType<GitLifecycleResourceRemoved>(
+            (await buildLifecycle.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, build, ready.Version),
+                session,
+                default)).Value);
+        Assert.Empty(
+            await buildDependencies.ReadDependenciesAsync(
+                new ReadLifecycleDependenciesRequest(current.TenantId, web),
+                session,
+                default));
         Assert.Equal(GitLifecyclePresence.Deleting, (await Snapshot(current, session)).Presence);
         await session.AbortTransactionAsync();
     }
@@ -403,8 +545,11 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         var active = await Snapshot(current, session);
-        Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(
-            new(authority.Authority, active.Resource, active.Version), session, default)).Value);
+        Assert.IsType<GitLifecycleRemovalRequested>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, active.Resource, active.Version),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         session.StartTransaction();
         var deleting = await Snapshot(current, session);
@@ -412,31 +557,46 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).SingleAsync();
         var at = placement.UpdatedAtUtc.AddSeconds(1);
         var claim = ObjectId.GenerateNewId().ToString();
-        var started = placement.Start(placement.DesiredGeneration, ResourceDeploymentOperation.Delete,
-            claim, at, at.AddMinutes(1));
+        var started = placement.Start(
+            placement.DesiredGeneration,
+            ResourceDeploymentOperation.Delete,
+            claim,
+            at,
+            at.AddMinutes(1));
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == placement.Id, started);
         session.StartTransaction();
         Assert.Equal(deleting.Version.Documents, (await Snapshot(current, session)).Version.Documents);
         await session.CommitTransactionAsync();
-        var completed = started.Complete(started.DesiredGeneration, ResourceDeploymentOperation.Delete,
-            claim, [], at.AddSeconds(1));
+        var completed = started.Complete(
+            started.DesiredGeneration,
+            ResourceDeploymentOperation.Delete,
+            claim,
+            [],
+            at.AddSeconds(1));
         await DbContext.ResourceDeployments.ReplaceOneAsync(item => item.Id == placement.Id, completed);
         session.StartTransaction();
         Assert.Equal(deleting.Version.Documents, (await Snapshot(current, session)).Version.Documents);
-        Assert.IsType<GitLifecycleRemovalRequested>((await Provider.RemoveAsync(
-            new(authority.Authority, deleting.Resource, deleting.Version), session, default)).Value);
+        Assert.IsType<GitLifecycleRemovalRequested>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, deleting.Resource, deleting.Version),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
         var update = changed switch
         {
             "generation" => Builders<ResourceDeployment>.Update.Inc(item => item.DesiredGeneration, 1),
             "resource-revision" => Builders<ResourceDeployment>.Update.Inc(item => item.ResourceRevision, 1),
-            _ => Builders<ResourceDeployment>.Update.Set(item => item.ResolvedPlacement.Compute.Limits,
-                completed.ResolvedPlacement.Compute.Limits with { CpuMillis = 9999 })
+            _ => Builders<ResourceDeployment>.Update.Set(
+                item => item.ResolvedPlacement.Compute.Limits,
+                completed.ResolvedPlacement.Compute.Limits with { CpuMillis = 9999 }),
         };
         await DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == placement.Id, update);
         session.StartTransaction();
-        Assert.IsType<DeclarationPreconditionsChanged>((await Provider.RemoveAsync(
-            new(authority.Authority, deleting.Resource, deleting.Version), session, default)).Value);
+        Assert.IsType<DeclarationPreconditionsChanged>(
+            (await Provider.RemoveAsync(
+                new RemoveLifecycleResourceRequest(authority.Authority, deleting.Resource, deleting.Version),
+                session,
+                default)).Value);
         await session.AbortTransactionAsync();
     }
 
@@ -452,16 +612,22 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
                 category += "/" + placement.Value.GetType().Name;
             if (error.Value is GeneratedDomainZoneError zone)
                 category += "/" + zone.Value.GetType().Name;
-            throw new Xunit.Sdk.XunitException("Fixture creation rejected: " + category);
+            throw new XunitException("Fixture creation rejected: " + category);
         }
+
         return await Load(Assert.IsType<CreateWebServiceResponse>(outcome.Value).WebServiceId);
     }
 
     private Task<WebService> Load(string id) => WebServices.Find(item => item.Id == id).SingleAsync();
 
     private async Task<GitLifecycleResourceSnapshot> Snapshot(WebService current, IClientSessionHandle session) =>
-        Assert.IsType<GitLifecycleResourceSnapshot>((await Provider.ReadLifecycleAsync(new(current.TenantId,
-            new(new("WebService", current.Name), current.Id)), session, default)).Value);
+        Assert.IsType<GitLifecycleResourceSnapshot>(
+            (await Provider.ReadLifecycleAsync(
+                new ReadLifecycleResourceRequest(
+                    current.TenantId,
+                    new GitLifecycleResourceReference(new ResourceAddress("WebService", current.Name), current.Id)),
+                session,
+                default)).Value);
 
     private async Task<string> State()
     {
@@ -471,10 +637,14 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         var result = new List<string>();
         foreach (var name in names)
         {
-            var documents = await Fixture.Database.GetCollection<BsonDocument>(name).Find(_ => true)
-                .Sort(new BsonDocument("_id", 1)).ToListAsync();
+            var documents = await Fixture.Database
+                .GetCollection<BsonDocument>(name)
+                .Find(_ => true)
+                .Sort(new BsonDocument("_id", 1))
+                .ToListAsync();
             result.AddRange(documents.Select(item => item.ToJson()));
         }
+
         return string.Join("\n", result);
     }
 
@@ -485,13 +655,21 @@ public sealed class WebServiceLifecycleTests(MongoReplicaSetFixture fixture) : I
         {
             ResourceGroup = "alpha",
             Image = new DeclaredContainerImage("docker.io", "nginx", "1.27"),
-            Placement = new(NamedCatalogTestData.TargetName, new(NamedCatalogTestData.ProfileName, 1)),
+            Placement = new WebServiceDeclarationPlacement(
+                NamedCatalogTestData.TargetName,
+                new PinnedComputeProfile(NamedCatalogTestData.ProfileName, 1)),
             Ports = defaults.Config.PortMappings,
             Probes = defaults.Probes,
             Replicas = 2,
             Exposure = "Public",
-            Environment = defaults.Config.EnvironmentVariables
+            Environment = defaults.Config.EnvironmentVariables,
         };
-        return new(new("WebService", current.Name), DeclarationJson.Write(spec), "desired", [], "service.yaml", 1);
+        return new CompiledDeclaration(
+            new ResourceAddress("WebService", current.Name),
+            DeclarationJson.Write(spec),
+            "desired",
+            [],
+            "service.yaml",
+            1);
     }
 }

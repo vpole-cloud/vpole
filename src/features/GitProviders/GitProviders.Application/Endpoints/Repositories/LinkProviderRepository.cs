@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
 using Pole.Mediator;
@@ -21,8 +21,8 @@ public sealed record LinkProviderRepositoryRequest(
     [FromRoute] string ConnectionId,
     [FromRoute] string RepositoryId,
     [FromTenantHeader] string TenantId,
-    [FromBody] LinkSourceRepositoryRequestBody Body)
-    : IMediatorRequest<LinkProviderRepositoryOutcome>, ITenantWriteOperation;
+    [FromBody] LinkSourceRepositoryRequestBody Body
+) : IMediatorRequest<LinkProviderRepositoryOutcome>, ITenantWriteOperation;
 
 public union LinkProviderRepositoryOutcome(
     SourceRepositoryDto,
@@ -36,15 +36,19 @@ public union LinkProviderRepositoryOutcome(
 
 public sealed class LinkProviderRepositoryHandler(
     ResolveProviderRepository resolveProviderRepository,
-    PersistLinkedSourceRepository persistLinkedSourceRepository)
-    : IMediatorOutcomeHandler<LinkProviderRepositoryRequest, LinkProviderRepositoryOutcome>
+    PersistLinkedSourceRepository persistLinkedSourceRepository
+) : IMediatorOutcomeHandler<LinkProviderRepositoryRequest, LinkProviderRepositoryOutcome>
 {
     public async Task<LinkProviderRepositoryOutcome> HandleAsync(
         LinkProviderRepositoryRequest request,
         CancellationToken cancellationToken = default)
     {
         var resolved = await resolveProviderRepository(
-            new(request.TenantId, request.ConnectionId, request.RepositoryId, request.Body.Branch),
+            new ResolveProviderRepositoryRequest(
+                request.TenantId,
+                request.ConnectionId,
+                request.RepositoryId,
+                request.Body.Branch),
             cancellationToken);
         return resolved switch
         {
@@ -53,7 +57,7 @@ public sealed class LinkProviderRepositoryHandler(
             SourceRepositoryRemoteNotFound missing => missing,
             SourceRepositoryBranchNotFound missing => missing,
             SourceRepositoryAccessDenied denied => denied,
-            SourceRepositoryUnavailable unavailable => unavailable
+            SourceRepositoryUnavailable unavailable => unavailable,
         };
     }
 
@@ -78,7 +82,7 @@ public sealed class LinkProviderRepositoryHandler(
             SourceRepository success => success.ToDto(),
             SourceRepositoryAlreadyLinked conflict => conflict,
             SourceRepositoryNameConflict conflict => conflict,
-            GitProviderConnectionNotFound missing => missing
+            GitProviderConnectionNotFound missing => missing,
         };
     }
 }
@@ -99,25 +103,27 @@ public static class LinkProviderRepositoryEndpoint
 {
     public static IEndpointRouteBuilder MapLinkProviderRepositoryEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{ConnectionId}/repositories/{RepositoryId}/links", async (
-                IMediator mediator,
-                [AsParameters] LinkProviderRepositoryRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/{ConnectionId}/repositories/{RepositoryId}/links",
+                async (
+                    IMediator mediator, [AsParameters] LinkProviderRepositoryRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    SourceRepositoryDto repository => Results.Created(
-                        $"/api/v1/source-repositories/{repository.Id}", repository),
-                    GitProviderConnectionNotFound missing => MapConnectionNotFound(missing),
-                    SourceRepositoryRemoteNotFound missing => MapSourceRepositoryRemoteNotFound(missing),
-                    SourceRepositoryBranchNotFound missing => MapSourceRepositoryBranchNotFound(missing),
-                    SourceRepositoryAccessDenied denied => MapSourceRepositoryAccessDenied(denied),
-                    SourceRepositoryUnavailable unavailable => MapSourceRepositoryUnavailable(unavailable),
-                    SourceRepositoryAlreadyLinked conflict => MapSourceRepositoryAlreadyLinked(conflict),
-                    SourceRepositoryNameConflict conflict => MapSourceRepositoryNameConflict(conflict)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        SourceRepositoryDto repository => Results.Created(
+                            $"/api/v1/source-repositories/{repository.Id}",
+                            repository),
+                        GitProviderConnectionNotFound missing => MapConnectionNotFound(missing),
+                        SourceRepositoryRemoteNotFound missing => MapSourceRepositoryRemoteNotFound(missing),
+                        SourceRepositoryBranchNotFound missing => MapSourceRepositoryBranchNotFound(missing),
+                        SourceRepositoryAccessDenied denied => MapSourceRepositoryAccessDenied(denied),
+                        SourceRepositoryUnavailable unavailable => MapSourceRepositoryUnavailable(unavailable),
+                        SourceRepositoryAlreadyLinked conflict => MapSourceRepositoryAlreadyLinked(conflict),
+                        SourceRepositoryNameConflict conflict => MapSourceRepositoryNameConflict(conflict),
+                    });
+                })
             .WithName("LinkProviderRepository")
             .Produces<SourceRepositoryDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status403Forbidden)

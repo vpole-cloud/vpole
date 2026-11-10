@@ -1,20 +1,32 @@
 namespace Pole.Features.GitProviders.Application.Snapshots;
 
 // Counts actual bytes, including TAR padding and metadata. Leaves the owned stream open.
-internal sealed class ArchiveLimitStream(Stream inner, long limit) : Stream
+internal sealed class ArchiveLimitStream(
+    Stream inner,
+    long limit
+) : Stream
 {
     public long Transferred { get; private set; }
     public override bool CanRead => inner.CanRead;
     public override bool CanSeek => false;
     public override bool CanWrite => inner.CanWrite;
     public override long Length => throw new NotSupportedException();
-    public override long Position { get => Transferred; set => throw new NotSupportedException(); }
+
+    public override long Position
+    {
+        get => Transferred;
+        set => throw new NotSupportedException();
+    }
+
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Flush() => inner.Flush();
     public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
 
-    public override int Read(byte[] buffer, int offset, int count)
+    public override int Read(
+        byte[] buffer,
+        int offset,
+        int count)
     {
         var read = inner.Read(buffer, offset, count);
         Account(read);
@@ -28,7 +40,10 @@ internal sealed class ArchiveLimitStream(Stream inner, long limit) : Stream
         return read;
     }
 
-    public override void Write(byte[] buffer, int offset, int count)
+    public override void Write(
+        byte[] buffer,
+        int offset,
+        int count)
     {
         Account(count);
         inner.Write(buffer, offset, count);

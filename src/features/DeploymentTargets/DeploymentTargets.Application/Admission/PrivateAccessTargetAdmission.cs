@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
@@ -10,8 +9,7 @@ namespace Pole.Features.DeploymentTargets.Application.Admission;
 
 public static class PrivateAccessTargetAdmissionRegistration
 {
-    public static IServiceCollection AddPrivateAccessTargetAdmission(
-        this IServiceCollection services)
+    public static IServiceCollection AddPrivateAccessTargetAdmission(this IServiceCollection services)
     {
         services.TryAddScoped<MongoFenceDeploymentTargetPrivateAccess>();
         services.TryAddScoped<FenceDeploymentTargetPrivateAccess>(provider => provider
@@ -22,7 +20,8 @@ public static class PrivateAccessTargetAdmissionRegistration
 }
 
 internal sealed class MongoFenceDeploymentTargetPrivateAccess(
-    IMongoCollection<DeploymentTarget> targets)
+    IMongoCollection<DeploymentTarget> targets
+)
 {
     public async Task<FenceDeploymentTargetPrivateAccessOutcome> InvokeAsync(
         string deploymentTargetId,
@@ -40,7 +39,7 @@ internal sealed class MongoFenceDeploymentTargetPrivateAccess(
         if (target is null || !target.Enabled || target.DeletionRequestedAtUtc is not null ||
             !target.Capabilities.NetworkPolicyCapabilities.CanManage ||
             target.WorkloadConfiguration.NetworkPolicy.EffectiveEnforcement(target) !=
-                NetworkPolicyEnforcement.Supported)
+            NetworkPolicyEnforcement.Supported)
             return new PrivateAccessDeploymentTargetUnavailable();
         return new PrivateAccessDeploymentTargetReady(target.Id, target.Revision);
     }

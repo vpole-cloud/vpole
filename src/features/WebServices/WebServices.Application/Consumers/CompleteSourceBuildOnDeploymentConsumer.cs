@@ -5,14 +5,14 @@ using Pole.Features.WebServices.Events;
 namespace Pole.Features.WebServices.Application.Consumers;
 
 /// <summary>
-/// Adapts the WebServices-owned deployment-completed event to the
-/// SourceBuilds-owned completion contribution. Keeping the event contract and
-/// its payload unchanged preserves pending outbox messages and consumers.
+///     Adapts the WebServices-owned deployment-completed event to the
+///     SourceBuilds-owned completion contribution. Keeping the event contract and
+///     its payload unchanged preserves pending outbox messages and consumers.
 /// </summary>
 public sealed class CompleteSourceBuildOnDeploymentConsumer(
     CompleteSourceBuildJobOnDeployment completeSourceBuildJobOnDeployment,
-    TimeProvider timeProvider)
-    : IConsumer<WebServiceDeploymentCompletedEvent>
+    TimeProvider timeProvider
+) : IConsumer<WebServiceDeploymentCompletedEvent>
 {
     public Task Consume(ConsumeContext<WebServiceDeploymentCompletedEvent> context) =>
         HandleAsync(context.Message, context.CancellationToken);

@@ -1,16 +1,16 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
-using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Domain;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
 [Collection(IntegrationTestCollection.Tenant3)]
-public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
-    : ApiIntegrationTestBase(fixture)
+public sealed class IsolationScopeApiTests(
+    MongoReplicaSetFixture fixture
+) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task NestedEndpoints_BindAsParameters_AndReturnDefaultAndAdditionalScopes()
@@ -29,14 +29,12 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
         var additional = await createResponse.Content.ReadFromJsonAsync<IsolationScopeDto>();
         Assert.NotNull(additional);
 
-        using var listResponse = await Client.GetAsync(
-            $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes");
+        using var listResponse = await Client.GetAsync($"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes");
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         var scopes = await listResponse.Content.ReadFromJsonAsync<List<IsolationScopeDto>>();
         Assert.NotNull(scopes);
         Assert.Equal(2, scopes.Count);
-        Assert.Contains(scopes, scope =>
-            scope.Id == resourceGroup.DefaultIsolationScopeId && scope.IsDefault);
+        Assert.Contains(scopes, scope => scope.Id == resourceGroup.DefaultIsolationScopeId && scope.IsDefault);
 
         using var getResponse = await Client.GetAsync(
             $"/api/v1/resource-groups/{resourceGroup.Id}/isolation-scopes/{additional.Id}");
@@ -46,8 +44,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task Endpoints_ReturnValidationAndConflictFailures()
     {
-        using var invalidRoute = await Client.GetAsync(
-            "/api/v1/resource-groups/not-an-object-id/isolation-scopes");
+        using var invalidRoute = await Client.GetAsync("/api/v1/resource-groups/not-an-object-id/isolation-scopes");
         Assert.Equal(HttpStatusCode.BadRequest, invalidRoute.StatusCode);
 
         using var resourceGroupResponse = await Client.PostAsJsonAsync(
@@ -74,8 +71,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
     [Fact]
     public async Task DeleteEndpoint_ReturnsNoContentConflictAndAccepted()
     {
-        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(
-            Data.SeedResourceGroup());
+        var resourceGroup = await Fixture.DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
         var emptyScope = IsolationScopeFactory.CreateAdditional(
             resourceGroup.TenantId,
             resourceGroup.Id,
@@ -86,8 +82,7 @@ public sealed class IsolationScopeApiTests(MongoReplicaSetFixture fixture)
             resourceGroup.Id,
             "occupied",
             IsolationScopeFactory.DefaultOptions);
-        await Fixture.DbContext.IsolationScopes.InsertManyAsync(
-            [emptyScope, occupiedScope]);
+        await Fixture.DbContext.IsolationScopes.InsertManyAsync([emptyScope, occupiedScope]);
         var cell = RuntimeCellFactory.Create(
             resourceGroup.TenantId,
             resourceGroup.Id,

@@ -17,4 +17,5 @@ public sealed record GitOperationReceipt(
     string? Blocker,
     bool Changed,
     long PlanRevision,
-    GitLifecycleEffect? Lifecycle) : ITenantOwned;
+    GitLifecycleEffect? Lifecycle
+) : ITenantOwned;

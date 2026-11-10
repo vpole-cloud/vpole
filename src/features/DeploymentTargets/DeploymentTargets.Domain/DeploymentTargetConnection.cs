@@ -7,7 +7,7 @@ public enum DeploymentTargetConnectionKind
 {
     InCluster,
     Kubeconfig,
-    ServiceAccount
+    ServiceAccount,
 }
 
 [BsonDiscriminator(RootClass = true)]
@@ -15,15 +15,17 @@ public enum DeploymentTargetConnectionKind
     typeof(InClusterDeploymentTargetConnection),
     typeof(KubeconfigDeploymentTargetConnection),
     typeof(ServiceAccountDeploymentTargetConnection))]
-public abstract record DeploymentTargetConnection(long Version)
+public abstract record DeploymentTargetConnection(
+    long Version
+)
 {
-    [BsonIgnore]
-    public abstract DeploymentTargetConnectionKind Kind { get; }
+    [BsonIgnore] public abstract DeploymentTargetConnectionKind Kind { get; }
 }
 
 [BsonDiscriminator(nameof(InClusterDeploymentTargetConnection))]
-public sealed record InClusterDeploymentTargetConnection(long Version)
-    : DeploymentTargetConnection(Version)
+public sealed record InClusterDeploymentTargetConnection(
+    long Version
+) : DeploymentTargetConnection(Version)
 {
     public override DeploymentTargetConnectionKind Kind => DeploymentTargetConnectionKind.InCluster;
 }
@@ -33,8 +35,8 @@ public sealed record KubeconfigDeploymentTargetConnection(
     long Version,
     string ContextName,
     string ServerUrl,
-    EncryptedValue EncryptedKubeconfig)
-    : DeploymentTargetConnection(Version)
+    EncryptedValue EncryptedKubeconfig
+) : DeploymentTargetConnection(Version)
 {
     public override DeploymentTargetConnectionKind Kind => DeploymentTargetConnectionKind.Kubeconfig;
 
@@ -47,8 +49,8 @@ public sealed record ServiceAccountDeploymentTargetConnection(
     long Version,
     string ServerUrl,
     string CertificateAuthorityData,
-    EncryptedValue EncryptedCredential)
-    : DeploymentTargetConnection(Version)
+    EncryptedValue EncryptedCredential
+) : DeploymentTargetConnection(Version)
 {
     public override DeploymentTargetConnectionKind Kind => DeploymentTargetConnectionKind.ServiceAccount;
 

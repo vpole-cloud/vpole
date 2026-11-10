@@ -10,12 +10,12 @@ public interface IOutboxPublisher
         CancellationToken cancellationToken);
 }
 
-public sealed class MassTransitOutboxPublisher(IPublishEndpoint publishEndpoint)
-    : IOutboxPublisher
+public sealed class MassTransitOutboxPublisher(
+    IPublishEndpoint publishEndpoint
+) : IOutboxPublisher
 {
     public Task PublishAsync(
         object message,
         Type messageType,
-        CancellationToken cancellationToken) =>
-        publishEndpoint.Publish(message, messageType, cancellationToken);
+        CancellationToken cancellationToken) => publishEndpoint.Publish(message, messageType, cancellationToken);
 }

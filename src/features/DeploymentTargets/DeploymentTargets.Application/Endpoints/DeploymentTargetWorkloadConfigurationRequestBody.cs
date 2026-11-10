@@ -1,16 +1,18 @@
 using System.Collections.Immutable;
-using FluentValidation;
 using System.Text.Json.Serialization;
+using FluentValidation;
 using Pole.Features.DeploymentTargets.Domain;
 
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record DeploymentTargetWorkloadConfigurationRequestBody(
     DeploymentTargetIngressConfigurationRequestBody? Ingress,
-    DeploymentTargetNetworkSourcesRequestBody NetworkSources);
+    DeploymentTargetNetworkSourcesRequestBody NetworkSources
+);
 
 public sealed record DeploymentTargetNetworkSourcesRequestBody(
-    Dictionary<string, DeploymentTargetNetworkSourceRequestBody> Entries);
+    Dictionary<string, DeploymentTargetNetworkSourceRequestBody> Entries
+);
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(DeploymentTargetPodNetworkSourceRequestBody), "Pod")]
@@ -19,15 +21,18 @@ public closed record DeploymentTargetNetworkSourceRequestBody;
 
 public sealed record DeploymentTargetPodNetworkSourceRequestBody(
     string Namespace,
-    Dictionary<string, string> PodLabels) : DeploymentTargetNetworkSourceRequestBody;
+    Dictionary<string, string> PodLabels
+) : DeploymentTargetNetworkSourceRequestBody;
 
-public sealed record DeploymentTargetCidrNetworkSourceRequestBody(string Cidr)
-    : DeploymentTargetNetworkSourceRequestBody;
+public sealed record DeploymentTargetCidrNetworkSourceRequestBody(
+    string Cidr
+) : DeploymentTargetNetworkSourceRequestBody;
 
 public sealed record DeploymentTargetIngressConfigurationRequestBody(
     string IngressClassName,
     string ClusterIssuerName,
-    string? PublicBaseDomain = null);
+    string? PublicBaseDomain = null
+);
 
 public sealed class DeploymentTargetWorkloadConfigurationRequestBodyValidator
     : AbstractValidator<DeploymentTargetWorkloadConfigurationRequestBody>
@@ -51,15 +56,15 @@ public sealed class DeploymentTargetNetworkSourcesRequestBodyValidator
     {
         RuleFor(body => body.Entries)
             .Must(entries => entries is not null && entries.All(entry =>
-                DeploymentTargetNetworkSources.IsValidName(entry.Key) && (entry.Value switch
+                DeploymentTargetNetworkSources.IsValidName(entry.Key) && entry.Value switch
                 {
                     DeploymentTargetPodNetworkSourceRequestBody pod =>
                         DeploymentTargetPodNetworkSource.IsValidNamespace(pod.Namespace) &&
                         DeploymentTargetPodNetworkSource.IsValid(pod.PodLabels),
-                    DeploymentTargetCidrNetworkSourceRequestBody cidr =>
-                        DeploymentTargetCidrNetworkSource.IsValid(cidr.Cidr),
-                    null => false
-                })))
+                    DeploymentTargetCidrNetworkSourceRequestBody cidr => DeploymentTargetCidrNetworkSource.IsValid(
+                        cidr.Cidr),
+                    null => false,
+                }))
             .WithMessage("Network sources require valid names and bounded pod or CIDR selectors.");
     }
 }
@@ -115,30 +120,28 @@ public sealed class DeploymentTargetIngressConfigurationRequestBodyValidator
 internal static class DeploymentTargetWorkloadConfigurationRequestBodyExtensions
 {
     public static DeploymentTargetWorkloadConfiguration ToDomain(
-        this DeploymentTargetWorkloadConfigurationRequestBody body) =>
-        DeploymentTargetWorkloadConfiguration.Create(
-            body.Ingress?.ToDomain(),
-            body.NetworkSources.ToDomain());
+        this DeploymentTargetWorkloadConfigurationRequestBody body) => DeploymentTargetWorkloadConfiguration.Create(
+        body.Ingress?.ToDomain(),
+        body.NetworkSources.ToDomain());
 
-    public static DeploymentTargetNetworkSources ToDomain(
-        this DeploymentTargetNetworkSourcesRequestBody body) =>
-        new(body.Entries.ToImmutableDictionary(
+    public static DeploymentTargetNetworkSources ToDomain(this DeploymentTargetNetworkSourcesRequestBody body) => new(
+        body.Entries.ToImmutableDictionary(
             entry => entry.Key,
             entry => entry.Value.ToDomain(),
             StringComparer.Ordinal));
 
-    public static DeploymentTargetNetworkSource ToDomain(
-        this DeploymentTargetNetworkSourceRequestBody body) => body switch
+    public static DeploymentTargetNetworkSource ToDomain(this DeploymentTargetNetworkSourceRequestBody body) =>
+        body switch
         {
             DeploymentTargetPodNetworkSourceRequestBody pod => DeploymentTargetPodNetworkSource.Create(
-                pod.Namespace, pod.PodLabels),
-            DeploymentTargetCidrNetworkSourceRequestBody cidr =>
-                DeploymentTargetCidrNetworkSource.Create(cidr.Cidr)
+                pod.Namespace,
+                pod.PodLabels),
+            DeploymentTargetCidrNetworkSourceRequestBody cidr => DeploymentTargetCidrNetworkSource.Create(cidr.Cidr),
         };
 
     public static DeploymentTargetIngressConfiguration ToDomain(
         this DeploymentTargetIngressConfigurationRequestBody body) => DeploymentTargetIngressConfiguration.Create(
-            body.IngressClassName,
-            body.ClusterIssuerName,
-            body.PublicBaseDomain);
+        body.IngressClassName,
+        body.ClusterIssuerName,
+        body.PublicBaseDomain);
 }

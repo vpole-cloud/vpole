@@ -1,5 +1,3 @@
-using MongoDB.Bson;
-
 namespace Pole.Features.ResourceGroups.Domain;
 
 internal static class ResourceGroupValueGuard
@@ -12,7 +10,10 @@ internal static class ResourceGroupValueGuard
     public const int MaximumRuntimeCellFailureCodeLength = 128;
     public const int MaximumRuntimeCellFailureMessageLength = 512;
 
-    public static string Required(string? value, string parameterName, int maximumLength)
+    public static string Required(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("The value is required.", parameterName);
@@ -23,9 +24,12 @@ internal static class ResourceGroupValueGuard
         return normalized;
     }
 
-    public static string Optional(string? value, string parameterName, int maximumLength)
+    public static string Optional(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
-        var normalized = value?.Trim() ?? string.Empty;
+        var normalized = value?.Trim() ?? "";
         if (normalized.Length > maximumLength)
             throw new ArgumentException($"The value must be {maximumLength} characters or less.", parameterName);
         return normalized;
@@ -48,11 +52,14 @@ internal static class ResourceGroupValueGuard
         {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
         };
     }
 
-    public static DateTime UpdatedUtc(DateTime value, DateTime currentUtc, string parameterName)
+    public static DateTime UpdatedUtc(
+        DateTime value,
+        DateTime currentUtc,
+        string parameterName)
     {
         var normalized = Utc(value, parameterName);
         if (normalized < currentUtc)
@@ -64,27 +71,18 @@ internal static class ResourceGroupValueGuard
     {
         var normalized = Required(value, parameterName, MaximumKubernetesNamespaceLength);
         if (!IsDnsLabel(normalized))
-        {
-            throw new ArgumentException(
-                "The Kubernetes namespace must be a lowercase DNS label.",
-                parameterName);
-        }
+            throw new ArgumentException("The Kubernetes namespace must be a lowercase DNS label.", parameterName);
 
         return normalized;
     }
 
     private static bool IsDnsLabel(string value)
     {
-        if (value.Length is < 1 or > MaximumKubernetesNamespaceLength ||
-            !char.IsAsciiLetterOrDigit(value[0]) ||
+        if (value.Length is < 1 or > MaximumKubernetesNamespaceLength || !char.IsAsciiLetterOrDigit(value[0]) ||
             !char.IsAsciiLetterOrDigit(value[^1]))
-        {
             return false;
-        }
 
         return value.All(character =>
-            (character is >= 'a' and <= 'z') ||
-            char.IsAsciiDigit(character) ||
-            character == '-');
+            character is >= 'a' and <= 'z' || char.IsAsciiDigit(character) || character == '-');
     }
 }

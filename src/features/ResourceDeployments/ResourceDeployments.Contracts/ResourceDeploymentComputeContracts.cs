@@ -5,38 +5,45 @@ namespace Pole.Features.ResourceDeployments.Contracts;
 
 public sealed record ResourceDeploymentComputeResourceValues(
     long CpuMillis,
-    long MemoryMi);
+    long MemoryMi
+);
 
 public sealed record ResourceDeploymentExtendedResource(
     string Name,
-    long Quantity);
+    long Quantity
+);
 
 public sealed record ResourceDeploymentNodeSelector(
     string Key,
-    string Value);
+    string Value
+);
 
 public sealed record ResourceDeploymentNodeAffinityExpression(
     string Key,
     ComputeNodeAffinityOperator Operator,
-    ImmutableList<string> Values);
+    ImmutableList<string> Values
+);
 
 public sealed record ResourceDeploymentNodeAffinityTerm(
-    ImmutableList<ResourceDeploymentNodeAffinityExpression> Expressions);
+    ImmutableList<ResourceDeploymentNodeAffinityExpression> Expressions
+);
 
 public sealed record ResourceDeploymentPreferredNodeAffinityTerm(
     int Weight,
-    ResourceDeploymentNodeAffinityTerm Term);
+    ResourceDeploymentNodeAffinityTerm Term
+);
 
 public sealed record ResourceDeploymentToleration(
     string? Key,
     ComputeTolerationOperator Operator,
     string? Value,
     ComputeTaintEffect Effect,
-    long? TolerationSeconds);
+    long? TolerationSeconds
+);
 
 /// <summary>
-/// ResourceDeployments-owned representation of an immutable compute resolution.
-/// Callers map provider contracts into this snapshot before crossing the feature boundary.
+///     ResourceDeployments-owned representation of an immutable compute resolution.
+///     Callers map provider contracts into this snapshot before crossing the feature boundary.
 /// </summary>
 public sealed record ResourceDeploymentComputeConfiguration(
     string ComputeProfileId,
@@ -51,4 +58,5 @@ public sealed record ResourceDeploymentComputeConfiguration(
     ImmutableList<ResourceDeploymentNodeAffinityTerm> RequiredNodeAffinity,
     ImmutableList<ResourceDeploymentPreferredNodeAffinityTerm> PreferredNodeAffinity,
     ImmutableList<ResourceDeploymentToleration> Tolerations,
-    string? RuntimeClassName);
+    string? RuntimeClassName
+);

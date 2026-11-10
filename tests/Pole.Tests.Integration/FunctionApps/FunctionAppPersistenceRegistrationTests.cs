@@ -4,7 +4,6 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.FunctionApps;
 using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Application.Runtime.Gateway;
 using Pole.Features.Functions.Application.Runtime.Metering;
@@ -18,8 +17,9 @@ using Xunit;
 namespace Pole.Tests.Integration.FunctionApps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class FunctionAppPersistenceRegistrationTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class FunctionAppPersistenceRegistrationTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public void Feature_registration_resolves_application_and_runtime_persistence_capabilities()
@@ -47,8 +47,7 @@ public sealed class FunctionAppPersistenceRegistrationTests(MongoReplicaSetFixtu
         Assert.NotNull(Services.GetRequiredService<LoadFunctionRuntimeRouteTarget>());
         Assert.NotNull(Services.GetRequiredService<LoadFunctionScaleSubjects>());
         Assert.NotNull(Services.GetRequiredService<LoadFunctionRevisionProvisioningSubject>());
-        Assert.NotNull(Services.GetRequiredService<RunMongoOutcomeTransaction<
-            FunctionRevisionLifecycleOutcome>>());
+        Assert.NotNull(Services.GetRequiredService<RunMongoOutcomeTransaction<FunctionRevisionLifecycleOutcome>>());
         Assert.NotNull(Services.GetRequiredService<MarkFunctionRevisionReady>());
         Assert.NotNull(Services.GetRequiredService<PromoteFunctionRevision>());
         Assert.NotNull(Services.GetRequiredService<FailFunctionRevision>());

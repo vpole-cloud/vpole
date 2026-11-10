@@ -1,22 +1,22 @@
-using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
-using Pole.Features.GitProviders.Application.Webhooks;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
-using MongoDB.Driver;
-using Pole.Features.GitProviders.Domain;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitProviders.Application.Snapshots;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.DataProtection;
+using MongoDB.Driver;
+using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
-using Pole.Features.GitProviders.Application.GitHub;
 using Pole.Features.GitProviders.Application.Connections;
+using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
+using Pole.Features.GitProviders.Application.GitHub;
+using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Application.Setup;
-using Pole.Features.GitProviders.Application.ProviderOperations;
+using Pole.Features.GitProviders.Application.Snapshots;
+using Pole.Features.GitProviders.Application.Webhooks;
 using Pole.Features.GitProviders.Contracts;
+using Pole.Features.GitProviders.Domain;
 using Pole.Features.Realtime.Contracts;
 
 namespace Pole.Features.GitProviders.Application;
@@ -28,21 +28,21 @@ public static class GitProviderApplicationRegistration
         IConfiguration configuration)
     {
         services.AddSingleton(new RealtimeTopic("git", RealtimeScope.Tenant));
-        services.Configure<GitHubAppOptions>(
-            configuration.GetSection(GitHubAppOptions.SectionName));
+        services.Configure<GitHubAppOptions>(configuration.GetSection(GitHubAppOptions.SectionName));
         services.TryAddSingleton(serviceProvider =>
             serviceProvider.GetRequiredService<IOptions<GitHubAppOptions>>().Value);
         services.AddOptions<RepositoryArchiveOptions>()
             .Bind(configuration.GetSection(RepositoryArchiveOptions.SectionName))
-            .ValidateDataAnnotations().ValidateOnStart();
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.TryAddSingleton(provider => provider.GetRequiredService<IOptions<RepositoryArchiveOptions>>().Value);
         services.TryAddScoped<RepositoryManifestArchiveReader>();
         services.TryAddEnumerable(
             ServiceDescriptor.Scoped<IRepositorySnapshotProvider, GitHubRepositorySnapshotProvider>());
         services.AddOptions<GitHubWebhookOptions>()
             .Bind(configuration.GetSection(GitHubWebhookOptions.SectionName))
-            .Validate(value => !configuration.GetValue<bool>("GitHubApp:Enabled") ||
-                               !string.IsNullOrWhiteSpace(value.Secret),
+            .Validate(
+                value => !configuration.GetValue<bool>("GitHubApp:Enabled") || !string.IsNullOrWhiteSpace(value.Secret),
                 "GitHubWebhook:Secret is required when GitHub is enabled.")
             .ValidateOnStart();
         services.AddScoped<GitHubWebhookPersistence>();
@@ -63,10 +63,10 @@ public static class GitProviderApplicationRegistration
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitHubSetupAttempt>("GitHubSetupAttempts"));
         services.TryAddScoped<MongoSourceRepositoryReferences>();
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDeclarativeResourceProvider,
-            DeclarativeSourceRepositoryProvider>());
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDeclarativeResourceLifecycleProvider,
-            DeclarativeSourceRepositoryProvider>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<IDeclarativeResourceProvider, DeclarativeSourceRepositoryProvider>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Scoped<IDeclarativeResourceLifecycleProvider, DeclarativeSourceRepositoryProvider>());
         services.TryAddScoped<FindNamedSourceRepository>(provider =>
             provider.GetRequiredService<MongoSourceRepositoryReferences>().FindNamedAsync);
         services.TryAddScoped<LoadSourceRepositoryReference>(provider =>
@@ -114,9 +114,10 @@ public static class GitProviderApplicationRegistration
         services.AddCapability<GitProviderRepositoryAnalyzer, AnalyzeProviderRepository>(operation =>
             operation.InvokeAsync);
         services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
-        {
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Pole/1.0");
-        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Pole/1.0");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         return services;
     }
 
@@ -127,7 +128,6 @@ public static class GitProviderApplicationRegistration
         where TDelegate : Delegate
     {
         services.TryAddScoped<TImplementation>();
-        services.TryAddScoped(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.TryAddScoped(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

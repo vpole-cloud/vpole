@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Pole.Cli;
 using Pole.Cli.Authentication;
 
@@ -13,12 +14,12 @@ namespace Pole.Cli
     {
         public void Open(Uri uri)
         {
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = uri.AbsoluteUri,
-                UseShellExecute = true
+                UseShellExecute = true,
             };
-            System.Diagnostics.Process.Start(startInfo);
+            Process.Start(startInfo);
         }
     }
 }

@@ -4,30 +4,22 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Events.Abstractions;
-using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Consumers;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Features.ResourceGroups.Application.RuntimeCells;
 using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
-using Pole.Features.Shared.Models;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
-using Xunit;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
 public abstract class RuntimeCellLifecycleTestBase(
     MongoReplicaSetFixture fixture,
-    bool isolatedDatabase = false) : MediatorIntegrationTestBase(fixture, isolatedDatabase)
+    bool isolatedDatabase = false
+) : MediatorIntegrationTestBase(fixture, isolatedDatabase)
 {
-    private protected static readonly DateTime InitialTime =
-        new(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
+    private protected static readonly DateTime InitialTime = new(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
 
     private protected async Task<RuntimeCell> InsertCellAsync()
     {
@@ -45,14 +37,13 @@ public abstract class RuntimeCellLifecycleTestBase(
 
     private protected RuntimeCellLifecyclePersistence CreateLifecyclePersistence(
         DateTime utcNow,
-        ApplyDeploymentTargetReferenceChanges? applyReferenceChanges = null) =>
-        new(
-            DbContext.RuntimeCells,
-            StoreOutboxWrites,
-            applyReferenceChanges ?? NoOpReferenceChanges,
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<Unit>,
-            new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<bool>,
-            new FixedTimeProvider(utcNow));
+        ApplyDeploymentTargetReferenceChanges? applyReferenceChanges = null) => new(
+        DbContext.RuntimeCells,
+        StoreOutboxWrites,
+        applyReferenceChanges ?? NoOpReferenceChanges,
+        new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
+        new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
+        new FixedTimeProvider(utcNow));
 
     private protected RuntimeCellRecoveryJob CreateRecoveryJob(DateTime utcNow)
     {
@@ -61,11 +52,8 @@ public abstract class RuntimeCellLifecycleTestBase(
             DbContext.IsolationScopes,
             DbContext.RuntimeCells,
             StoreOutboxWrites,
-            transaction.InvokeOutcomeAsync<Unit>);
-        return new RuntimeCellRecoveryJob(
-            persistence,
-            CreateDeletionFinalizer(utcNow),
-            new FixedTimeProvider(utcNow));
+            transaction.InvokeOutcomeAsync);
+        return new RuntimeCellRecoveryJob(persistence, CreateDeletionFinalizer(utcNow), new FixedTimeProvider(utcNow));
     }
 
     private protected FinalizeResourceGroupDeletion CreateDeletionFinalizer(DateTime utcNow) =>
@@ -74,32 +62,30 @@ public abstract class RuntimeCellLifecycleTestBase(
     private protected Task StoreOutboxWrites(
         IClientSessionHandle session,
         IReadOnlyCollection<OutboxWrite> writes,
-        CancellationToken cancellationToken = default) =>
-        Fixture.StoreOutboxWrites(session, writes, cancellationToken);
+        CancellationToken cancellationToken = default) => Fixture.StoreOutboxWrites(session, writes, cancellationToken);
 
-    private protected static Task<ApplyDeploymentTargetReferenceChangesOutcome>
-        NoOpReferenceChanges(
+    private protected static Task<ApplyDeploymentTargetReferenceChangesOutcome> NoOpReferenceChanges(
         ApplyDeploymentTargetReferenceChangesRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
-            new DeploymentTargetReferencesChanged());
+        Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(new DeploymentTargetReferencesChanged());
 
     private protected static RuntimeCellReconciliationRequestedEvent ReconciliationEvent(RuntimeCell cell) =>
         new(cell.Id, cell.DesiredGeneration)
         {
-            EventCore = EventCore.Create(cell.TenantId)
+            EventCore = EventCore.Create(cell.TenantId),
         };
 
     private protected static RuntimeCellDeletionRequestedEvent DeletionEvent(RuntimeCell cell) =>
         new(cell.Id, cell.DesiredGeneration, null, 0)
         {
-            EventCore = EventCore.Create(cell.TenantId)
+            EventCore = EventCore.Create(cell.TenantId),
         };
 
     private protected sealed class RecordingNamespaceManager(
         RuntimeCellEnsureOutcome ensureResult,
-        RuntimeCellDeleteOutcome deleteResult)
+        RuntimeCellDeleteOutcome deleteResult
+    )
     {
         public int EnsureCallCount { get; private set; }
         public int DeleteCallCount { get; private set; }
@@ -125,8 +111,7 @@ public abstract class RuntimeCellLifecycleTestBase(
     {
         public int UnregisterCallCount { get; private set; }
 
-        public Task<ApplyDeploymentTargetReferenceChangesOutcome>
-            ApplyChangesOutcomeAsync(
+        public Task<ApplyDeploymentTargetReferenceChangesOutcome> ApplyChangesOutcomeAsync(
             ApplyDeploymentTargetReferenceChangesRequest request,
             IClientSessionHandle session,
             CancellationToken cancellationToken = default)
@@ -137,7 +122,9 @@ public abstract class RuntimeCellLifecycleTestBase(
         }
     }
 
-    private protected sealed class FixedTimeProvider(DateTime utcNow) : TimeProvider
+    private protected sealed class FixedTimeProvider(
+        DateTime utcNow
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => new(utcNow);
     }

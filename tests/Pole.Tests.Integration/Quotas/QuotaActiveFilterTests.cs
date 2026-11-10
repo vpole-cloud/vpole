@@ -1,16 +1,16 @@
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Pole.Features.Quotas.Application.Reservations;
 using Pole.Features.Quotas.Domain;
-using Pole.Features.Quotas.Primitives;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Quotas;
 
 [Collection(IntegrationTestCollection.Tenant4)]
-public sealed class QuotaActiveFilterTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+public sealed class QuotaActiveFilterTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ActiveFiltersExcludeExpiredFinalizedAndOtherTenantReservations()
@@ -22,7 +22,8 @@ public sealed class QuotaActiveFilterTests(MongoReplicaSetFixture fixture) : Med
         var expired = Create(tenant, new ActiveQuotaReservationState(now.AddMinutes(-5), now.AddHours(1)));
         var committed = Create(tenant, new CommittedQuotaReservationState(now, now.AddHours(1)));
         var cancelled = Create(tenant, new CancelledQuotaReservationState(now, now.AddHours(1)));
-        var foreign = Create(ObjectId.GenerateNewId().ToString(),
+        var foreign = Create(
+            ObjectId.GenerateNewId().ToString(),
             new ActiveQuotaReservationState(now.AddMinutes(5), now.AddHours(1)));
         await reservations.InsertManyAsync([active, expired, committed, cancelled, foreign]);
 
@@ -31,8 +32,11 @@ public sealed class QuotaActiveFilterTests(MongoReplicaSetFixture fixture) : Med
         Assert.Equal(active.Id, Assert.Single(selected).Id);
     }
 
-    private static QuotaReservation Create(string tenantId, QuotaReservationState state) =>
-        new(ObjectId.GenerateNewId().ToString(), tenantId, [],
-            QuotaResourceKey.Create("test", Guid.NewGuid().ToString("N")),
-            DateTime.UtcNow, state);
+    private static QuotaReservation Create(string tenantId, QuotaReservationState state) => new(
+        ObjectId.GenerateNewId().ToString(),
+        tenantId,
+        [],
+        QuotaResourceKey.Create("test", Guid.NewGuid().ToString("N")),
+        DateTime.UtcNow,
+        state);
 }

@@ -6,12 +6,9 @@ public sealed class RepositoryArchiveOptions
 {
     public const string SectionName = "GitHubRepositoryArchive";
 
-    [Range(1, long.MaxValue)]
-    public long MaxCompressedBytes { get; init; } = 100L * 1024 * 1024;
+    [Range(1, long.MaxValue)] public long MaxCompressedBytes { get; init; } = 100L * 1024 * 1024;
 
-    [Range(1, long.MaxValue)]
-    public long MaxDecompressedBytes { get; init; } = 500L * 1024 * 1024;
+    [Range(1, long.MaxValue)] public long MaxDecompressedBytes { get; init; } = 500L * 1024 * 1024;
 
-    [Range(1, int.MaxValue)]
-    public int MaxEntries { get; init; } = 50_000;
+    [Range(1, int.MaxValue)] public int MaxEntries { get; init; } = 50_000;
 }

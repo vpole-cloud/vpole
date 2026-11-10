@@ -14,7 +14,8 @@ public sealed record RuntimeCellDto(
     string? FailureCode,
     DateTime? RetryNotBeforeUtc,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc
+);
 
 internal static class RuntimeCellDtoExtensions
 {
@@ -37,7 +38,7 @@ internal static class RuntimeCellDtoExtensions
                 DeletingRuntimeCellState => "deleting",
                 DeletedRuntimeCellState => "deleted",
                 _ => throw new InvalidOperationException(
-                    $"Unsupported runtime cell state '{cell.State.GetType().Name}'.")
+                    $"Unsupported runtime cell state '{cell.State.GetType().Name}'."),
             },
             failed?.FailureCode,
             failed?.RetryNotBeforeUtc,

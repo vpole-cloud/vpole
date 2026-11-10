@@ -8,25 +8,25 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
-        <ProjectReference Include="../../src/features/Tenants/Tenants.Testing/Tenants.Testing.csproj" />
-        <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Testing/ResourceGroups.Testing.csproj" />
+        <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest"/>
+        <ProjectReference Include="../../src/features/Tenants/Tenants.Testing/Tenants.Testing.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Testing/ResourceGroups.Testing.csproj"/>
         <!-- Pole API tests opt into the server JSON policy; external protocol fixtures import framework helpers explicitly. -->
-        <Using Remove="System.Net.Http.Json" />
+        <Using Remove="System.Net.Http.Json"/>
     </ItemGroup>
 
     <ItemGroup>
-    <ProjectReference Include="../../src/features/GitOps/GitOps.Application/GitOps.Application.csproj" />
-        <ProjectReference Include="../Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" ReferenceOutputAssembly="false" IsAspireProjectResource="false" />
-        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj" />
-        <ProjectReference Include="../../src/features/Realtime/Realtime.Application/Realtime.Application.csproj" />
-        <PackageReference Include="FSharp.Core" />
-        <PackageReference Include="Microsoft.AspNetCore.TestHost" />
-        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" />
-        <PackageReference Include="Npgsql" />
-        <PackageReference Include="Testcontainers" />
-        <PackageReference Include="xunit" />
+        <ProjectReference Include="../../src/features/GitOps/GitOps.Application/GitOps.Application.csproj"/>
+        <ProjectReference Include="../Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" ReferenceOutputAssembly="false" IsAspireProjectResource="false"/>
+        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj"/>
+        <ProjectReference Include="../../src/features/Realtime/Realtime.Application/Realtime.Application.csproj"/>
+        <PackageReference Include="FSharp.Core"/>
+        <PackageReference Include="Microsoft.AspNetCore.TestHost"/>
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="Npgsql"/>
+        <PackageReference Include="Testcontainers"/>
+        <PackageReference Include="xunit"/>
         <PackageReference Include="xunit.runner.visualstudio">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -34,59 +34,59 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" />
-        <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj" />
-        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj" />
-        <ProjectReference Include="..\..\src\features\Domains\Domains.Application\Domains.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts\Domains.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\features\Domains\Domains.Domain\Domains.Domain.csproj" />
-        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Application\Quotas.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj" />
-        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Domain\Quotas.Domain.csproj" />
-        <ProjectReference Include="..\..\src\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj" />
-        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj" />
-        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj" />
-        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
-        <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\Outbox\Outbox.Application\Outbox.Application.csproj" />
-        <ProjectReference Include="..\..\src\features\Outbox\Outbox.Contracts\Outbox.Contracts.csproj" />
-        <ProjectReference Include="..\..\src\shared\Encryption\Encryption.csproj" />
-        <ProjectReference Include="..\..\src\shared\Dns\Dns.csproj" />
-        <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj" />
+        <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Runtime/PrivateAccess.Runtime.csproj"/>
+        <ProjectReference Include="..\..\src\api\Pole.Server\Pole.Server.csproj"/>
+        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Application\ComputeProfiles.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Contracts\ComputeProfiles.Contracts.csproj"/>
+        <ProjectReference Include="..\..\src\features\ComputeProfiles\ComputeProfiles.Domain\ComputeProfiles.Domain.csproj"/>
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Application\Domains.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Contracts\Domains.Contracts.csproj"/>
+        <ProjectReference Include="..\..\src\features\Domains\Domains.Domain\Domains.Domain.csproj"/>
+        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Application\Quotas.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts\Quotas.Contracts.csproj"/>
+        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Contracts.HttpMapping\Quotas.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\src\features\Quotas\Quotas.Domain\Quotas.Domain.csproj"/>
+        <ProjectReference Include="..\..\src\features\ContainerRegistries\ContainerRegistries.Application\ContainerRegistries.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj"/>
+        <ProjectReference Include="..\..\src\features\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Application\ResourceDeployments.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Contracts.HttpMapping\ResourceDeployments.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Domain\ResourceDeployments.Domain.csproj"/>
+        <ProjectReference Include="..\..\src\features\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj"/>
+        <ProjectReference Include="..\..\src\features\SourceBuilds\SourceBuilds.Application\SourceBuilds.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\Outbox\Outbox.Application\Outbox.Application.csproj"/>
+        <ProjectReference Include="..\..\src\features\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
+        <ProjectReference Include="..\..\src\shared\Encryption\Encryption.csproj"/>
+        <ProjectReference Include="..\..\src\shared\Dns\Dns.csproj"/>
+        <ProjectReference Include="..\..\src\shared\Observability\Observability.csproj"/>
     </ItemGroup>
 
-<ItemGroup>
-    <ProjectReference Include="../Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj" />
-    <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj" />
-</ItemGroup>
-<Target Name="CopyObservationSerializationProbe" AfterTargets="Build">
     <ItemGroup>
-        <ObservationSerializationProbeFiles Include="../Pole.Tests.ObservationSerializationProbe/bin/$(Configuration)/$(TargetFramework)/*" />
+        <ProjectReference Include="../Pole.Testing.Kubernetes/Pole.Testing.Kubernetes.csproj"/>
+        <ProjectReference Include="../../src/api/Pole.Testing/Pole.Testing.csproj"/>
     </ItemGroup>
-    <Copy SourceFiles="@(ObservationSerializationProbeFiles)" DestinationFolder="$(OutDir)ObservationSerializationProbe" SkipUnchangedFiles="true" />
-</Target>
-  <ItemGroup>
-    <ProjectReference Include="../../src/features/ComputeProfiles/ComputeProfiles.Migrations/ComputeProfiles.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/ContainerRegistries/ContainerRegistries.Migrations/ContainerRegistries.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/DeploymentTargets/DeploymentTargets.Migrations/DeploymentTargets.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/Domains/Domains.Migrations/Domains.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/Functions/Functions.Migrations/Functions.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/GitOps/GitOps.Migrations/GitOps.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/GitProviders/GitProviders.Migrations/GitProviders.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Migrations/ResourceDeployments.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/Search/Search.Migrations/Search.Migrations.fsproj" />
-    <ProjectReference Include="../../src/features/Secrets/Secrets.Migrations/Secrets.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/SourceBuilds/SourceBuilds.Migrations/SourceBuilds.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/StorageProfiles/StorageProfiles.Migrations/StorageProfiles.Migrations.csproj" />
-    <ProjectReference Include="../../src/features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj" />
-  </ItemGroup>
+    <Target Name="CopyObservationSerializationProbe" AfterTargets="Build">
+        <ItemGroup>
+            <ObservationSerializationProbeFiles Include="../Pole.Tests.ObservationSerializationProbe/bin/$(Configuration)/$(TargetFramework)/*"/>
+        </ItemGroup>
+        <Copy SourceFiles="@(ObservationSerializationProbeFiles)" DestinationFolder="$(OutDir)ObservationSerializationProbe" SkipUnchangedFiles="true"/>
+    </Target>
+    <ItemGroup>
+        <ProjectReference Include="../../src/features/ComputeProfiles/ComputeProfiles.Migrations/ComputeProfiles.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/ContainerRegistries/ContainerRegistries.Migrations/ContainerRegistries.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/DeploymentTargets/DeploymentTargets.Migrations/DeploymentTargets.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/Domains/Domains.Migrations/Domains.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/Functions/Functions.Migrations/Functions.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/GitOps/GitOps.Migrations/GitOps.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/GitProviders/GitProviders.Migrations/GitProviders.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/Outbox/Outbox.Migrations/Outbox.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceConnections/ResourceConnections.Migrations/ResourceConnections.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceDeployments/ResourceDeployments.Migrations/ResourceDeployments.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/ResourceGroups/ResourceGroups.Migrations/ResourceGroups.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/Search/Search.Migrations/Search.Migrations.fsproj"/>
+        <ProjectReference Include="../../src/features/Secrets/Secrets.Migrations/Secrets.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/SourceBuilds/SourceBuilds.Migrations/SourceBuilds.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/StorageProfiles/StorageProfiles.Migrations/StorageProfiles.Migrations.csproj"/>
+        <ProjectReference Include="../../src/features/WebServices/WebServices.Migrations/WebServices.Migrations.csproj"/>
+    </ItemGroup>
 </Project>

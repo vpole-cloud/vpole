@@ -2,11 +2,13 @@ using MongoDB.Driver;
 using Pole.Features.Quotas.Application.Common;
 using Pole.Features.Quotas.Application.Usage;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.Quotas.Primitives;
 
 namespace Pole.Features.Quotas.Application.Services;
 
-internal sealed class QuotaUsageRelease(QuotaCatalog catalog, ApplyQuotaUsageDelta apply) : IQuotaUsageRelease
+internal sealed class QuotaUsageRelease(
+    QuotaCatalog catalog,
+    ApplyQuotaUsageDelta apply
+) : IQuotaUsageRelease
 {
     public Task ReleaseAsync<TSpec>(
         ReleaseQuotaUsageRequest<TSpec> request,

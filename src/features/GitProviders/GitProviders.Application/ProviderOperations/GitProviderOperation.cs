@@ -5,9 +5,7 @@ using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
-internal union GitProviderOperationOutcome<T>(
-    T,
-    GitProviderRepositoryAccessError)
+internal union GitProviderOperationOutcome<T>(T, GitProviderRepositoryAccessError)
     where T : notnull;
 
 internal static class GitProviderOperation
@@ -19,10 +17,7 @@ internal static class GitProviderOperation
         where T : notnull
     {
         if (connection.Provider is not GitProviderKind.GitHub)
-        {
-            return new GitProviderRepositoryAccessError(
-                new GitProviderUnsupported(connection.Provider.ToString()));
-        }
+            return new GitProviderRepositoryAccessError(new GitProviderUnsupported(connection.Provider.ToString()));
 
         try
         {
@@ -38,9 +33,7 @@ internal static class GitProviderOperation
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogError(
-                exception,
-                "GitHub repository operation failed before the provider request completed.");
+            logger.LogError(exception, "GitHub repository operation failed before the provider request completed.");
             return new GitProviderRepositoryAccessError(new GitProviderUnavailable("GitHub"));
         }
     }

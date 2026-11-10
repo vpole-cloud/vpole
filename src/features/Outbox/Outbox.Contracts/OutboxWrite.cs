@@ -4,11 +4,10 @@ namespace Pole.Features.Outbox.Contracts;
 
 public sealed record OutboxWrite(
     IPoleEvent Event,
-    string? PendingKey = null)
+    string? PendingKey = null
+)
 {
-    public static OutboxWrite Create(
-        IPoleEvent @event,
-        string? pendingKey = null)
+    public static OutboxWrite Create(IPoleEvent @event, string? pendingKey = null)
     {
         ArgumentNullException.ThrowIfNull(@event);
         if (pendingKey is not null && string.IsNullOrWhiteSpace(pendingKey))

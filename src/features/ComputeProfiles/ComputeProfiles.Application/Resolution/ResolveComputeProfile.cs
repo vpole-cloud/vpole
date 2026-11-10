@@ -3,7 +3,8 @@ using Pole.Features.ComputeProfiles.Contracts;
 namespace Pole.Features.ComputeProfiles.Application.Resolution;
 
 internal sealed class MongoResolveComputeProfile(
-    MongoResolveComputeProfiles batchResolver)
+    MongoResolveComputeProfiles batchResolver
+)
 {
     public async Task<ResolveComputeProfileOutcome> InvokeAsync(
         ComputeProfileResolutionRequest request,
@@ -14,15 +15,12 @@ internal sealed class MongoResolveComputeProfile(
             new ComputeProfileBatchResolutionRequest(
                 request.TenantId,
                 request.ResourceType,
-                [new ComputeProfileTargetResolutionRequest(
-                    request.DeploymentTargetId,
-                    request.ComputeProfileId)]),
+                [new ComputeProfileTargetResolutionRequest(request.DeploymentTargetId, request.ComputeProfileId)]),
             cancellationToken);
         return result switch
         {
-            IReadOnlyList<ResolvedComputeProfile> profiles =>
-                profiles.Single(),
-            ComputeProfileResolutionError error => error
+            IReadOnlyList<ResolvedComputeProfile> profiles => profiles.Single(),
+            ComputeProfileResolutionError error => error,
         };
     }
 }

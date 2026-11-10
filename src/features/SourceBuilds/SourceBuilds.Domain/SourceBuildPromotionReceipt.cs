@@ -17,7 +17,8 @@ public sealed record SourceBuildPromotionReceipt(
     string CommitSha,
     SourceBuildArtifact Artifact,
     string ReleaseId,
-    long WebServiceRevision) : ITenantOwned;
+    long WebServiceRevision
+) : ITenantOwned;
 
 public static class SourceBuildPromotionReceiptFactory
 {
@@ -35,9 +36,17 @@ public static class SourceBuildPromotionReceiptFactory
         if (job.State is not PushingSourceBuild pushing || pushing.Artifact != promotedArtifact)
             throw new ArgumentException("A promotion receipt requires the built artifact.", nameof(job));
 
-        return new(job.Id, job.TenantId, job.ConfigurationId, job.WebServiceId,
-            job.InputVersion.ConfigurationRevision, job.InputVersion.Generation, job.SourceRepositoryId, job.CommitSha,
-            promotedArtifact, releaseId,
+        return new SourceBuildPromotionReceipt(
+            job.Id,
+            job.TenantId,
+            job.ConfigurationId,
+            job.WebServiceId,
+            job.InputVersion.ConfigurationRevision,
+            job.InputVersion.Generation,
+            job.SourceRepositoryId,
+            job.CommitSha,
+            promotedArtifact,
+            releaseId,
             webServiceRevision);
     }
 }

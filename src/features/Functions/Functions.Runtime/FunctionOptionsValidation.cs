@@ -15,13 +15,10 @@ internal static class FunctionOptionsValidation
             new ValidationContext(options),
             validationResults,
             validateAllProperties: true);
-        return validationResults
-            .Select(result => result.ErrorMessage ?? "Function runtime options are invalid.")
+        return validationResults.Select(result => result.ErrorMessage ?? "Function runtime options are invalid.")
             .ToList();
     }
 
     public static ValidateOptionsResult ToValidateOptionsResult(IReadOnlyCollection<string> failures) =>
-        failures.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(failures);
+        failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
 }

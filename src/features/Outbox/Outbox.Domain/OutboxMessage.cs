@@ -15,7 +15,8 @@ public sealed record OutboxMessage(
     DateTime OccurredAtUtc,
     DateTime EnqueuedAtUtc,
     string? PendingKey,
-    OutboxMessageState State)
+    OutboxMessageState State
+)
 {
     public static OutboxMessage Create(
         string eventType,
@@ -25,18 +26,15 @@ public sealed record OutboxMessage(
         string? correlationId,
         DateTime occurredAtUtc,
         DateTime enqueuedAtUtc,
-        string? pendingKey) =>
-        OutboxMessageFactory.Create(
-            eventType,
-            tenantId,
-            payloadJson,
-            traceId,
-            correlationId,
-            occurredAtUtc,
-            pendingKey,
-            new OutboxMessageFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                enqueuedAtUtc));
+        string? pendingKey) => OutboxMessageFactory.Create(
+        eventType,
+        tenantId,
+        payloadJson,
+        traceId,
+        correlationId,
+        occurredAtUtc,
+        pendingKey,
+        new OutboxMessageFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), enqueuedAtUtc));
 
     public OutboxMessage MarkPublished(DateTime publishedAtUtc)
     {
@@ -46,9 +44,7 @@ public sealed record OutboxMessage(
             EnqueuedAtUtc,
             nameof(publishedAtUtc));
 
-        return WithState(
-            pendingKey: null,
-            new PublishedOutboxMessageState(normalizedPublishedAtUtc));
+        return WithState(pendingKey: null, new PublishedOutboxMessageState(normalizedPublishedAtUtc));
     }
 
     public OutboxMessage ScheduleRetry(DateTime nextAttemptAtUtc, string lastError)
@@ -99,18 +95,17 @@ public sealed record OutboxMessage(
             $"Cannot transition an outbox message from terminal state '{State.GetType().Name}'.");
     }
 
-    private OutboxMessage WithState(string? pendingKey, OutboxMessageState state) =>
-        new(
-            Id,
-            EventType,
-            TenantId,
-            PayloadJson,
-            TraceId,
-            CorrelationId,
-            OccurredAtUtc,
-            EnqueuedAtUtc,
-            pendingKey,
-            state);
+    private OutboxMessage WithState(string? pendingKey, OutboxMessageState state) => new(
+        Id,
+        EventType,
+        TenantId,
+        PayloadJson,
+        TraceId,
+        CorrelationId,
+        OccurredAtUtc,
+        EnqueuedAtUtc,
+        pendingKey,
+        state);
 }
 
 [BsonDiscriminator(RootClass = true)]
@@ -124,29 +119,25 @@ public abstract record OutboxMessageState;
 public sealed record PendingOutboxMessageState(
     int AttemptCount,
     DateTime NextAttemptAtUtc,
-    string? LastError)
-    : OutboxMessageState;
+    string? LastError
+) : OutboxMessageState;
 
 [BsonDiscriminator("published")]
-public sealed record PublishedOutboxMessageState(DateTime PublishedAtUtc)
-    : OutboxMessageState;
+public sealed record PublishedOutboxMessageState(
+    DateTime PublishedAtUtc
+) : OutboxMessageState;
 
 [BsonDiscriminator("abandoned")]
 public sealed record AbandonedOutboxMessageState(
     int AttemptCount,
     DateTime AbandonedAtUtc,
     string FailureCode,
-    string LastError)
-    : OutboxMessageState;
+    string LastError
+) : OutboxMessageState;
 
 public static class OutboxMessageFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime EnqueuedAtUtc);
-
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
+    public static CreateOptions DefaultOptions => new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static OutboxMessage Create(
         string eventType,
@@ -160,18 +151,12 @@ public static class OutboxMessageFactory
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var normalizedOccurredAtUtc = OutboxMessageValueGuard.Utc(
-            occurredAtUtc,
-            nameof(occurredAtUtc));
-        var normalizedEnqueuedAtUtc = OutboxMessageValueGuard.Utc(
-            options.EnqueuedAtUtc,
-            nameof(options.EnqueuedAtUtc));
+        var normalizedOccurredAtUtc = OutboxMessageValueGuard.Utc(occurredAtUtc, nameof(occurredAtUtc));
+        var normalizedEnqueuedAtUtc = OutboxMessageValueGuard.Utc(options.EnqueuedAtUtc, nameof(options.EnqueuedAtUtc));
         if (normalizedEnqueuedAtUtc < normalizedOccurredAtUtc)
-        {
             throw new ArgumentException(
                 "An outbox message cannot be enqueued before its event occurred.",
                 nameof(options));
-        }
 
         return new OutboxMessage(
             OutboxMessageValueGuard.ObjectId(options.Id, nameof(options.Id)),
@@ -179,15 +164,9 @@ public static class OutboxMessageFactory
                 eventType,
                 nameof(eventType),
                 OutboxMessageValueGuard.MaximumEventTypeLength),
-            OutboxMessageValueGuard.Optional(
-                tenantId,
-                nameof(tenantId),
-                OutboxMessageValueGuard.MaximumTenantIdLength),
+            OutboxMessageValueGuard.Optional(tenantId, nameof(tenantId), OutboxMessageValueGuard.MaximumTenantIdLength),
             OutboxMessageValueGuard.Payload(payloadJson, nameof(payloadJson)),
-            OutboxMessageValueGuard.Optional(
-                traceId,
-                nameof(traceId),
-                OutboxMessageValueGuard.MaximumTraceIdLength),
+            OutboxMessageValueGuard.Optional(traceId, nameof(traceId), OutboxMessageValueGuard.MaximumTraceIdLength),
             OutboxMessageValueGuard.Optional(
                 correlationId,
                 nameof(correlationId),
@@ -198,11 +177,13 @@ public static class OutboxMessageFactory
                 pendingKey,
                 nameof(pendingKey),
                 OutboxMessageValueGuard.MaximumPendingKeyLength),
-            new PendingOutboxMessageState(
-                AttemptCount: 0,
-                normalizedEnqueuedAtUtc,
-                LastError: null));
+            new PendingOutboxMessageState(AttemptCount: 0, normalizedEnqueuedAtUtc, LastError: null));
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime EnqueuedAtUtc
+    );
 }
 
 internal static class OutboxMessageValueGuard
@@ -215,23 +196,25 @@ internal static class OutboxMessageValueGuard
     public const int MaximumFailureCodeLength = 128;
     public const int MaximumErrorLength = 2048;
 
-    public static string Required(string? value, string parameterName, int maximumLength)
+    public static string Required(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("The value is required.", parameterName);
 
         var normalized = value.Trim();
         if (normalized.Length > maximumLength)
-        {
-            throw new ArgumentException(
-                $"The value must be {maximumLength} characters or less.",
-                parameterName);
-        }
+            throw new ArgumentException($"The value must be {maximumLength} characters or less.", parameterName);
 
         return normalized;
     }
 
-    public static string? Optional(string? value, string parameterName, int maximumLength)
+    public static string? Optional(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;
@@ -261,15 +244,12 @@ internal static class OutboxMessageValueGuard
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("An error message is required.", parameterName);
 
-        var sanitized = string.Concat(
-                value.Trim().Select(character => char.IsControl(character) ? ' ' : character))
+        var sanitized = string.Concat(value.Trim().Select(character => char.IsControl(character) ? ' ' : character))
             .Trim();
         if (string.IsNullOrWhiteSpace(sanitized))
             throw new ArgumentException("An error message is required.", parameterName);
 
-        return sanitized.Length <= MaximumErrorLength
-            ? sanitized
-            : sanitized[..MaximumErrorLength];
+        return sanitized.Length <= MaximumErrorLength ? sanitized : sanitized[..MaximumErrorLength];
     }
 
     public static DateTime Utc(DateTime value, string parameterName)
@@ -281,7 +261,7 @@ internal static class OutboxMessageValueGuard
         {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
         };
     }
 

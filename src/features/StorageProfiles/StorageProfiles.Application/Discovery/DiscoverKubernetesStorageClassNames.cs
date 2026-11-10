@@ -1,13 +1,9 @@
-using k8s;
-using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.StorageProfiles.Application.Observation;
 using Pole.Features.StorageProfiles.Application.Discovery.Observation;
+using Pole.Features.StorageProfiles.Application.Observation;
 
 namespace Pole.Features.StorageProfiles.Application.Discovery;
 
-public union DiscoverKubernetesStorageClassNamesOutcome(
-    IReadOnlySet<string>,
-    KubernetesStorageDiscoveryUnavailable);
+public union DiscoverKubernetesStorageClassNamesOutcome(IReadOnlySet<string>, KubernetesStorageDiscoveryUnavailable);
 
 public delegate Task<DiscoverKubernetesStorageClassNamesOutcome> DiscoverKubernetesStorageClassNames(
     string deploymentTargetId,
@@ -15,7 +11,8 @@ public delegate Task<DiscoverKubernetesStorageClassNamesOutcome> DiscoverKuberne
 
 internal sealed class KubernetesDiscoverStorageClassNames(
     StorageObservationNativeReader native,
-    StorageObservationContextLoader contexts)
+    StorageObservationContextLoader contexts
+)
 {
     public async Task<DiscoverKubernetesStorageClassNamesOutcome> InvokeAsync(
         string deploymentTargetId,

@@ -9,9 +9,11 @@ type SearchDocumentIndexesMigration() =
     interface IMigration with
         member _.Id = ObjectId("69ce0000b213917a38c379ea")
         member _.Name = "Weighted search indexes"
-        member _.Description = "Creates Search projection collections and indexes for extensible source types."
 
-        member _.Up(database : IMongoDatabase, cancellationToken : CancellationToken) =
+        member _.Description =
+            "Creates Search projection collections and indexes for extensible source types."
+
+        member _.Up(database: IMongoDatabase, cancellationToken: CancellationToken) =
             task {
                 let collectionName = "SearchDocuments"
                 let sourceCollectionName = "SearchSourceDocuments"
@@ -30,55 +32,47 @@ type SearchDocumentIndexesMigration() =
                 let collection = database.GetCollection<BsonDocument>(collectionName)
                 let sourceCollection = database.GetCollection<BsonDocument>(sourceCollectionName)
                 let versionCollection = database.GetCollection<BsonDocument>(versionCollectionName)
+
                 let indexModels =
-                    [|
-                        CreateIndexModel<BsonDocument>(
-                            Builders<BsonDocument>.IndexKeys
-                                .Ascending("TenantId")
-                                .Ascending("ResourceTypeId")
-                                .Ascending("SourceId")
-                                .Ascending("KeyType")
-                                .Ascending("SearchValue"),
-                            CreateIndexOptions(Unique = true, Name = "IX_SearchDocuments_Source_Key")
-                        )
-                        CreateIndexModel<BsonDocument>(
-                            Builders<BsonDocument>.IndexKeys
-                                .Ascending("SearchValue")
-                                .Ascending("SourceApiName"),
-                            CreateIndexOptions(Name = "IX_SearchDocuments_SearchValue_SourceApiName")
-                        )
-                        CreateIndexModel<BsonDocument>(
-                            Builders<BsonDocument>.IndexKeys
-                                .Ascending("SourceSortOrder")
-                                .Ascending("SearchValue")
-                                .Descending("Weight"),
-                            CreateIndexOptions(Name = "IX_SearchDocuments_SourceSortOrder_SearchValue_Weight")
-                        )
-                    |]
+                    [| CreateIndexModel<BsonDocument>(
+                           Builders<BsonDocument>.IndexKeys
+                               .Ascending("TenantId")
+                               .Ascending("ResourceTypeId")
+                               .Ascending("SourceId")
+                               .Ascending("KeyType")
+                               .Ascending("SearchValue"),
+                           CreateIndexOptions(Unique = true, Name = "IX_SearchDocuments_Source_Key")
+                       )
+                       CreateIndexModel<BsonDocument>(
+                           Builders<BsonDocument>.IndexKeys.Ascending("SearchValue").Ascending("SourceApiName"),
+                           CreateIndexOptions(Name = "IX_SearchDocuments_SearchValue_SourceApiName")
+                       )
+                       CreateIndexModel<BsonDocument>(
+                           Builders<BsonDocument>.IndexKeys
+                               .Ascending("SourceSortOrder")
+                               .Ascending("SearchValue")
+                               .Descending("Weight"),
+                           CreateIndexOptions(Name = "IX_SearchDocuments_SourceSortOrder_SearchValue_Weight")
+                       ) |]
 
                 let! _ = collection.Indexes.CreateManyAsync(indexModels, cancellationToken)
 
                 let sourceIndexModels =
-                    [|
-                        CreateIndexModel<BsonDocument>(
-                            Builders<BsonDocument>.IndexKeys
-                                .Ascending("TenantId")
-                                .Ascending("ResourceTypeId")
-                                .Ascending("SourceId"),
-                            CreateIndexOptions(Unique = true, Name = "IX_SearchSourceDocuments_Source")
-                        )
-                        CreateIndexModel<BsonDocument>(
-                            Builders<BsonDocument>.IndexKeys
-                                .Ascending("SearchKeys.Value"),
-                            CreateIndexOptions(Name = "IX_SearchSourceDocuments_SearchKeys_Value")
-                        )
-                        CreateIndexModel<BsonDocument>(
-                            Builders<BsonDocument>.IndexKeys
-                                .Ascending("SourceApiName")
-                                .Ascending("SearchKeys.Value"),
-                            CreateIndexOptions(Name = "IX_SearchSourceDocuments_SourceApiName_SearchKeys_Value")
-                        )
-                    |]
+                    [| CreateIndexModel<BsonDocument>(
+                           Builders<BsonDocument>.IndexKeys
+                               .Ascending("TenantId")
+                               .Ascending("ResourceTypeId")
+                               .Ascending("SourceId"),
+                           CreateIndexOptions(Unique = true, Name = "IX_SearchSourceDocuments_Source")
+                       )
+                       CreateIndexModel<BsonDocument>(
+                           Builders<BsonDocument>.IndexKeys.Ascending("SearchKeys.Value"),
+                           CreateIndexOptions(Name = "IX_SearchSourceDocuments_SearchKeys_Value")
+                       )
+                       CreateIndexModel<BsonDocument>(
+                           Builders<BsonDocument>.IndexKeys.Ascending("SourceApiName").Ascending("SearchKeys.Value"),
+                           CreateIndexOptions(Name = "IX_SearchSourceDocuments_SourceApiName_SearchKeys_Value")
+                       ) |]
 
                 let! _ = sourceCollection.Indexes.CreateManyAsync(sourceIndexModels, cancellationToken)
 
@@ -90,6 +84,7 @@ type SearchDocumentIndexesMigration() =
                             .Ascending("SourceId"),
                         CreateIndexOptions(Unique = true, Name = "IX_SearchProjectionVersions_Source")
                     )
+
                 let! _ = versionCollection.Indexes.CreateOneAsync(versionIndex, cancellationToken = cancellationToken)
                 return ()
             }

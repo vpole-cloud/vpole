@@ -21,7 +21,9 @@ public sealed record UpdateTenantMemberRequest(
     public TenantRole Role => Body.Role;
 }
 
-public sealed record UpdateTenantMemberRequestBody(TenantRole Role);
+public sealed record UpdateTenantMemberRequestBody(
+    TenantRole Role
+);
 
 public union UpdateTenantMemberOutcome(
     TenantMemberDto,
@@ -30,25 +32,22 @@ public union UpdateTenantMemberOutcome(
     TenantLastOwner);
 
 public sealed class UpdateTenantMemberHandler(
-    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole)
-    : IMediatorOutcomeHandler<UpdateTenantMemberRequest, UpdateTenantMemberOutcome>
+    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole
+) : IMediatorOutcomeHandler<UpdateTenantMemberRequest, UpdateTenantMemberOutcome>
 {
     public async Task<UpdateTenantMemberOutcome> HandleAsync(
         UpdateTenantMemberRequest request,
         CancellationToken cancellationToken = default)
     {
         var persisted = await persistUpdatedTenantMemberRole(
-            new UpdateTenantMemberRole(
-                request.TenantId,
-                request.MemberId,
-                request.Body.Role),
+            new UpdateTenantMemberRole(request.TenantId, request.MemberId, request.Body.Role),
             cancellationToken);
         return persisted switch
         {
             TenantMember updated => updated.ToDto(),
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
-            TenantLastOwner error => error
+            TenantLastOwner error => error,
         };
     }
 }
@@ -57,20 +56,21 @@ public static class UpdateTenantMemberEndpoint
 {
     public static IEndpointRouteBuilder MapUpdateTenantMemberEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{TenantId}/members/{MemberId}", async (
-                IMediator mediator,
-                [AsParameters] UpdateTenantMemberRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPut(
+                "/{TenantId}/members/{MemberId}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateTenantMemberRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    TenantMemberDto member => Results.Ok(member),
-                    TenantNotFound error => MapTenantNotFound(error),
-                    TenantMemberNotFound error => MapMemberNotFound(error),
-                    TenantLastOwner error => MapLastOwner(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        TenantMemberDto member => Results.Ok(member),
+                        TenantNotFound error => MapTenantNotFound(error),
+                        TenantMemberNotFound error => MapMemberNotFound(error),
+                        TenantLastOwner error => MapLastOwner(error),
+                    });
+                })
             .WithName("UpdateTenantMember")
             .Produces<TenantMemberDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

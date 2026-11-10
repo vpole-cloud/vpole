@@ -3,14 +3,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Connections;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.DeploymentTargets.Domain;
@@ -20,8 +15,8 @@ using Pole.Validation;
 namespace Pole.Features.DeploymentTargets.Application.Endpoints;
 
 public sealed record ValidateDeploymentTargetRequest(
-    [FromRoute] string Id)
-    : IMediatorRequest<ValidateDeploymentTargetOutcome>;
+    [FromRoute] string Id
+) : IMediatorRequest<ValidateDeploymentTargetOutcome>;
 
 public union ValidateDeploymentTargetOutcome(
     DeploymentTargetDto,
@@ -32,8 +27,8 @@ public sealed class ValidateDeploymentTargetHandler(
     LoadDeploymentTargetById loadDeploymentTargetById,
     LoadDefaultDeploymentTargetId loadDefaultDeploymentTargetId,
     PersistDeploymentTargetValidation persistDeploymentTargetValidation,
-    DeploymentTargetValidationService validationService)
-    : IMediatorOutcomeHandler<ValidateDeploymentTargetRequest, ValidateDeploymentTargetOutcome>
+    DeploymentTargetValidationService validationService
+) : IMediatorOutcomeHandler<ValidateDeploymentTargetRequest, ValidateDeploymentTargetOutcome>
 {
     public async Task<ValidateDeploymentTargetOutcome> HandleAsync(
         ValidateDeploymentTargetRequest request,
@@ -43,19 +38,14 @@ public sealed class ValidateDeploymentTargetHandler(
         if (target is null)
             return new DeploymentTargetNotFound(request.Id);
 
-        var observation = await validationService.ProbeStoredConnectionAsync(
-            target,
-            cancellationToken);
+        var observation = await validationService.ProbeStoredConnectionAsync(target, cancellationToken);
 
         var updated = target.ApplyValidationObservation(
             target.Revision,
             target.Connection.Version,
             observation.Health,
             observation.Capabilities);
-        var persistedResult = await persistDeploymentTargetValidation(
-            target,
-            updated,
-            cancellationToken);
+        var persistedResult = await persistDeploymentTargetValidation(target, updated, cancellationToken);
         if (persistedResult is DeploymentTargetRevisionConflict persistenceError)
             return persistenceError;
 
@@ -65,30 +55,30 @@ public sealed class ValidateDeploymentTargetHandler(
     }
 }
 
-public sealed class ValidateDeploymentTargetRequestValidator
-    : AbstractValidator<ValidateDeploymentTargetRequest>
+public sealed class ValidateDeploymentTargetRequestValidator : AbstractValidator<ValidateDeploymentTargetRequest>
 {
     public ValidateDeploymentTargetRequestValidator() => RuleFor(request => request.Id)
-            .MongoObjectId("Deployment target ID");
+        .MongoObjectId("Deployment target ID");
 }
 
 public static class ValidateDeploymentTargetEndpoint
 {
     public static IEndpointRouteBuilder MapValidateDeploymentTargetEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/{Id}/validate", async (
-                IMediator mediator,
-                [AsParameters] ValidateDeploymentTargetRequest request,
-                CancellationToken cancellationToken) =>
-        {
-            var result = await mediator.Send(request, cancellationToken);
-            return result.ToHttpResult(outcome => outcome switch
-            {
-                DeploymentTargetDto target => Results.Ok(target),
-                DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
-                DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error)
-            });
-        })
+        app.MapPost(
+                "/{Id}/validate",
+                async (
+                    IMediator mediator, [AsParameters] ValidateDeploymentTargetRequest request,
+                    CancellationToken cancellationToken) =>
+                {
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        DeploymentTargetDto target => Results.Ok(target),
+                        DeploymentTargetNotFound error => DeploymentTargetHttpMappings.Map(error),
+                        DeploymentTargetRevisionConflict error => DeploymentTargetHttpMappings.Map(error),
+                    });
+                })
             .WithName("ValidateDeploymentTarget")
             .Produces<DeploymentTargetDto>()
             .ProducesProblem(StatusCodes.Status404NotFound)

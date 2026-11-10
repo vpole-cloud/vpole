@@ -1,9 +1,6 @@
 using MongoDB.Driver;
 using Pole.Features.ComputeProfiles.Contracts;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
-using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.ResourceGroups.Contracts;
@@ -16,16 +13,15 @@ internal sealed class MongoRequestResourceDeploymentApply(
     LoadResourcePlacementInTransaction loadResourcePlacement,
     FenceResolvedComputeProfiles fenceResolvedComputeProfiles,
     TimeProvider timeProvider,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<ResourceDeploymentMutationOutcome> InvokeAsync(
         ResourceDeploymentMutationRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment mutations");
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
 
         var loaded = await ResourceDeploymentMutationSupport.LoadSingleAsync(
@@ -44,10 +40,7 @@ internal sealed class MongoRequestResourceDeploymentApply(
             return computeExpectation.Value;
         if (current.DesiredOperation == ResourceDeploymentOperation.Delete ||
             current.State is DeletedResourceDeploymentState)
-        {
-            return new ResourceDeploymentMutationError(
-                new ResourceDeploymentPendingDeletion(request.ResourceId));
-        }
+            return new ResourceDeploymentMutationError(new ResourceDeploymentPendingDeletion(request.ResourceId));
 
         var runtimeCell = await loadResourcePlacement(
             new LoadResourcePlacementInTransactionRequest(
@@ -59,15 +52,11 @@ internal sealed class MongoRequestResourceDeploymentApply(
             !string.Equals(
                 runtimeCell.DeploymentTargetId,
                 current.ResolvedPlacement.DeploymentTargetId,
-                StringComparison.Ordinal) ||
-            !string.Equals(
+                StringComparison.Ordinal) || !string.Equals(
                 runtimeCell.KubernetesNamespace,
                 current.ResolvedPlacement.KubernetesNamespace,
                 StringComparison.Ordinal))
-        {
-            return new ResourceDeploymentMutationError(
-                new ResourceDeploymentPlacementUnavailable(request.ResourceId));
-        }
+            return new ResourceDeploymentMutationError(new ResourceDeploymentPlacementUnavailable(request.ResourceId));
 
         var placement = current.ResolvedPlacement;
         if (request.ReplacementCompute is not null)
@@ -76,26 +65,23 @@ internal sealed class MongoRequestResourceDeploymentApply(
                     request.ReplacementCompute.DeploymentTargetId,
                     current.ResolvedPlacement.DeploymentTargetId,
                     StringComparison.Ordinal))
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentReplacementTargetMismatch(request.ResourceId));
-            }
 
             var computeFence = await fenceResolvedComputeProfiles(
-                [new ComputeProfileResolutionFenceRequest(
-                    request.ReplacementCompute.ComputeProfileId,
-                    request.ReplacementCompute.ComputeProfileRevision,
-                    request.ReplacementCompute.DeploymentTargetId,
-                    request.TenantId,
-                    request.ResourceType)],
+                [
+                    new ComputeProfileResolutionFenceRequest(
+                        request.ReplacementCompute.ComputeProfileId,
+                        request.ReplacementCompute.ComputeProfileRevision,
+                        request.ReplacementCompute.DeploymentTargetId,
+                        request.TenantId,
+                        request.ResourceType),
+                ],
                 session,
                 cancellationToken);
             if (computeFence is ComputeProfileResolutionFenceRejected)
-            {
                 return new ResourceDeploymentMutationError(
-                    new ResourceDeploymentComputeConfigurationChanged(
-                        [request.ReplacementCompute.ComputeProfileId]));
-            }
+                    new ResourceDeploymentComputeConfigurationChanged([request.ReplacementCompute.ComputeProfileId]));
 
             placement = placement with { Compute = request.ReplacementCompute.ToDomain() };
         }

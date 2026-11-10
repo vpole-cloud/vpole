@@ -16,15 +16,11 @@ public sealed class WebServiceQuotaProfileTests
             new WebServiceCountQuota());
         var dto = WebServiceTestData.CreateSpec() with
         {
-            Autoscaling = new AutoscalingSpecDto(
-                2,
-                5,
-                new AutoscalingMetricDto("cpu", 75))
+            Autoscaling = new AutoscalingSpecDto(2, 5, new AutoscalingMetricDto("cpu", 75)),
         };
         var spec = dto.ToDomain();
 
-        var impact = profile.Calculate(
-            WebServiceQuotaInput.Create(250, 256, spec));
+        var impact = profile.Calculate(WebServiceQuotaInput.Create(250, 256, spec));
 
         Assert.Equal(1250, impact[CpuQuota.QuotaKey]);
         Assert.Equal(1280, impact[RamQuota.QuotaKey]);
@@ -43,7 +39,7 @@ public sealed class WebServiceQuotaProfileTests
         var input = WebServiceQuotaInput.Create(
         [
             WebServiceDeploymentQuotaInput.Create(250, 256, 2),
-            WebServiceDeploymentQuotaInput.Create(1000, 2048, 3)
+            WebServiceDeploymentQuotaInput.Create(1000, 2048, 3),
         ]);
 
         var impact = profile.Calculate(input);

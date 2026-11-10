@@ -7,7 +7,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using MongoDB.Driver.Core.Events;
 using Pole.Features.Outbox.Application;
-using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Contracts;
 using Xunit;
 
@@ -16,18 +15,11 @@ namespace Pole.Testing;
 public class MongoReplicaSetFixture : IAsyncLifetime
 {
     private const string DefaultMongoImage = "mongo:7.0";
+    private readonly IContainer _container;
 
     private readonly int _mongoPort;
-    private readonly IContainer _container;
     private readonly TestTimings _timings;
     private ServiceProvider? _outboxServices;
-
-    public string ConnectionString { get; private set; } = string.Empty;
-    public string DirectConnectionString { get; private set; } = string.Empty;
-    public IMongoClient Client { get; private set; } = null!;
-    public IMongoDatabase Database { get; private set; } = null!;
-    public StoreOutboxWrites StoreOutboxWrites =>
-        _outboxServices!.GetRequiredService<StoreOutboxWrites>();
 
     public MongoReplicaSetFixture()
     {
@@ -38,24 +30,34 @@ public class MongoReplicaSetFixture : IAsyncLifetime
         if (string.IsNullOrWhiteSpace(mongoImage))
             mongoImage = DefaultMongoImage;
 
-        _container = new ContainerBuilder(mongoImage)
-            .WithTestOwnership(identity)
+        _container = new ContainerBuilder(mongoImage).WithTestOwnership(identity)
             .WithPortBinding(_mongoPort, _mongoPort)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(_mongoPort))
             .WithCommand("mongod", "--replSet", "rs0", "--bind_ip_all", "--port", _mongoPort.ToString())
             .Build();
     }
 
+    public string ConnectionString { get; private set; } = "";
+    public string DirectConnectionString { get; private set; } = "";
+    public IMongoClient Client { get; private set; } = null!;
+    public IMongoDatabase Database { get; private set; } = null!;
+
+    public StoreOutboxWrites StoreOutboxWrites => _outboxServices!.GetRequiredService<StoreOutboxWrites>();
+
     public virtual async Task InitializeAsync()
     {
         using (_timings.Measure("fixture.mongo.container.start"))
+        {
             await _container.StartAsync();
+        }
 
         DirectConnectionString = $"mongodb://127.0.0.1:{_mongoPort}/?directConnection=true";
         ConnectionString = $"mongodb://127.0.0.1:{_mongoPort}/?replicaSet=rs0";
 
         using (_timings.Measure("fixture.mongo.replica-set.initialize"))
+        {
             await InitializeReplicaSetAsync();
+        }
 
         using (_timings.Measure("fixture.mongo.client.create"))
         {
@@ -71,14 +73,15 @@ public class MongoReplicaSetFixture : IAsyncLifetime
                 Client = new MongoClient(settings);
             }
             else
+            {
                 Client = new MongoClient(ConnectionString);
+            }
+
             Database = Client.GetDatabase("pole-integration-tests");
         }
+
         using var outboxBuild = _timings.Measure("fixture.mongo.outbox.build");
-        _outboxServices = new ServiceCollection()
-            .AddSingleton(Database)
-            .AddOutboxPersistence()
-            .BuildServiceProvider();
+        _outboxServices = new ServiceCollection().AddSingleton(Database).AddOutboxPersistence().BuildServiceProvider();
     }
 
     public virtual async Task DisposeAsync()
@@ -100,22 +103,17 @@ public class MongoReplicaSetFixture : IAsyncLifetime
         await Database.Client.DropDatabaseAsync(Database.DatabaseNamespace.DatabaseName);
         Database = Client.GetDatabase("pole-integration-tests");
         await _outboxServices!.DisposeAsync();
-        _outboxServices = new ServiceCollection()
-            .AddSingleton(Database)
-            .AddOutboxPersistence()
-            .BuildServiceProvider();
+        _outboxServices = new ServiceCollection().AddSingleton(Database).AddOutboxPersistence().BuildServiceProvider();
     }
 
     private async Task InitializeReplicaSetAsync()
     {
-        var initCommand =
-            $"mongosh --quiet --port {_mongoPort} --eval \"rs.initiate({{ _id: 'rs0', members: [{{ _id: 0, host: '127.0.0.1:{_mongoPort}' }}] }})\"";
+        var initCommand
+            = $"mongosh --quiet --port {_mongoPort} --eval \"rs.initiate({{ _id: 'rs0', members: [{{ _id: 0, host: '127.0.0.1:{_mongoPort}' }}] }})\"";
         var result = await _container.ExecAsync(["/bin/sh", "-c", initCommand]);
 
         if (result.ExitCode != 0 && !result.Stderr.Contains("already initialized", StringComparison.OrdinalIgnoreCase))
-        {
             throw new InvalidOperationException($"Failed to initialize Mongo replica set: {result.Stderr}");
-        }
 
         var timeoutAt = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < timeoutAt)
@@ -126,9 +124,7 @@ public class MongoReplicaSetFixture : IAsyncLifetime
                 var admin = client.GetDatabase("admin");
                 var status = await admin.RunCommandAsync<BsonDocument>(new BsonDocument("replSetGetStatus", 1));
                 if (status.TryGetValue("ok", out var ok) && ok.ToDouble() == 1)
-                {
                     return;
-                }
             }
             catch
             {

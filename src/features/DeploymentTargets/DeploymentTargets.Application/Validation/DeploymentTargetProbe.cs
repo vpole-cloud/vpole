@@ -1,18 +1,19 @@
+using System.Text.Json;
 using k8s;
 using k8s.Autorest;
 using k8s.Models;
+using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Domain;
-using System.Text.Json;
 
 namespace Pole.Features.DeploymentTargets.Application.Validation;
 
 public sealed record DeploymentTargetProbeObservation(
     string? ClusterIdentity,
     DeploymentTargetHealth Health,
-    DeploymentTargetCapabilities Capabilities)
+    DeploymentTargetCapabilities Capabilities
+)
 {
-    public bool IsUsable => ClusterIdentity is not null &&
-        Health.Status == DeploymentTargetHealthStatus.Healthy;
+    public bool IsUsable => ClusterIdentity is not null && Health.Status == DeploymentTargetHealthStatus.Healthy;
 }
 
 public delegate Task<DeploymentTargetProbeObservation> ProbeDeploymentTargetConnection(
@@ -23,7 +24,8 @@ public delegate Task<DeploymentTargetProbeObservation> ProbeDeploymentTargetConn
 
 public sealed class DeploymentTargetProbe(
     TimeProvider timeProvider,
-    Common.DeploymentTargetOptions options)
+    DeploymentTargetOptions options
+)
 {
     private const int MaximumClusterIdentityLength = 512;
     private const int MaximumKubernetesVersionLength = 128;
@@ -49,48 +51,35 @@ public sealed class DeploymentTargetProbe(
             var namespaceUid = systemNamespace?.Metadata?.Uid;
             var gitVersion = version?.GitVersion;
             if (string.IsNullOrWhiteSpace(namespaceUid) || string.IsNullOrWhiteSpace(gitVersion))
-            {
                 return Failed(
                     connectionVersion,
                     lastHealthyAtUtc,
                     "InvalidServerIdentity",
                     "The Kubernetes API did not return a stable cluster identity.");
-            }
 
             var normalizedNamespaceUid = namespaceUid.Trim();
             var normalizedKubernetesVersion = gitVersion.Trim();
             var identity = $"kubernetes:kube-system:{normalizedNamespaceUid}";
             if (identity.Length > MaximumClusterIdentityLength ||
                 normalizedKubernetesVersion.Length > MaximumKubernetesVersionLength)
-            {
                 return Failed(
                     connectionVersion,
                     lastHealthyAtUtc,
                     "InvalidServerIdentity",
                     "The Kubernetes API returned an unsupported cluster identity.");
-            }
 
             var permissions = new Dictionary<string, bool>(StringComparer.Ordinal);
             foreach (var verb in NamespaceVerbs)
-            {
-                permissions[verb] = await IsAllowedAsync(
-                    kubernetes,
-                    string.Empty,
-                    "namespaces",
-                    verb,
-                    timeout.Token);
-            }
+                permissions[verb] = await IsAllowedAsync(kubernetes, "", "namespaces", verb, timeout.Token);
 
             var networkPolicyPermissions = new Dictionary<string, bool>(StringComparer.Ordinal);
             foreach (var verb in NetworkPolicyVerbs)
-            {
                 networkPolicyPermissions[verb] = await IsAllowedAsync(
                     kubernetes,
                     "networking.k8s.io",
                     "networkpolicies",
                     verb,
                     timeout.Token);
-            }
 
             var checkedAtUtc = GetCheckedAtUtc(lastHealthyAtUtc);
             var namespaceCapabilities = new DeploymentTargetNamespaceCapabilities(
@@ -112,7 +101,6 @@ public sealed class DeploymentTargetProbe(
                 namespaceCapabilities,
                 networkPolicyCapabilities);
             if (permissions.Values.Any(allowed => !allowed))
-            {
                 return new DeploymentTargetProbeObservation(
                     identity,
                     DeploymentTargetHealth.Degraded(
@@ -122,10 +110,8 @@ public sealed class DeploymentTargetProbe(
                         "InsufficientNamespacePermissions",
                         "The Kubernetes identity cannot manage namespaces required by Pole."),
                     capabilities);
-            }
 
             if (!networkPolicyCapabilities.CanManage)
-            {
                 return new DeploymentTargetProbeObservation(
                     identity,
                     DeploymentTargetHealth.Degraded(
@@ -135,7 +121,6 @@ public sealed class DeploymentTargetProbe(
                         "InsufficientNetworkPolicyPermissions",
                         "The Kubernetes identity cannot manage NetworkPolicies required by Pole."),
                     capabilities);
-            }
 
             return new DeploymentTargetProbeObservation(
                 identity,
@@ -158,9 +143,8 @@ public sealed class DeploymentTargetProbe(
                 "KubernetesApiUnavailable",
                 "The Kubernetes API rejected or could not complete validation.");
         }
-        catch (Exception exception) when (
-            exception is HttpRequestException or IOException or InvalidOperationException or
-                JsonException or ArgumentException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidOperationException
+                                              or JsonException or ArgumentException)
         {
             return Failed(
                 connectionVersion,
@@ -187,9 +171,9 @@ public sealed class DeploymentTargetProbe(
                 {
                     Group = group,
                     Resource = resource,
-                    Verb = verb
-                }
-            }
+                    Verb = verb,
+                },
+            },
         };
         var response = await kubernetes.AuthorizationV1.CreateSelfSubjectAccessReviewAsync(
             review,
@@ -208,20 +192,13 @@ public sealed class DeploymentTargetProbe(
         var checkedAtUtc = GetCheckedAtUtc(lastHealthyAtUtc);
         return new DeploymentTargetProbeObservation(
             null,
-            DeploymentTargetHealth.Degraded(
-                connectionVersion,
-                checkedAtUtc,
-                lastHealthyAtUtc,
-                code,
-                safeMessage),
+            DeploymentTargetHealth.Degraded(connectionVersion, checkedAtUtc, lastHealthyAtUtc, code, safeMessage),
             DeploymentTargetCapabilities.Unknown(connectionVersion));
     }
 
     private DateTime GetCheckedAtUtc(DateTime? lastHealthyAtUtc)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        return lastHealthyAtUtc is { } lastHealthy && lastHealthy > now
-            ? lastHealthy
-            : now;
+        return lastHealthyAtUtc is { } lastHealthy && lastHealthy > now ? lastHealthy : now;
     }
 }

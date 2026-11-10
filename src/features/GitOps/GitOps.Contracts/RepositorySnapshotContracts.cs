@@ -4,29 +4,38 @@ namespace Pole.Features.GitOps.Contracts;
 public sealed record RepositorySourceReference(
     string TenantId,
     string ConnectionId,
-    string ExternalRepositoryId);
+    string ExternalRepositoryId
+);
 
 public sealed record ResolveRepositoryCommitRequest(
     RepositorySourceReference Repository,
-    string Branch);
+    string Branch
+);
 
 public sealed record ReadRepositorySnapshotRequest(
     RepositorySourceReference Repository,
     string Commit,
-    string ManifestDirectory);
+    string ManifestDirectory
+);
 
-public sealed record RepositoryCommitResolved(string Commit);
+public sealed record RepositoryCommitResolved(
+    string Commit
+);
 
 public sealed record RepositoryManifestFile(
     string Path,
-    string Content);
+    string Content
+);
 
 // An empty Files list is success only after a complete read of an existing directory.
 public sealed record RepositorySnapshotRead(
     string Commit,
-    IReadOnlyList<RepositoryManifestFile> Files);
+    IReadOnlyList<RepositoryManifestFile> Files
+);
 
-public sealed record RepositoryAccessGranted(string DisplayUrl);
+public sealed record RepositoryAccessGranted(
+    string DisplayUrl
+);
 
 public union CheckRepositoryAccessOutcome(
     RepositoryAccessGranted,
@@ -38,9 +47,13 @@ public sealed record RepositoryAccessDenied;
 
 public sealed record RepositoryNotFound;
 
-public sealed record RepositoryRefNotFound(string Ref);
+public sealed record RepositoryRefNotFound(
+    string Ref
+);
 
-public sealed record RepositoryDirectoryNotFound(string Path);
+public sealed record RepositoryDirectoryNotFound(
+    string Path
+);
 
 public enum RepositorySnapshotRejection
 {
@@ -48,10 +61,12 @@ public enum RepositorySnapshotRejection
     SizeLimit,
     InvalidManifestEncoding,
     InvalidPath,
-    InvalidCommit
+    InvalidCommit,
 }
 
-public sealed record RepositorySnapshotRejected(RepositorySnapshotRejection Reason);
+public sealed record RepositorySnapshotRejected(
+    RepositorySnapshotRejection Reason
+);
 
 public sealed record RepositoryTemporarilyUnavailable;
 

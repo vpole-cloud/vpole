@@ -2,8 +2,8 @@ using Hangfire;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.GitOps.Contracts;
@@ -12,7 +12,6 @@ using Pole.Features.ResourceGroups.Application.Common;
 using Pole.Features.ResourceGroups.Application.IsolationScopes;
 using Pole.Features.ResourceGroups.Application.Jobs;
 using Pole.Features.ResourceGroups.Application.Kubernetes;
-using Pole.Features.ResourceGroups.Application.Mongo;
 using Pole.Features.ResourceGroups.Application.Placements;
 using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
@@ -48,8 +47,7 @@ public static class ResourceGroupApplicationRegistration
         services.AddSingleton(new RealtimeTopic("workspace-inventory", RealtimeScope.Tenant));
         services.AddSingleton<SearchSourceType>(ResourceGroupSearchProjection.SourceType);
         services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<IValidateOptions<KubernetesOptions>,
-                RuntimeCellNamespaceOptionsValidator>());
+            ServiceDescriptor.Singleton<IValidateOptions<KubernetesOptions>, RuntimeCellNamespaceOptionsValidator>());
         services.AddOptions<KubernetesOptions>()
             .Bind(configuration.GetSection(KubernetesOptions.SectionName))
             .ValidateOnStart();
@@ -58,14 +56,15 @@ public static class ResourceGroupApplicationRegistration
             .Value);
 
         services.AddResourceGroupPersistence();
-        services.AddCapability<MongoResourceGroupPlanningSnapshots, LoadResourceGroupPlanningSnapshot>(
-            implementation => implementation.ReadAsync);
-        services.AddCapability<MongoResourceGroupPlanningSnapshots, FenceResourceGroupPlanningSnapshot>(
-            implementation => implementation.FenceAsync);
+        services.AddCapability<MongoResourceGroupPlanningSnapshots, LoadResourceGroupPlanningSnapshot>(implementation =>
+            implementation.ReadAsync);
+        services
+            .AddCapability<MongoResourceGroupPlanningSnapshots, FenceResourceGroupPlanningSnapshot>(implementation =>
+                implementation.FenceAsync);
         services.AddCapability<MongoAdmitResourceScopeReference, AdmitResourceScopeReference>(implementation =>
             implementation.InvokeAsync);
-        services.AddCapability<RuntimeCellNamespaceNameGenerator,
-            GenerateRuntimeCellNamespaceName>(implementation => implementation.Invoke);
+        services.AddCapability<RuntimeCellNamespaceNameGenerator, GenerateRuntimeCellNamespaceName>(implementation =>
+            implementation.Invoke);
         services.TryAddScoped<KubernetesRuntimeCellNamespaceManager>();
         services.TryAddScoped<KubernetesEnsureRuntimeCellIngressBaseline>();
         services.TryAddSingleton<EnsureRuntimeCellIngressBaseline>(serviceProvider =>
@@ -94,11 +93,18 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddScoped<RuntimeCellDeletionJob>();
         services.TryAddScoped<ScheduleRuntimeCellDeletionAt>(provider => (request, due) =>
         {
-            provider.GetRequiredService<IBackgroundJobClient>().Schedule<RuntimeCellDeletionJob>(job =>
-                job.ExecuteAsync(request, CancellationToken.None), HangfireEnqueueAt(due));
-            provider.GetService<ILogger<RuntimeCellDeletionJob>>()?.LogInformation(
-                "RuntimeCell deletion check scheduled: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}",
-                request.EventCore.TenantId, request.RuntimeCellId, request.Generation, request.CheckSequence, due);
+            provider.GetRequiredService<IBackgroundJobClient>()
+                .Schedule<RuntimeCellDeletionJob>(
+                    job => job.ExecuteAsync(request, CancellationToken.None),
+                    HangfireEnqueueAt(due));
+            provider.GetService<ILogger<RuntimeCellDeletionJob>>()
+                ?.LogInformation(
+                    "RuntimeCell deletion check scheduled: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}",
+                    request.EventCore.TenantId,
+                    request.RuntimeCellId,
+                    request.Generation,
+                    request.CheckSequence,
+                    due);
         });
         services.TryAddScoped<RuntimeCellLifecyclePersistence>();
         services.TryAddScoped<RuntimeCellRecoveryPersistence>();
@@ -116,17 +122,18 @@ public static class ResourceGroupApplicationRegistration
             provider.GetRequiredService<DeclarativeResourceGroupProvider>());
         services.AddScoped<IDeclarativeResourceLifecycleProvider>(provider =>
             provider.GetRequiredService<DeclarativeIsolationScopeProvider>());
-        services.AddCapability<MongoIsolationScopePlanningSnapshots, ResolveNamedIsolationScope>(
-            implementation => implementation.ResolveAsync);
-        services.AddCapability<MongoIsolationScopePlanningSnapshots, LoadIsolationScopePlanningSnapshot>(
-            implementation => implementation.ReadAsync);
-        services.AddCapability<MongoIsolationScopePlanningSnapshots, FenceIsolationScopePlanningSnapshot>(
-            implementation => implementation.FenceAsync);
+        services.AddCapability<MongoIsolationScopePlanningSnapshots, ResolveNamedIsolationScope>(implementation =>
+            implementation.ResolveAsync);
+        services
+            .AddCapability<MongoIsolationScopePlanningSnapshots, LoadIsolationScopePlanningSnapshot>(implementation =>
+                implementation.ReadAsync);
+        services
+            .AddCapability<MongoIsolationScopePlanningSnapshots, FenceIsolationScopePlanningSnapshot>(implementation =>
+                implementation.FenceAsync);
         return services;
     }
 
-    public static IServiceProvider ScheduleResourceGroupRecurringJobs(
-        this IServiceProvider services)
+    public static IServiceProvider ScheduleResourceGroupRecurringJobs(this IServiceProvider services)
     {
         RecurringJob.AddOrUpdate<RuntimeCellRecoveryJob>(
             "recover-runtime-cells",
@@ -139,9 +146,7 @@ public static class ResourceGroupApplicationRegistration
     {
         // Hangfire stores schedule scores in whole seconds; truncation must not precede the durable due fence.
         var fractionalTicks = due.Ticks % TimeSpan.TicksPerSecond;
-        return new DateTimeOffset(fractionalTicks == 0
-            ? due
-            : due.AddTicks(TimeSpan.TicksPerSecond - fractionalTicks));
+        return new DateTimeOffset(fractionalTicks == 0 ? due : due.AddTicks(TimeSpan.TicksPerSecond - fractionalTicks));
     }
 
     private static void AddResourceGroupPersistence(this IServiceCollection services)
@@ -149,18 +154,16 @@ public static class ResourceGroupApplicationRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceGroup>("ResourceGroups"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<IsolationScope>("IsolationScopes"));
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<RuntimeCell>("RuntimeCells"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<ResourceRegistration>("ResourceRegistrations"));
 
-        services.AddCapability<MongoGetResourceGroupOwnership,
-            GetResourceGroupOwnership>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoGetResourceGroupOwnership, GetResourceGroupOwnership>(implementation =>
+            implementation.InvokeAsync);
         services.AddCapability<MongoLoadResourceGroup, LoadResourceGroup>(implementation => implementation.InvokeAsync);
         services.AddCapability<MongoLoadResourceGroupPage, LoadResourceGroupPage>(implementation =>
             implementation.InvokeAsync);
@@ -187,12 +190,11 @@ public static class ResourceGroupApplicationRegistration
             provider.GetRequiredService<MongoResourceRegistrationPlanning>().FenceAsync);
         services.TryAddScoped<LoadRegisteredResource>(provider =>
             provider.GetRequiredService<MongoResourceRegistrationReads>().LoadOneAsync);
-        services.AddCapability<MongoResourceRegistrationConnectionFence,
-            FenceRegisteredResource>(implementation => implementation.InvokeAsync);
-        services.TryAddScoped<IResourceRegistrar>(serviceProvider =>
-            new BoundResourceRegistrar(
-                serviceProvider.GetRequiredService<MongoResourceRegistrationMutations>(),
-                owningPluginId: null));
+        services.AddCapability<MongoResourceRegistrationConnectionFence, FenceRegisteredResource>(implementation =>
+            implementation.InvokeAsync);
+        services.TryAddScoped<IResourceRegistrar>(serviceProvider => new BoundResourceRegistrar(
+            serviceProvider.GetRequiredService<MongoResourceRegistrationMutations>(),
+            owningPluginId: null));
         services.TryAddScoped<LoadResourceRegistrationPage>(serviceProvider => serviceProvider
             .GetRequiredService<MongoResourceRegistrationReads>()
             .LoadPageAsync);
@@ -203,8 +205,8 @@ public static class ResourceGroupApplicationRegistration
             implementation.InvokeAsync);
         services.AddCapability<MongoBeginIsolationScopeDeletion, BeginIsolationScopeDeletion>(implementation =>
             implementation.InvokeAsync);
-        services.AddCapability<MongoFinalizeResourceGroupDeletion,
-            FinalizeResourceGroupDeletion>(implementation => implementation.InvokeAsync);
+        services.AddCapability<MongoFinalizeResourceGroupDeletion, FinalizeResourceGroupDeletion>(implementation =>
+            implementation.InvokeAsync);
         services.AddCapability<MongoLoadResourcePlacement, LoadResourcePlacement>(implementation =>
             implementation.InvokeAsync);
         services.AddCapability<MongoLoadResourcePlacementInTransaction,
@@ -221,34 +223,24 @@ public static class ResourceGroupApplicationRegistration
             .InvokeManyAsync);
 
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedResourceGroupResult>>(serviceProvider =>
-            serviceProvider
-            .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<PersistCreatedResourceGroupResult>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistUpdatedResourceGroupOutcome>>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistUpdatedResourceGroupOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<PersistCreatedIsolationScopeOutcome>>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<PersistCreatedIsolationScopeOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<RetryRuntimeCellResult>>(serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<RetryRuntimeCellResult>);
+            .InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<BeginResourceGroupDeletionOutcome>>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<BeginResourceGroupDeletionOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<BeginIsolationScopeDeletionOutcome>>(serviceProvider =>
-            serviceProvider
-                .GetRequiredService<MongoRunTransaction>()
-                .InvokeOutcomeAsync<BeginIsolationScopeDeletionOutcome>);
+            serviceProvider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<Unit>>(serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<Unit>);
+            .InvokeOutcomeAsync);
         services.TryAddSingleton<RunMongoOutcomeTransaction<bool>>(serviceProvider => serviceProvider
             .GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<bool>);
+            .InvokeOutcomeAsync);
     }
 
     private static void AddCapability<TImplementation, TDelegate>(
@@ -258,7 +250,6 @@ public static class ResourceGroupApplicationRegistration
         where TDelegate : Delegate
     {
         services.TryAddScoped<TImplementation>();
-        services.TryAddScoped(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.TryAddScoped(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

@@ -8,13 +8,8 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Outbox.Contracts;
 using Pole.Features.PrivateAccess.Application;
-using Pole.Features.PrivateAccess.Application.Admission;
-using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
 using Pole.Features.PrivateAccess.Application.Grants;
-using Pole.Features.PrivateAccess.Application.Mongo;
 using Pole.Features.PrivateAccess.Application.Sessions;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
@@ -24,14 +19,15 @@ using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Domain;
 using Pole.Tests.Integration.Infrastructure;
-using Pole.Workloads;
 using Xunit;
+using PrivateAccessSessionCleaned = Pole.Features.PrivateAccess.Contracts.PrivateAccessSessionCleaned;
 
 namespace Pole.Tests.Integration.PrivateAccess;
 
 [Collection(IntegrationTestCollection.Global3)]
-public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class GrantPersistenceTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     private const string TenantId = "66a000000000000000000001";
     private const string OtherTenantId = "66a000000000000000000002";
@@ -41,29 +37,30 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     private const string ActorId = "actor";
     private const string SubjectId = "subject";
     private static readonly ResourceTypeId ResourceType = ResourceTypeId.Create("pole/redis");
-    private ServiceProvider provider = null!;
-    private bool targetAttested = true;
+    private readonly EndpointCapability endpointCapability = new();
     private ResourceDeploymentStatus accessPlacementStatus = ResourceDeploymentStatus.Applied;
     private long deploymentRevision = 1;
     private int placementBatchReads;
-    private readonly EndpointCapability endpointCapability = new();
+    private ServiceProvider provider = null!;
+    private bool targetAttested = true;
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        await Fixture.DbContext.Tenants.InsertManyAsync([
+        await Fixture.DbContext.Tenants.InsertManyAsync(
+        [
             TenantFactory.Create("One", TenantId) with
             {
                 Members = ImmutableList.Create(
                     TenantFactory.CreateMember(TenantId, ActorId, "actor@example.com", TenantRole.Admin),
-                    TenantFactory.CreateMember(TenantId, SubjectId, "subject@example.com", TenantRole.Viewer))
+                    TenantFactory.CreateMember(TenantId, SubjectId, "subject@example.com", TenantRole.Viewer)),
             },
             TenantFactory.Create("Two", OtherTenantId) with
             {
                 Members = ImmutableList.Create(
                     TenantFactory.CreateMember(OtherTenantId, ActorId, "actor@example.com", TenantRole.Admin),
-                    TenantFactory.CreateMember(OtherTenantId, SubjectId, "subject@example.com", TenantRole.Viewer))
-            }
+                    TenantFactory.CreateMember(OtherTenantId, SubjectId, "subject@example.com", TenantRole.Viewer)),
+            },
         ]);
 
         var services = new ServiceCollection();
@@ -74,62 +71,101 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         services.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
         services.AddTenantsFeature();
         services.AddPrivateAccessFeature();
-        services.AddSingleton<FenceRegisteredResource>(
-(request, session, _) =>
-            {
-                Assert.True(session.IsInTransaction);
-                return Task.FromResult<RegisteredResource?>(new RegisteredResource(
-                    "registration", TenantId, GroupId, ResourceType, ResourceId,
-                    "Redis", null, DateTime.UtcNow, DateTime.UtcNow));
-            });
-        services.AddSingleton<LoadExactResourceDeploymentAccessPlacement>(
-(request, session, _) =>
-            {
-                Assert.True(session.IsInTransaction);
-                return Task.FromResult<ResourceDeploymentAccessPlacement?>(
-                    request.TenantId == TenantId ? new ResourceDeploymentAccessPlacement(
-                        TenantId, ResourceType.Value, ResourceId, GroupId, DeploymentId,
-                        "target", "cell", "scope", "namespace", deploymentRevision, 1,
-                        accessPlacementStatus, ResourceDeploymentDesiredOperation.Apply) : null);
-            });
-        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>(
-(request, _) =>
-                Task.FromResult<ResourceDeploymentRuntimePlacementDto?>(
-                    request.TenantId == TenantId && request.ResourceId == ResourceId
-                        && request.DeploymentId == DeploymentId
-                        ? new ResourceDeploymentRuntimePlacementDto(
-                            DeploymentId, ResourceId, "cell", "target", "namespace",
-                            deploymentRevision, 1, null!, ResourceDeploymentStatus.Applied,
-                                ResourceDeploymentDesiredOperation.Apply, "scope")
-                        : null));
-        services.AddSingleton<LoadResourceDeploymentRuntimePlacements>(
-(request, _) =>
-            {
-                placementBatchReads++;
-                return Task.FromResult<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>(
-                    request.TenantId == TenantId && request.ResourceIds.Contains(ResourceId)
-                        ? [new ResourceDeploymentRuntimePlacementDto(
-                            DeploymentId, ResourceId, "cell", "target", "namespace",
-                            deploymentRevision, 1, null!, ResourceDeploymentStatus.Applied,
-                                ResourceDeploymentDesiredOperation.Apply, "scope")]
-                        : []);
-            });
-        services.AddSingleton<FenceDeploymentTargetPrivateAccess>(
-            (targetId, session, _) =>
-            {
-                Assert.True(session.IsInTransaction);
-                return Task.FromResult<FenceDeploymentTargetPrivateAccessOutcome>(
-                    targetAttested
-                        ? new PrivateAccessDeploymentTargetReady(targetId, 1)
-                        : new PrivateAccessDeploymentTargetUnavailable());
-            });
-        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>(
-(request, session, _) =>
-            {
-                Assert.True(session.IsInTransaction);
-                return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
-                    new DeploymentTargetReferencesChanged());
-            });
+        services.AddSingleton<FenceRegisteredResource>((
+            request, session,
+            _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult<RegisteredResource?>(
+                new RegisteredResource(
+                    "registration",
+                    TenantId,
+                    GroupId,
+                    ResourceType,
+                    ResourceId,
+                    "Redis",
+                    null,
+                    DateTime.UtcNow,
+                    DateTime.UtcNow));
+        });
+        services.AddSingleton<LoadExactResourceDeploymentAccessPlacement>((
+            request, session,
+            _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult(
+                request.TenantId == TenantId
+                    ? new ResourceDeploymentAccessPlacement(
+                        TenantId,
+                        ResourceType.Value,
+                        ResourceId,
+                        GroupId,
+                        DeploymentId,
+                        "target",
+                        "cell",
+                        "scope",
+                        "namespace",
+                        deploymentRevision,
+                        1,
+                        accessPlacementStatus,
+                        ResourceDeploymentDesiredOperation.Apply)
+                    : null);
+        });
+        services.AddSingleton<LoadExactResourceDeploymentRuntimePlacement>((request, _) => Task.FromResult(
+            request.TenantId == TenantId && request.ResourceId == ResourceId && request.DeploymentId == DeploymentId
+                ? new ResourceDeploymentRuntimePlacementDto(
+                    DeploymentId,
+                    ResourceId,
+                    "cell",
+                    "target",
+                    "namespace",
+                    deploymentRevision,
+                    1,
+                    null!,
+                    ResourceDeploymentStatus.Applied,
+                    ResourceDeploymentDesiredOperation.Apply,
+                    "scope")
+                : null));
+        services.AddSingleton<LoadResourceDeploymentRuntimePlacements>((request, _) =>
+        {
+            placementBatchReads++;
+            return Task.FromResult<IReadOnlyList<ResourceDeploymentRuntimePlacementDto>>(
+                request.TenantId == TenantId && request.ResourceIds.Contains(ResourceId)
+                    ?
+                    [
+                        new ResourceDeploymentRuntimePlacementDto(
+                            DeploymentId,
+                            ResourceId,
+                            "cell",
+                            "target",
+                            "namespace",
+                            deploymentRevision,
+                            1,
+                            null!,
+                            ResourceDeploymentStatus.Applied,
+                            ResourceDeploymentDesiredOperation.Apply,
+                            "scope"),
+                    ]
+                    : []);
+        });
+        services.AddSingleton<FenceDeploymentTargetPrivateAccess>((
+            targetId, session,
+            _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult<FenceDeploymentTargetPrivateAccessOutcome>(
+                targetAttested
+                    ? new PrivateAccessDeploymentTargetReady(targetId, 1)
+                    : new PrivateAccessDeploymentTargetUnavailable());
+        });
+        services.AddSingleton<ApplyDeploymentTargetReferenceChanges>((
+            request, session,
+            _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult<ApplyDeploymentTargetReferenceChangesOutcome>(
+                new DeploymentTargetReferencesChanged());
+        });
         services.AddSingleton<IResourceConnectionDestinationCapability>(endpointCapability);
         provider = services.BuildServiceProvider();
     }
@@ -146,14 +182,19 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         accessPlacementStatus = ResourceDeploymentStatus.Prepared;
         var outcome = await provider.GetRequiredService<PersistPrivateAccessGrant>()(Command());
         Assert.IsType<PrivateAccessResourceUnavailable>(outcome.Value);
-        Assert.Equal(0,
-            await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants").CountDocumentsAsync(
-            Builders<PrivateAccessGrant>.Filter.Empty));
-        Assert.Equal(0,
-            await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit").CountDocumentsAsync(
-            Builders<PrivateAccessAudit>.Filter.Empty));
-        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+                .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+                .CountDocumentsAsync(Builders<PrivateAccessAudit>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -163,25 +204,32 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var grant = Assert.IsType<PrivateAccessGrant>(outcome.Value);
         Assert.Equal(TenantId, grant.TenantId);
         Assert.IsType<ActivePrivateAccessGrant>(grant.State);
-        Assert.Single(await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
-            .Find(Builders<PrivateAccessGrant>.Filter.Empty).ToListAsync());
-        var audit = Assert.Single(await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
-            .Find(Builders<PrivateAccessAudit>.Filter.Empty).ToListAsync());
+        Assert.Single(
+            await Fixture.Database
+                .GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+                .Find(Builders<PrivateAccessGrant>.Filter.Empty)
+                .ToListAsync());
+        var audit = Assert.Single(
+            await Fixture.Database
+                .GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+                .Find(Builders<PrivateAccessAudit>.Filter.Empty)
+                .ToListAsync());
         Assert.Equal(grant.Id, audit.GrantId);
         Assert.IsType<PrivateAccessGrantCreatedAudit>(audit.State);
-        var storedAudit = await Fixture.Database.GetCollection<BsonDocument>("PrivateAccessAudit")
+        var storedAudit = await Fixture.Database
+            .GetCollection<BsonDocument>("PrivateAccessAudit")
             .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(audit.Id)))
             .SingleAsync();
         Assert.True(storedAudit.Contains("State"));
         Assert.False(storedAudit.Contains("Action"));
         Assert.False(storedAudit.Contains("Reason"));
-        Assert.Equal(1, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
+        Assert.Equal(
+            1,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
         var roundTrip = BsonSerializer.Deserialize<PrivateAccessGrant>(grant.ToBson());
         Assert.IsType<ActivePrivateAccessGrant>(roundTrip.State);
         Assert.IsType<RevokedPrivateAccessGrant>(
-            BsonSerializer.Deserialize<PrivateAccessGrant>(
-                grant.Revoke(ActorId, DateTime.UtcNow).ToBson()).State);
+            BsonSerializer.Deserialize<PrivateAccessGrant>(grant.Revoke(ActorId, DateTime.UtcNow).ToBson()).State);
     }
 
     [Fact]
@@ -193,10 +241,14 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var absent = await provider.GetRequiredService<PersistPrivateAccessGrant>()(
             Command() with { SubjectUserId = "absent" });
         Assert.IsType<PrivateAccessSubjectNotMember>(absent.Value);
-        Assert.Equal(0, await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
-            .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
-        Assert.Equal(0, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+                .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -205,8 +257,11 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var outcome = await provider.GetRequiredService<PersistPrivateAccessGrant>()(
             Command() with { TenantId = OtherTenantId });
         Assert.IsType<PrivateAccessResourceUnavailable>(outcome.Value);
-        Assert.Equal(0, await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
-            .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
+                .CountDocumentsAsync(Builders<PrivateAccessGrant>.Filter.Empty));
     }
 
     [Fact]
@@ -214,17 +269,17 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
-        var stored = await Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions")
-            .Find(item => item.Id == issued.SessionId).SingleAsync();
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
+        var stored = await Fixture.Database
+            .GetCollection<PrivateAccessSession>("PrivateAccessSessions")
+            .Find(item => item.Id == issued.SessionId)
+            .SingleAsync();
         Assert.NotEqual(issued.Ticket, stored.Ticket.Hash);
         Assert.IsType<PrivateAccessTicketPending>(stored.State);
         Assert.True(issued.ExpiresAtUtc <= DateTime.UtcNow.AddSeconds(30));
 
         var redeem = provider.GetRequiredService<RedeemPrivateAccessSession>();
-        var lease = Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await redeem(issued.Ticket)).Value);
+        var lease = Assert.IsType<PrivateAccessLeaseSnapshot>((await redeem(issued.Ticket)).Value);
         Assert.Equal(grant.Id, lease.GrantId);
         Assert.Equal("target", lease.DeploymentTargetId);
         Assert.Equal("redis-service", lease.ServiceName);
@@ -233,22 +288,21 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         Assert.IsType<PrivateAccessTicketUsed>((await redeem(issued.Ticket)).Value);
 
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
-        var started = await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-            issued.SessionId);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
+        var started = await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(issued.SessionId);
         Assert.IsType<PrivateAccessSessionStarted>(started.Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionClosed>(
             (await provider.GetRequiredService<ClosePrivateAccessSession>()(
-                issued.SessionId, PrivateAccessSessionCloseReason.ClientDisconnected)).Value);
+                issued.SessionId,
+                PrivateAccessSessionCloseReason.ClientDisconnected)).Value);
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
-        var audit = await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
-            .Find(item => item.SessionId == issued.SessionId).ToListAsync();
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
+        var audit = await Fixture.Database
+            .GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+            .Find(item => item.SessionId == issued.SessionId)
+            .ToListAsync();
         Assert.Contains(audit, item => item.State is PrivateAccessSessionStartedAudit);
         Assert.Contains(audit, item => item.State is PrivateAccessSessionClosedAudit);
         Assert.All(audit, item => Assert.DoesNotContain(issued.Ticket, item.ToBson().ToJson()));
@@ -259,11 +313,9 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         var malformedTicket = "pole_pa_" + new string('g', 64);
-        var malformedHash = Convert.ToHexStringLower(SHA256.HashData(
-            Encoding.UTF8.GetBytes(malformedTicket)));
+        var malformedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(malformedTicket)));
         var sessions = Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
         await sessions.UpdateOneAsync(
             item => item.Id == issued.SessionId,
@@ -281,34 +333,29 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                issued.Ticket)).Value);
+            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(issued.Ticket)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
 
-        var collection = Fixture.Database.GetCollection<PrivateAccessSession>(
-            "PrivateAccessSessions");
+        var collection = Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
         var current = await collection.Find(item => item.Id == issued.SessionId).SingleAsync();
         var redeemed = Assert.IsType<PrivateAccessTicketRedeemed>(current.State);
-        await collection.ReplaceOneAsync(item => item.Id == issued.SessionId,
+        await collection.ReplaceOneAsync(
+            item => item.Id == issued.SessionId,
             current with
             {
                 State = redeemed with
                 {
-                    LastAuthorizationExpiresAtUtc = DateTime.UtcNow.AddSeconds(-1)
+                    LastAuthorizationExpiresAtUtc = DateTime.UtcNow.AddSeconds(-1),
                 },
-                Revision = current.Revision + 1
+                Revision = current.Revision + 1,
             });
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(issued.SessionId)).Value);
     }
 
     [Fact]
@@ -316,31 +363,26 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                issued.Ticket)).Value);
-        var collection = Fixture.Database.GetCollection<PrivateAccessSession>(
-            "PrivateAccessSessions");
+            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(issued.Ticket)).Value);
+        var collection = Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
         var current = await collection.Find(item => item.Id == issued.SessionId).SingleAsync();
         var redeemed = Assert.IsType<PrivateAccessTicketRedeemed>(current.State);
         Assert.Null(redeemed.LastAuthorizationExpiresAtUtc);
-        await collection.ReplaceOneAsync(item => item.Id == issued.SessionId,
+        await collection.ReplaceOneAsync(
+            item => item.Id == issued.SessionId,
             current with
             {
                 State = redeemed with { RedeemedAtUtc = DateTime.UtcNow.AddSeconds(-20) },
-                Revision = current.Revision + 1
+                Revision = current.Revision + 1,
             });
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionStarted>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(issued.SessionId)).Value);
     }
 
     [Fact]
@@ -348,43 +390,32 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                issued.Ticket)).Value);
+            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(issued.Ticket)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionStarted>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(issued.SessionId)).Value);
 
         deploymentRevision = 2;
         Assert.IsType<PrivateAccessBindingChanged>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
 
         deploymentRevision = 1;
         var second = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                second.Ticket)).Value);
+            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(second.Ticket)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                second.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(second.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionStarted>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-                second.SessionId)).Value);
+            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(second.SessionId)).Value);
         targetAttested = false;
         Assert.IsType<PrivateAccessDeploymentUnavailable>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                second.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(second.SessionId)).Value);
     }
 
     [Fact]
@@ -392,23 +423,22 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         var loader = provider.GetRequiredService<LoadExpiredPrivateAccessSessionCleanupPage>();
         var expired = issued.ExpiresAtUtc.AddMinutes(1);
         var claimed = Assert.Single(await loader(expired, 10));
         Assert.Equal(issued.SessionId, claimed.SessionId);
         Assert.Equal("target", claimed.DeploymentTargetId);
-        Assert.IsType<PrivateAccessSessionCleaning>((await Fixture.Database
-            .GetCollection<PrivateAccessSession>("PrivateAccessSessions")
-            .Find(item => item.Id == issued.SessionId).SingleAsync()).State);
+        Assert.IsType<PrivateAccessSessionCleaning>(
+            (await Fixture.Database
+                .GetCollection<PrivateAccessSession>("PrivateAccessSessions")
+                .Find(item => item.Id == issued.SessionId)
+                .SingleAsync()).State);
         Assert.IsType<PrivateAccessTicketUsed>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                issued.Ticket)).Value);
+            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(issued.Ticket)).Value);
         Assert.Equal(issued.SessionId, Assert.Single(await loader(expired, 10)).SessionId);
-        Assert.IsType<Pole.Features.PrivateAccess.Contracts.PrivateAccessSessionCleaned>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionCleaned>()(
-                issued.SessionId)).Value);
+        Assert.IsType<PrivateAccessSessionCleaned>(
+            (await provider.GetRequiredService<MarkPrivateAccessSessionCleaned>()(issued.SessionId)).Value);
         Assert.Empty(await loader(expired, 10));
     }
 
@@ -417,26 +447,30 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var second = PrivateAccessGrantFactory.Create(
-            TenantId, ActorId, ResourceType.Value, ResourceId,
-            DeploymentId, "redis", ActorId,
-            DateTime.UtcNow, DateTime.UtcNow.AddHours(1));
-        await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants")
-            .InsertOneAsync(second);
+            TenantId,
+            ActorId,
+            ResourceType.Value,
+            ResourceId,
+            DeploymentId,
+            "redis",
+            ActorId,
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddHours(1));
+        await Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants").InsertOneAsync(second);
         var load = provider.GetRequiredService<LoadPrivateAccessGatewayDesiredStates>();
         var desired = Assert.Single(await load());
         Assert.Equal(1, placementBatchReads);
         Assert.Equal(1, endpointCapability.BatchReads);
         Assert.Equal((TenantId, "target"), (desired.TenantId, desired.DeploymentTargetId));
         var endpoint = Assert.Single(desired.Endpoints);
-        Assert.Equal((DeploymentId, "redis", "namespace", "redis-service", 6379),
-            (endpoint.ResourceDeploymentId, endpoint.EndpointId,
-                endpoint.KubernetesNamespace, endpoint.ServiceName, endpoint.TargetPort));
+        Assert.Equal(
+            (DeploymentId, "redis", "namespace", "redis-service", 6379),
+            (endpoint.ResourceDeploymentId, endpoint.EndpointId, endpoint.KubernetesNamespace, endpoint.ServiceName,
+                endpoint.TargetPort));
 
         var grants = Fixture.Database.GetCollection<PrivateAccessGrant>("PrivateAccessGrants");
-        await grants.ReplaceOneAsync(item => item.Id == grant.Id,
-            grant.Revoke(ActorId, DateTime.UtcNow));
-        await grants.ReplaceOneAsync(item => item.Id == second.Id,
-            second.Revoke(ActorId, DateTime.UtcNow));
+        await grants.ReplaceOneAsync(item => item.Id == grant.Id, grant.Revoke(ActorId, DateTime.UtcNow));
+        await grants.ReplaceOneAsync(item => item.Id == second.Id, second.Revoke(ActorId, DateTime.UtcNow));
         Assert.Empty(await load());
     }
 
@@ -447,7 +481,13 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var gatewayId = PrivateAccessGatewayIds.StableId(TenantId, targetId);
         var identity = new PrivateAccessGatewayIdentity(TenantId, targetId, gatewayId, 1, 1);
         var endpoint = new PrivateAccessGatewayEndpointSnapshot(
-            "redis", "cell", DeploymentId, "namespace", "redis-service", 6379, 6379);
+            "redis",
+            "cell",
+            DeploymentId,
+            "namespace",
+            "redis-service",
+            6379,
+            6379);
         var expiry = DateTime.UnixEpoch.AddDays(30000);
         var save = provider.GetRequiredService<SavePrivateAccessGatewayRegistration>();
         var load = provider.GetRequiredService<LoadPrivateAccessGatewayRegistrations>();
@@ -456,28 +496,31 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var oldPin = new string('a', 64);
         var newPin = new string('b', 64);
 
-        Assert.True(await save(
-            new SavePrivateAccessGatewayRegistrationRequest(
-                Identity: identity,
-                CertificateSha256Pin: oldPin,
-                CertificateNotAfterUtc: expiry,
-                Endpoints: [endpoint])));
-        Assert.True(await save(
-            new SavePrivateAccessGatewayRegistrationRequest(
-                Identity: identity,
-                CertificateSha256Pin: oldPin,
-                CertificateNotAfterUtc: expiry,
-                Endpoints: [endpoint])));
+        Assert.True(
+            await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: identity,
+                    CertificateSha256Pin: oldPin,
+                    CertificateNotAfterUtc: expiry,
+                    Endpoints: [endpoint])));
+        Assert.True(
+            await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: identity,
+                    CertificateSha256Pin: oldPin,
+                    CertificateNotAfterUtc: expiry,
+                    Endpoints: [endpoint])));
         Assert.Equal(identity, await resolve(oldPin));
         Assert.Equal(endpoint, Assert.Single(Assert.Single(await load()).Endpoints));
 
         var rotated = identity with { Generation = 2, Revision = 2 };
-        Assert.True(await save(
-            new SavePrivateAccessGatewayRegistrationRequest(
-                Identity: rotated,
-                CertificateSha256Pin: newPin,
-                CertificateNotAfterUtc: expiry,
-                Endpoints: [endpoint])));
+        Assert.True(
+            await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: rotated,
+                    CertificateSha256Pin: newPin,
+                    CertificateNotAfterUtc: expiry,
+                    Endpoints: [endpoint])));
         Assert.Null(await resolve(oldPin));
         Assert.Equal(rotated, await resolve(newPin));
         Assert.False(await remove(identity));
@@ -492,7 +535,13 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var gatewayId = PrivateAccessGatewayIds.StableId(TenantId, targetId);
         var gateway = new PrivateAccessGatewayIdentity(TenantId, targetId, gatewayId, 1, 1);
         var endpoint = new PrivateAccessGatewayEndpointSnapshot(
-            "redis", "cell", DeploymentId, "namespace", "redis-service", 6379, 6379);
+            "redis",
+            "cell",
+            DeploymentId,
+            "namespace",
+            "redis-service",
+            6379,
+            6379);
         var save = provider.GetRequiredService<SavePrivateAccessGatewayRegistration>();
         var claim = provider.GetRequiredService<ClaimPrivateAccessBrokerOwner>();
         var renew = provider.GetRequiredService<RenewPrivateAccessBrokerOwner>();
@@ -501,89 +550,96 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         var remove = provider.GetRequiredService<RemovePrivateAccessGatewayRegistration>();
         var pin = new string('a', 64);
         var expiry = DateTime.UnixEpoch.AddDays(30000);
-        Assert.True(await save(
-            new SavePrivateAccessGatewayRegistrationRequest(
-                Identity: gateway,
-                CertificateSha256Pin: pin,
-                CertificateNotAfterUtc: expiry,
-                Endpoints: [endpoint])));
+        Assert.True(
+            await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: gateway,
+                    CertificateSha256Pin: pin,
+                    CertificateNotAfterUtc: expiry,
+                    Endpoints: [endpoint])));
 
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(index =>
-            claim(
-                new ClaimPrivateAccessBrokerOwnerRequest(
-                    Gateway: gateway,
-                    InstanceId: $"replica-{index}",
-                    InternalOrigin: $"https://replica-{index}.internal:9445"))));
-        var first = Assert.Single(attempts.Select(result => result.Value)
-            .OfType<PrivateAccessBrokerOwnerLease>());
+        var attempts = await Task.WhenAll(
+            Enumerable.Range(0, 8)
+                .Select(index => claim(
+                    new ClaimPrivateAccessBrokerOwnerRequest(
+                        Gateway: gateway,
+                        InstanceId: $"replica-{index}",
+                        InternalOrigin: $"https://replica-{index}.internal:9445"))));
+        var first = Assert.Single(attempts.Select(result => result.Value).OfType<PrivateAccessBrokerOwnerLease>());
         Assert.Equal(7, attempts.Count(result => result.Value is PrivateAccessBrokerOwnerBusy));
-        var loaded = Assert.IsType<PrivateAccessBrokerOwnerLease>(
-            await load(TenantId, targetId));
+        var loaded = Assert.IsType<PrivateAccessBrokerOwnerLease>(await load(TenantId, targetId));
         Assert.Equal(first.Gateway, loaded.Gateway);
         Assert.Equal(first.InstanceId, loaded.InstanceId);
         Assert.Equal(first.Epoch, loaded.Epoch);
-        Assert.InRange(Math.Abs((loaded.ExpiresAtUtc - first.ExpiresAtUtc).TotalMilliseconds),
-            0, 1);
+        Assert.InRange(Math.Abs((loaded.ExpiresAtUtc - first.ExpiresAtUtc).TotalMilliseconds), 0, 1);
         Assert.True(await renew(first));
         var afterHeartbeat = Assert.IsType<PrivateAccessBrokerOwnerLease>(await load(TenantId, targetId));
         Assert.Equal(first.Epoch, afterHeartbeat.Epoch);
         Assert.Equal(first.InstanceId, afterHeartbeat.InstanceId);
         Assert.Equal(first.InternalOrigin, afterHeartbeat.InternalOrigin);
-        Assert.IsType<PrivateAccessBrokerOwnerBusy>((await claim(
-            new ClaimPrivateAccessBrokerOwnerRequest(
-                Gateway: gateway,
-                InstanceId: "other",
-                InternalOrigin: "https://other.internal:9445"))).Value);
+        Assert.IsType<PrivateAccessBrokerOwnerBusy>(
+            (await claim(
+                new ClaimPrivateAccessBrokerOwnerRequest(
+                    Gateway: gateway,
+                    InstanceId: "other",
+                    InternalOrigin: "https://other.internal:9445"))).Value);
 
-        var owners = Fixture.Database.GetCollection<PrivateAccessBrokerOwner>(
-            "PrivateAccessBrokerOwners");
-        await owners.UpdateOneAsync(item => item.Id == gatewayId,
+        var owners = Fixture.Database.GetCollection<PrivateAccessBrokerOwner>("PrivateAccessBrokerOwners");
+        await owners.UpdateOneAsync(
+            item => item.Id == gatewayId,
             Builders<PrivateAccessBrokerOwner>.Update.Set(
-                item => item.LeaseExpiresAtUtc, DateTime.UtcNow.AddSeconds(-1)));
+                item => item.LeaseExpiresAtUtc,
+                DateTime.UtcNow.AddSeconds(-1)));
         Assert.False(await renew(first));
-        var recovered = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
-            new ClaimPrivateAccessBrokerOwnerRequest(
-                Gateway: gateway,
-                InstanceId: "replacement",
-                InternalOrigin: "https://replacement.internal:9445"))).Value);
+        var recovered = Assert.IsType<PrivateAccessBrokerOwnerLease>(
+            (await claim(
+                new ClaimPrivateAccessBrokerOwnerRequest(
+                    Gateway: gateway,
+                    InstanceId: "replacement",
+                    InternalOrigin: "https://replacement.internal:9445"))).Value);
         Assert.Equal(first.Epoch + 1, recovered.Epoch);
         await release(first);
         Assert.Equal(recovered.Epoch, (await load(TenantId, targetId))?.Epoch);
 
         var rotated = gateway with { Generation = 2, Revision = 2 };
-        Assert.True(await save(
-            new SavePrivateAccessGatewayRegistrationRequest(
-                Identity: rotated,
-                CertificateSha256Pin: new string('b', 64),
-                CertificateNotAfterUtc: expiry,
-                Endpoints: [endpoint])));
+        Assert.True(
+            await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: rotated,
+                    CertificateSha256Pin: new string('b', 64),
+                    CertificateNotAfterUtc: expiry,
+                    Endpoints: [endpoint])));
         Assert.False(await renew(recovered));
         Assert.Null(await load(TenantId, targetId));
-        Assert.IsType<PrivateAccessBrokerGatewayUnavailable>((await claim(
-            new ClaimPrivateAccessBrokerOwnerRequest(
-                Gateway: gateway,
-                InstanceId: "stale",
-                InternalOrigin: "https://stale.internal:9445"))).Value);
-        var current = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
-            new ClaimPrivateAccessBrokerOwnerRequest(
-                Gateway: rotated,
-                InstanceId: "replacement",
-                InternalOrigin: "https://replacement.internal:9445"))).Value);
+        Assert.IsType<PrivateAccessBrokerGatewayUnavailable>(
+            (await claim(
+                new ClaimPrivateAccessBrokerOwnerRequest(
+                    Gateway: gateway,
+                    InstanceId: "stale",
+                    InternalOrigin: "https://stale.internal:9445"))).Value);
+        var current = Assert.IsType<PrivateAccessBrokerOwnerLease>(
+            (await claim(
+                new ClaimPrivateAccessBrokerOwnerRequest(
+                    Gateway: rotated,
+                    InstanceId: "replacement",
+                    InternalOrigin: "https://replacement.internal:9445"))).Value);
         Assert.True(current.Epoch > recovered.Epoch);
         Assert.True(await remove(rotated));
         Assert.Null(await load(TenantId, targetId));
         Assert.False(await renew(current));
-        Assert.True(await save(
-            new SavePrivateAccessGatewayRegistrationRequest(
-                Identity: gateway,
-                CertificateSha256Pin: new string('c', 64),
-                CertificateNotAfterUtc: expiry,
-                Endpoints: [endpoint])));
-        var recreated = Assert.IsType<PrivateAccessBrokerOwnerLease>((await claim(
-            new ClaimPrivateAccessBrokerOwnerRequest(
-                Gateway: gateway,
-                InstanceId: "replacement",
-                InternalOrigin: "https://replacement.internal:9445"))).Value);
+        Assert.True(
+            await save(
+                new SavePrivateAccessGatewayRegistrationRequest(
+                    Identity: gateway,
+                    CertificateSha256Pin: new string('c', 64),
+                    CertificateNotAfterUtc: expiry,
+                    Endpoints: [endpoint])));
+        var recreated = Assert.IsType<PrivateAccessBrokerOwnerLease>(
+            (await claim(
+                new ClaimPrivateAccessBrokerOwnerRequest(
+                    Gateway: gateway,
+                    InstanceId: "replacement",
+                    InternalOrigin: "https://replacement.internal:9445"))).Value);
         Assert.True(recreated.Epoch > current.Epoch);
         await release(current);
         Assert.Equal(recreated.Epoch, (await load(TenantId, targetId))?.Epoch);
@@ -610,8 +666,9 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
 
         var thirdPage = Assert.Single(await loader(now, 1));
         Assert.Equal(firstPage.SessionId, thirdPage.SessionId);
-        var claimed = await Fixture.Database.GetCollection<PrivateAccessSession>(
-            "PrivateAccessSessions").Find(item => item.Id == firstPage.SessionId)
+        var claimed = await Fixture.Database
+            .GetCollection<PrivateAccessSession>("PrivateAccessSessions")
+            .Find(item => item.Id == firstPage.SessionId)
             .SingleAsync();
         Assert.IsType<PrivateAccessSessionCleaning>(claimed.State);
         Assert.True(claimed.CleanupLastAttemptAtUtc > now);
@@ -621,20 +678,27 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     public async Task SessionIssueDenial_WritesMetadataAuditWithoutSessionOrTicket()
     {
         var grant = await CreateGrantAsync();
-        var denied = await provider.GetRequiredService<IssuePrivateAccessSession>()(
-            TenantId, grant.Id, ActorId);
+        var denied = await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, ActorId);
         Assert.IsType<PrivateAccessSessionSubjectMismatch>(denied.Value);
-        Assert.Equal(0, await Fixture.Database.GetCollection<PrivateAccessSession>(
-            "PrivateAccessSessions").CountDocumentsAsync(
-            Builders<PrivateAccessSession>.Filter.Empty));
-        var audit = await Fixture.Database.GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
-            .Find(item => item.GrantId == grant.Id).ToListAsync();
-        Assert.Contains(audit, item =>
-            item.State is PrivateAccessSessionIssueDeniedAudit
-            { Reason: PrivateAccessAuditReason.SubjectMismatch });
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<PrivateAccessSession>("PrivateAccessSessions")
+                .CountDocumentsAsync(Builders<PrivateAccessSession>.Filter.Empty));
+        var audit = await Fixture.Database
+            .GetCollection<PrivateAccessAudit>("PrivateAccessAudit")
+            .Find(item => item.GrantId == grant.Id)
+            .ToListAsync();
+        Assert.Contains(
+            audit,
+            item => item.State is PrivateAccessSessionIssueDeniedAudit
+            {
+                Reason: PrivateAccessAuditReason.SubjectMismatch,
+            });
         Assert.All(audit, item => Assert.Null(item.SessionId));
-        Assert.Equal(1, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(
-            Builders<Pole.Features.Outbox.Domain.OutboxMessage>.Filter.Empty));
+        Assert.Equal(
+            1,
+            await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
     }
 
     [Fact]
@@ -642,47 +706,45 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
     {
         var grant = await CreateGrantAsync();
         var issued = Assert.IsType<PrivateAccessSessionIssued>(
-            (await provider.GetRequiredService<IssuePrivateAccessSession>()(
-                TenantId, grant.Id, SubjectId)).Value);
+            (await provider.GetRequiredService<IssuePrivateAccessSession>()(TenantId, grant.Id, SubjectId)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(
-                issued.Ticket)).Value);
+            (await provider.GetRequiredService<RedeemPrivateAccessSession>()(issued.Ticket)).Value);
         Assert.IsType<PrivateAccessLeaseSnapshot>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
         Assert.IsType<PrivateAccessSessionStarted>(
-            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<MarkPrivateAccessSessionStarted>()(issued.SessionId)).Value);
         var loader = provider.GetRequiredService<LoadExpiredPrivateAccessSessionCleanupPage>();
         Assert.Empty(await loader(DateTime.UtcNow, 10));
 
-        var collection = Fixture.Database.GetCollection<PrivateAccessSession>(
-            "PrivateAccessSessions");
+        var collection = Fixture.Database.GetCollection<PrivateAccessSession>("PrivateAccessSessions");
         var current = await collection.Find(item => item.Id == issued.SessionId).SingleAsync();
         var active = Assert.IsType<PrivateAccessSessionActive>(current.State);
-        await collection.ReplaceOneAsync(item => item.Id == issued.SessionId,
+        await collection.ReplaceOneAsync(
+            item => item.Id == issued.SessionId,
             current with
             {
                 State = active with { LastLeaseExpiresAtUtc = DateTime.UtcNow.AddSeconds(-31) },
-                Revision = current.Revision + 1
+                Revision = current.Revision + 1,
             });
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
-        Assert.Equal(issued.SessionId,
-            Assert.Single(await loader(DateTime.UtcNow, 10)).SessionId);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
+        Assert.Equal(issued.SessionId, Assert.Single(await loader(DateTime.UtcNow, 10)).SessionId);
         Assert.IsType<PrivateAccessSessionUnavailable>(
-            (await provider.GetRequiredService<RenewPrivateAccessSession>()(
-                issued.SessionId)).Value);
+            (await provider.GetRequiredService<RenewPrivateAccessSession>()(issued.SessionId)).Value);
     }
 
-    private async Task<PrivateAccessGrant> CreateGrantAsync() =>
-        Assert.IsType<PrivateAccessGrant>(
-            (await provider.GetRequiredService<PersistPrivateAccessGrant>()(Command())).Value);
+    private async Task<PrivateAccessGrant> CreateGrantAsync() => Assert.IsType<PrivateAccessGrant>(
+        (await provider.GetRequiredService<PersistPrivateAccessGrant>()(Command())).Value);
 
     private static CreatePrivateAccessGrantCommand Command() => new(
-        TenantId, ActorId, SubjectId, ResourceType, ResourceId,
-        DeploymentId, "redis", DateTime.UtcNow.AddHours(1));
+        TenantId,
+        ActorId,
+        SubjectId,
+        ResourceType,
+        ResourceId,
+        DeploymentId,
+        "redis",
+        DateTime.UtcNow.AddHours(1));
 
     private sealed class EndpointCapability : IResourceConnectionDestinationCapability
     {
@@ -697,10 +759,13 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         {
             Assert.True(session.IsInTransaction);
             return Task.FromResult<LoadResourceConnectionEndpointsOutcome>(
-                new ResourceConnectionEndpointsFound(ImmutableList.Create(
-                    new ResourceConnectionEndpoint(
-                        "redis", "redis-service", NetworkPort.Create(6379),
-                        NetworkPort.Create(6379)))));
+                new ResourceConnectionEndpointsFound(
+                    ImmutableList.Create(
+                        new ResourceConnectionEndpoint(
+                            "redis",
+                            "redis-service",
+                            NetworkPort.Create(6379),
+                            NetworkPort.Create(6379)))));
         }
 
         public Task<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>> LoadAvailableAsync(
@@ -710,10 +775,15 @@ public sealed class GrantPersistenceTests(MongoReplicaSetFixture fixture)
         {
             BatchReads++;
             return Task.FromResult<IReadOnlyDictionary<string, ResourceConnectionEndpointsFound>>(
-                resourceIds.ToDictionary(id => id, id =>
-                    new ResourceConnectionEndpointsFound(ImmutableList.Create(
-                        new ResourceConnectionEndpoint("redis", "redis-service",
-                            NetworkPort.Create(6379), NetworkPort.Create(6379))))));
+                resourceIds.ToDictionary(
+                    id => id,
+                    id => new ResourceConnectionEndpointsFound(
+                        ImmutableList.Create(
+                            new ResourceConnectionEndpoint(
+                                "redis",
+                                "redis-service",
+                                NetworkPort.Create(6379),
+                                NetworkPort.Create(6379))))));
         }
     }
 }

@@ -1,26 +1,25 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.PrivateAccess.Application.Admission;
-using Pole.Features.PrivateAccess.Application.Catalog;
-using Pole.Features.PrivateAccess.Application.Gateway;
-using Pole.Features.PrivateAccess.Application.Grants;
 using Pole.Features.PrivateAccess.Application.Mongo;
 using Pole.Features.PrivateAccess.Contracts;
 using Pole.Features.PrivateAccess.Domain;
 using Pole.Workloads;
+using PrivateAccessSessionCleaned = Pole.Features.PrivateAccess.Domain.PrivateAccessSessionCleaned;
 
 namespace Pole.Features.PrivateAccess.Application.Sessions;
 
 internal sealed record PrivateAccessCleanupClaim(
-    PrivateAccessSessionCleanupSnapshot? Snapshot);
+    PrivateAccessSessionCleanupSnapshot? Snapshot
+);
 
 internal sealed class MongoPrivateAccessSessionCleanup(
     IMongoCollection<PrivateAccessSession> sessions,
     IMongoCollection<PrivateAccessAudit> audit,
     ApplyDeploymentTargetReferenceChanges targetReferences,
     MongoRunTransaction transactions,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public async Task<IReadOnlyList<PrivateAccessSessionCleanupSnapshot>> LoadPageAsync(
         DateTime nowUtc,
@@ -45,7 +44,8 @@ internal sealed class MongoPrivateAccessSessionCleanup(
             var claim = await transactions.InvokeOutcomeAsync<PrivateAccessCleanupClaim>(
                 async (transaction, ct) =>
                 {
-                    var current = await sessions.Find(transaction.Session,
+                    var current = await sessions.Find(
+                            transaction.Session,
                             PrivateAccessFilters.Session(candidate.TenantId, candidate.Id))
                         .FirstOrDefaultAsync(ct);
                     if (current is null || current.Revision != candidate.Revision)
@@ -60,8 +60,8 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                         PrivateAccessSessionActive => "LeaseExpired",
                         PrivateAccessSessionTerminated terminal => terminal.Reason,
                         PrivateAccessSessionCleaning cleaning => cleaning.Reason,
-                        Pole.Features.PrivateAccess.Domain.PrivateAccessSessionCleaned =>
-                            throw new InvalidOperationException("A cleaned session cannot be claimed again.")
+                        PrivateAccessSessionCleaned => throw new InvalidOperationException(
+                            "A cleaned session cannot be claimed again."),
                     };
                     // Mongo stores DateTime values at millisecond precision. Advance by
                     // a full millisecond so repeated pages with the same now still rotate.
@@ -72,30 +72,37 @@ internal sealed class MongoPrivateAccessSessionCleanup(
                         if (nextAttempt > attemptAtUtc)
                             attemptAtUtc = nextAttempt;
                     }
+
                     var changed = await sessions.ReplaceOneAsync(
                         transaction.Session,
-                        PrivateAccessFilters.SessionRevision(
-                            current.TenantId, current.Id, current.Revision),
+                        PrivateAccessFilters.SessionRevision(current.TenantId, current.Id, current.Revision),
                         current with
                         {
                             State = new PrivateAccessSessionCleaning(nowUtc, reason),
                             CleanupLastAttemptAtUtc = attemptAtUtc,
-                            Revision = checked(current.Revision + 1)
+                            Revision = checked(current.Revision + 1),
                         },
                         cancellationToken: ct);
                     if (changed.MatchedCount != 1)
                         return transaction.Abort(new PrivateAccessCleanupClaim(null));
                     if (current.State is not PrivateAccessSessionCleaning)
-                        await audit.InsertOneAsync(transaction.Session,
+                        await audit.InsertOneAsync(
+                            transaction.Session,
                             PrivateAccessAuditFactory.Create(
-                                current.TenantId, current.Grant.Id, current.Id,
-                                current.SubjectUserId, nowUtc, new PrivateAccessCleanupClaimedAudit()),
+                                current.TenantId,
+                                current.Grant.Id,
+                                current.Id,
+                                current.SubjectUserId,
+                                nowUtc,
+                                new PrivateAccessCleanupClaimedAudit()),
                             cancellationToken: ct);
                     return transaction.Commit(new PrivateAccessCleanupClaim(ToSnapshot(current)));
-                }, cancellationToken);
+                },
+                cancellationToken);
             if (claim.Snapshot is not null)
                 snapshots.Add(claim.Snapshot);
         }
+
         return snapshots;
     }
 
@@ -105,79 +112,77 @@ internal sealed class MongoPrivateAccessSessionCleanup(
         transactions.InvokeOutcomeAsync<MarkPrivateAccessSessionCleanedOutcome>(
             async (transaction, ct) =>
             {
-                var current = await sessions.Find(transaction.Session,
-                        PrivateAccessFilters.SessionId(sessionId))
+                var current = await sessions.Find(transaction.Session, PrivateAccessFilters.SessionId(sessionId))
                     .FirstOrDefaultAsync(ct);
                 if (current is null)
-                    return transaction.Abort(new MarkPrivateAccessSessionCleanedOutcome(
-                        new PrivateAccessSessionUnavailable()));
-                if (current.State is Pole.Features.PrivateAccess.Domain.PrivateAccessSessionCleaned)
-                    return transaction.Abort(new MarkPrivateAccessSessionCleanedOutcome(
-                        new Pole.Features.PrivateAccess.Contracts.PrivateAccessSessionCleaned()));
+                    return transaction.Abort(
+                        new MarkPrivateAccessSessionCleanedOutcome(new PrivateAccessSessionUnavailable()));
+                if (current.State is PrivateAccessSessionCleaned)
+                    return transaction.Abort(
+                        new MarkPrivateAccessSessionCleanedOutcome(new Contracts.PrivateAccessSessionCleaned()));
                 if (current.State is not PrivateAccessSessionCleaning cleaning)
-                    return transaction.Abort(new MarkPrivateAccessSessionCleanedOutcome(
-                        new PrivateAccessSessionNotCleaning()));
+                    return transaction.Abort(
+                        new MarkPrivateAccessSessionCleanedOutcome(new PrivateAccessSessionNotCleaning()));
 
                 var now = timeProvider.GetUtcNow().UtcDateTime;
                 var reference = await targetReferences(
                     new ApplyDeploymentTargetReferenceChangesRequest(
                         Owner: new DeploymentTargetReferenceOwner(
-                        DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
-                        current.Id),
+                            DeploymentTargetReferenceOwnerTypes.PrivateAccessSession,
+                            current.Id),
                         AddedDeploymentTargetIds: [],
                         RemovedDeploymentTargetIds: [current.Route.DeploymentTargetId]),
                     session: transaction.Session,
                     cancellationToken: ct);
                 if (reference is DeploymentTargetReferenceChangeRejected)
-                    throw new InvalidOperationException(
-                        "Private access target reference could not be released.");
+                    throw new InvalidOperationException("Private access target reference could not be released.");
                 var changed = await sessions.ReplaceOneAsync(
                     transaction.Session,
-                    PrivateAccessFilters.SessionRevision(
-                        current.TenantId, current.Id, current.Revision),
+                    PrivateAccessFilters.SessionRevision(current.TenantId, current.Id, current.Revision),
                     current with
                     {
-                        State = new Pole.Features.PrivateAccess.Domain.PrivateAccessSessionCleaned(
-                            now, cleaning.Reason),
-                        Revision = checked(current.Revision + 1)
+                        State = new PrivateAccessSessionCleaned(now, cleaning.Reason),
+                        Revision = checked(current.Revision + 1),
                     },
                     cancellationToken: ct);
                 if (changed.MatchedCount != 1)
                     throw new InvalidOperationException("Session changed during cleanup acknowledgment.");
-                await audit.InsertOneAsync(transaction.Session,
+                await audit.InsertOneAsync(
+                    transaction.Session,
                     PrivateAccessAuditFactory.Create(
-                        current.TenantId, current.Grant.Id, current.Id,
-                        current.SubjectUserId, now, new PrivateAccessCleanupCompletedAudit()),
+                        current.TenantId,
+                        current.Grant.Id,
+                        current.Id,
+                        current.SubjectUserId,
+                        now,
+                        new PrivateAccessCleanupCompletedAudit()),
                     cancellationToken: ct);
-                return transaction.Commit(new MarkPrivateAccessSessionCleanedOutcome(
-                    new Pole.Features.PrivateAccess.Contracts.PrivateAccessSessionCleaned()));
-            }, cancellationToken);
+                return transaction.Commit(
+                    new MarkPrivateAccessSessionCleanedOutcome(new Contracts.PrivateAccessSessionCleaned()));
+            },
+            cancellationToken);
 
-    private static bool IsEligible(PrivateAccessSession session, DateTime nowUtc) =>
-        session.State switch
-        {
-            PrivateAccessTicketPending => session.Ticket.ExpiresAtUtc <= nowUtc,
-            PrivateAccessTicketRedeemed redeemed =>
-                redeemed.RedeemedAtUtc.AddSeconds(30) <= nowUtc ||
-                session.SessionDeadlineUtc <= nowUtc,
-            PrivateAccessSessionActive active =>
-                active.LastLeaseExpiresAtUtc.AddSeconds(30) <= nowUtc,
-            PrivateAccessSessionTerminated => true,
-            PrivateAccessSessionCleaning => true,
-            Pole.Features.PrivateAccess.Domain.PrivateAccessSessionCleaned => false
-        };
+    private static bool IsEligible(PrivateAccessSession session, DateTime nowUtc) => session.State switch
+    {
+        PrivateAccessTicketPending => session.Ticket.ExpiresAtUtc <= nowUtc,
+        PrivateAccessTicketRedeemed redeemed => redeemed.RedeemedAtUtc.AddSeconds(30) <= nowUtc ||
+            session.SessionDeadlineUtc <= nowUtc,
+        PrivateAccessSessionActive active => active.LastLeaseExpiresAtUtc.AddSeconds(30) <= nowUtc,
+        PrivateAccessSessionTerminated => true,
+        PrivateAccessSessionCleaning => true,
+        PrivateAccessSessionCleaned => false,
+    };
 
-    private static PrivateAccessSessionCleanupSnapshot ToSnapshot(
-        PrivateAccessSession session) => new(
-            session.Id,
-            session.TenantId,
-            session.Grant.Id,
-            session.Route.DeploymentTargetId,
-            session.Route.RuntimeCellId,
-            session.Route.IsolationScopeId,
-            session.Grant.ResourceDeploymentId,
-            session.Route.KubernetesNamespace,
-            session.Route.ServiceName,
-            NetworkPort.Create(session.Route.ServicePort),
-            NetworkPort.Create(session.Route.TargetPort));
+    private static PrivateAccessSessionCleanupSnapshot ToSnapshot(PrivateAccessSession session) => new(
+        session.Id,
+        session.TenantId,
+        session.Grant.Id,
+        session.Route.DeploymentTargetId,
+        session.Route.RuntimeCellId,
+        session.Route.IsolationScopeId,
+        session.Grant.ResourceDeploymentId,
+        session.Route.KubernetesNamespace,
+        session.Route.ServiceName,
+        NetworkPort.Create(session.Route.ServicePort),
+        NetworkPort.Create(session.Route.TargetPort));
 }

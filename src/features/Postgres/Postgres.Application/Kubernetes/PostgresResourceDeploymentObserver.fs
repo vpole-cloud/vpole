@@ -5,7 +5,6 @@ open System.Collections.Generic
 open System.Text.Json
 open System.Threading
 open k8s
-open k8s.Models
 open Pole.Features.Core.Kubernetes
 open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Application.Common
@@ -251,8 +250,11 @@ type PostgresResourceDeploymentObserver
                         return
                             ResourceDeploymentBoundObservation(null, UnavailableWorkloadObservation("ResourceNotFound"))
                     | Some cluster when cluster.IsPrepared ->
-                        return ResourceDeploymentBoundObservation(
-                            null, UnavailableWorkloadObservation("PostgresConfigurationPending"))
+                        return
+                            ResourceDeploymentBoundObservation(
+                                null,
+                                UnavailableWorkloadObservation("PostgresConfigurationPending")
+                            )
                     | Some cluster ->
                         let identity = this.Identity(deployment)
                         let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id

@@ -1,18 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.SourceBuilds.Contracts;
-using Pole.Features.WebServices.Application.Common;
 using Pole.Features.WebServices.Application.Configuration;
 using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Declarations;
 using Pole.Features.WebServices.Application.Deployments;
-using Pole.Features.WebServices.Application.Hostnames;
 using Pole.Features.WebServices.Application.Lifecycle;
-using Pole.Features.WebServices.Application.Mongo;
 using Pole.Features.WebServices.Application.Queries;
 using Pole.Features.WebServices.Application.Releases;
 using Pole.Features.WebServices.Application.SourceDelivery;
@@ -29,14 +25,11 @@ public static class WebServicePersistenceRegistration
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
             .GetCollection<WebService>("WebServices"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<WebServiceRelease>("WebServiceReleases"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<WebServiceDeploymentToken>("WebServiceDeploymentTokens"));
-        services.AddScoped<IResourceConnectionDestinationCapability,
-            MongoLoadWebServiceConnectionEndpoints>();
+        services.AddScoped<IResourceConnectionDestinationCapability, MongoLoadWebServiceConnectionEndpoints>();
         services.AddCapability<MongoLoadWebServiceById, LoadWebServiceById>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, WebServiceExists>(x => x.InvokeAsync);
         services.AddCapability<MongoWebServiceExists, SourceBuildWebServiceExists>(x => x.InvokeAsync);
@@ -46,22 +39,28 @@ public static class WebServicePersistenceRegistration
         services.AddCapability<MongoLoadWebServicePage, LoadWebServicePage>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceReleaseHistory, LoadWebServiceReleaseHistory>(x => x.InvokeAsync);
         services.AddCapability<MongoLoadSucceededWebServiceRelease, LoadSucceededWebServiceRelease>(x => x.InvokeAsync);
-        services.AddCapability<MongoLoadWebServiceDeploymentSnapshot, LoadWebServiceDeploymentSnapshot>(x => x.InvokeAsync);
+        services.AddCapability<MongoLoadWebServiceDeploymentSnapshot, LoadWebServiceDeploymentSnapshot>(x =>
+            x.InvokeAsync);
         services.AddCapability<MongoPersistCreatedWebService, PersistCreatedWebService>(x => x.InvokeAsync);
-        services.AddCapability<MongoPersistUpdatedWebService, PersistUpdatedWebServiceOutcome>(x => x.InvokeOutcomeAsync);
+        services.AddCapability<MongoPersistUpdatedWebService, PersistUpdatedWebServiceOutcome>(x =>
+            x.InvokeOutcomeAsync);
         services.AddCapability<MongoPersistUpdatedWebService, PersistWebServiceHostnameAttachment>(x =>
             x.PersistHostnameAsync);
         services.AddCapability<MongoPersistUpdatedWebService, PersistWebServiceArtifactPromotion>(x =>
             x.PersistArtifactAsync);
-        services.AddCapability<MongoPersistCurrentWebServiceRelease, PersistCurrentWebServiceRelease>(x => x.InvokeAsync);
+        services.AddCapability<MongoPersistCurrentWebServiceRelease, PersistCurrentWebServiceRelease>(x =>
+            x.InvokeAsync);
         services.AddCapability<MongoBeginWebServiceDeletion, BeginWebServiceDeletionOutcome>(x => x.InvokeOutcomeAsync);
         services.AddCapability<WebServiceDeletionWorkflow, ApplyWebServiceDeletion>(x => x.ExecuteAsync);
         services.AddCapability<MongoFinalizeWebServiceDeletion, FinalizeWebServiceDeletion>(x => x.InvokeAsync);
         services.AddCapability<MongoCompleteWebServiceDeployment, CompleteWebServiceDeployment>(x => x.InvokeAsync);
-        services.AddCapability<MongoLoadWebServiceDeploymentTokenByHash, LoadWebServiceDeploymentTokenByHash>(x => x.InvokeAsync);
-        services.AddCapability<MongoPersistIssuedWebServiceDeploymentToken, PersistIssuedWebServiceDeploymentToken>(x => x.InvokeAsync);
+        services.AddCapability<MongoLoadWebServiceDeploymentTokenByHash, LoadWebServiceDeploymentTokenByHash>(x =>
+            x.InvokeAsync);
+        services.AddCapability<MongoPersistIssuedWebServiceDeploymentToken, PersistIssuedWebServiceDeploymentToken>(x =>
+            x.InvokeAsync);
         services.AddCapability<MongoLoadWebServiceDeploymentTokens, LoadWebServiceDeploymentTokens>(x => x.InvokeAsync);
-        services.AddCapability<MongoRevokeWebServiceDeploymentToken, RevokeWebServiceDeploymentTokenOutcome>(x => x.InvokeOutcomeAsync);
+        services.AddCapability<MongoRevokeWebServiceDeploymentToken, RevokeWebServiceDeploymentTokenOutcome>(x =>
+            x.InvokeOutcomeAsync);
         services.AddCapability<MongoTouchWebServiceDeploymentToken, TouchWebServiceDeploymentToken>(x => x.InvokeAsync);
         services.AddScoped<WebServicePlanningReader>();
         services.AddScoped<WebServiceDeclarationPlanner>();
@@ -92,7 +91,6 @@ public static class WebServicePersistenceRegistration
         where TDelegate : Delegate
     {
         services.AddScoped<TImplementation>();
-        services.AddScoped(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.AddScoped(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

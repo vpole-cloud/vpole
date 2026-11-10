@@ -1,13 +1,12 @@
-using Pole.Features.DeploymentTargets.Application;
 using Pole.Features.DeploymentTargets.Application.Common;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Contracts;
 
 namespace Pole.Features.DeploymentTargets.Application.Admission;
 
 internal sealed class MongoAdmitDeploymentTargetPublicIngressForNewWorkload(
     AdmitDeploymentTargetForWorkload admitDeploymentTargetForWorkload,
-    LoadEligibleDeploymentTargets loadEligibleDeploymentTargets)
+    LoadEligibleDeploymentTargets loadEligibleDeploymentTargets
+)
 {
     public async Task<DeploymentTargetPublicIngressAdmissionResult> InvokeAsync(
         DeploymentTargetAdmissionRequest request,
@@ -19,15 +18,13 @@ internal sealed class MongoAdmitDeploymentTargetPublicIngressForNewWorkload(
                 request.ExplicitDeploymentTargetId,
                 cancellationToken);
             if (resolved is DeploymentTargetWorkloadAdmissionError admissionError)
-            {
                 return admissionError switch
                 {
                     DeploymentTargetNotFound error => error,
                     DeploymentTargetDisabled error => error,
                     DeploymentTargetDeletionRequested error => error,
-                    DeploymentTargetNewWorkloadsDisabled error => error
+                    DeploymentTargetNewWorkloadsDisabled error => error,
                 };
-            }
             var target = (DeploymentTargetLookupDto)resolved.Value;
 
             return DeploymentTargetAdmissionSupport.HasRequiredCapabilities(
@@ -43,9 +40,8 @@ internal sealed class MongoAdmitDeploymentTargetPublicIngressForNewWorkload(
         return eligible.Count switch
         {
             0 => new NoDeploymentTargetAcceptsPublicWorkloads(),
-            > 1 => new DeploymentTargetSelectionRequired(
-                eligible.Select(target => target.Id).ToArray()),
-            _ => DeploymentTargetAdmissionSupport.ToPublicIngressDto(eligible[0].ToLookupDto())
+            > 1 => new DeploymentTargetSelectionRequired(eligible.Select(target => target.Id).ToArray()),
+            _ => DeploymentTargetAdmissionSupport.ToPublicIngressDto(eligible[0].ToLookupDto()),
         };
     }
 }

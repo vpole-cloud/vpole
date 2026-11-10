@@ -10,37 +10,39 @@ public sealed class DesignAnalyzerTests
 {
     private const string EndpointPath = "/src/features/Sample/Sample.Application/Endpoints/Create.cs";
     private const string DomainPath = "/src/features/Sample/Sample.Domain/Widget.cs";
+
     private const string Mediator = """
-        namespace Pole.Mediator;
-        public interface IMediatorOutcomeHandler<TRequest, TOutcome> { }
-        """;
+                                    namespace Pole.Mediator;
+                                    public interface IMediatorOutcomeHandler<TRequest, TOutcome> { }
+                                    """;
 
     private const string Domain = """
-        namespace Pole.Features.Sample.Domain;
-        public sealed record Widget(int Value);
-        public static class WidgetFactory
-        {
-            public static Widget Create(int value) => new(value);
-        }
-        """;
+                                  namespace Pole.Features.Sample.Domain;
+                                  public sealed record Widget(int Value);
+                                  public static class WidgetFactory
+                                  {
+                                      public static Widget Create(int value) => new(value);
+                                  }
+                                  """;
 
     [Fact]
     public async Task EndpointOutcome_AllowsRealPreviewUnionDeclaredWithHandler()
     {
         var source = """
-            public record Created;
-            public record Rejected;
-            public union CreateOutcome(Created, Rejected);
-            public sealed class Handler : global::Pole.Mediator.IMediatorOutcomeHandler<int, CreateOutcome>;
-            """;
-        Assert.Empty(await Analyze(new EndpointOutcomeOwnershipAnalyzer(),
-            (Mediator, "Mediator.cs"), (source, EndpointPath)));
+                     public record Created;
+                     public record Rejected;
+                     public union CreateOutcome(Created, Rejected);
+                     public sealed class Handler : global::Pole.Mediator.IMediatorOutcomeHandler<int, CreateOutcome>;
+                     """;
+        Assert.Empty(
+            await Analyze(new EndpointOutcomeOwnershipAnalyzer(), (Mediator, "Mediator.cs"), (source, EndpointPath)));
     }
 
     [Fact]
     public async Task EndpointOutcome_RejectsSharedUnionFromAnotherFile()
     {
-        var diagnostics = await Analyze(new EndpointOutcomeOwnershipAnalyzer(),
+        var diagnostics = await Analyze(
+            new EndpointOutcomeOwnershipAnalyzer(),
             (Mediator, "Mediator.cs"),
             ("public record Done; public union SharedOutcome(Done);", "Common/Outcomes.cs"),
             ("public class Handler : Pole.Mediator.IMediatorOutcomeHandler<int, SharedOutcome>;", EndpointPath));
@@ -53,47 +55,51 @@ public sealed class DesignAnalyzerTests
     public async Task EndpointOutcome_RejectsMultipleHandlersEvenWhenOutcomesAreColocated(string secondOutcome)
     {
         var source = $$"""
-            public record Done;
-            public union FirstOutcome(Done);
-            public union SecondOutcome(Done);
-            public sealed class First : Pole.Mediator.IMediatorOutcomeHandler<int, FirstOutcome>;
-            public sealed class Second : Pole.Mediator.IMediatorOutcomeHandler<int, {{secondOutcome}}>;
-            """;
-        var diagnostics = await Analyze(new EndpointOutcomeOwnershipAnalyzer(),
-            (Mediator, "Mediator.cs"), (source, EndpointPath));
+                       public record Done;
+                       public union FirstOutcome(Done);
+                       public union SecondOutcome(Done);
+                       public sealed class First : Pole.Mediator.IMediatorOutcomeHandler<int, FirstOutcome>;
+                       public sealed class Second : Pole.Mediator.IMediatorOutcomeHandler<int, {{secondOutcome}}>;
+                       """;
+        var diagnostics = await Analyze(
+            new EndpointOutcomeOwnershipAnalyzer(),
+            (Mediator, "Mediator.cs"),
+            (source, EndpointPath));
         Assert.Equal(2, diagnostics.Length);
-        Assert.All(diagnostics, diagnostic =>
-            Assert.Equal(EndpointOutcomeOwnershipAnalyzer.SingleHandlerDiagnosticId, diagnostic.Id));
+        Assert.All(
+            diagnostics,
+            diagnostic => Assert.Equal(EndpointOutcomeOwnershipAnalyzer.SingleHandlerDiagnosticId, diagnostic.Id));
     }
 
     [Fact]
     public async Task EndpointOutcome_RejectsOneHandlerImplementingMultipleRequestContracts()
     {
         var source = """
-            public record Done;
-            public union Outcome(Done);
-            public sealed class Handler :
-                Pole.Mediator.IMediatorOutcomeHandler<int, Outcome>,
-                Pole.Mediator.IMediatorOutcomeHandler<string, Outcome>;
-            """;
-        var diagnostics = await Analyze(new EndpointOutcomeOwnershipAnalyzer(),
-            (Mediator, "Mediator.cs"), (source, EndpointPath));
-        Assert.Equal(EndpointOutcomeOwnershipAnalyzer.SingleHandlerDiagnosticId,
-            Assert.Single(diagnostics).Id);
+                     public record Done;
+                     public union Outcome(Done);
+                     public sealed class Handler :
+                         Pole.Mediator.IMediatorOutcomeHandler<int, Outcome>,
+                         Pole.Mediator.IMediatorOutcomeHandler<string, Outcome>;
+                     """;
+        var diagnostics = await Analyze(
+            new EndpointOutcomeOwnershipAnalyzer(),
+            (Mediator, "Mediator.cs"),
+            (source, EndpointPath));
+        Assert.Equal(EndpointOutcomeOwnershipAnalyzer.SingleHandlerDiagnosticId, Assert.Single(diagnostics).Id);
     }
 
     [Fact]
-    public async Task EndpointOutcome_DoesNotConfuseUnrelatedInterfaceOrBackgroundHandler()
-    {
-        Assert.Empty(await Analyze(new EndpointOutcomeOwnershipAnalyzer(),
+    public async Task EndpointOutcome_DoesNotConfuseUnrelatedInterfaceOrBackgroundHandler() => Assert.Empty(
+        await Analyze(
+            new EndpointOutcomeOwnershipAnalyzer(),
             (Mediator, "Mediator.cs"),
             ("public record Done; public union SharedOutcome(Done);", "Common/Outcomes.cs"),
-            ("public class Background : Pole.Mediator.IMediatorOutcomeHandler<int, SharedOutcome>;", "Jobs/Background.cs"),
+            ("public class Background : Pole.Mediator.IMediatorOutcomeHandler<int, SharedOutcome>;",
+                "Jobs/Background.cs"),
             ("""
              public interface IMediatorOutcomeHandler<TRequest, TOutcome>;
              public class Handler : IMediatorOutcomeHandler<int, SharedOutcome>;
              """, EndpointPath)));
-    }
 
     [Theory]
     [InlineData("new global::Pole.Features.Sample.Domain.Widget(1)")]
@@ -102,21 +108,23 @@ public sealed class DesignAnalyzerTests
     public async Task Factory_RejectsExplicitQualifiedAliasedAndTargetTypedConstruction(string expression)
     {
         var source = $$"""
-            using Alias = Pole.Features.Sample.Domain.Widget;
-            public static class Consumer
-            {
-                public static Alias Make() => {{expression}};
-            }
-            """;
-        var diagnostics = await Analyze(new DomainDesignAnalyzer(),
-            (Domain, DomainPath), (source, "Tests/Consumer.cs"));
+                       using Alias = Pole.Features.Sample.Domain.Widget;
+                       public static class Consumer
+                       {
+                           public static Alias Make() => {{expression}};
+                       }
+                       """;
+        var diagnostics = await Analyze(
+            new DomainDesignAnalyzer(),
+            (Domain, DomainPath),
+            (source, "Tests/Consumer.cs"));
         Assert.Equal(DomainDesignAnalyzer.FactoryDiagnosticId, Assert.Single(diagnostics).Id);
     }
 
     [Fact]
-    public async Task Factory_AllowsFactoryCallsOwnTransitionsAndUnrelatedNames()
-    {
-        Assert.Empty(await Analyze(new DomainDesignAnalyzer(),
+    public async Task Factory_AllowsFactoryCallsOwnTransitionsAndUnrelatedNames() => Assert.Empty(
+        await Analyze(
+            new DomainDesignAnalyzer(),
             ("""
              namespace Pole.Features.Sample.Domain;
              public sealed record Widget(int Value)
@@ -137,12 +145,11 @@ public sealed class DesignAnalyzerTests
                      Pole.Features.Sample.Domain.WidgetFactory.Create(1);
              }
              """, "Consumer.cs")));
-    }
 
     [Fact]
-    public async Task Factory_DoesNotTreatUnrelatedFactoryReturnTypeAsEntityOwnership()
-    {
-        Assert.Empty(await Analyze(new DomainDesignAnalyzer(),
+    public async Task Factory_DoesNotTreatUnrelatedFactoryReturnTypeAsEntityOwnership() => Assert.Empty(
+        await Analyze(
+            new DomainDesignAnalyzer(),
             ("""
              namespace Pole.Features.Sample.Domain;
              public record Widget(int Value);
@@ -155,7 +162,6 @@ public sealed class DesignAnalyzerTests
                  public static Widget Make() => new(1);
              }
              """, DomainPath)));
-    }
 
     [Theory]
     [InlineData("int[]")]
@@ -163,8 +169,7 @@ public sealed class DesignAnalyzerTests
     [InlineData("System.Collections.Generic.IDictionary<string, int>")]
     public async Task Collections_RejectMutableEntityProperties(string type)
     {
-        var diagnostics = await Analyze(new DomainDesignAnalyzer(),
-            (EntityWithProperty(type, "Values"), DomainPath));
+        var diagnostics = await Analyze(new DomainDesignAnalyzer(), (EntityWithProperty(type, "Values"), DomainPath));
         Assert.Equal(DomainDesignAnalyzer.CollectionDiagnosticId, Assert.Single(diagnostics).Id);
     }
 
@@ -172,16 +177,13 @@ public sealed class DesignAnalyzerTests
     [InlineData("System.Collections.Immutable.ImmutableArray<int>")]
     [InlineData("System.Collections.Immutable.ImmutableList<int>")]
     [InlineData("System.Collections.Generic.IReadOnlyList<int>")]
-    public async Task Collections_AllowImmutableAndReadOnlyEntityApis(string type)
-    {
-        Assert.Empty(await Analyze(new DomainDesignAnalyzer(),
-            (EntityWithProperty(type, "Values"), DomainPath)));
-    }
+    public async Task Collections_AllowImmutableAndReadOnlyEntityApis(string type) => Assert.Empty(
+        await Analyze(new DomainDesignAnalyzer(), (EntityWithProperty(type, "Values"), DomainPath)));
 
     [Fact]
-    public async Task Collections_DoNotBanDtoArraysOrPrivateAccumulators()
-    {
-        Assert.Empty(await Analyze(new DomainDesignAnalyzer(),
+    public async Task Collections_DoNotBanDtoArraysOrPrivateAccumulators() => Assert.Empty(
+        await Analyze(
+            new DomainDesignAnalyzer(),
             ("""
              namespace Pole.Features.Sample.Domain;
              public record RequestDto(int[] Values);
@@ -194,7 +196,6 @@ public sealed class DesignAnalyzerTests
                  public static Widget Create() => new();
              }
              """, DomainPath)));
-    }
 
     [Theory]
     [InlineData("string", "State")]
@@ -202,29 +203,26 @@ public sealed class DesignAnalyzerTests
     [InlineData("int?", "Lifecycle")]
     public async Task States_RejectPrimitiveDomainDiscriminators(string type, string name)
     {
-        var diagnostics = await Analyze(new DomainDesignAnalyzer(),
-            (EntityWithProperty(type, name), DomainPath));
+        var diagnostics = await Analyze(new DomainDesignAnalyzer(), (EntityWithProperty(type, name), DomainPath));
         Assert.Equal(DomainDesignAnalyzer.StateDiagnosticId, Assert.Single(diagnostics).Id);
     }
 
     [Fact]
-    public async Task States_AllowTypedDomainStatesAndTransportStrings()
-    {
-        Assert.Empty(await Analyze(new DomainDesignAnalyzer(),
+    public async Task States_AllowTypedDomainStatesAndTransportStrings() => Assert.Empty(
+        await Analyze(
+            new DomainDesignAnalyzer(),
             ("""
              namespace Pole.Features.Sample.Domain;
              public enum WidgetState { Ready, Failed }
              public record Widget(WidgetState State, string Description);
              """, DomainPath),
             ("namespace Pole.Features.Sample.Contracts; public record Response(string State);", "Response.cs")));
-    }
 
     [Fact]
-    public async Task MongoRule_DoesNotApplyOutsideApplicationProjects()
-    {
-        Assert.Empty(await Analyze(new MongoApplicationBoundaryAnalyzer(),
+    public async Task MongoRule_DoesNotApplyOutsideApplicationProjects() => Assert.Empty(
+        await Analyze(
+            new MongoApplicationBoundaryAnalyzer(),
             ("public class Builders; public record Fixture(Builders Value);", "Tests/Fixture.cs")));
-    }
 
     [Theory]
     [InlineData("public record Pair(int First, int Second);")]
@@ -252,17 +250,16 @@ public sealed class DesignAnalyzerTests
     [InlineData("public class C { public void M(int first, int second) {} }")]
     [InlineData("public class @union(int first, int second);")]
     [InlineData("public record Pair(\n    [property: System.Obsolete] int First,\n    int Second);")]
-    public async Task Layout_AllowsExpandedRecordsSingleParametersAndOtherDeclarations(string source)
-    {
+    public async Task Layout_AllowsExpandedRecordsSingleParametersAndOtherDeclarations(string source) =>
         Assert.Empty(await Analyze(new PositionalDeclarationLayoutAnalyzer(), (source, "Pair.cs")));
-    }
 
     [Fact]
     public async Task RepositoryPositionalRecords_UseExpandedLayout()
     {
         // Also check the analyzer and architecture-test projects, which are exempt
         // from the global build-analyzer wiring.
-        var compilation = CSharpCompilation.Create("RepositoryLayout",
+        var compilation = CSharpCompilation.Create(
+            "RepositoryLayout",
             ArchitectureSources.RepositoryCSharp().Select(source => source.SyntaxTree));
         var diagnostics = await compilation.WithAnalyzers([new PositionalDeclarationLayoutAnalyzer()])
             .GetAnalyzerDiagnosticsAsync();
@@ -270,22 +267,26 @@ public sealed class DesignAnalyzerTests
     }
 
     private static string EntityWithProperty(string type, string name) => $$"""
-        namespace Pole.Features.Sample.Domain;
-        public sealed record Widget({{type}} {{name}});
-        public static class WidgetFactory
-        {
-            public static Widget Create({{type}} value) => new(value);
-        }
-        """;
+                                                                            namespace Pole.Features.Sample.Domain;
+                                                                            public sealed record Widget({{type}} {{name}});
+                                                                            public static class WidgetFactory
+                                                                            {
+                                                                                public static Widget Create({{type}} value) => new(value);
+                                                                            }
+                                                                            """;
 
     private static async Task<Diagnostic[]> Analyze(
-        DiagnosticAnalyzer analyzer, params (string Source, string Path)[] sources)
+        DiagnosticAnalyzer analyzer,
+        params (string Source, string Path)[] sources)
     {
-        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(Path.PathSeparator).Select(path => MetadataReference.CreateFromFile(path));
-        var compilation = CSharpCompilation.Create("Characterization",
-            sources.Select(source => CSharpSyntaxTree.ParseText(source.Source,
-                new CSharpParseOptions(LanguageVersion.Preview), source.Path)),
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path));
+        var compilation = CSharpCompilation.Create(
+            "Characterization",
+            sources.Select(source => CSharpSyntaxTree.ParseText(
+                source.Source,
+                new CSharpParseOptions(LanguageVersion.Preview),
+                source.Path)),
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         Assert.Empty(compilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));

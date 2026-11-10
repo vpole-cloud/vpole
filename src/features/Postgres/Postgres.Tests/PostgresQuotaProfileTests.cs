@@ -15,11 +15,7 @@ public sealed class PostgresQuotaProfileTests
             new WorkloadInstancesQuota(),
             new PostgresClusterCountQuota());
 
-        var result = subject.Calculate(
-            new PostgresQuotaInput(
-                375,
-                640,
-                2));
+        var result = subject.Calculate(new PostgresQuotaInput(375, 640, 2));
 
         Assert.Equal(750, result[CpuQuota.QuotaKey]);
         Assert.Equal(1280, result[RamQuota.QuotaKey]);

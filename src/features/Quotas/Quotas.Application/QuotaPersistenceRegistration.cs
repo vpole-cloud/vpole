@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
-using Pole.Features.Quotas.Application.Mongo;
 using Pole.Features.Quotas.Application.Policies;
 using Pole.Features.Quotas.Application.Reservations;
 using Pole.Features.Quotas.Application.Usage;
@@ -13,14 +12,11 @@ internal static class QuotaPersistenceRegistration
 {
     public static IServiceCollection AddQuotaPersistence(this IServiceCollection services)
     {
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<TenantQuotaPolicy>("TenantQuotaPolicies"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<TenantQuotaUsage>("TenantQuotaUsages"));
-        services.TryAddSingleton(serviceProvider => serviceProvider
-            .GetRequiredService<IMongoDatabase>()
+        services.TryAddSingleton(serviceProvider => serviceProvider.GetRequiredService<IMongoDatabase>()
             .GetCollection<QuotaReservation>("QuotaReservations"));
 
         AddCapability<MongoReserveQuotaReservation, ReserveQuotaReservation>(
@@ -57,7 +53,6 @@ internal static class QuotaPersistenceRegistration
         where TDelegate : Delegate
     {
         services.AddScoped<TImplementation>();
-        services.AddScoped(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.AddScoped(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

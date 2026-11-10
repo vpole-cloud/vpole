@@ -1,10 +1,5 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
-using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
-using Pole.Features.Functions.Application.Usage;
 using Pole.Features.Functions.Domain;
 
 namespace Pole.Features.Functions.Application.FunctionApps;
@@ -14,26 +9,28 @@ public sealed record FunctionAppListQuery(
     string? Search,
     string? ResourceGroupId,
     int PageNumber,
-    int PageSize);
+    int PageSize
+);
 
 public sealed record FunctionAppPage(
     IReadOnlyList<FunctionApp> Items,
-    long TotalCount);
+    long TotalCount
+);
 
 public delegate Task<FunctionAppPage> LoadFunctionAppPage(
     FunctionAppListQuery query,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadFunctionAppPage(IMongoCollection<FunctionApp> functionApps)
+internal sealed class MongoLoadFunctionAppPage(
+    IMongoCollection<FunctionApp> functionApps
+)
 {
     public async Task<FunctionAppPage> InvokeAsync(
         FunctionAppListQuery query,
         CancellationToken cancellationToken = default)
     {
         var filter = FunctionAppFilters.ForList(query);
-        var totalCount = await functionApps.CountDocumentsAsync(
-            filter,
-            cancellationToken: cancellationToken);
+        var totalCount = await functionApps.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
         var items = await functionApps.Find(filter)
             .SortByDescending(app => app.CreatedAtUtc)
             .Skip((query.PageNumber - 1) * query.PageSize)

@@ -15,9 +15,7 @@ public static class QuotaEndpoints
     {
         public IEndpointRouteBuilder MapQuotaEndpoints()
         {
-            app.MapGroup(TenantRoute)
-                .WithTags("TenantQuotas")
-                .MapGetTenantQuotaUsageEndpoint();
+            app.MapGroup(TenantRoute).WithTags("TenantQuotas").MapGetTenantQuotaUsageEndpoint();
 
             app.MapGroup(PlatformRoute)
                 .WithoutTenantContext()

@@ -1,17 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <AssemblyName>Pole.Features.PrivateAccess.Tests</AssemblyName>
-    <RootNamespace>Pole.Features.PrivateAccess.Tests</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio"><PrivateAssets>all</PrivateAssets></PackageReference>
-    <ProjectReference Include="../PrivateAccess.Primitives/PrivateAccess.Primitives.csproj" />
-    <ProjectReference Include="../PrivateAccess.Runtime/PrivateAccess.Runtime.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>Pole.Features.PrivateAccess.Tests</AssemblyName>
+        <RootNamespace>Pole.Features.PrivateAccess.Tests</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <ProjectReference Include="../PrivateAccess.Primitives/PrivateAccess.Primitives.csproj"/>
+        <ProjectReference Include="../PrivateAccess.Runtime/PrivateAccess.Runtime.csproj"/>
+    </ItemGroup>
 </Project>

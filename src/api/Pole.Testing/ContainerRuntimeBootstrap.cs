@@ -24,10 +24,7 @@ public static class ContainerRuntimeBootstrap
 
     private static void SetIfMissing(string name, string? value)
     {
-        if (!string.IsNullOrWhiteSpace(value) &&
-            string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
-        {
+        if (!string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name)))
             Environment.SetEnvironmentVariable(name, value);
-        }
     }
 }

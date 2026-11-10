@@ -1,5 +1,4 @@
 using System.Net;
-using Pole.Tests.Integration.Http;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Domains.Contracts;
@@ -9,13 +8,16 @@ using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.WebServices.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints.Deployments.Hostnames;
 using Pole.Features.WebServices.Domain;
+using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Domains;
 
 [Collection(IntegrationTestCollection.Global)]
-public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
+public sealed class HostnameEndpointTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task AwaitingArtifactHostnameAddAndDeleteKeepPlacementPreparedWithoutRelease()
@@ -31,11 +33,13 @@ public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : Isol
         // Seed the accepted owner configuration; artifact promotion is intentionally absent from this endpoint test.
         var accepted = current.AcceptConfigurationAwaitingArtifact(
             current.Spec with { Image = new PendingSourceBuildImage(ObjectId.GenerateNewId().ToString()) },
-            current.Tags, current.Exposure);
+            current.Tags,
+            current.Exposure);
         await services.ReplaceOneAsync(item => item.Id == current.Id, accepted);
         var placements = Fixture.DbContext.ResourceDeployments;
         var original = await placements.Find(item => item.Id == deployment.DeploymentId).SingleAsync();
-        await placements.ReplaceOneAsync(item => item.Id == original.Id,
+        await placements.ReplaceOneAsync(
+            item => item.Id == original.Id,
             original.AdvanceResourceRevision(accepted.ActiveRevision, DateTime.UtcNow));
         var releases = Fixture.Database.GetCollection<WebServiceRelease>("WebServiceReleases");
         Assert.Equal(0, await releases.CountDocumentsAsync(item => item.WebServiceId == current.Id));
@@ -75,19 +79,23 @@ public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : Isol
         using var invalid = await AddAsync(zone.Id, created.WebServiceId, deployment.DeploymentId, relative);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Contains("domains.hostname.invalid-name", await invalid.Content.ReadAsStringAsync());
-        Assert.Equal(0, await Fixture.Database.GetCollection<HostnameBinding>("HostnameBindings")
-            .CountDocumentsAsync(item => item.TenantDomainZoneId == zone.Id));
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<HostnameBinding>("HostnameBindings")
+                .CountDocumentsAsync(item => item.TenantDomainZoneId == zone.Id));
     }
 
     private async Task<(TenantDomainZoneSnapshot Zone, CreateWebServiceResponse Service)> CreateOwnerAsync(
         WebServiceCreationMode mode)
     {
-        using var reserve = await Client.PostAsJsonAsync("/api/v1/domain-zones/",
+        using var reserve = await Client.PostAsJsonAsync(
+            "/api/v1/domain-zones/",
             new
             {
                 deploymentTargetId = TestData.DefaultDeploymentTargetId,
                 label = "company",
-                technicalName = "company"
+                technicalName = "company",
             });
         Assert.Equal(HttpStatusCode.Created, reserve.StatusCode);
         var zone = (await reserve.Content.ReadFromJsonAsync<TenantDomainZoneSnapshot>())!;
@@ -97,7 +105,7 @@ public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : Isol
         {
             CreationMode = mode,
             Exposure = WebServiceExposureMode.Public,
-            Spec = body.Spec with { Image = mode == WebServiceCreationMode.SourceBuild ? null : body.Spec.Image }
+            Spec = body.Spec with { Image = mode == WebServiceCreationMode.SourceBuild ? null : body.Spec.Image },
         };
         using var create = await Client.PostAsJsonAsync("/api/v1/web-services", body);
         Assert.Equal(HttpStatusCode.Accepted, create.StatusCode);
@@ -108,9 +116,12 @@ public sealed class HostnameEndpointTests(MongoReplicaSetFixture fixture) : Isol
         item.EventType == "pole.resource-deployments/v1/resource-deployment-reconciliation-requested");
 
     private Task<HttpResponseMessage> AddAsync(
-        string zoneId, string resourceId, string deploymentId, string relative) =>
-        Client.PostAsJsonAsync($"/api/v1/web-services/{resourceId}/deployments/{deploymentId}/hostnames",
-            new AddWebServiceDeploymentHostnameBody(zoneId, relative, "custom-hostname"));
+        string zoneId,
+        string resourceId,
+        string deploymentId,
+        string relative) => Client.PostAsJsonAsync(
+        $"/api/v1/web-services/{resourceId}/deployments/{deploymentId}/hostnames",
+        new AddWebServiceDeploymentHostnameBody(zoneId, relative, "custom-hostname"));
 }
 
 public sealed class HostnameEndpointValidationTests
@@ -122,10 +133,17 @@ public sealed class HostnameEndpointValidationTests
     [InlineData("api-hostname", "bad_name", false)]
     [InlineData("api-hostname", "bad.", false)]
     [InlineData("api-hostname", "*.example", false)]
-    public void ValidatesTechnicalIdentityAndRelativeDns(string name, string relative, bool valid)
+    public void ValidatesTechnicalIdentityAndRelativeDns(
+        string name,
+        string relative,
+        bool valid)
     {
         var id = ObjectId.GenerateNewId().ToString();
-        var request = new AddWebServiceDeploymentHostnameRequest(id, id, new(id, relative, name), id);
+        var request = new AddWebServiceDeploymentHostnameRequest(
+            id,
+            id,
+            new AddWebServiceDeploymentHostnameBody(id, relative, name),
+            id);
         Assert.Equal(valid, new AddWebServiceDeploymentHostnameValidator().Validate(request).IsValid);
     }
 }

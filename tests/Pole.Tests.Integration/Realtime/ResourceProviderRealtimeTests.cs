@@ -1,21 +1,25 @@
-using Pole.Features.GitOps.Application;
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.GitOps.Application;
 using Pole.Features.Realtime.Contracts;
+using Pole.Features.ResourceDeployments.Application.Realtime;
+using Pole.Features.ResourceDeployments.Events;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Realtime;
 using Pole.Features.ResourceGroups.Events;
-using Pole.Features.ResourceDeployments.Application.Realtime;
-using Pole.Features.ResourceDeployments.Events;
 using Xunit;
 
 namespace Pole.Tests.Integration.Realtime;
 
 public sealed class ResourceProviderRealtimeTests
 {
+    private const string Tenant = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string Group = "bbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string Resource = "logical-resource";
+
     [Fact]
     public async Task ScopeAndCellLifecycleRefreshMetadataWithoutPublishingNativeFailureDetails()
     {
@@ -26,18 +30,21 @@ public sealed class ResourceProviderRealtimeTests
             return Task.CompletedTask;
         });
         var core = EventCore.Create("000000000000000000000001");
-        await consumer.HandleAsync(new IsolationScopeCreatedEvent("scope", "group", "private-name", false)
-        {
-            EventCore = core
-        });
+        await consumer.HandleAsync(
+            new IsolationScopeCreatedEvent("scope", "group", "private-name", false)
+            {
+                EventCore = core,
+            });
         Assert.All(notices, notice => Assert.Equal("group", notice.ResourceGroupId));
         notices.Clear();
-        await consumer.HandleAsync(new RuntimeCellReconciliationFailedEvent("cell", 7, "private-failure-detail")
-        {
-            EventCore = core
-        });
+        await consumer.HandleAsync(
+            new RuntimeCellReconciliationFailedEvent("cell", 7, "private-failure-detail")
+            {
+                EventCore = core,
+            });
         Assert.Equal(["resource-groups", "workspace-inventory"], notices.Select(notice => notice.Topic));
-        Assert.All(notices,
+        Assert.All(
+            notices,
             notice =>
             {
                 Assert.Equal(core.TenantId, notice.TenantId);
@@ -46,10 +53,6 @@ public sealed class ResourceProviderRealtimeTests
                 Assert.Null(notice.ResourceGroupId);
             });
     }
-
-    private const string Tenant = "aaaaaaaaaaaaaaaaaaaaaaaa";
-    private const string Group = "bbbbbbbbbbbbbbbbbbbbbbbb";
-    private const string Resource = "logical-resource";
 
     [Theory]
     [InlineData("requested")]
@@ -76,7 +79,7 @@ public sealed class ResourceProviderRealtimeTests
                     EventCore = core,
                     ResourceType = "acme/custom",
                     ResourceId = Resource,
-                    ResourceGroupId = Group
+                    ResourceGroupId = Group,
                 }),
             "deletion-requested" => consumer.HandleAsync(
                 new ResourceDeploymentDeletionRequestedEvent("deployment", "cell", 4, 6)
@@ -84,10 +87,11 @@ public sealed class ResourceProviderRealtimeTests
                     EventCore = core,
                     ResourceType = "acme/custom",
                     ResourceId = Resource,
-                    ResourceGroupId = Group
+                    ResourceGroupId = Group,
                 }),
             "started" => consumer.HandleAsync(
-                new ResourceDeploymentReconciliationStartedEvent("deployment",
+                new ResourceDeploymentReconciliationStartedEvent(
+                    "deployment",
                     "acme/custom",
                     Resource,
                     Group,
@@ -96,16 +100,17 @@ public sealed class ResourceProviderRealtimeTests
                     "Apply",
                     6)
                 {
-                    EventCore = core
+                    EventCore = core,
                 }),
             "applied" => consumer.HandleAsync(
                 new ResourceDeploymentAppliedEvent("deployment", "acme/custom", Resource, "cell", 4, 6)
                 {
                     EventCore = core,
-                    ResourceGroupId = Group
+                    ResourceGroupId = Group,
                 }),
             "failed" => consumer.HandleAsync(
-                new ResourceDeploymentFailedEvent("deployment",
+                new ResourceDeploymentFailedEvent(
+                    "deployment",
                     "acme/custom",
                     Resource,
                     "cell",
@@ -116,15 +121,15 @@ public sealed class ResourceProviderRealtimeTests
                     6)
                 {
                     EventCore = core,
-                    ResourceGroupId = Group
+                    ResourceGroupId = Group,
                 }),
             "deleted" => consumer.HandleAsync(
                 new ResourceDeploymentDeletedEvent("deployment", "acme/custom", Resource, "cell", 4, 6)
                 {
                     EventCore = core,
-                    ResourceGroupId = Group
+                    ResourceGroupId = Group,
                 }),
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(),
         });
         Assert.Equal(new RealtimeChange("workspace-inventory", Tenant, Resource, Group, 6, 4), Assert.Single(hints));
         Assert.DoesNotContain("private-failure", JsonSerializer.Serialize(hints));
@@ -140,21 +145,24 @@ public sealed class ResourceProviderRealtimeTests
             hints.Add(change);
             return Task.CompletedTask;
         });
-        var payload =
-            "{\"resourceDeploymentId\":\"deployment\",\"runtimeCellId\":\"cell\",\"generation\":4,\"resourceRevision\":6,\"eventCore\":{\"tenantId\":\"" +
+        var payload
+            = "{\"resourceDeploymentId\":\"deployment\",\"runtimeCellId\":\"cell\",\"generation\":4,\"resourceRevision\":6,\"eventCore\":{\"tenantId\":\"" +
             Tenant + "\"}}";
         await consumer.HandleAsync(
-            JsonSerializer.Deserialize<ResourceDeploymentReconciliationRequestedEvent>(payload,
+            JsonSerializer.Deserialize<ResourceDeploymentReconciliationRequestedEvent>(
+                payload,
                 EventExtensions.SerializerOptions)!);
         await consumer.HandleAsync(
-            JsonSerializer.Deserialize<ResourceDeploymentDeletionRequestedEvent>(payload,
+            JsonSerializer.Deserialize<ResourceDeploymentDeletionRequestedEvent>(
+                payload,
                 EventExtensions.SerializerOptions)!);
-        Assert.All(hints,
+        Assert.All(
+            hints,
             hint => Assert.Equal(new RealtimeChange("workspace-inventory", Tenant, Revision: 6, Generation: 4), hint));
         await consumer.HandleAsync(
             new ResourceDeploymentDeletedEvent("deployment", "acme/custom", Resource, "cell", 4, 6)
             {
-                EventCore = EventCore.Create(Tenant)
+                EventCore = EventCore.Create(Tenant),
             });
         Assert.Equal(new RealtimeChange("workspace-inventory", Tenant, Resource, Revision: 6, Generation: 4), hints[2]);
     }
@@ -178,25 +186,28 @@ public sealed class ResourceProviderRealtimeTests
             "created" => consumer.HandleAsync(
                 new ResourceGroupCreatedEvent(Group, "private-name", "private-description", tags, 7)
                 {
-                    EventCore = core
+                    EventCore = core,
                 }),
-            "updated" => consumer.HandleAsync(new ResourceGroupUpdatedEvent(Group,
+            "updated" => consumer.HandleAsync(
+                new ResourceGroupUpdatedEvent(
+                    Group,
                     "private-name",
                     "private-description",
-                    new(UpdateLog<string>.Of("before", "after"),
+                    new ResourceGroupUpdatedEventChanges(
+                        UpdateLog<string>.Of("before", "after"),
                         UpdateLog<ImmutableHashSet<string>>.Of(ImmutableHashSet<string>.Empty, tags)),
                     7)
-            {
-                EventCore = core
-            }),
+                {
+                    EventCore = core,
+                }),
             "deleted" => consumer.HandleAsync(
                 new ResourceGroupDeletedEvent(Group, "private-name", "private-description", tags, 7)
                 {
-                    EventCore = core
+                    EventCore = core,
                 }),
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(),
         });
-        Assert.Equal(new("resource-groups", Tenant, Group, Group, 7), hints[0]);
+        Assert.Equal(new RealtimeChange("resource-groups", Tenant, Group, Group, 7), hints[0]);
         Assert.Equal(new RealtimeChange("workspace-inventory", Tenant, ResourceGroupId: Group), hints[1]);
         Assert.Equal(2, hints.Count);
         Assert.DoesNotContain("private", JsonSerializer.Serialize(hints));
@@ -217,17 +228,18 @@ public sealed class ResourceProviderRealtimeTests
         var core = EventCore.Create(Tenant);
         await (operation switch
         {
-            "registered" => consumer.HandleAsync(new ResourceRegisteredEvent(Group, "acme/plugin-resource", Resource)
-            {
-                EventCore = core
-            }),
+            "registered" => consumer.HandleAsync(
+                new ResourceRegisteredEvent(Group, "acme/plugin-resource", Resource)
+                {
+                    EventCore = core,
+                }),
             "updated" => consumer.HandleAsync(
                 new ResourceRegistrationUpdatedEvent(Group, "acme/plugin-resource", Resource) { EventCore = core }),
             "unregistered" => consumer.HandleAsync(
                 new ResourceUnregisteredEvent(Group, "acme/plugin-resource", Resource) { EventCore = core }),
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(),
         });
-        Assert.Equal(new("resource-groups", Tenant, Group, Group), hints[0]);
+        Assert.Equal(new RealtimeChange("resource-groups", Tenant, Group, Group), hints[0]);
         Assert.Equal(new RealtimeChange("workspace-inventory", Tenant, Resource, Group), hints[1]);
         Assert.Equal(2, hints.Count);
     }
@@ -239,7 +251,8 @@ public sealed class ResourceProviderRealtimeTests
         services.AddGitOpsFeature();
         services.AddResourceGroupsFeature(new ConfigurationBuilder().Build());
         var topics = services.Where(descriptor => descriptor.ServiceType == typeof(RealtimeTopic))
-            .Select(descriptor => Assert.IsType<RealtimeTopic>(descriptor.ImplementationInstance)).ToArray();
+            .Select(descriptor => Assert.IsType<RealtimeTopic>(descriptor.ImplementationInstance))
+            .ToArray();
         Assert.Equal(["resource-groups", "workspace-inventory"], topics.Select(topic => topic.Name));
         Assert.All(topics, topic => Assert.Equal(RealtimeScope.Tenant, topic.Scope));
     }

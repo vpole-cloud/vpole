@@ -16,7 +16,9 @@ public sealed class PostgresBootstrapTests
         var request = Request();
         BootstrapSecretReady? accepted = null;
         var initializer = new PostgresBootstrapInitializer(
-            (input, session, ct) =>
+            (
+                input, session,
+                ct) =>
             {
                 Assert.Equal(request.Cluster.TenantId, input.TenantId);
                 Assert.Equal(request.Cluster.Id, input.Owner.ResourceId);
@@ -27,10 +29,12 @@ public sealed class PostgresBootstrapTests
                 Assert.Equal(bootstrap.SourceSecretId, input.Source.SecretId);
                 Assert.Equal(bootstrap.SourceKey, input.Source.Key);
                 Assert.Equal(bootstrap.CredentialId, input.CredentialId);
-                accepted = new(input, new(input.Source.SecretId, 4, 7), 12);
+                accepted = new BootstrapSecretReady(input, new SecretPlanningVersion(input.Source.SecretId, 4, 7), 12);
                 return Task.FromResult<ReadBootstrapSecretOutcome>(accepted);
             },
-            (ready, session, ct) =>
+            (
+                ready, session,
+                ct) =>
             {
                 Assert.Same(accepted, ready);
                 Assert.True(session.IsInTransaction);
@@ -48,15 +52,21 @@ public sealed class PostgresBootstrapTests
     public async Task ExistingCredentialNeverCopiesSourceAgainAfterRotation()
     {
         var request = Request();
-        request = new(request.Cluster.ConfigurePrepared(new(1, 20)), request.Placement, request.Capacity);
+        request = new PostgresBootstrapRequest(
+            request.Cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)),
+            request.Placement,
+            request.Capacity);
         var initializer = new PostgresBootstrapInitializer(
-            (input, _, _) => Task.FromResult<ReadBootstrapSecretOutcome>(
-                new BootstrapSecretInitialized(input.CredentialId)),
-            (_, _, _) => throw new InvalidOperationException(
-                "A configured credential must never be bootstrapped again."));
+            (
+                input, _,
+                _) => Task.FromResult<ReadBootstrapSecretOutcome>(new BootstrapSecretInitialized(input.CredentialId)),
+            (
+                _, _,
+                _) => throw new InvalidOperationException("A configured credential must never be bootstrapped again."));
 
         var outcome = await initializer.InvokeAsync(request, Session(), default);
-        Assert.Same(request.Cluster,
+        Assert.Same(
+            request.Cluster,
             Assert.IsType<PostgresBootstrapOutcome.PostgresBootstrapInitialized>(outcome).Item);
     }
 
@@ -64,11 +74,18 @@ public sealed class PostgresBootstrapTests
     public async Task MissingConfiguredCredentialDoesNotReinitializeFromSource()
     {
         var request = Request();
-        request = new(request.Cluster.ConfigurePrepared(new(1, 20)), request.Placement, request.Capacity);
+        request = new PostgresBootstrapRequest(
+            request.Cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)),
+            request.Placement,
+            request.Capacity);
         var initializer = new PostgresBootstrapInitializer(
-            (input, _, _) => Task.FromResult<ReadBootstrapSecretOutcome>(
-                new BootstrapSecretReady(input, new(input.Source.SecretId, 1, 0), 1)),
-            (_, _, _) => throw new InvalidOperationException("Reinitialization would overwrite password rotation."));
+            (
+                input, _,
+                _) => Task.FromResult<ReadBootstrapSecretOutcome>(
+                new BootstrapSecretReady(input, new SecretPlanningVersion(input.Source.SecretId, 1, 0), 1)),
+            (
+                _, _,
+                _) => throw new InvalidOperationException("Reinitialization would overwrite password rotation."));
 
         var outcome = await initializer.InvokeAsync(request, Session(), default);
         Assert.True(outcome.IsPostgresBootstrapUnavailable);
@@ -79,12 +96,17 @@ public sealed class PostgresBootstrapTests
     {
         var request = Request();
         var initializer = new PostgresBootstrapInitializer(
-            (_, _, _) => Task.FromResult<ReadBootstrapSecretOutcome>(
+            (
+                _, _,
+                _) => Task.FromResult<ReadBootstrapSecretOutcome>(
                 new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretValuesMissing)),
-            (_, _, _) => throw new InvalidOperationException("No value is available."));
+            (
+                _, _,
+                _) => throw new InvalidOperationException("No value is available."));
 
         var outcome = await initializer.InvokeAsync(request, Session(), default);
-        Assert.Equal(ConsumerSecretReferenceError.SecretValuesMissing,
+        Assert.Equal(
+            ConsumerSecretReferenceError.SecretValuesMissing,
             Assert.IsType<PostgresBootstrapOutcome.PostgresBootstrapUnavailable>(outcome).Item);
         Assert.True(request.Cluster.IsPrepared);
         Assert.Equal(1, request.Cluster.Revision);
@@ -93,8 +115,13 @@ public sealed class PostgresBootstrapTests
     private static PostgresBootstrapRequest Request()
     {
         var cluster = PostgresProvisioningTests.Prepared();
-        return new(cluster, new(cluster.GroupId,
-            ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString()), new(1, 20));
+        return new PostgresBootstrapRequest(
+            cluster,
+            new BootstrapSecretPlacement(
+                cluster.GroupId,
+                ObjectId.GenerateNewId().ToString(),
+                ObjectId.GenerateNewId().ToString()),
+            new PostgresDesiredCapacity(1, 20));
     }
 
     private static IClientSessionHandle Session() => DispatchProxy.Create<IClientSessionHandle, TransactionSession>();
@@ -104,7 +131,7 @@ public sealed class PostgresBootstrapTests
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => targetMethod?.Name switch
         {
             "get_IsInTransaction" => true,
-            _ => throw new NotSupportedException(targetMethod?.Name)
+            _ => throw new NotSupportedException(targetMethod?.Name),
         };
     }
 }

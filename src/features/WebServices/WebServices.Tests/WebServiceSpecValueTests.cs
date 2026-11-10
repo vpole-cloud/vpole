@@ -38,51 +38,66 @@ public sealed class WebServiceSpecValueTests
         {
             "environment" => spec with
             {
-                Config = spec.Config with { EnvironmentVariables = spec.Config.EnvironmentVariables.SetItem("MODE", "next") }
+                Config = spec.Config with
+                {
+                    EnvironmentVariables = spec.Config.EnvironmentVariables.SetItem("MODE", "next"),
+                },
             },
             "environment-case" => spec with
             {
                 Config = spec.Config with
                 {
-                    EnvironmentVariables = spec.Config.EnvironmentVariables.Remove("MODE")
-                        .Add("mode", "production").WithComparers(StringComparer.OrdinalIgnoreCase)
-                }
+                    EnvironmentVariables = spec.Config
+                        .EnvironmentVariables
+                        .Remove("MODE")
+                        .Add("mode", "production")
+                        .WithComparers(StringComparer.OrdinalIgnoreCase),
+                },
             },
             "ports" => spec with
             {
                 Config = spec.Config with
                 {
-                    PortMappings = spec.Config.PortMappings.SetItem(0, spec.Config.PortMappings[0] with { TargetPort = "9090" })
-                }
+                    PortMappings = spec.Config.PortMappings.SetItem(
+                        0,
+                        spec.Config.PortMappings[0] with { TargetPort = "9090" }),
+                },
             },
             "connection" => spec with
             {
                 Config = spec.Config with
                 {
                     ConnectionEnvironmentReferences = spec.Config.ConnectionEnvironmentReferences.SetItem(
-                        "DB_HOST", spec.Config.ConnectionEnvironmentReferences["DB_HOST"] with { ValueKind = "Port" })
-                }
+                        "DB_HOST",
+                        spec.Config.ConnectionEnvironmentReferences["DB_HOST"] with { ValueKind = "Port" }),
+                },
             },
             "secret" => spec with
             {
                 Config = spec.Config with
                 {
                     SecretEnvironmentReferences = spec.Config.SecretEnvironmentReferences.SetItem(
-                        "DB_PASSWORD", spec.Config.SecretEnvironmentReferences["DB_PASSWORD"] with { Key = "rotated" })
-                }
+                        "DB_PASSWORD",
+                        spec.Config.SecretEnvironmentReferences["DB_PASSWORD"] with { Key = "rotated" }),
+                },
             },
             "image" => spec with
             {
-                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(spec.Image) with { Tag = "next" }
+                Image = Assert.IsType<ImageInfo>(spec.Image) with { Tag = "next" },
             },
             "pull-reference" => spec with
             {
-                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(spec.Image) with
-                { SecretName = "another-pull-reference" }
+                Image = Assert.IsType<ImageInfo>(spec.Image) with
+                {
+                    SecretName = "another-pull-reference",
+                },
             },
             "autoscaling" => spec with { Autoscaling = spec.Autoscaling! with { MaxReplicas = 5 } },
-            "probes" => spec with { Probes = spec.Probes with { Readiness = spec.Probes.Readiness with { Path = "/next" } } },
-            _ => throw new ArgumentOutOfRangeException(nameof(field))
+            "probes" => spec with
+            {
+                Probes = spec.Probes with { Readiness = spec.Probes.Readiness with { Path = "/next" } },
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(field)),
         };
 
         var updated = service.UpdateDesiredState(changed, service.Tags);
@@ -108,20 +123,25 @@ public sealed class WebServiceSpecValueTests
         {
             Spec = service.Spec with
             {
-                Image = Assert.IsType<Pole.Features.WebServices.Domain.ImageInfo>(service.Spec.Image) with
-                { SecretName = "managed-pull-reference" },
+                Image = Assert.IsType<ImageInfo>(service.Spec.Image) with
+                {
+                    SecretName = "managed-pull-reference",
+                },
                 Autoscaling = new AutoscalingSpec(1, 3, new AutoscalingMetric("cpu", 70)),
                 Config = service.Spec.Config with
                 {
                     EnvironmentVariables = ImmutableDictionary<string, string>.Empty
-                        .Add("MODE", "production").Add("PORT", "8080"),
-                    ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
-                        .Add("DB_HOST", new ConnectionEnvironmentReference("507f1f77bcf86cd799439001", "Host",
-                            ConfigurationKey: null)),
-                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
-                        .Add("DB_PASSWORD", new SecretEnvironmentReference("507f1f77bcf86cd799439002", "password"))
-                }
-            }
+                        .Add("MODE", "production")
+                        .Add("PORT", "8080"),
+                    ConnectionEnvironmentReferences
+                    = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add(
+                        "DB_HOST",
+                        new ConnectionEnvironmentReference("507f1f77bcf86cd799439001", "Host", ConfigurationKey: null)),
+                    SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add(
+                        "DB_PASSWORD",
+                        new SecretEnvironmentReference("507f1f77bcf86cd799439002", "password")),
+                },
+            },
         };
     }
 }

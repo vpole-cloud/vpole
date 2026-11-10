@@ -38,9 +38,13 @@ public static class GitOpsFeature
             .GetCollection<GitReconciliationRun>(RepositoryCollections.Runs));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitSourceRequestReceipt>(RepositoryCollections.Requests));
-        services.AddOptions<GitOpsWorkerOptions>().BindConfiguration(GitOpsWorkerOptions.SectionName)
-            .ValidateDataAnnotations().Validate(options => options.HeartbeatSeconds * 2 < options.LeaseSeconds,
-                "The heartbeat interval must be less than half the lease duration.").ValidateOnStart();
+        services.AddOptions<GitOpsWorkerOptions>()
+            .BindConfiguration(GitOpsWorkerOptions.SectionName)
+            .ValidateDataAnnotations()
+            .Validate(
+                options => options.HeartbeatSeconds * 2 < options.LeaseSeconds,
+                "The heartbeat interval must be less than half the lease duration.")
+            .ValidateOnStart();
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<GitOpsWorkerOptions>>().Value);
         services.AddScoped<RepositoryProviderRegistry>();
         services.AddScoped<GitRepositorySources>();
@@ -49,12 +53,16 @@ public static class GitOpsFeature
         services.AddScoped<IGitSourceScheduler>(sp => sp.GetRequiredService<GitSourceScheduling>());
         services.AddScoped<GitSourceRecoveryScanner>();
         services.AddScoped<DispatchGitSource>(sp => source =>
-            sp.GetRequiredService<IBackgroundJobClient>().Enqueue<RepositorySourceJob>(job =>
-                job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None)));
+            sp.GetRequiredService<IBackgroundJobClient>()
+                .Enqueue<RepositorySourceJob>(job => job.ExecuteAsync(
+                    source.TenantId,
+                    source.SourceId,
+                    CancellationToken.None)));
         services.AddScoped<ScheduleGitSourceAt>(sp => (source, notBeforeUtc) =>
-            sp.GetRequiredService<IBackgroundJobClient>().Schedule<RepositorySourceJob>(job =>
-                job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None),
-                HangfireEnqueueAt(notBeforeUtc)));
+            sp.GetRequiredService<IBackgroundJobClient>()
+                .Schedule<RepositorySourceJob>(
+                    job => job.ExecuteAsync(source.TenantId, source.SourceId, CancellationToken.None),
+                    HangfireEnqueueAt(notBeforeUtc)));
         services.AddScoped<GitRunStore>();
         services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>()
             .GetCollection<GitOperationPreview>(RepositoryCollections.Previews));
@@ -100,21 +108,31 @@ public static class GitOpsFeature
     {
         // Hangfire stores schedule scores in whole seconds; truncation must not precede the durable due fence.
         var fractionalTicks = due.Ticks % TimeSpan.TicksPerSecond;
-        return new DateTimeOffset(fractionalTicks == 0
-            ? due
-            : due.AddTicks(TimeSpan.TicksPerSecond - fractionalTicks));
+        return new DateTimeOffset(fractionalTicks == 0 ? due : due.AddTicks(TimeSpan.TicksPerSecond - fractionalTicks));
     }
 
     public static IEndpointRouteBuilder MapGitOpsEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGroup("/gitops/sources").WithTags("GitOpsSources")
-            .MapCreateRepositorySourceEndpoint().MapGetRepositorySourceEndpoint().MapListRepositorySourcesEndpoint()
-            .MapUpdateRepositorySourceEndpoint().MapSyncRepositorySourceEndpoint().MapRetryRepositorySourceEndpoint()
-            .MapPauseRepositorySourceEndpoint().MapResumeRepositorySourceEndpoint().MapDeleteRepositorySourceEndpoint()
-            .MapCreateLifecyclePreviewEndpoint().MapConfirmLifecyclePreviewEndpoint()
-            .MapGetLifecyclePreviewEndpoint().MapListLifecyclePreviewEndpoint()
-            .MapListRepositoryRunsEndpoint().MapGetRepositoryRunEndpoint().MapListRepositoryOperationsEndpoint()
-            .MapListRepositoryResourcesEndpoint().MapListAdoptionCandidatesEndpoint();
+        app.MapGroup("/gitops/sources")
+            .WithTags("GitOpsSources")
+            .MapCreateRepositorySourceEndpoint()
+            .MapGetRepositorySourceEndpoint()
+            .MapListRepositorySourcesEndpoint()
+            .MapUpdateRepositorySourceEndpoint()
+            .MapSyncRepositorySourceEndpoint()
+            .MapRetryRepositorySourceEndpoint()
+            .MapPauseRepositorySourceEndpoint()
+            .MapResumeRepositorySourceEndpoint()
+            .MapDeleteRepositorySourceEndpoint()
+            .MapCreateLifecyclePreviewEndpoint()
+            .MapConfirmLifecyclePreviewEndpoint()
+            .MapGetLifecyclePreviewEndpoint()
+            .MapListLifecyclePreviewEndpoint()
+            .MapListRepositoryRunsEndpoint()
+            .MapGetRepositoryRunEndpoint()
+            .MapListRepositoryOperationsEndpoint()
+            .MapListRepositoryResourcesEndpoint()
+            .MapListAdoptionCandidatesEndpoint();
 
         return app;
     }
@@ -122,7 +140,8 @@ public static class GitOpsFeature
     public static IServiceProvider ScheduleGitOpsRecurringJobs(this IServiceProvider services)
     {
         var options = services.GetRequiredService<IOptions<GitOpsWorkerOptions>>().Value;
-        RecurringJob.AddOrUpdate<GitSourceRecoveryScanner>("gitops-source-recovery",
+        RecurringJob.AddOrUpdate<GitSourceRecoveryScanner>(
+            "gitops-source-recovery",
             job => job.ScanAsync(CancellationToken.None),
             $"*/{options.ScanIntervalMinutes} * * * *");
         return services;

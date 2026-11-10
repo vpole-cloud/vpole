@@ -11,7 +11,8 @@ public sealed record SecretChangedEvent(
     long Revision,
     SecretChange Change,
     string Name,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(SecretCreated), "created")]
@@ -30,6 +31,10 @@ public sealed record SecretMetadataUpdated : SecretChange;
 
 public sealed record SecretDeletedChange : SecretChange;
 
-public sealed record SecretBindingAdded(string BindingId) : SecretChange;
+public sealed record SecretBindingAdded(
+    string BindingId
+) : SecretChange;
 
-public sealed record SecretBindingRemoved(string BindingId) : SecretChange;
+public sealed record SecretBindingRemoved(
+    string BindingId
+) : SecretChange;

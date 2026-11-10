@@ -1,8 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.ResourceDeployments.Application;
-using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Domain;
@@ -19,16 +17,15 @@ public delegate Task<ResourceDeployment?> ClaimResourceDeployment(
 
 internal sealed record ResourceDeploymentNotClaimed;
 
-internal union ClaimResourceDeploymentOutcome(
-    ResourceDeployment,
-    ResourceDeploymentNotClaimed);
+internal union ClaimResourceDeploymentOutcome(ResourceDeployment, ResourceDeploymentNotClaimed);
 
 internal sealed class ClaimResourceDeploymentOperation(
     IMongoCollection<ResourceDeployment> resourceDeployments,
     ResourceDeploymentSettings settings,
     TimeProvider timeProvider,
     MongoRunTransaction transactions,
-    StoreOutboxWrites storeOutboxWrites)
+    StoreOutboxWrites storeOutboxWrites
+)
 {
     public async Task<ResourceDeployment?> InvokeAsync(
         string tenantId,
@@ -38,10 +35,11 @@ internal sealed class ClaimResourceDeploymentOperation(
         ResourceDeploymentOperation operation,
         CancellationToken cancellationToken = default)
     {
-        var outcome = await transactions.InvokeOutcomeAsync<ClaimResourceDeploymentOutcome>(async (transaction, ct) =>
+        var outcome = await transactions.InvokeOutcomeAsync<ClaimResourceDeploymentOutcome>(
+            async (transaction, ct) =>
             {
-                var current = await resourceDeployments
-                    .Find(transaction.Session,
+                var current = await resourceDeployments.Find(
+                        transaction.Session,
                         ResourceDeploymentFilters.ForPendingReconciliation(
                             tenantId,
                             deploymentId,
@@ -57,7 +55,8 @@ internal sealed class ClaimResourceDeploymentOperation(
                 }
 
                 var startedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-                var claimed = current.Start(generation,
+                var claimed = current.Start(
+                    generation,
                     operation,
                     ObjectId.GenerateNewId().ToString(),
                     startedAtUtc,
@@ -81,7 +80,7 @@ internal sealed class ClaimResourceDeploymentOperation(
         return outcome switch
         {
             ResourceDeployment claimed => claimed,
-            ResourceDeploymentNotClaimed => null
+            ResourceDeploymentNotClaimed => null,
         };
     }
 }

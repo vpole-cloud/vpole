@@ -10,15 +10,18 @@ public sealed record SourceBuildConfigurationSnapshot(
     string WebServiceId,
     string Dockerfile,
     long Revision,
-    long BuildGeneration);
+    long BuildGeneration
+);
 
 public sealed record SourceBuildConfigurationReferenceRequest(
     string TenantId,
-    string ConfigurationId);
+    string ConfigurationId
+);
 
 public sealed record NamedSourceBuildConfigurationRequest(
     string TenantId,
-    string TechnicalName);
+    string TechnicalName
+);
 
 public sealed record SourceBuildConfigurationReferenceMissing;
 

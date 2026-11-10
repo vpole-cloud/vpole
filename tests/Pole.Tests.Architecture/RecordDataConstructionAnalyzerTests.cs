@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Pole.ArchitectureAnalyzers;
 using Xunit;
@@ -41,14 +42,15 @@ public sealed class RecordDataConstructionAnalyzerTests
     public async Task ExactLegacyMemberDoesNotExemptAnotherMemberOfTheSameType()
     {
         var source = """
-            namespace Pole.Features.ComputeProfiles.Events;
-            public sealed record ComputeProfileCatalogChangedEvent(int Value)
-            {
-                public long EventCore { get; init; }
-                public long NewFence { get; init; }
-            }
-            """;
-        var diagnostics = await Analyze(source,
+                     namespace Pole.Features.ComputeProfiles.Events;
+                     public sealed record ComputeProfileCatalogChangedEvent(int Value)
+                     {
+                         public long EventCore { get; init; }
+                         public long NewFence { get; init; }
+                     }
+                     """;
+        var diagnostics = await Analyze(
+            source,
             "src/features/ComputeProfiles/ComputeProfiles.Events/ComputeProfileCatalogChangedEvent.cs");
         var diagnostic = Assert.Single(diagnostics);
         Assert.Contains("NewFence", diagnostic.GetMessage(), StringComparison.Ordinal);
@@ -58,12 +60,12 @@ public sealed class RecordDataConstructionAnalyzerTests
     public async Task LegacyMemberNameInAnotherFileIsNotExempt()
     {
         var source = """
-            namespace Pole.Features.ComputeProfiles.Events;
-            public sealed record ComputeProfileCatalogChangedEvent(int Value)
-            {
-                public long EventCore { get; init; }
-            }
-            """;
+                     namespace Pole.Features.ComputeProfiles.Events;
+                     public sealed record ComputeProfileCatalogChangedEvent(int Value)
+                     {
+                         public long EventCore { get; init; }
+                     }
+                     """;
         Assert.Single(await Analyze(source, "Other/ComputeProfileCatalogChangedEvent.cs"));
     }
 
@@ -74,9 +76,12 @@ public sealed class RecordDataConstructionAnalyzerTests
         // tests/analyzers, which are excluded from automatic production analyzer registration.
         var trees = ArchitectureSources.RepositoryCSharp().Select(source => source.SyntaxTree).ToArray();
         var compilation = CSharpCompilation.Create("RecordStorageInventory", trees, FrameworkReferences());
-        var actual = trees.SelectMany(tree => tree.GetRoot().DescendantNodes()
-                .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.RecordDeclarationSyntax>()
-                .Select(record => compilation.GetSemanticModel(tree).GetDeclaredSymbol(record)))
+        var actual = trees
+            .SelectMany(tree =>
+                tree.GetRoot()
+                    .DescendantNodes()
+                    .OfType<RecordDeclarationSyntax>()
+                    .Select(record => compilation.GetSemanticModel(tree).GetDeclaredSymbol(record)))
             .OfType<INamedTypeSymbol>()
             .GroupBy(type => type.ToDisplayString(), StringComparer.Ordinal)
             .Select(group => group.First())
@@ -95,11 +100,13 @@ public sealed class RecordDataConstructionAnalyzerTests
 
     private static async Task<Diagnostic[]> Analyze(string source, string path = "Record.cs")
     {
-        var compilation = CSharpCompilation.Create("RecordConstruction",
+        var compilation = CSharpCompilation.Create(
+            "RecordConstruction",
             [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview), path)],
-            FrameworkReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            FrameworkReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         Assert.Empty(compilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
-        return (await compilation.WithAnalyzers([new RecordDataConstructionAnalyzer()])
-            .GetAnalyzerDiagnosticsAsync()).ToArray();
+        return (await compilation.WithAnalyzers([new RecordDataConstructionAnalyzer()]).GetAnalyzerDiagnosticsAsync())
+            .ToArray();
     }
 }

@@ -6,7 +6,8 @@ public sealed record DeploymentTargetConnectionRequestBody(
     string? ContextName = null,
     string? ServerUrl = null,
     string? CertificateAuthorityData = null,
-    string? Token = null)
+    string? Token = null
+)
 {
     public override string ToString() => $"DeploymentTargetConnectionRequestBody(Kind={Kind}, Credential=[REDACTED])";
 }

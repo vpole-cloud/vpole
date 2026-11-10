@@ -9,8 +9,7 @@ public static class ResourceDeploymentEndpoints
 {
     public const string Route = "/resource-deployments";
 
-    public static IEndpointRouteBuilder MapResourceDeploymentEndpoints(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapResourceDeploymentEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGroup(Route)
             .WithTags("ResourceDeployments")

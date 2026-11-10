@@ -1,6 +1,6 @@
-using Pole.Workloads;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Workloads;
 
 namespace Pole.Features.DeploymentTargets.Domain;
 
@@ -22,7 +22,8 @@ public sealed record DeploymentTarget(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     string TechnicalName,
-    long ObservationFence)
+    long ObservationFence
+)
 {
     [BsonIgnore] public long NextConnectionVersion => checked(Connection.Version + 1);
 
@@ -71,7 +72,7 @@ public sealed record DeploymentTarget(
             WorkloadConfiguration with
             {
                 Revision = checked(WorkloadConfiguration.Revision + 1),
-                NetworkPolicy = policy
+                NetworkPolicy = policy,
             },
             observedAtUtc);
     }
@@ -130,13 +131,9 @@ public sealed record DeploymentTarget(
         if (acceptsWorkloads && DeletionRequestedAtUtc is not null)
             throw new InvalidOperationException("A deployment target pending deletion cannot accept new workloads.");
         var workloadConfiguration = WorkloadConfiguration.Reconfigure(ingress, networkSources);
-        if (string.Equals(DisplayName, normalizedDisplayName, StringComparison.Ordinal) &&
-            Enabled == enabled &&
-            AcceptsWorkloads == acceptsWorkloads &&
-            Equals(WorkloadConfiguration, workloadConfiguration))
-        {
+        if (string.Equals(DisplayName, normalizedDisplayName, StringComparison.Ordinal) && Enabled == enabled &&
+            AcceptsWorkloads == acceptsWorkloads && Equals(WorkloadConfiguration, workloadConfiguration))
             return this;
-        }
 
         return Reconfigured(
             normalizedDisplayName,
@@ -154,9 +151,7 @@ public sealed record DeploymentTarget(
         if (DeletionRequestedAtUtc is not null)
             return this;
 
-        var normalizedRequestedAtUtc = DeploymentTargetValueGuard.Utc(
-            requestedAtUtc,
-            nameof(requestedAtUtc));
+        var normalizedRequestedAtUtc = DeploymentTargetValueGuard.Utc(requestedAtUtc, nameof(requestedAtUtc));
         if (normalizedRequestedAtUtc < UpdatedAtUtc)
             normalizedRequestedAtUtc = UpdatedAtUtc;
         return new DeploymentTarget(
@@ -189,17 +184,13 @@ public sealed record DeploymentTarget(
             nameof(validatedClusterIdentity),
             DeploymentTargetValueGuard.MaximumClusterIdentityLength);
         if (!string.Equals(ClusterIdentity, normalizedIdentity, StringComparison.Ordinal))
-        {
             throw new InvalidOperationException(
                 "Replacement credentials must resolve to the same Kubernetes cluster identity.");
-        }
 
         var expectedVersion = NextConnectionVersion;
         if (replacement.Version != expectedVersion)
-        {
             throw new InvalidOperationException(
                 "Replacement credentials must advance the connection version exactly once.");
-        }
 
         return Reconfigured(
             DisplayName,
@@ -213,9 +204,9 @@ public sealed record DeploymentTarget(
     }
 
     /// <summary>
-    /// Applies health and capability observations only to the exact configuration snapshot that was validated.
-    /// Persistence must use the same revision and connection-version values in its compare-and-set filter.
-    /// Observational updates deliberately do not advance the aggregate revision or configuration update time.
+    ///     Applies health and capability observations only to the exact configuration snapshot that was validated.
+    ///     Persistence must use the same revision and connection-version values in its compare-and-set filter.
+    ///     Observational updates deliberately do not advance the aggregate revision or configuration update time.
     /// </summary>
     public DeploymentTarget ApplyValidationObservation(
         long expectedRevision,
@@ -226,18 +217,14 @@ public sealed record DeploymentTarget(
         ArgumentNullException.ThrowIfNull(health);
         ArgumentNullException.ThrowIfNull(capabilities);
         if (Revision != expectedRevision || Connection.Version != expectedConnectionVersion)
-        {
             throw new InvalidOperationException(
                 "The deployment target changed while its connection was being validated.");
-        }
 
         if (health.ConnectionVersion != expectedConnectionVersion ||
             capabilities.ConnectionVersion != expectedConnectionVersion)
-        {
             throw new ArgumentException(
                 "Validation observations must match the validated connection version.",
                 nameof(health));
-        }
 
         return new DeploymentTarget(
             Id,
@@ -294,12 +281,7 @@ public sealed record DeploymentTarget(
 
 public static class DeploymentTargetFactory
 {
-    public sealed record CreateOptions(
-        string Id,
-        DateTime CreatedAtUtc);
-
-    public static CreateOptions DefaultOptions =>
-        new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
+    public static CreateOptions DefaultOptions => new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow);
 
     public static DeploymentTarget Create(
         string technicalName,
@@ -318,11 +300,9 @@ public static class DeploymentTargetFactory
         ArgumentNullException.ThrowIfNull(capabilities);
         ArgumentNullException.ThrowIfNull(workloadConfiguration);
         if (workloadConfiguration.Revision != 1)
-        {
             throw new ArgumentException(
                 "A new deployment target workload configuration must start at revision 1.",
                 nameof(workloadConfiguration));
-        }
 
         var normalizedId = DeploymentTargetValueGuard.ObjectId(options.Id, nameof(options.Id));
         var normalizedDisplayName = DeploymentTargetValueGuard.Required(
@@ -333,27 +313,18 @@ public static class DeploymentTargetFactory
             clusterIdentity,
             nameof(clusterIdentity),
             DeploymentTargetValueGuard.MaximumClusterIdentityLength);
-        var normalizedCreatedAtUtc = DeploymentTargetValueGuard.Utc(
-            options.CreatedAtUtc,
-            nameof(options.CreatedAtUtc));
+        var normalizedCreatedAtUtc = DeploymentTargetValueGuard.Utc(options.CreatedAtUtc, nameof(options.CreatedAtUtc));
         var normalizedWorkloadConfiguration = DeploymentTargetWorkloadConfiguration.Create(
             workloadConfiguration.Ingress,
             workloadConfiguration.NetworkSources);
 
         if (!enabled && acceptsWorkloads)
-        {
             throw new ArgumentException(
                 "A disabled deployment target cannot accept new workloads.",
                 nameof(acceptsWorkloads));
-        }
 
-        if (health.ConnectionVersion != connection.Version ||
-            capabilities.ConnectionVersion != connection.Version)
-        {
-            throw new ArgumentException(
-                "Connection, health, and capability versions must match.",
-                nameof(connection));
-        }
+        if (health.ConnectionVersion != connection.Version || capabilities.ConnectionVersion != connection.Version)
+            throw new ArgumentException("Connection, health, and capability versions must match.", nameof(connection));
 
         return new DeploymentTarget(
             normalizedId,
@@ -373,6 +344,11 @@ public static class DeploymentTargetFactory
             ResourceTechnicalName.Require(technicalName),
             ObservationFence: 0L);
     }
+
+    public sealed record CreateOptions(
+        string Id,
+        DateTime CreatedAtUtc
+    );
 }
 
 internal static class DeploymentTargetValueGuard
@@ -386,7 +362,10 @@ internal static class DeploymentTargetValueGuard
     public const int MaximumFailureCodeLength = 128;
     public const int MaximumFailureMessageLength = 512;
 
-    public static string Required(string? value, string parameterName, int maximumLength)
+    public static string Required(
+        string? value,
+        string parameterName,
+        int maximumLength)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("The value is required.", parameterName);
@@ -414,16 +393,9 @@ internal static class DeploymentTargetValueGuard
 
     public static string KubernetesResourceName(string? value, string parameterName)
     {
-        var normalized = Required(
-            value,
-            parameterName,
-            DeploymentTargetIngressConfiguration.MaximumNameLength);
+        var normalized = Required(value, parameterName, DeploymentTargetIngressConfiguration.MaximumNameLength);
         if (!DeploymentTargetIngressConfiguration.IsValidKubernetesResourceName(normalized))
-        {
-            throw new ArgumentException(
-                "The value must be a valid Kubernetes resource name.",
-                parameterName);
-        }
+            throw new ArgumentException("The value must be a valid Kubernetes resource name.", parameterName);
 
         return normalized;
     }
@@ -436,7 +408,7 @@ internal static class DeploymentTargetValueGuard
         {
             DateTimeKind.Utc => value,
             DateTimeKind.Local => value.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
         };
     }
 
@@ -445,15 +417,11 @@ internal static class DeploymentTargetValueGuard
         var normalized = Required(value, parameterName, MaximumServerUrlLength);
         if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
             !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(uri.Host) ||
-            !string.IsNullOrEmpty(uri.UserInfo) ||
-            !string.IsNullOrEmpty(uri.Query) ||
-            !string.IsNullOrEmpty(uri.Fragment))
-        {
+            string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
             throw new ArgumentException(
                 "The Kubernetes server URL must be an absolute HTTPS URL without credentials, query, or fragment.",
                 parameterName);
-        }
 
         return normalized.TrimEnd('/');
     }

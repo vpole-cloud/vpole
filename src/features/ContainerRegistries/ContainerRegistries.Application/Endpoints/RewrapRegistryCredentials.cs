@@ -16,36 +16,38 @@ public sealed record RewrapRegistryCredentialsRequestBody(
     string KeyId,
     int KeyVersion,
     string KeyWrapAlgorithm,
-    int KeyWrapAlgorithmVersion);
+    int KeyWrapAlgorithmVersion
+);
 
 public sealed record RewrapRegistryCredentialsRequest(
-    RewrapRegistryCredentialsRequestBody Body)
-    : IMediatorRequest<RewrapRegistryCredentialsOutcome>;
+    RewrapRegistryCredentialsRequestBody Body
+) : IMediatorRequest<RewrapRegistryCredentialsOutcome>;
 
 public union RewrapRegistryCredentialsOutcome(
     RegistryCredentialRewrapSummary,
     RegistryCredentialRewrapRejected,
     RegistryCredentialRewrapFailed);
 
-public sealed class RewrapRegistryCredentialsRequestValidator
-    : AbstractValidator<RewrapRegistryCredentialsRequest>
+public sealed class RewrapRegistryCredentialsRequestValidator : AbstractValidator<RewrapRegistryCredentialsRequest>
 {
     public RewrapRegistryCredentialsRequestValidator()
     {
-        RuleFor(request => request.Body).NotNull().DependentRules(() =>
-        {
-            RuleFor(request => request.Body.ProviderId).NotEmpty().MaximumLength(128);
-            RuleFor(request => request.Body.KeyId).NotEmpty().MaximumLength(128);
-            RuleFor(request => request.Body.KeyVersion).GreaterThan(0);
-            RuleFor(request => request.Body.KeyWrapAlgorithm).NotEmpty().MaximumLength(128);
-            RuleFor(request => request.Body.KeyWrapAlgorithmVersion).GreaterThan(0);
-        });
+        RuleFor(request => request.Body)
+            .NotNull()
+            .DependentRules(() =>
+            {
+                RuleFor(request => request.Body.ProviderId).NotEmpty().MaximumLength(128);
+                RuleFor(request => request.Body.KeyId).NotEmpty().MaximumLength(128);
+                RuleFor(request => request.Body.KeyVersion).GreaterThan(0);
+                RuleFor(request => request.Body.KeyWrapAlgorithm).NotEmpty().MaximumLength(128);
+                RuleFor(request => request.Body.KeyWrapAlgorithmVersion).GreaterThan(0);
+            });
     }
 }
 
 public sealed class RewrapRegistryCredentialsHandler(
-    RewrapAllRegistryCredentials rewrapCredentials)
-    : IMediatorOutcomeHandler<RewrapRegistryCredentialsRequest, RewrapRegistryCredentialsOutcome>
+    RewrapAllRegistryCredentials rewrapCredentials
+) : IMediatorOutcomeHandler<RewrapRegistryCredentialsRequest, RewrapRegistryCredentialsOutcome>
 {
     public async Task<RewrapRegistryCredentialsOutcome> HandleAsync(
         RewrapRegistryCredentialsRequest request,
@@ -63,7 +65,7 @@ public sealed class RewrapRegistryCredentialsHandler(
         {
             RegistryCredentialRewrapSummary summary => summary,
             RegistryCredentialRewrapRejected rejected => rejected,
-            RegistryCredentialRewrapFailed failed => failed
+            RegistryCredentialRewrapFailed failed => failed,
         };
     }
 }
@@ -72,20 +74,20 @@ public static class RewrapRegistryCredentials
 {
     public static IEndpointRouteBuilder MapRewrapRegistryCredentialsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/container-registry-credentials/rewrap", async (
-                IMediator mediator,
-                [FromBody] RewrapRegistryCredentialsRequestBody body,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(
-                    new RewrapRegistryCredentialsRequest(body), cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapPost(
+                "/container-registry-credentials/rewrap",
+                async (
+                    IMediator mediator, [FromBody] RewrapRegistryCredentialsRequestBody body,
+                    CancellationToken cancellationToken) =>
                 {
-                    RegistryCredentialRewrapSummary summary => Results.Ok(summary),
-                    RegistryCredentialRewrapRejected rejected => MapRewrapRejected(rejected).ToHttpResult(),
-                    RegistryCredentialRewrapFailed failed => MapRewrapFailed(failed).ToHttpResult()
-                });
-            })
+                    var result = await mediator.Send(new RewrapRegistryCredentialsRequest(body), cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        RegistryCredentialRewrapSummary summary => Results.Ok(summary),
+                        RegistryCredentialRewrapRejected rejected => MapRewrapRejected(rejected).ToHttpResult(),
+                        RegistryCredentialRewrapFailed failed => MapRewrapFailed(failed).ToHttpResult(),
+                    });
+                })
             .WithName("RewrapRegistryCredentials")
             .RequireAuthorization(Policy.Admin)
             .Produces<RegistryCredentialRewrapSummary>()

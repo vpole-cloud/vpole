@@ -1,12 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Driver;
-using Pole.Features.GitOps.Application.Jobs;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
-using Pole.Tests.Integration.Infrastructure;
-using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
@@ -21,7 +17,8 @@ public abstract partial class DeclarativePipelineTestBase
 
     private protected Task<GitSynchronizationState> State() => SourceStore.StateAsync(Data.TenantId, source, default);
 
-    private protected RepositorySyncSignal Push(string id) => new(Data.TenantId,
+    private protected RepositorySyncSignal Push(string id) => new(
+        Data.TenantId,
         repository.Provider,
         TestRepositorySnapshots.ConnectionId,
         source,

@@ -9,11 +9,8 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Request;
 using Pole.Features.ResourceGroups.Application.Common;
-using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
 using Pole.Features.ResourceGroups.Application.ResourceGroups;
 using Pole.Mediator;
-using Pole.ResultType;
 
 namespace Pole.Features.ResourceGroups.Application.Endpoints;
 
@@ -21,50 +18,46 @@ public static class GetResourceGroups
 {
     public static IEndpointRouteBuilder MapGetResourceGroupsEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (
-                IMediator mediator,
-                [AsParameters] GetResourceGroupsRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] GetResourceGroupsRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    PaginatedResponse<ResourceGroupDto> page => Results.Ok(page)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        PaginatedResponse<ResourceGroupDto> page => Results.Ok(page),
+                    });
+                })
             .WithName("GetResourceGroups")
             .WithSummary("Retrieves all resource groups.")
             .WithDescription("Retrieves a paginated list of resource groups in the selected tenant.")
-            .Produces<PaginatedResponse<ResourceGroupDto>>(StatusCodes.Status200OK);
+            .Produces<PaginatedResponse<ResourceGroupDto>>();
 
         return app;
     }
 }
 
-public record GetResourceGroupsRequest
-    : IMediatorRequest<GetResourceGroupsOutcome>, ITenantReadOperation
+public record GetResourceGroupsRequest : IMediatorRequest<GetResourceGroupsOutcome>, ITenantReadOperation
 {
-    [FromQuery, DefaultValue(1)] public int PageNumber { get; init; } = 1;
-    [FromQuery, DefaultValue(10)] public int PageSize { get; init; } = 10;
-    [FromTenantHeader] public string TenantId { get; init; } = string.Empty;
+    [FromQuery] [DefaultValue(1)] public int PageNumber { get; init; } = 1;
+    [FromQuery] [DefaultValue(10)] public int PageSize { get; init; } = 10;
     [FromQuery] public string? Search { get; init; }
+    [FromTenantHeader] public string TenantId { get; init; } = "";
 }
 
 public sealed class GetResourceGroupsHandler(
     LoadResourceGroupPage loadResourceGroupPage,
-    IGitOpsMutations git)
-    : IMediatorOutcomeHandler<GetResourceGroupsRequest, GetResourceGroupsOutcome>
+    IGitOpsMutations git
+) : IMediatorOutcomeHandler<GetResourceGroupsRequest, GetResourceGroupsOutcome>
 {
     public async Task<GetResourceGroupsOutcome> HandleAsync(
         GetResourceGroupsRequest request,
         CancellationToken cancellationToken = default)
     {
         var page = await loadResourceGroupPage(
-            new ResourceGroupPageQuery(
-                request.TenantId,
-                request.PageNumber,
-                request.PageSize,
-                request.Search),
+            new ResourceGroupPageQuery(request.TenantId, request.PageNumber, request.PageSize, request.Search),
             cancellationToken);
 
         var statuses = await git.StatusesAsync(
@@ -74,12 +67,10 @@ public sealed class GetResourceGroupsHandler(
                 ResourceIds: page.Items.Select(item => item.ResourceGroup.Id).ToArray()),
             ct: cancellationToken);
         return new PaginatedResponse<ResourceGroupDto>(
-            Items
-                : page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount) with
-                {
-                    GitOps =
-                statuses.GetValueOrDefault(x.ResourceGroup.Id)
-                }),
+            Items: page.Items.Select(x => x.ResourceGroup.ToDto(x.ResourceCount) with
+            {
+                GitOps = statuses.GetValueOrDefault(x.ResourceGroup.Id),
+            }),
             TotalCount: page.TotalCount,
             PageNumber: request.PageNumber,
             PageSize: request.PageSize);

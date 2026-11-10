@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,11 +7,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
 using Pole.Mediator;
-using Pole.Validation;
 
 namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 
@@ -20,15 +15,16 @@ public sealed record RepositorySourcePage(
     IReadOnlyList<RepositorySourceView> Items,
     int Page,
     int PageSize,
-    bool HasMore);
+    bool HasMore
+);
 
 public union ListRepositorySourcesOutcome(RepositorySourcePage);
 
 public sealed record ListRepositorySourcesRequest(
     [FromTenantHeader] string TenantId,
     [FromQuery] int Page = 1,
-    [FromQuery] int PageSize = 50)
-    : IMediatorRequest<ListRepositorySourcesOutcome>, ITenantReadOperation;
+    [FromQuery] int PageSize = 50
+) : IMediatorRequest<ListRepositorySourcesOutcome>, ITenantReadOperation;
 
 public sealed class ListRepositorySourcesValidator : AbstractValidator<ListRepositorySourcesRequest>
 {
@@ -39,8 +35,9 @@ public sealed class ListRepositorySourcesValidator : AbstractValidator<ListRepos
     }
 }
 
-public sealed class ListRepositorySourcesHandler(GitRepositoryQueries queries)
-    : IMediatorOutcomeHandler<ListRepositorySourcesRequest, ListRepositorySourcesOutcome>
+public sealed class ListRepositorySourcesHandler(
+    GitRepositoryQueries queries
+) : IMediatorOutcomeHandler<ListRepositorySourcesRequest, ListRepositorySourcesOutcome>
 {
     public async Task<ListRepositorySourcesOutcome> HandleAsync(
         ListRepositorySourcesRequest request,
@@ -57,13 +54,15 @@ public static class ListRepositorySourcesEndpoint
 {
     public static IEndpointRouteBuilder MapListRepositorySourcesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/",
-            async (IMediator mediator,
-                    [AsParameters] ListRepositorySourcesRequest request, CancellationToken ct) =>
-                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] ListRepositorySourcesRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
-                    RepositorySourcePage value => Results.Ok(value)
-                })).WithName("ListRepositorySources");
+                    RepositorySourcePage value => Results.Ok(value),
+                }))
+            .WithName("ListRepositorySources");
         return app;
     }
 }

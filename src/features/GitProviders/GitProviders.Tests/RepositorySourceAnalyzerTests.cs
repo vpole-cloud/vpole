@@ -3,13 +3,13 @@ using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Domain;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Features.GitProviders.Tests;
 
 public sealed class RepositorySourceAnalyzerTests
 {
-    private static readonly DateTimeOffset AnalysisTime =
-        new(2026, 7, 10, 12, 30, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset AnalysisTime = new(2026, 7, 10, 12, 30, 0, TimeSpan.Zero);
 
     private readonly RepositorySourceAnalyzer _analyzer = new(new FixedTimeProvider(AnalysisTime));
 
@@ -25,12 +25,14 @@ public sealed class RepositorySourceAnalyzerTests
                                </Project>
                                """;
 
-        var analysis = AssertSuccess(_analyzer.Analyze(Snapshot(
-            ["Sample.slnx", "src/Sample.Api/Sample.Api.csproj", "src/Sample.Api/Program.cs"],
-            new Dictionary<string, string>
-            {
-                ["src/Sample.Api/Sample.Api.csproj"] = project
-            })));
+        var analysis = AssertSuccess(
+            _analyzer.Analyze(
+                Snapshot(
+                    ["Sample.slnx", "src/Sample.Api/Sample.Api.csproj", "src/Sample.Api/Program.cs"],
+                    new Dictionary<string, string>
+                    {
+                        ["src/Sample.Api/Sample.Api.csproj"] = project,
+                    })));
 
         var plan = Assert.Single(analysis.Candidates);
         Assert.Equal(SourceBuildPlanKind.DotNet, plan.Kind);
@@ -41,9 +43,11 @@ public sealed class RepositorySourceAnalyzerTests
         Assert.Contains("FROM mcr.microsoft.com/dotnet/aspnet:9.0", plan.DockerfilePreview);
         Assert.Equal(AnalysisTime.UtcDateTime, analysis.AnalyzedAtUtc);
 
-        var repeated = AssertSuccess(_analyzer.Analyze(Snapshot(
-            ["Sample.slnx", "src/Sample.Api/Sample.Api.csproj"],
-            new Dictionary<string, string> { ["src/Sample.Api/Sample.Api.csproj"] = project })));
+        var repeated = AssertSuccess(
+            _analyzer.Analyze(
+                Snapshot(
+                    ["Sample.slnx", "src/Sample.Api/Sample.Api.csproj"],
+                    new Dictionary<string, string> { ["src/Sample.Api/Sample.Api.csproj"] = project })));
         Assert.Equal(plan.CandidateKey, Assert.Single(repeated.Candidates).CandidateKey);
     }
 
@@ -59,9 +63,11 @@ public sealed class RepositorySourceAnalyzerTests
                                    }
                                    """;
 
-        var analysis = AssertSuccess(_analyzer.Analyze(Snapshot(
-            ["apps/web/package.json", "apps/web/pnpm-lock.yaml", "apps/web/vite.config.ts"],
-            new Dictionary<string, string> { ["apps/web/package.json"] = packageJson })));
+        var analysis = AssertSuccess(
+            _analyzer.Analyze(
+                Snapshot(
+                    ["apps/web/package.json", "apps/web/pnpm-lock.yaml", "apps/web/vite.config.ts"],
+                    new Dictionary<string, string> { ["apps/web/package.json"] = packageJson })));
 
         var plan = Assert.Single(analysis.Candidates);
         Assert.Equal(SourceBuildPlanKind.Node, plan.Kind);
@@ -77,21 +83,24 @@ public sealed class RepositorySourceAnalyzerTests
     [Fact]
     public void Analyze_Monorepo_ReturnsEveryCandidateWithoutChoosingOne()
     {
-        var analysis = AssertSuccess(_analyzer.Analyze(Snapshot(
-            [
-                "Dockerfile",
-                "src/Api/Api.csproj",
-                "src/Worker/Worker.fsproj",
-                "ui/package.json",
-                "ui/package-lock.json"
-            ],
-            new Dictionary<string, string>
-            {
-                ["Dockerfile"] = "FROM alpine:3.22",
-                ["src/Api/Api.csproj"] = "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />",
-                ["src/Worker/Worker.fsproj"] = "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>",
-                ["ui/package.json"] = "{\"scripts\":{\"build\":\"vite build\"}}"
-            })));
+        var analysis = AssertSuccess(
+            _analyzer.Analyze(
+                Snapshot(
+                    [
+                        "Dockerfile",
+                        "src/Api/Api.csproj",
+                        "src/Worker/Worker.fsproj",
+                        "ui/package.json",
+                        "ui/package-lock.json",
+                    ],
+                    new Dictionary<string, string>
+                    {
+                        ["Dockerfile"] = "FROM alpine:3.22",
+                        ["src/Api/Api.csproj"] = "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />",
+                        ["src/Worker/Worker.fsproj"]
+                            = "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>",
+                        ["ui/package.json"] = "{\"scripts\":{\"build\":\"vite build\"}}",
+                    })));
 
         Assert.Equal(4, analysis.Candidates.Count);
         Assert.Equal(4, analysis.Candidates.Select(candidate => candidate.CandidateKey).Distinct().Count());
@@ -103,59 +112,51 @@ public sealed class RepositorySourceAnalyzerTests
     [Fact]
     public void Analyze_LibraryAndUnsupportedRepository_SurfaceActionableResults()
     {
-        var library = AssertSuccess(_analyzer.Analyze(Snapshot(
-            ["src/Library/Library.csproj"],
-            new Dictionary<string, string>
-            {
-                ["src/Library/Library.csproj"] = "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>"
-            })));
+        var library = AssertSuccess(
+            _analyzer.Analyze(
+                Snapshot(
+                    ["src/Library/Library.csproj"],
+                    new Dictionary<string, string>
+                    {
+                        ["src/Library/Library.csproj"]
+                            = "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>",
+                    })));
         Assert.Contains("does not declare a web or executable output", Assert.Single(library.Candidates).Warnings[0]);
 
-        var unsupported = AssertSuccess(_analyzer.Analyze(Snapshot(
-            ["README.md", "main.py"],
-            new Dictionary<string, string>())));
+        var unsupported = AssertSuccess(
+            _analyzer.Analyze(Snapshot(["README.md", "main.py"], new Dictionary<string, string>())));
         Assert.Empty(unsupported.Candidates);
     }
 
     [Fact]
     public void Analyze_TruncatedTree_ReturnsTypedRejection()
     {
-        var result = _analyzer.Analyze(Snapshot(
-            ["package.json"],
-            new Dictionary<string, string>(),
-            isTruncated: true));
+        var result = _analyzer.Analyze(Snapshot(["package.json"], new Dictionary<string, string>(), isTruncated: true));
 
         Assert.True(result is RepositorySourceSnapshotTooLarge);
     }
 
-    private static SourceRepositoryAnalysis AssertSuccess(AnalyzeRepositorySourceOutcome result) =>
-        result switch
-        {
-            SourceRepositoryAnalysis analysis => analysis,
-            RepositorySourceSnapshotTooLarge => throw new Xunit.Sdk.XunitException(
-                "Expected a repository analysis, but the repository snapshot was too large.")
-        };
+    private static SourceRepositoryAnalysis AssertSuccess(AnalyzeRepositorySourceOutcome result) => result switch
+    {
+        SourceRepositoryAnalysis analysis => analysis,
+        RepositorySourceSnapshotTooLarge => throw new XunitException(
+            "Expected a repository analysis, but the repository snapshot was too large."),
+    };
 
     private static RepositorySourceSnapshot Snapshot(
         IEnumerable<string> paths,
         IReadOnlyDictionary<string, string> contents,
-        bool isTruncated = false) =>
-        new(
-            new ProviderRepository(
-                "9001",
-                "sample",
-                "lsbV/sample",
-                "https://github.com/lsbV/sample",
-                true,
-                "main",
-                null),
-            "main",
-            "abcdef1234567890",
-            paths.ToImmutableList(),
-            contents.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase),
-            isTruncated);
+        bool isTruncated = false) => new(
+        new ProviderRepository("9001", "sample", "lsbV/sample", "https://github.com/lsbV/sample", true, "main", null),
+        "main",
+        "abcdef1234567890",
+        paths.ToImmutableList(),
+        contents.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase),
+        isTruncated);
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }

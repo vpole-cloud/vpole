@@ -2,6 +2,7 @@ using Pole.Features.GitProviders.Application.Analysis;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Connections;
 using Pole.Features.GitProviders.Contracts;
+using Pole.Features.GitProviders.Domain;
 
 namespace Pole.Features.GitProviders.Application.ProviderOperations;
 
@@ -10,22 +11,20 @@ public union AnalyzeProviderRepositoryError(
     GitProviderRepositoryAccessError,
     RepositorySourceSnapshotTooLarge);
 
-public union AnalyzeProviderRepositoryOutcome(
-    AnalyzedProviderRepository,
-    AnalyzeProviderRepositoryError);
+public union AnalyzeProviderRepositoryOutcome(AnalyzedProviderRepository, AnalyzeProviderRepositoryError);
 
-public delegate Task<AnalyzeProviderRepositoryOutcome>
-    AnalyzeProviderRepository(
-        string tenantId,
-        string connectionId,
-        string repositoryId,
-        string branch,
-        CancellationToken cancellationToken = default);
+public delegate Task<AnalyzeProviderRepositoryOutcome> AnalyzeProviderRepository(
+    string tenantId,
+    string connectionId,
+    string repositoryId,
+    string branch,
+    CancellationToken cancellationToken = default);
 
 internal sealed class GitProviderRepositoryAnalyzer(
     LoadGitProviderConnection loadGitProviderConnection,
     GetProviderRepositorySnapshot getProviderRepositorySnapshot,
-    RepositorySourceAnalyzer analyzer)
+    RepositorySourceAnalyzer analyzer
+)
 {
     public async Task<AnalyzeProviderRepositoryOutcome> InvokeAsync(
         string tenantId,
@@ -41,10 +40,7 @@ internal sealed class GitProviderRepositoryAnalyzer(
 
         var connection = await loadGitProviderConnection(tenantId, connectionId, cancellationToken);
         if (connection is null)
-        {
-            return new AnalyzeProviderRepositoryError(
-                new GitProviderConnectionNotFound(connectionId));
-        }
+            return new AnalyzeProviderRepositoryError(new GitProviderConnectionNotFound(connectionId));
 
         var snapshotResult = await getProviderRepositorySnapshot(
             connection,
@@ -53,19 +49,15 @@ internal sealed class GitProviderRepositoryAnalyzer(
             cancellationToken);
         return snapshotResult switch
         {
-            GitProviderRepositoryAccessError failure =>
-                new AnalyzeProviderRepositoryError(failure),
-            RepositorySourceSnapshot success =>
-                analyzer.Analyze(success) switch
-                {
-                    Pole.Features.GitProviders.Domain.SourceRepositoryAnalysis analysis =>
-                        new AnalyzedProviderRepository(
-                                connection,
-                                success.Repository,
-                                analysis),
-                    RepositorySourceSnapshotTooLarge tooLarge =>
-                        new AnalyzeProviderRepositoryError(tooLarge)
-                }
+            GitProviderRepositoryAccessError failure => new AnalyzeProviderRepositoryError(failure),
+            RepositorySourceSnapshot success => analyzer.Analyze(success) switch
+            {
+                SourceRepositoryAnalysis analysis => new AnalyzedProviderRepository(
+                    connection,
+                    success.Repository,
+                    analysis),
+                RepositorySourceSnapshotTooLarge tooLarge => new AnalyzeProviderRepositoryError(tooLarge),
+            },
         };
     }
 }

@@ -12,9 +12,9 @@ public static class MongoFields
         ArgumentNullException.ThrowIfNull(field);
         var registry = BsonSerializer.SerializerRegistry;
         return new ExpressionFieldDefinition<TDocument, TValue>(field)
-            .Render(new(registry.GetSerializer<TDocument>(), registry)).FieldName;
+            .Render(new RenderArgs<TDocument>(registry.GetSerializer<TDocument>(), registry))
+            .FieldName;
     }
 
-    public static string Reference<TDocument, TValue>(Expression<Func<TDocument, TValue>> field) =>
-        "$" + Field(field);
+    public static string Reference<TDocument, TValue>(Expression<Func<TDocument, TValue>> field) => "$" + Field(field);
 }

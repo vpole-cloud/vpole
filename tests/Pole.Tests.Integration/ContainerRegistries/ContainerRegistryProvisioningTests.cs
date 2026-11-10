@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
@@ -8,14 +9,11 @@ using Pole.Database;
 using Pole.Encryption;
 using Pole.Features.ContainerRegistries.Application.Credentials;
 using Pole.Features.ContainerRegistries.Application.Endpoints;
-using Pole.Features.ContainerRegistries.Application.Mongo;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Application.Security;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.Features.ContainerRegistries.Migrations;
-using Pole.ResultType;
 using Pole.Tests.Integration.Http;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -24,8 +22,9 @@ namespace Pole.Tests.Integration.ContainerRegistries;
 
 // Rewrap and cleanup reconciliation scan all rows; wrapping key rings belong to one test host.
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fixture)
-    : IsolatedApiIntegrationTestBase(fixture)
+public sealed class ContainerRegistryProvisioningTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     private const string AttemptIdOne = "11111111111111111111111111111111";
     private const string AttemptIdTwo = "22222222222222222222222222222222";
@@ -33,7 +32,6 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     [Fact]
     public async Task Provisioning_PersistsOnlyProtectedCredentialsAndIsIdempotent()
     {
-
         var registryClient = new FakeContainerRegistryClient();
         using var encryption = TestEnvelopeEncryptionScope.Create();
         var protector = new EnvelopeProtectRegistryCredentialSecret(encryption.Service);
@@ -48,17 +46,22 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         Assert.Equal(1, registryClient.ProvisionCalls);
         var ready = Assert.IsType<ReadyRegistryProject>(project.State);
 
-        var credentials = await Fixture.DbContext.RegistryCredentials
+        var credentials = await Fixture.DbContext
+            .RegistryCredentials
             .Find(item => item.RegistryProjectId == project.Id)
             .ToListAsync();
         Assert.Equal(2, credentials.Count);
-        Assert.All(credentials, credential =>
-        {
-            Assert.Equal(LocalKeyFileKeyEncryptionProvider.StableProviderId, credential.EncryptedSecret.KeyProviderId);
-            Assert.Equal("integration", credential.EncryptedSecret.KeyEncryptionKeyId);
-            Assert.Equal(1, credential.EncryptedSecret.KeyEncryptionKeyVersion);
-            Assert.Equal(EnvelopeEncryptionService.CurrentFormatVersion, credential.EncryptedSecret.FormatVersion);
-        });
+        Assert.All(
+            credentials,
+            credential =>
+            {
+                Assert.Equal(
+                    LocalKeyFileKeyEncryptionProvider.StableProviderId,
+                    credential.EncryptedSecret.KeyProviderId);
+                Assert.Equal("integration", credential.EncryptedSecret.KeyEncryptionKeyId);
+                Assert.Equal(1, credential.EncryptedSecret.KeyEncryptionKeyVersion);
+                Assert.Equal(EnvelopeEncryptionService.CurrentFormatVersion, credential.EncryptedSecret.FormatVersion);
+            });
 
         var rawCredentials = await Fixture.Database
             .GetCollection<BsonDocument>("RegistryCredentials")
@@ -67,22 +70,23 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         Assert.Equal(2, rawCredentials.Count);
         Assert.All(rawCredentials, AssertRawCredentialDoesNotContainPlaintext);
 
-        LoadRegistryCredential loadCredential = async (tenantId, registryProjectId, purpose, cancellationToken) =>
-            await Fixture.DbContext.RegistryCredentials
-                .Find(item => item.TenantId == tenantId && item.RegistryProjectId == registryProjectId && item.Purpose == purpose)
-                .FirstOrDefaultAsync(cancellationToken);
+        LoadRegistryCredential loadCredential = async (
+            tenantId, registryProjectId,
+            purpose, cancellationToken) => await Fixture.DbContext
+            .RegistryCredentials
+            .Find(item => item.TenantId == tenantId && item.RegistryProjectId == registryProjectId &&
+                item.Purpose == purpose)
+            .FirstOrDefaultAsync(cancellationToken);
         var resolver = new RegistryCredentialResolver(
             loadCredential,
             new EnvelopeUnprotectRegistryCredentialSecret(encryption.Service).InvokeAsync,
             TimeProvider.System);
-        var resolved = await resolver.InvokeAsync(
-            Data.TenantId,
-            project.Id,
-            RegistryCredentialPurpose.BuildPushPull);
+        var resolved = await resolver.InvokeAsync(Data.TenantId, project.Id, RegistryCredentialPurpose.BuildPushPull);
         var buildCredential = Assert.IsType<ResolvedRegistryCredential>(resolved.Value);
         Assert.Equal(FakeContainerRegistryClient.BuildSecret, buildCredential.Secret);
-        Assert.Equal(ready.BuildCredentialId, credentials.Single(item =>
-            item.Purpose == RegistryCredentialPurpose.BuildPushPull).Id);
+        Assert.Equal(
+            ready.BuildCredentialId,
+            credentials.Single(item => item.Purpose == RegistryCredentialPurpose.BuildPushPull).Id);
     }
 
     [Fact]
@@ -90,7 +94,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     {
         var registryClient = new FakeContainerRegistryClient
         {
-            FailNextProvision = true
+            FailNextProvision = true,
         };
         using var encryption = TestEnvelopeEncryptionScope.Create();
         var protector = new EnvelopeProtectRegistryCredentialSecret(encryption.Service);
@@ -99,7 +103,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var failed = await service(Data.TenantId, Data.UserId);
 
         Assert.IsType<ContainerRegistryProviderError>(failed.Value);
-        var storedFailure = await Fixture.DbContext.RegistryProjects
+        var storedFailure = await Fixture.DbContext
+            .RegistryProjects
             .Find(item => item.TenantId == Data.TenantId)
             .SingleAsync();
         var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(storedFailure.State);
@@ -121,37 +126,34 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             new FixedTimeProvider(new DateTimeOffset(cleanup.CleanupNotBeforeUtc.AddSeconds(1), TimeSpan.Zero)));
         await cleanupService.ReconcileAsync();
         Assert.Equal(1, registryClient.RobotCleanupCalls);
-        var afterEmptySweep = await Fixture.DbContext.RegistryProjects
-            .Find(item => item.Id == storedFailure.Id)
-            .SingleAsync();
+        var afterEmptySweep
+            = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == storedFailure.Id).SingleAsync();
         var pendingAfterEmptySweep = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(afterEmptySweep.State);
 
         registryClient.MatchedByNameCounts.Enqueue(1);
         cleanupService = CreateCleanupService(
             registryClient,
-            new FixedTimeProvider(new DateTimeOffset(
-                pendingAfterEmptySweep.CleanupNotBeforeUtc.AddSeconds(1),
-                TimeSpan.Zero)));
+            new FixedTimeProvider(
+                new DateTimeOffset(pendingAfterEmptySweep.CleanupNotBeforeUtc.AddSeconds(1), TimeSpan.Zero)));
         await cleanupService.ReconcileAsync();
         Assert.Equal(2, registryClient.RobotCleanupCalls);
-        var afterDelayedRobot = await Fixture.DbContext.RegistryProjects
-            .Find(item => item.Id == storedFailure.Id)
-            .SingleAsync();
-        var pendingAfterDelayedRobot = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(afterDelayedRobot.State);
+        var afterDelayedRobot
+            = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == storedFailure.Id).SingleAsync();
+        var pendingAfterDelayedRobot
+            = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(afterDelayedRobot.State);
 
         var finalSweepAt = new[]
-        {
-            pendingAfterDelayedRobot.CleanupNotBeforeUtc,
-            pendingAfterDelayedRobot.CleanupVerificationNotBeforeUtc
-        }.Max().AddSeconds(1);
+            {
+                pendingAfterDelayedRobot.CleanupNotBeforeUtc,
+                pendingAfterDelayedRobot.CleanupVerificationNotBeforeUtc,
+            }.Max()
+            .AddSeconds(1);
         cleanupService = CreateCleanupService(
             registryClient,
             new FixedTimeProvider(new DateTimeOffset(finalSweepAt, TimeSpan.Zero)));
         await cleanupService.ReconcileAsync();
         Assert.Equal(3, registryClient.RobotCleanupCalls);
-        Assert.Equal(
-            [expectedNames.Build, expectedNames.Pull],
-            registryClient.DeletedRobotNames.Take(2));
+        Assert.Equal([expectedNames.Build, expectedNames.Pull], registryClient.DeletedRobotNames.Take(2));
 
         var retried = await service(Data.TenantId, Data.UserId);
 
@@ -184,7 +186,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         tamperedTag[0] ^= 0x01;
         var tampered = credential with
         {
-            EncryptedSecret = protectedSecret with { AuthenticationTag = tamperedTag }
+            EncryptedSecret = protectedSecret with { AuthenticationTag = tamperedTag },
         };
 
         var tamperedResult = await unprotector.InvokeAsync(tampered);
@@ -198,15 +200,10 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     [Fact]
     public async Task CredentialRewrap_ChangesOnlyWrappedKeyAndIsIdempotent()
     {
-
         using var encryption = RotationEncryptionScope.Create();
         var credentialId = ObjectId.GenerateNewId().ToString();
         var oldProtector = new EnvelopeProtectRegistryCredentialSecret(encryption.OldService);
-        var encryptedResult = await oldProtector.InvokeAsync(
-            Data.TenantId,
-            credentialId,
-            1,
-            "rotation-secret");
+        var encryptedResult = await oldProtector.InvokeAsync(Data.TenantId, credentialId, 1, "rotation-secret");
         var oldEnvelope = Assert.IsType<EncryptedValue>(encryptedResult.Value);
         var credential = RegistryCredentialFactory.Create(
             Data.TenantId,
@@ -234,21 +231,19 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         Assert.Equal(1, firstSummary.Rewrapped);
         Assert.Equal(0, firstSummary.ConcurrentChanges);
 
-        var rewrapped = await Fixture.DbContext.RegistryCredentials
-            .Find(item => item.Id == credentialId)
-            .SingleAsync();
+        var rewrapped = await Fixture.DbContext.RegistryCredentials.Find(item => item.Id == credentialId).SingleAsync();
         Assert.Equal("new", rewrapped.EncryptedSecret.KeyEncryptionKeyId);
         Assert.Equal(2, rewrapped.EncryptedSecret.KeyEncryptionKeyVersion);
         Assert.True(oldEnvelope.Ciphertext.SequenceEqual(rewrapped.EncryptedSecret.Ciphertext));
         Assert.True(oldEnvelope.Nonce.SequenceEqual(rewrapped.EncryptedSecret.Nonce));
         Assert.True(oldEnvelope.AuthenticationTag.SequenceEqual(rewrapped.EncryptedSecret.AuthenticationTag));
 
-        var newOnlyResult = await new EnvelopeUnprotectRegistryCredentialSecret(encryption.NewOnlyService)
-            .InvokeAsync(rewrapped);
+        var newOnlyResult
+            = await new EnvelopeUnprotectRegistryCredentialSecret(encryption.NewOnlyService).InvokeAsync(rewrapped);
         var plaintext = Assert.IsType<string>(newOnlyResult.Value);
         Assert.Equal("rotation-secret", plaintext);
-        var oldOnlyResult = await new EnvelopeUnprotectRegistryCredentialSecret(encryption.OldService)
-            .InvokeAsync(rewrapped);
+        var oldOnlyResult
+            = await new EnvelopeUnprotectRegistryCredentialSecret(encryption.OldService).InvokeAsync(rewrapped);
         Assert.IsType<RegistryCredentialUnavailable>(oldOnlyResult.Value);
 
         var second = await service.InvokeAsync(encryption.RotatingService.ActiveKey);
@@ -261,17 +256,16 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     [Fact]
     public async Task ProvisioningCancellationAfterRemoteCreationCompensatesAndMarksFailed()
     {
-
         var registryClient = new FakeContainerRegistryClient();
         var service = CreateProvisioningService(registryClient, CancelProtectAsync);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service(Data.TenantId, Data.UserId));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => service(Data.TenantId, Data.UserId));
 
         Assert.Equal(1, registryClient.RobotCleanupCalls);
         Assert.Equal(["21", "22"], registryClient.DeletedRobotIds);
         Assert.Equal(0, registryClient.DeleteProjectCalls);
-        var project = await Fixture.DbContext.RegistryProjects
+        var project = await Fixture.DbContext
+            .RegistryProjects
             .Find(item => item.TenantId == Data.TenantId)
             .SingleAsync();
         Assert.IsType<FailedRegistryProjectProvisioning>(project.State);
@@ -280,15 +274,14 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     [Fact]
     public async Task FailedRobotCleanupIsPersistedAndRetriedWithoutDeletingTheProject()
     {
-
         var registryClient = new FakeContainerRegistryClient { FailRobotCleanup = true };
         var cleanupService = CreateCleanupService(registryClient);
         var service = CreateProvisioningService(registryClient, CancelProtectAsync);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service(Data.TenantId, Data.UserId));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => service(Data.TenantId, Data.UserId));
 
-        var pending = await Fixture.DbContext.RegistryProjects
+        var pending = await Fixture.DbContext
+            .RegistryProjects
             .Find(item => item.TenantId == Data.TenantId)
             .SingleAsync();
         var cleanupRequired = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(pending.State);
@@ -303,14 +296,11 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         registryClient.FailRobotCleanup = false;
         cleanupService = CreateCleanupService(
             registryClient,
-            new FixedTimeProvider(new DateTimeOffset(
-                cleanupRequired.CleanupNotBeforeUtc.AddSeconds(1),
-                TimeSpan.Zero)));
+            new FixedTimeProvider(
+                new DateTimeOffset(cleanupRequired.CleanupNotBeforeUtc.AddSeconds(1), TimeSpan.Zero)));
         await cleanupService.ReconcileAsync();
 
-        var reconciled = await Fixture.DbContext.RegistryProjects
-            .Find(item => item.Id == pending.Id)
-            .SingleAsync();
+        var reconciled = await Fixture.DbContext.RegistryProjects.Find(item => item.Id == pending.Id).SingleAsync();
         Assert.IsType<FailedRegistryProjectProvisioning>(reconciled.State);
         Assert.Equal(2, registryClient.RobotCleanupCalls);
         Assert.Equal(0, registryClient.DeleteProjectCalls);
@@ -323,14 +313,18 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var cleanupService = CreateCleanupService(registryClient);
         var now = DateTime.UtcNow;
         var project = RegistryProjectFactory.Create(
-            Data.TenantId,
-            ContainerRegistryProvider.Harbor,
-            "pole-ready",
-            Data.UserId,
-            new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
-        {
-            State = new ReadyRegistryProject("17", ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), now)
-        };
+                Data.TenantId,
+                ContainerRegistryProvider.Harbor,
+                "pole-ready",
+                Data.UserId,
+                new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
+            {
+                State = new ReadyRegistryProject(
+                    "17",
+                    ObjectId.GenerateNewId().ToString(),
+                    ObjectId.GenerateNewId().ToString(),
+                    now),
+            };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
 
         var claimed = await cleanupService.ClaimCleanupAsync(
@@ -359,14 +353,14 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var registryClient = new FakeContainerRegistryClient();
         var cleanupService = CreateCleanupService(registryClient);
         var project = RegistryProjectFactory.Create(
-            Data.TenantId,
-            ContainerRegistryProvider.Harbor,
-            "pole-remote",
-            Data.UserId,
-            new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
-        {
-            State = new RemoteProvisionedRegistryProject(AttemptIdOne, "17", "21", "22", now)
-        };
+                Data.TenantId,
+                ContainerRegistryProvider.Harbor,
+                "pole-remote",
+                Data.UserId,
+                new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
+            {
+                State = new RemoteProvisionedRegistryProject(AttemptIdOne, "17", "21", "22", now),
+            };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
         var names = RegistryRobotNames.ForAttempt(AttemptIdOne);
 
@@ -399,15 +393,15 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var cleanupService = CreateCleanupService(registryClient, new FixedTimeProvider(now));
         var startedAt = now.AddMinutes(-20).UtcDateTime;
         var project = RegistryProjectFactory.Create(
-            Data.TenantId,
-            ContainerRegistryProvider.Harbor,
-            "pole-abandoned",
-            Data.UserId,
-            new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), startedAt)) with
-        {
-            State = new RemoteProvisionedRegistryProject(AttemptIdOne, "17", "21", "22", startedAt),
-            UpdatedAtUtc = startedAt
-        };
+                Data.TenantId,
+                ContainerRegistryProvider.Harbor,
+                "pole-abandoned",
+                Data.UserId,
+                new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), startedAt)) with
+            {
+                State = new RemoteProvisionedRegistryProject(AttemptIdOne, "17", "21", "22", startedAt),
+                UpdatedAtUtc = startedAt,
+            };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
 
         await cleanupService.ReconcileAsync();
@@ -427,15 +421,15 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var cleanupService = CreateCleanupService(registryClient, new FixedTimeProvider(now));
         var startedAt = now.AddMinutes(-20).UtcDateTime;
         var project = RegistryProjectFactory.Create(
-            Data.TenantId,
-            ContainerRegistryProvider.Harbor,
-            "pole-response-lost",
-            Data.UserId,
-            new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), startedAt)) with
-        {
-            State = new ProvisioningRegistryProject(AttemptIdOne, startedAt),
-            UpdatedAtUtc = startedAt
-        };
+                Data.TenantId,
+                ContainerRegistryProvider.Harbor,
+                "pole-response-lost",
+                Data.UserId,
+                new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), startedAt)) with
+            {
+                State = new ProvisioningRegistryProject(AttemptIdOne, startedAt),
+                UpdatedAtUtc = startedAt,
+            };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
 
         await cleanupService.ReconcileAsync();
@@ -455,7 +449,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var registryClient = new FakeContainerRegistryClient
         {
             CleanupStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
-            ContinueCleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
+            ContinueCleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
         };
         registryClient.MatchedByNameCounts.Enqueue(1);
         registryClient.MatchedByNameCounts.Enqueue(0);
@@ -470,7 +464,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             now.AddMinutes(-20).UtcDateTime);
         var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(project.State) with
         {
-            CleanupVerificationNotBeforeUtc = now.AddMinutes(-1).UtcDateTime
+            CleanupVerificationNotBeforeUtc = now.AddMinutes(-1).UtcDateTime,
         };
         project = project with { State = cleanup };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
@@ -513,7 +507,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             now.AddMinutes(-20).UtcDateTime);
         var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(project.State) with
         {
-            CleanupVerificationNotBeforeUtc = now.AddMinutes(-1).UtcDateTime
+            CleanupVerificationNotBeforeUtc = now.AddMinutes(-1).UtcDateTime,
         };
         project = project with { State = cleanup };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
@@ -550,7 +544,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var cleanup = Assert.IsType<CleanupRequiredRegistryProjectProvisioning>(project.State) with
         {
             CleanupLeaseToken = "abandoned-lease",
-            CleanupLeaseExpiresAtUtc = now.AddMinutes(-1).UtcDateTime
+            CleanupLeaseExpiresAtUtc = now.AddMinutes(-1).UtcDateTime,
         };
         project = project with { State = cleanup };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
@@ -571,15 +565,30 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         var cleanupService = CreateCleanupService(registryClient, new FixedTimeProvider(now));
         var projects = new[]
         {
-            CreateCleanupRequiredProject("tenant-cleanup-1", "pole-cleanup-1", AttemptIdOne, "17", "21", "22", now.AddMinutes(-2).UtcDateTime),
-            CreateCleanupRequiredProject("tenant-cleanup-2", "pole-cleanup-2", AttemptIdTwo, "18", "23", "24", now.AddMinutes(-1).UtcDateTime)
+            CreateCleanupRequiredProject(
+                "tenant-cleanup-1",
+                "pole-cleanup-1",
+                AttemptIdOne,
+                "17",
+                "21",
+                "22",
+                now.AddMinutes(-2).UtcDateTime),
+            CreateCleanupRequiredProject(
+                "tenant-cleanup-2",
+                "pole-cleanup-2",
+                AttemptIdTwo,
+                "18",
+                "23",
+                "24",
+                now.AddMinutes(-1).UtcDateTime),
         };
         await Fixture.DbContext.RegistryProjects.InsertManyAsync(projects);
 
         await cleanupService.ReconcileAsync();
 
         Assert.Equal(2, registryClient.RobotCleanupCalls);
-        var stored = await Fixture.DbContext.RegistryProjects
+        var stored = await Fixture.DbContext
+            .RegistryProjects
             .Find(item => projects.Select(project => project.Id).Contains(item.Id))
             .SortBy(item => item.UpdatedAtUtc)
             .ToListAsync();
@@ -619,11 +628,11 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         foreach (var plaintext in new[]
                  {
                      FakeContainerRegistryClient.BuildSecret,
-                     FakeContainerRegistryClient.PullSecret
+                     FakeContainerRegistryClient.PullSecret,
                  })
         {
-            var plaintextBytes = System.Text.Encoding.UTF8.GetBytes(plaintext);
-            var encodedPlaintextBytes = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(plaintextBytes));
+            var plaintextBytes = Encoding.UTF8.GetBytes(plaintext);
+            var encodedPlaintextBytes = Encoding.UTF8.GetBytes(Convert.ToBase64String(plaintextBytes));
             Assert.True(rawBson.IndexOf(plaintextBytes) < 0);
             Assert.True(rawBson.IndexOf(encodedPlaintextBytes) < 0);
         }
@@ -649,17 +658,17 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
     private RegistryProvisioningCleanupService CreateCleanupService(
         IContainerRegistryClient registryClient,
-        TimeProvider? timeProvider = null) =>
-        new(
-            CreatePersistence(timeProvider),
-            registryClient,
-            timeProvider ?? TimeProvider.System,
-            NullLogger<RegistryProvisioningCleanupService>.Instance);
+        TimeProvider? timeProvider = null) => new(
+        CreatePersistence(timeProvider),
+        registryClient,
+        timeProvider ?? TimeProvider.System,
+        NullLogger<RegistryProvisioningCleanupService>.Instance);
 
-    private RegistryProvisioningPersistence CreatePersistence(TimeProvider? timeProvider = null) =>
-        new(Fixture.Database.GetCollection<RegistryProject>("RegistryProjects"),
-            Fixture.Database.GetCollection<RegistryCredential>("RegistryCredentials"),
-            new MongoRunTransaction(Fixture.Client), timeProvider ?? TimeProvider.System);
+    private RegistryProvisioningPersistence CreatePersistence(TimeProvider? timeProvider = null) => new(
+        Fixture.Database.GetCollection<RegistryProject>("RegistryProjects"),
+        Fixture.Database.GetCollection<RegistryCredential>("RegistryCredentials"),
+        new MongoRunTransaction(Fixture.Client),
+        timeProvider ?? TimeProvider.System);
 
     private RegistryProject CreateCleanupRequiredProject(
         string tenantId,
@@ -672,35 +681,45 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
     {
         var robotNames = RegistryRobotNames.ForAttempt(attemptId);
         return RegistryProjectFactory.Create(
-            tenantId,
-            ContainerRegistryProvider.Harbor,
-            name,
-            Data.UserId,
-            new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
-        {
-            State = new CleanupRequiredRegistryProjectProvisioning(
-                attemptId,
+                tenantId,
+                ContainerRegistryProvider.Harbor,
                 name,
-                externalProjectId,
-                robotNames.Build,
-                robotNames.Pull,
-                buildRobotId,
-                pullRobotId,
-                nameof(ContainerRegistryProviderUnavailable),
-                "Provisioning failed.",
-                null,
-                null,
-                0,
-                now,
-                now,
-                now,
-                null,
-                null,
-                null)
-        };
+                Data.UserId,
+                new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
+            {
+                State = new CleanupRequiredRegistryProjectProvisioning(
+                    attemptId,
+                    name,
+                    externalProjectId,
+                    robotNames.Build,
+                    robotNames.Pull,
+                    buildRobotId,
+                    pullRobotId,
+                    nameof(ContainerRegistryProviderUnavailable),
+                    "Provisioning failed.",
+                    null,
+                    null,
+                    0,
+                    now,
+                    now,
+                    now,
+                    null,
+                    null,
+                    null),
+            };
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private static ValueTask<ProtectRegistryCredentialOutcome> CancelProtectAsync(
+        string tenantId,
+        string credentialId,
+        long secretVersion,
+        string secret,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<ProtectRegistryCredentialOutcome>(new OperationCanceledException());
+
+    private sealed class FixedTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
@@ -722,9 +741,18 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         public IEnvelopeEncryptionService Service { get; }
 
+        public void Dispose()
+        {
+            _provider.Dispose();
+            Directory.Delete(_directory, recursive: true);
+        }
+
         public static TestEnvelopeEncryptionScope Create()
         {
-            var directory = Path.Combine(Path.GetTempPath(), "pole-encryption-integration", Guid.NewGuid().ToString("N"));
+            var directory = Path.Combine(
+                Path.GetTempPath(),
+                "pole-encryption-integration",
+                Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, "integration-v1.key");
             var key = RandomNumberGenerator.GetBytes(32);
@@ -737,28 +765,25 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
                 CryptographicOperations.ZeroMemory(key);
             }
 
-            var provider = new LocalKeyFileKeyEncryptionProvider(Options.Create(new LocalKeyFileOptions
-            {
-                ActiveKeyId = "integration",
-                ActiveKeyVersion = 1,
-                Keys =
-                [
-                    new LocalKeyFileKeyOptions { Id = "integration", Version = 1, Path = path }
-                ]
-            }));
+            var provider = new LocalKeyFileKeyEncryptionProvider(
+                Options.Create(
+                    new LocalKeyFileOptions
+                    {
+                        ActiveKeyId = "integration",
+                        ActiveKeyVersion = 1,
+                        Keys =
+                        [
+                            new LocalKeyFileKeyOptions { Id = "integration", Version = 1, Path = path },
+                        ],
+                    }));
             var service = new EnvelopeEncryptionService(
                 [provider],
-                Options.Create(new EnvelopeEncryptionOptions
-                {
-                    ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId
-                }));
+                Options.Create(
+                    new EnvelopeEncryptionOptions
+                    {
+                        ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId,
+                    }));
             return new TestEnvelopeEncryptionScope(directory, provider, service);
-        }
-
-        public void Dispose()
-        {
-            _provider.Dispose();
-            Directory.Delete(_directory, recursive: true);
         }
     }
 
@@ -785,6 +810,13 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         public IEnvelopeEncryptionService RotatingService { get; }
         public IEnvelopeEncryptionService NewOnlyService { get; }
 
+        public void Dispose()
+        {
+            foreach (var provider in _providers)
+                provider.Dispose();
+            Directory.Delete(_directory, recursive: true);
+        }
+
         public static RotationEncryptionScope Create()
         {
             var directory = Path.Combine(
@@ -795,11 +827,7 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
             var oldPath = WriteKey(directory, "old-v1.key");
             var newPath = WriteKey(directory, "new-v2.key");
             var oldProvider = CreateProvider("old", 1, ("old", 1, oldPath));
-            var rotatingProvider = CreateProvider(
-                "new",
-                2,
-                ("old", 1, oldPath),
-                ("new", 2, newPath));
+            var rotatingProvider = CreateProvider("new", 2, ("old", 1, oldPath), ("new", 2, newPath));
             var newOnlyProvider = CreateProvider("new", 2, ("new", 2, newPath));
             return new RotationEncryptionScope(
                 directory,
@@ -807,13 +835,6 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
                 CreateService(oldProvider),
                 CreateService(rotatingProvider),
                 CreateService(newOnlyProvider));
-        }
-
-        public void Dispose()
-        {
-            foreach (var provider in _providers)
-                provider.Dispose();
-            Directory.Delete(_directory, recursive: true);
         }
 
         private static string WriteKey(string directory, string fileName)
@@ -835,36 +856,30 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         private static LocalKeyFileKeyEncryptionProvider CreateProvider(
             string activeId,
             int activeVersion,
-            params (string Id, int Version, string Path)[] keys) =>
-            new(Options.Create(new LocalKeyFileOptions
-            {
-                ActiveKeyId = activeId,
-                ActiveKeyVersion = activeVersion,
-                Keys = keys.Select(key => new LocalKeyFileKeyOptions
+            params (string Id, int Version, string Path)[] keys) => new(
+            Options.Create(
+                new LocalKeyFileOptions
                 {
-                    Id = key.Id,
-                    Version = key.Version,
-                    Path = key.Path
-                }).ToList()
-            }));
+                    ActiveKeyId = activeId,
+                    ActiveKeyVersion = activeVersion,
+                    Keys = keys.Select(key => new LocalKeyFileKeyOptions
+                        {
+                            Id = key.Id,
+                            Version = key.Version,
+                            Path = key.Path,
+                        })
+                        .ToList(),
+                }));
 
         private static IEnvelopeEncryptionService CreateService(LocalKeyFileKeyEncryptionProvider provider) =>
             new EnvelopeEncryptionService(
                 [provider],
-                Options.Create(new EnvelopeEncryptionOptions
-                {
-                    ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId
-                }));
+                Options.Create(
+                    new EnvelopeEncryptionOptions
+                    {
+                        ActiveProviderId = LocalKeyFileKeyEncryptionProvider.StableProviderId,
+                    }));
     }
-
-    private static ValueTask<ProtectRegistryCredentialOutcome> CancelProtectAsync(
-        string tenantId,
-        string credentialId,
-        long secretVersion,
-        string secret,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromException<ProtectRegistryCredentialOutcome>(
-            new OperationCanceledException());
 
     private sealed class FakeContainerRegistryClient : IContainerRegistryClient
     {
@@ -889,10 +904,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         {
             ProvisionCalls++;
             if (FailNextProvision && ProvisionCalls == 1)
-            {
                 return Task.FromResult<ProvisionRegistryProjectOutcome>(
                     new ContainerRegistryProviderError(new ContainerRegistryProviderUnavailable("Harbor")));
-            }
 
             return Task.FromResult<ProvisionRegistryProjectOutcome>(
                 new ProvisionedRegistryProject(
@@ -904,9 +917,8 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
 
         public Task<GetRegistryArtifactOutcome> GetArtifactAsync(
             GetRegistryArtifactRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<GetRegistryArtifactOutcome>(
-                new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(request.Reference)));
+            CancellationToken cancellationToken = default) => Task.FromResult<GetRegistryArtifactOutcome>(
+            new ContainerRegistryArtifactLookupError(new ContainerRegistryArtifactNotFound(request.Reference)));
 
         public async Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
@@ -914,15 +926,14 @@ public sealed class ContainerRegistryProvisioningTests(MongoReplicaSetFixture fi
         {
             RobotCleanupCalls++;
             DeletedRobotNames.AddRange(targets.Select(target => target.Name));
-            DeletedRobotIds.AddRange(targets
-                .Select(target => target.ExternalRobotId)
-                .Where(id => id is not null)
-                .Select(id => id!));
+            DeletedRobotIds.AddRange(
+                targets.Select(target => target.ExternalRobotId).Where(id => id is not null).Select(id => id!));
             if (ThrowRobotCleanupCalls > 0)
             {
                 ThrowRobotCleanupCalls--;
                 throw new HttpRequestException("simulated cleanup transport failure");
             }
+
             CleanupStarted?.TrySetResult(true);
             if (ContinueCleanup is not null)
                 await ContinueCleanup.Task.WaitAsync(cancellationToken);

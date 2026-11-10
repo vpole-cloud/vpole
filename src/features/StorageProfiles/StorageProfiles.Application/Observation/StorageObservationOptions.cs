@@ -14,7 +14,7 @@ public sealed class StorageObservationOptions
 
     public int MaximumSnapshotBytes { get; init; } = 4 * 1024 * 1024;
 
-    public bool Valid => MaximumSources is >= 1 and <= 128 && ScanBatchSize is >= 1 and <= 256 &&
-                         MaximumItemsPerKind is >= 1 and <= 5000 &&
-                         MaximumSnapshotBytes is >= 1024 and <= 8 * 1024 * 1024;
+    public bool Valid =>
+        MaximumSources is >= 1 and <= 128 && ScanBatchSize is >= 1 and <= 256 &&
+        MaximumItemsPerKind is >= 1 and <= 5000 && MaximumSnapshotBytes is >= 1024 and <= 8 * 1024 * 1024;
 }

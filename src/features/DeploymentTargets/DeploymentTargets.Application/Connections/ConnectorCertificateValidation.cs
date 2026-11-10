@@ -6,16 +6,15 @@ namespace Pole.Features.DeploymentTargets.Application.Connections;
 internal sealed record ValidatedConnectorCertificate(
     string FingerprintSha256,
     string PublicKeySpkiSha256,
-    DateTime NotAfterUtc);
+    DateTime NotAfterUtc
+);
 
 internal static class ConnectorCertificateValidation
 {
     private const string ClientAuthenticationOid = "1.3.6.1.5.5.7.3.2";
     private const int MaximumDerBytes = 16 * 1024;
 
-    public static ValidatedConnectorCertificate? Validate(
-        string certificateDerBase64,
-        DateTime nowUtc)
+    public static ValidatedConnectorCertificate? Validate(string certificateDerBase64, DateTime nowUtc)
     {
         byte[] der;
         try
@@ -40,33 +39,22 @@ internal static class ConnectorCertificateValidation
                 certificate.NotAfter.ToUniversalTime() > nowUtc.AddDays(90))
                 return null;
 
-            var basicConstraints = certificate.Extensions
-                .OfType<X509BasicConstraintsExtension>()
-                .SingleOrDefault();
-            var keyUsage = certificate.Extensions
-                .OfType<X509KeyUsageExtension>()
-                .SingleOrDefault();
-            var enhancedUsage = certificate.Extensions
-                .OfType<X509EnhancedKeyUsageExtension>()
-                .SingleOrDefault();
-            if (basicConstraints is null || basicConstraints.CertificateAuthority ||
-                keyUsage is null ||
-                (keyUsage.KeyUsages & X509KeyUsageFlags.DigitalSignature) == 0 ||
-                enhancedUsage is null ||
-                !enhancedUsage.EnhancedKeyUsages.Cast<Oid>()
-                    .Any(oid => oid.Value == ClientAuthenticationOid))
+            var basicConstraints = certificate.Extensions.OfType<X509BasicConstraintsExtension>().SingleOrDefault();
+            var keyUsage = certificate.Extensions.OfType<X509KeyUsageExtension>().SingleOrDefault();
+            var enhancedUsage = certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().SingleOrDefault();
+            if (basicConstraints is null || basicConstraints.CertificateAuthority || keyUsage is null ||
+                (keyUsage.KeyUsages & X509KeyUsageFlags.DigitalSignature) == 0 || enhancedUsage is null ||
+                !enhancedUsage.EnhancedKeyUsages.Cast<Oid>().Any(oid => oid.Value == ClientAuthenticationOid))
                 return null;
 
             byte[] spki;
             using (var rsa = certificate.GetRSAPublicKey())
             using (var ecdsa = certificate.GetECDsaPublicKey())
             {
-                spki = rsa is { KeySize: >= 3072 }
-                    ? rsa.ExportSubjectPublicKeyInfo()
-                    : ecdsa is { KeySize: >= 256 }
-                        ? ecdsa.ExportSubjectPublicKeyInfo()
-                        : [];
+                spki = rsa is { KeySize: >= 3072 } ? rsa.ExportSubjectPublicKeyInfo() :
+                    ecdsa is { KeySize: >= 256 } ? ecdsa.ExportSubjectPublicKeyInfo() : [];
             }
+
             if (spki.Length == 0)
                 return null;
 

@@ -2,17 +2,17 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Multitenancy.Primitives;
 using Pole.Features.Quotas.Domain;
-using Pole.Features.Quotas.Primitives;
+using Pole.Multitenancy.Primitives;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.Database;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class TenantMongoFilterPersistenceTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class TenantMongoFilterPersistenceTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     public override Task InitializeAsync() => base.InitializeAsync();
     public override Task DisposeAsync() => base.DisposeAsync();
@@ -23,17 +23,22 @@ public sealed class TenantMongoFilterPersistenceTests(MongoReplicaSetFixture fix
         var tenant = ObjectId.GenerateNewId().ToString();
         var otherTenant = ObjectId.GenerateNewId().ToString();
         var documents = Fixture.Database.GetCollection<MappedDocument>("TenantFilterTests");
-        await documents.InsertManyAsync([new("first", tenant, "same-name"),
-            new("other", otherTenant, "same-name")]);
+        await documents.InsertManyAsync(
+        [
+            new MappedDocument("first", tenant, "same-name"),
+            new MappedDocument("other", otherTenant, "same-name"),
+        ]);
         var filter = Builders<MappedDocument>.Filter.ForTenant(tenant) &
             Builders<MappedDocument>.Filter.Eq(document => document.Name, "same-name");
 
         Assert.Equal("first", (await documents.Find(filter).SingleAsync()).Id);
-        var updated = await documents.UpdateOneAsync(filter,
+        var updated = await documents.UpdateOneAsync(
+            filter,
             Builders<MappedDocument>.Update.Set(document => document.Name, "updated"));
         Assert.Equal(1, updated.ModifiedCount);
-        Assert.Equal("same-name", (await documents.Find(
-            Builders<MappedDocument>.Filter.ForTenant(otherTenant)).SingleAsync()).Name);
+        Assert.Equal(
+            "same-name",
+            (await documents.Find(Builders<MappedDocument>.Filter.ForTenant(otherTenant)).SingleAsync()).Name);
         var removed = await documents.DeleteManyAsync(Builders<MappedDocument>.Filter.ForTenant(tenant));
         Assert.Equal(1, removed.DeletedCount);
         Assert.Equal("other", (await documents.Find(Builders<MappedDocument>.Filter.Empty).SingleAsync()).Id);
@@ -47,15 +52,20 @@ public sealed class TenantMongoFilterPersistenceTests(MongoReplicaSetFixture fix
         var other = QuotaDomainFactory.CreatePolicy("tenant-b", QuotaDelta.Empty, DateTime.UtcNow);
         await policies.InsertManyAsync([first, other]);
 
-        Assert.Equal(first.TenantId, (await policies.Find(
-            Builders<TenantQuotaPolicy>.Filter.ForTenant(first.TenantId)).SingleAsync()).TenantId);
+        Assert.Equal(
+            first.TenantId,
+            (await policies.Find(Builders<TenantQuotaPolicy>.Filter.ForTenant(first.TenantId)).SingleAsync()).TenantId);
         await policies.DeleteOneAsync(Builders<TenantQuotaPolicy>.Filter.ForTenant(first.TenantId));
-        Assert.Equal(other.TenantId, (await policies.Find(
-            Builders<TenantQuotaPolicy>.Filter.Empty).SingleAsync()).TenantId);
+        Assert.Equal(
+            other.TenantId,
+            (await policies.Find(Builders<TenantQuotaPolicy>.Filter.Empty).SingleAsync()).TenantId);
     }
 
     private sealed record MappedDocument(
         [property: BsonId] string Id,
-        [property: BsonElement("owner"), BsonRepresentation(BsonType.ObjectId)] string TenantId,
-        string Name) : ITenantOwned;
+        [property: BsonElement("owner")]
+        [property: BsonRepresentation(BsonType.ObjectId)]
+        string TenantId,
+        string Name
+    ) : ITenantOwned;
 }

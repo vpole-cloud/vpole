@@ -1,5 +1,5 @@
-using Pole.Features.Core.Kubernetes;
 using k8s.Models;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Domain;
@@ -15,15 +15,15 @@ public static class WebServiceInKubernetesxtensions
             ResourceDeploymentIngressConfiguration? ingressConfiguration,
             ResourceDeploymentComputeConfiguration computeConfiguration,
             int fixedReplicas,
-            WorkloadIdentityLabels placementIdentity) =>
-            WebServiceInKubernetes.Create(
-                webService,
-                kubernetesNamespace,
-                ingressConfiguration,
-                computeConfiguration,
-                fixedReplicas,
-                placementIdentity);
+            WorkloadIdentityLabels placementIdentity) => WebServiceInKubernetes.Create(
+            webService,
+            kubernetesNamespace,
+            ingressConfiguration,
+            computeConfiguration,
+            fixedReplicas,
+            placementIdentity);
     }
+
     extension(ProbeConfig probeConfig)
     {
         public V1Probe ToV1Probe() => new()
@@ -31,7 +31,7 @@ public static class WebServiceInKubernetesxtensions
             HttpGet = new V1HTTPGetAction
             {
                 Path = probeConfig.Path,
-                Port = probeConfig.Port
+                Port = probeConfig.Port,
             },
             InitialDelaySeconds = probeConfig.InitialDelaySeconds,
             PeriodSeconds = probeConfig.PeriodSeconds,

@@ -8,7 +8,8 @@ namespace Pole.Features.ComputeProfiles.Application.Resolution;
 internal sealed class MongoComputeProfilePlanningSnapshots(
     IMongoCollection<ComputeProfile> profiles,
     IMongoCollection<ComputeProfileRevision> revisions,
-    FenceResolvedComputeProfiles fence)
+    FenceResolvedComputeProfiles fence
+)
 {
     public async Task<ResolveComputeProfilePlanningSnapshotOutcome> ReadAsync(
         ComputeProfilePlanningRequest request,
@@ -16,13 +17,20 @@ internal sealed class MongoComputeProfilePlanningSnapshots(
         CancellationToken ct)
     {
         RequireTransaction(session);
-        MongoResolveComputeProfiles.EnsureValid(new ComputeProfileBatchResolutionRequest(
-            request.TenantId, request.ResourceType,
-            [new(request.DeploymentTargetId, request.ComputeProfileId, request.Revision)]));
+        MongoResolveComputeProfiles.EnsureValid(
+            new ComputeProfileBatchResolutionRequest(
+                request.TenantId,
+                request.ResourceType,
+                [
+                    new ComputeProfileTargetResolutionRequest(
+                        request.DeploymentTargetId,
+                        request.ComputeProfileId,
+                        request.Revision),
+                ]));
         request = request with
         {
             ComputeProfileId = request.ComputeProfileId.Trim(),
-            DeploymentTargetId = request.DeploymentTargetId.Trim()
+            DeploymentTargetId = request.DeploymentTargetId.Trim(),
         };
 
         var profile = await profiles.Find(session, ComputeProfileFilters.ById(request.ComputeProfileId))
@@ -30,25 +38,32 @@ internal sealed class MongoComputeProfilePlanningSnapshots(
         if (profile is null)
             return new ComputeProfilePlanningUnavailable(new ComputeProfileNotFound(request.ComputeProfileId));
 
-        var unavailable = MongoResolveComputeProfiles.ValidateAvailability(profile, request.TenantId,
-            request.ResourceType, request.DeploymentTargetId);
+        var unavailable = MongoResolveComputeProfiles.ValidateAvailability(
+            profile,
+            request.TenantId,
+            request.ResourceType,
+            request.DeploymentTargetId);
         if (unavailable is not null)
             return new ComputeProfilePlanningUnavailable(unavailable);
 
         var policyRevision = profile.Revision;
         if (profile.Revision != request.Revision)
         {
-            var historical = await revisions.Find(session,
-                ComputeProfileRevisionFilters.Identity(profile.Id, request.Revision)).FirstOrDefaultAsync(ct);
+            var historical = await revisions.Find(
+                    session,
+                    ComputeProfileRevisionFilters.Identity(profile.Id, request.Revision))
+                .FirstOrDefaultAsync(ct);
             if (historical is null || !historical.Snapshot.TargetMappings.Any(item =>
                     item.DeploymentTargetId == request.DeploymentTargetId))
-                return new ComputeProfilePlanningUnavailable(new ComputeProfileUnavailable(profile.Id,
-                    ComputeProfileUnavailableReason.RevisionUnavailable));
+                return new ComputeProfilePlanningUnavailable(
+                    new ComputeProfileUnavailable(profile.Id, ComputeProfileUnavailableReason.RevisionUnavailable));
             profile = historical.Snapshot;
         }
 
         var mapping = profile.TargetMappings.Single(item => item.DeploymentTargetId == request.DeploymentTargetId);
-        return new ComputeProfilePlanningSnapshot(request, policyRevision,
+        return new ComputeProfilePlanningSnapshot(
+            request,
+            policyRevision,
             MongoResolveComputeProfiles.ToResolved(profile, mapping));
     }
 
@@ -62,8 +77,18 @@ internal sealed class MongoComputeProfilePlanningSnapshots(
             return new ComputeProfilePlanningFenceRejected();
 
         var input = request.Request;
-        var result = await fence([new(input.ComputeProfileId, input.Revision, input.DeploymentTargetId,
-            input.TenantId, input.ResourceType, PinnedRevision: true)], session, ct);
+        var result = await fence(
+            [
+                new ComputeProfileResolutionFenceRequest(
+                    input.ComputeProfileId,
+                    input.Revision,
+                    input.DeploymentTargetId,
+                    input.TenantId,
+                    input.ResourceType,
+                    PinnedRevision: true),
+            ],
+            session,
+            ct);
         return result is ComputeProfilesFenced
             ? new ComputeProfilePlanningFenced()
             : new ComputeProfilePlanningFenceRejected();

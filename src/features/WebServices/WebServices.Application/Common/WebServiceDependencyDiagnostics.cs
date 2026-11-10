@@ -1,7 +1,6 @@
 using Pole.Features.ResourceConnections.Contracts;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.WebServices.Application.Configuration;
-using Pole.Features.WebServices.Application.SourceDelivery;
 
 namespace Pole.Features.WebServices.Application.Common;
 
@@ -12,6 +11,6 @@ public static class WebServiceDependencyDiagnostics
     {
         ResourceConnectionReferencesUnavailable unavailable => unavailable.ReasonCode,
         ConsumerSecretReferenceUnavailable unavailable => ConsumerSecretReferenceErrorCodes.Code(unavailable.Reason),
-        WebServicePublicExposureRequired => "CustomHostnamesRequirePublicExposure"
+        WebServicePublicExposureRequired => "CustomHostnamesRequirePublicExposure",
     };
 }

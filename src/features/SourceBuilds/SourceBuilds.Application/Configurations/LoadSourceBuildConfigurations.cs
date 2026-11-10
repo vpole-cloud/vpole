@@ -9,13 +9,13 @@ public delegate Task<IReadOnlyList<SourceBuildConfiguration>> LoadSourceBuildCon
     CancellationToken cancellationToken = default);
 
 internal sealed class MongoLoadSourceBuildConfigurations(
-    IMongoCollection<SourceBuildConfiguration> configurations)
+    IMongoCollection<SourceBuildConfiguration> configurations
+)
 {
     public async Task<IReadOnlyList<SourceBuildConfiguration>> InvokeAsync(
         string tenantId,
-        CancellationToken cancellationToken = default) =>
-        await configurations
-            .Find(SourceBuildConfigurationFilters.VisibleToTenant(tenantId))
-            .SortBy(item => item.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await configurations
+        .Find(SourceBuildConfigurationFilters.VisibleToTenant(tenantId))
+        .SortBy(item => item.CreatedAtUtc)
+        .ToListAsync(cancellationToken);
 }

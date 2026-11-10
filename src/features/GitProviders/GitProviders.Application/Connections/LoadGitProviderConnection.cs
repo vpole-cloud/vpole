@@ -9,13 +9,14 @@ public delegate Task<GitProviderConnection?> LoadGitProviderConnection(
     string connectionId,
     CancellationToken cancellationToken = default);
 
-internal sealed class MongoLoadGitProviderConnection(IMongoCollection<GitProviderConnection> gitProviderConnections)
+internal sealed class MongoLoadGitProviderConnection(
+    IMongoCollection<GitProviderConnection> gitProviderConnections
+)
 {
     public async Task<GitProviderConnection?> InvokeAsync(
         string tenantId,
         string connectionId,
-        CancellationToken cancellationToken = default) =>
-        await gitProviderConnections
-            .Find(GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId))
-            .FirstOrDefaultAsync(cancellationToken);
+        CancellationToken cancellationToken = default) => await gitProviderConnections
+        .Find(GitProviderFilters.ConnectionByTenantAndId(tenantId, connectionId))
+        .FirstOrDefaultAsync(cancellationToken);
 }

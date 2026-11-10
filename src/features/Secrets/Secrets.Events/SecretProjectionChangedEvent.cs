@@ -12,7 +12,8 @@ public sealed record SecretProjectionChangedEvent(
     string DeploymentId,
     long DesiredVersion,
     long DesiredRevision,
-    long StorageRevision) : IPoleEvent
+    long StorageRevision
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

@@ -12,7 +12,8 @@ public sealed record WebServiceDeletedEvent(
     string IsolationScopeId,
     long ResourceRevision,
     WebServiceSpecSnapshot Spec,
-    ImmutableHashSet<string> Tags) : IPoleEvent
+    ImmutableHashSet<string> Tags
+) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

@@ -1,12 +1,8 @@
-using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.Endpoints;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Pole.Tests.Integration.Domains;
 
@@ -19,7 +15,9 @@ public sealed class DomainHandlerOutcomeTests
         const string deploymentTargetId = "507f1f77bcf86cd799439012";
         string? receivedTenantId = null;
         string? receivedDeploymentTargetId = null;
-        LoadTenantDomainZones loadZones = (requestedTenantId, requestedDeploymentTargetId, _) =>
+        LoadTenantDomainZones loadZones = (
+            requestedTenantId, requestedDeploymentTargetId,
+            _) =>
         {
             receivedTenantId = requestedTenantId;
             receivedDeploymentTargetId = requestedDeploymentTargetId;
@@ -27,15 +25,12 @@ public sealed class DomainHandlerOutcomeTests
         };
         var handler = new GetDomainZonesHandler(loadZones, null!);
 
-        var outcome = await handler.HandleAsync(new GetDomainZonesRequest(
-            tenantId,
-            deploymentTargetId));
+        var outcome = await handler.HandleAsync(new GetDomainZonesRequest(tenantId, deploymentTargetId));
 
         var zones = outcome switch
         {
             IReadOnlyList<DomainZoneDto> value => value,
-            _ => throw new Xunit.Sdk.XunitException(
-                "Expected the domain-zone list outcome.")
+            _ => throw new XunitException("Expected the domain-zone list outcome."),
         };
         Assert.Empty(zones);
         Assert.Equal(tenantId, receivedTenantId);

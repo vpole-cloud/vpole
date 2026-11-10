@@ -4,13 +4,16 @@ using Pole.Features.ResourceDeployments.Events;
 
 namespace Pole.Features.ResourceDeployments.Application.Realtime;
 
-public sealed class ResourceDeploymentObservationConsumer(PublishRealtimeChange publish)
-    : IConsumer<ResourceDeploymentObservationChangedEvent>
+public sealed class ResourceDeploymentObservationConsumer(
+    PublishRealtimeChange publish
+) : IConsumer<ResourceDeploymentObservationChangedEvent>
 {
     public Task Consume(ConsumeContext<ResourceDeploymentObservationChangedEvent> context)
     {
         var message = context.Message;
-        return publish(new("runtime-observations",
+        return publish(
+            new RealtimeChange(
+                "runtime-observations",
                 message.EventCore.TenantId,
                 message.DeploymentId,
                 message.ResourceGroupId,

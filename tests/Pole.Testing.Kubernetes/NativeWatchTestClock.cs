@@ -9,14 +9,23 @@ public sealed class NativeWatchTestClock : TimeProvider
     public override DateTimeOffset GetUtcNow()
     {
         lock (_gate)
+        {
             return _now;
+        }
     }
 
-    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    public override ITimer CreateTimer(
+        TimerCallback callback,
+        object? state,
+        TimeSpan dueTime,
+        TimeSpan period)
     {
         var timer = new ManualTimer(this, callback, state);
         lock (_gate)
+        {
             _timers.Add(timer);
+        }
+
         timer.Change(dueTime, period);
         return timer;
     }
@@ -36,23 +45,30 @@ public sealed class NativeWatchTestClock : TimeProvider
             timer.Fire();
     }
 
-    private sealed class ManualTimer(NativeWatchTestClock owner, TimerCallback callback, object? state) : ITimer
+    private sealed class ManualTimer(
+        NativeWatchTestClock owner,
+        TimerCallback callback,
+        object? state
+    ) : ITimer
     {
         public DateTimeOffset Due { get; set; } = DateTimeOffset.MaxValue;
-
-        public void Fire() => callback(state);
 
         public bool Change(TimeSpan dueTime, TimeSpan period)
         {
             lock (owner._gate)
+            {
                 Due = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : owner._now + dueTime;
+            }
+
             return true;
         }
 
         public void Dispose()
         {
             lock (owner._gate)
+            {
                 Due = DateTimeOffset.MaxValue;
+            }
         }
 
         public ValueTask DisposeAsync()
@@ -60,5 +76,7 @@ public sealed class NativeWatchTestClock : TimeProvider
             Dispose();
             return ValueTask.CompletedTask;
         }
+
+        public void Fire() => callback(state);
     }
 }

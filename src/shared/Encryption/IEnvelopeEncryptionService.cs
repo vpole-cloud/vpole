@@ -5,7 +5,8 @@ public sealed record EnvelopeEncryptionKeyReference(
     string KeyId,
     int KeyVersion,
     string KeyWrapAlgorithm,
-    int KeyWrapAlgorithmVersion);
+    int KeyWrapAlgorithmVersion
+);
 
 public interface IEnvelopeEncryptionService
 {

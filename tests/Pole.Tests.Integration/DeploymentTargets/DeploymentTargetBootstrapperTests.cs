@@ -8,27 +8,24 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Encryption;
-using Pole.Features.DeploymentTargets.Application;
-using Pole.Features.DeploymentTargets.Application.Admission;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
 using Pole.Features.DeploymentTargets.Application.Catalog;
 using Pole.Features.DeploymentTargets.Application.Common;
 using Pole.Features.DeploymentTargets.Application.Connections;
 using Pole.Features.DeploymentTargets.Application.Endpoints;
-using Pole.Features.DeploymentTargets.Application.Mongo;
 using Pole.Features.DeploymentTargets.Application.References;
 using Pole.Features.DeploymentTargets.Application.Validation;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.Outbox.Application.Writes;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.DeploymentTargets;
 
 [Collection(IntegrationTestCollection.Exclusive)]
-public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class DeploymentTargetBootstrapperTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
@@ -49,8 +46,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var (target, settings) = await LoadSingleStateAsync();
         Assert.Equal("local", target.TechnicalName);
         Assert.IsType<InClusterDeploymentTargetConnection>(target.Connection);
-        var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(
-            target.WorkloadConfiguration.Ingress);
+        var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(target.WorkloadConfiguration.Ingress);
         Assert.Equal("traefik", ingress.IngressClassName);
         Assert.Equal("letsencrypt-prod", ingress.ClusterIssuerName);
         Assert.Equal(1, target.WorkloadConfiguration.Revision);
@@ -62,24 +58,20 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     {
         const string kubeconfig = "apiVersion: v1\nkind: Config\ncurrent-context: imported-context\n";
         const string contextName = "explicit-context";
-        var kubeconfigPath = Path.Combine(
-            Path.GetTempPath(),
-            $"pole-bootstrap-{Guid.NewGuid():N}.yaml");
+        var kubeconfigPath = Path.Combine(Path.GetTempPath(), $"pole-bootstrap-{Guid.NewGuid():N}.yaml");
         await File.WriteAllTextAsync(kubeconfigPath, kubeconfig);
 
         try
         {
             var preparer = new RecordingConnectionPreparer();
-            var options = CreateOptions(new DeploymentTargetBootstrapOptions
-            {
-                Mode = DeploymentTargetBootstrapMode.Auto,
-                KubeconfigPath = kubeconfigPath,
-                KubeconfigContext = contextName
-            });
-            var bootstrapper = CreateBootstrapper(
-                preparer,
-                Environments.Development,
-                options);
+            var options = CreateOptions(
+                new DeploymentTargetBootstrapOptions
+                {
+                    Mode = DeploymentTargetBootstrapMode.Auto,
+                    KubeconfigPath = kubeconfigPath,
+                    KubeconfigContext = contextName,
+                });
+            var bootstrapper = CreateBootstrapper(preparer, Environments.Development, options);
 
             await bootstrapper.InvokeAsync();
 
@@ -101,10 +93,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     {
         var preparer = new RecordingConnectionPreparer();
         var probe = new SuccessfulProbe();
-        var bootstrapper = CreateBootstrapper(
-            preparer,
-            Environments.Production,
-            probe: probe);
+        var bootstrapper = CreateBootstrapper(preparer, Environments.Production, probe: probe);
 
         await bootstrapper.InvokeAsync();
         await bootstrapper.InvokeAsync();
@@ -124,9 +113,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var firstBootstrapper = CreateBootstrapper(firstPreparer, Environments.Production);
         var secondBootstrapper = CreateBootstrapper(secondPreparer, Environments.Production);
 
-        await Task.WhenAll(
-            firstBootstrapper.InvokeAsync(),
-            secondBootstrapper.InvokeAsync());
+        await Task.WhenAll(firstBootstrapper.InvokeAsync(), secondBootstrapper.InvokeAsync());
 
         Assert.Single(firstPreparer.Inputs);
         Assert.Single(secondPreparer.Inputs);
@@ -141,10 +128,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         await Fixture.DbContext.DeploymentTargets.InsertOneAsync(existing);
         var preparer = new RecordingConnectionPreparer();
         var probe = new SuccessfulProbe();
-        var bootstrapper = CreateBootstrapper(
-            preparer,
-            Environments.Production,
-            probe: probe);
+        var bootstrapper = CreateBootstrapper(preparer, Environments.Production, probe: probe);
 
         await bootstrapper.InvokeAsync();
 
@@ -166,14 +150,11 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => bootstrapper.InvokeAsync());
 
-        Assert.Equal(
-            "Deployment-target settings reference a target that does not exist.",
-            exception.Message);
+        Assert.Equal("Deployment-target settings reference a target that does not exist.", exception.Message);
         Assert.Empty(preparer.Inputs);
         Assert.Equal(
             0,
-            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(
-                Builders<DeploymentTarget>.Filter.Empty));
+            await Fixture.DbContext.DeploymentTargets.CountDocumentsAsync(Builders<DeploymentTarget>.Filter.Empty));
         Assert.Equal(
             1,
             await Fixture.DbContext.DeploymentTargetSettings.CountDocumentsAsync(
@@ -192,9 +173,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => bootstrapper.InvokeAsync());
 
-            Assert.Equal(
-                "Development bootstrap requires an absolute KUBECONFIG file path.",
-                exception.Message);
+            Assert.Equal("Development bootstrap requires an absolute KUBECONFIG file path.", exception.Message);
             Assert.Empty(preparer.Inputs);
         }
         finally
@@ -206,86 +185,85 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
     [Fact]
     public void OptionsValidator_RejectsUndefinedBootstrapMode()
     {
-        var options = CreateOptions(new DeploymentTargetBootstrapOptions
-        {
-            Mode = (DeploymentTargetBootstrapMode)999
-        });
+        var options = CreateOptions(
+            new DeploymentTargetBootstrapOptions
+            {
+                Mode = (DeploymentTargetBootstrapMode)999,
+            });
 
         var result = new DeploymentTargetOptionsValidator().Validate(Options.DefaultName, options);
 
         Assert.True(result.Failed);
-        Assert.Contains(
-            "DeploymentTargets:Bootstrap:Mode is not supported.",
-            result.Failures);
+        Assert.Contains("DeploymentTargets:Bootstrap:Mode is not supported.", result.Failures);
     }
 
     [Fact]
     public async Task Bootstrap_PersistsConfiguredWorkloadConfiguration()
     {
-        var options = CreateOptions(new DeploymentTargetBootstrapOptions
-        {
-            WorkloadConfiguration = new DeploymentTargetBootstrapWorkloadConfigurationOptions
+        var options = CreateOptions(
+            new DeploymentTargetBootstrapOptions
             {
-                Ingress = new DeploymentTargetBootstrapIngressOptions
+                WorkloadConfiguration = new DeploymentTargetBootstrapWorkloadConfigurationOptions
                 {
-                    IngressClassName = "nginx",
-                    ClusterIssuerName = "private-ca"
-                },
-                NetworkSources = new DeploymentTargetBootstrapNetworkSourcesOptions
-                {
-                    Pods = new()
+                    Ingress = new DeploymentTargetBootstrapIngressOptions
                     {
-                        ["public-ingress"] = new()
-                        {
-                            Namespace = "ingress-system",
-                            PodLabels = new()
-                            {
-                                ["app"] = "nginx"
-                            }
-                        }
+                        IngressClassName = "nginx",
+                        ClusterIssuerName = "private-ca",
                     },
-                    Cidrs = new()
+                    NetworkSources = new DeploymentTargetBootstrapNetworkSourcesOptions
                     {
-                        ["functions/gateway"] = "192.0.2.9/32"
-                    }
-                }
-            }
-        });
-        var bootstrapper = CreateBootstrapper(
-            new RecordingConnectionPreparer(),
-            Environments.Production,
-            options);
+                        Pods = new Dictionary<string, DeploymentTargetBootstrapPodSourceOptions>
+                        {
+                            ["public-ingress"] = new()
+                            {
+                                Namespace = "ingress-system",
+                                PodLabels = new Dictionary<string, string>
+                                {
+                                    ["app"] = "nginx",
+                                },
+                            },
+                        },
+                        Cidrs = new Dictionary<string, string>
+                        {
+                            ["functions/gateway"] = "192.0.2.9/32",
+                        },
+                    },
+                },
+            });
+        var bootstrapper = CreateBootstrapper(new RecordingConnectionPreparer(), Environments.Production, options);
 
         await bootstrapper.InvokeAsync();
 
         var (target, _) = await LoadSingleStateAsync();
-        var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(
-            target.WorkloadConfiguration.Ingress);
+        var ingress = Assert.IsType<DeploymentTargetIngressConfiguration>(target.WorkloadConfiguration.Ingress);
         Assert.Equal("nginx", ingress.IngressClassName);
         Assert.Equal("private-ca", ingress.ClusterIssuerName);
         var ingressSource = Assert.IsType<DeploymentTargetPodNetworkSource>(
             target.WorkloadConfiguration.NetworkSources.Get("public-ingress"));
         Assert.Equal("ingress-system", ingressSource.Namespace);
         Assert.Equal("nginx", ingressSource.PodLabels["app"]);
-        Assert.Equal("192.0.2.9/32",
+        Assert.Equal(
+            "192.0.2.9/32",
             Assert.IsType<DeploymentTargetCidrNetworkSource>(
-                target.WorkloadConfiguration.NetworkSources.Get("functions/gateway")).Cidr);
+                    target.WorkloadConfiguration.NetworkSources.Get("functions/gateway"))
+                .Cidr);
         Assert.Null(target.WorkloadConfiguration.NetworkSources.Get("postgres/operator"));
     }
 
     [Fact]
     public void OptionsValidator_RejectsInvalidIngressConfiguration()
     {
-        var options = CreateOptions(new DeploymentTargetBootstrapOptions
-        {
-            WorkloadConfiguration = new DeploymentTargetBootstrapWorkloadConfigurationOptions
+        var options = CreateOptions(
+            new DeploymentTargetBootstrapOptions
             {
-                Ingress = new DeploymentTargetBootstrapIngressOptions
+                WorkloadConfiguration = new DeploymentTargetBootstrapWorkloadConfigurationOptions
                 {
-                    IngressClassName = "Invalid_Ingress"
-                }
-            }
-        });
+                    Ingress = new DeploymentTargetBootstrapIngressOptions
+                    {
+                        IngressClassName = "Invalid_Ingress",
+                    },
+                },
+            });
 
         var result = new DeploymentTargetOptionsValidator().Validate(Options.DefaultName, options);
 
@@ -304,23 +282,20 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         var deleteClock = new BlockingTimeProvider(Now.AddMinutes(1));
         var deleteHandler = new DeleteDeploymentTargetHandler(
             new MongoDeleteDeploymentTarget(
-                Fixture.DbContext.DeploymentTargets,
-                Fixture.DbContext.DeploymentTargetSettings,
-                new MongoEnsureNoDeploymentTargetReferences(
-                        Fixture.DbContext.DeploymentTargetReferences)
-                    .InvokeAsync,
-                new MongoRunTransaction(Fixture.Client)
-                    .InvokeOutcomeAsync<DeleteDeploymentTargetPersistenceOutcome>,
-                deleteClock,
-                new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync<PersistDeploymentTargetDeletionFenceOutcome>,
-                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
-                    "OutboxMessages")).InvokeAsync).InvokeAsync,
+                    Fixture.DbContext.DeploymentTargets,
+                    Fixture.DbContext.DeploymentTargetSettings,
+                    new MongoEnsureNoDeploymentTargetReferences(Fixture.DbContext.DeploymentTargetReferences)
+                        .InvokeAsync,
+                    new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
+                    deleteClock,
+                    new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
+                    new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"))
+                        .InvokeAsync)
+                .InvokeAsync,
             new NoOpClientCache().Invalidate);
 
         var deletion = Task.Run(() => deleteHandler.HandleAsync(new DeleteDeploymentTargetRequest(existing.Id)));
-        var bootstrapper = CreateBootstrapper(
-            new RecordingConnectionPreparer(),
-            Environments.Production);
+        var bootstrapper = CreateBootstrapper(new RecordingConnectionPreparer(), Environments.Production);
         try
         {
             await deleteClock.WaitUntilReadAsync().WaitAsync(TestTimeout);
@@ -348,8 +323,8 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         SuccessfulProbe? probe = null)
     {
         var timeProvider = new FixedTimeProvider(Now);
-        EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain =
-            new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
+        EnsureNoOverlappingDeploymentTargetPublicBaseDomain ensureNoOverlappingPublicBaseDomain
+            = new MongoEnsureNoOverlappingDeploymentTargetPublicBaseDomain(
                 Fixture.DbContext.DeploymentTargets,
                 Fixture.Database.GetCollection<DeploymentTargetPublicBaseDomainAdmissionFence>(
                     DeploymentTargetPublicBaseDomainAdmissionFence.CollectionName)).InvokeAsync;
@@ -358,14 +333,14 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                 Fixture.DbContext.DeploymentTargets,
                 Fixture.DbContext.DeploymentTargetSettings).InvokeAsync,
             new MongoEnsureBootstrapDefaultDeploymentTarget(
-                Fixture.DbContext.DeploymentTargets,
-                Fixture.DbContext.DeploymentTargetSettings,
-                ensureNoOverlappingPublicBaseDomain,
-                new MongoRunTransaction(Fixture.Client)
-                    .InvokeOutcomeAsync<EnsureBootstrapDefaultDeploymentTargetOutcome>,
-                timeProvider,
-                new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>(
-                    "OutboxMessages")).InvokeAsync).InvokeAsync,
+                    Fixture.DbContext.DeploymentTargets,
+                    Fixture.DbContext.DeploymentTargetSettings,
+                    ensureNoOverlappingPublicBaseDomain,
+                    new MongoRunTransaction(Fixture.Client).InvokeOutcomeAsync,
+                    timeProvider,
+                    new MongoStoreOutboxWrites(Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages"))
+                        .InvokeAsync)
+                .InvokeAsync,
             preparer.InvokeAsync,
             (probe ?? new SuccessfulProbe()).InvokeAsync,
             options ?? CreateOptions(new DeploymentTargetBootstrapOptions()),
@@ -376,26 +351,28 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
 
     private async Task<(DeploymentTarget Target, DeploymentTargetSettings Settings)> LoadSingleStateAsync()
     {
-        var targets = await Fixture.DbContext.DeploymentTargets
+        var targets = await Fixture.DbContext
+            .DeploymentTargets
             .Find(Builders<DeploymentTarget>.Filter.Empty)
             .ToListAsync();
-        var settings = await Fixture.DbContext.DeploymentTargetSettings
+        var settings = await Fixture.DbContext
+            .DeploymentTargetSettings
             .Find(Builders<DeploymentTargetSettings>.Filter.Empty)
             .ToListAsync();
         return (Assert.Single(targets), Assert.Single(settings));
     }
 
-    private static DeploymentTargetOptions CreateOptions(DeploymentTargetBootstrapOptions bootstrap) =>
-        new()
-        {
-            Bootstrap = bootstrap
-        };
+    private static DeploymentTargetOptions CreateOptions(DeploymentTargetBootstrapOptions bootstrap) => new()
+    {
+        Bootstrap = bootstrap,
+    };
 
     private static DeploymentTarget CreateExistingTarget()
     {
         var id = ObjectId.GenerateNewId().ToString();
         const long connectionVersion = 1;
-        return DeploymentTargetFactory.Create("target-" + id,
+        return DeploymentTargetFactory.Create(
+            "target-" + id,
             "Existing cluster",
             $"kubernetes:kube-system:{id}",
             DeploymentTargetConnectionFactory.CreateInCluster(connectionVersion),
@@ -407,33 +384,32 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
             new DeploymentTargetFactory.CreateOptions(id, Now.UtcDateTime));
     }
 
-    private static IKubernetes CreateInertKubernetesClient() =>
-        new Kubernetes(
-            new KubernetesClientConfiguration
-            {
-                Host = "https://bootstrap.invalid"
-            },
-            new InertHttpMessageHandler());
+    private static IKubernetes CreateInertKubernetesClient() => new Kubernetes(
+        new KubernetesClientConfiguration
+        {
+            Host = "https://bootstrap.invalid",
+        },
+        new InertHttpMessageHandler());
 
-    private static EncryptedValue CreateFakeEnvelope() =>
-        new(
-            FormatVersion: 1,
-            KeyProviderId: "fake-provider",
-            KeyEncryptionKeyId: "fake-key",
-            KeyEncryptionKeyVersion: 1,
-            KeyWrapAlgorithm: "fake-wrap",
-            KeyWrapAlgorithmVersion: 1,
-            WrappedDataEncryptionKey: [1],
-            WrappedDataEncryptionKeyNonce: [2],
-            WrappedDataEncryptionKeyTag: [3],
-            ContentEncryptionAlgorithm: "fake-content",
-            ContentEncryptionAlgorithmVersion: 1,
-            Ciphertext: [4],
-            Nonce: [5],
-            AuthenticationTag: [6]);
+    private static EncryptedValue CreateFakeEnvelope() => new(
+        FormatVersion: 1,
+        KeyProviderId: "fake-provider",
+        KeyEncryptionKeyId: "fake-key",
+        KeyEncryptionKeyVersion: 1,
+        KeyWrapAlgorithm: "fake-wrap",
+        KeyWrapAlgorithmVersion: 1,
+        WrappedDataEncryptionKey: [1],
+        WrappedDataEncryptionKeyNonce: [2],
+        WrappedDataEncryptionKeyTag: [3],
+        ContentEncryptionAlgorithm: "fake-content",
+        ContentEncryptionAlgorithmVersion: 1,
+        Ciphertext: [4],
+        Nonce: [5],
+        AuthenticationTag: [6]);
 
     private sealed class RecordingConnectionPreparer(
-        Func<Task>? beforeReturn = null)
+        Func<Task>? beforeReturn = null
+    )
     {
         private readonly ConcurrentQueue<DeploymentTargetConnectionInput> _inputs = [];
 
@@ -458,7 +434,7 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
                     kubeconfig.ContextName ?? "captured-context",
                     "https://bootstrap.invalid",
                     CreateFakeEnvelope()),
-                _ => throw new InvalidOperationException("Unexpected bootstrap connection input.")
+                _ => throw new InvalidOperationException("Unexpected bootstrap connection input."),
             };
             return new PrepareDeploymentTargetConnectionOutcome(
                 new PreparedDeploymentTargetConnection(connection, CreateInertKubernetesClient()));
@@ -488,7 +464,9 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         }
     }
 
-    private sealed class FakeHostEnvironment(string environmentName) : IHostEnvironment
+    private sealed class FakeHostEnvironment(
+        string environmentName
+    ) : IHostEnvironment
     {
         public string EnvironmentName { get; set; } = environmentName;
 
@@ -499,18 +477,20 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
-    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class FixedTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
-    private sealed class BlockingTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    private sealed class BlockingTimeProvider(
+        DateTimeOffset utcNow
+    ) : TimeProvider
     {
-        private readonly TaskCompletionSource _read =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _read = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private readonly TaskCompletionSource _release =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task WaitUntilReadAsync() => _read.Task;
 
@@ -532,10 +512,11 @@ public sealed class DeploymentTargetBootstrapperTests(MongoReplicaSetFixture fix
         }
     }
 
-    private sealed class AsyncArrivalGate(int participantCount)
+    private sealed class AsyncArrivalGate(
+        int participantCount
+    )
     {
-        private readonly TaskCompletionSource _release =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         private int _remaining = participantCount;
 

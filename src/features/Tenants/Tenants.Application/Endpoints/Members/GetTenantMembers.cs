@@ -15,12 +15,11 @@ public sealed record GetTenantMembersRequest(
     [FromRoute] string TenantId
 ) : IMediatorRequest<GetTenantMembersOutcome>, ITenantMemberReadOperation;
 
-public union GetTenantMembersOutcome(
-    IReadOnlyCollection<TenantMemberDto>,
-    TenantNotFound);
+public union GetTenantMembersOutcome(IReadOnlyCollection<TenantMemberDto>, TenantNotFound);
 
-public sealed class GetTenantMembersHandler(LoadTenant loadTenant)
-    : IMediatorOutcomeHandler<GetTenantMembersRequest, GetTenantMembersOutcome>
+public sealed class GetTenantMembersHandler(
+    LoadTenant loadTenant
+) : IMediatorOutcomeHandler<GetTenantMembersRequest, GetTenantMembersOutcome>
 {
     public async Task<GetTenantMembersOutcome> HandleAsync(
         GetTenantMembersRequest request,
@@ -28,9 +27,7 @@ public sealed class GetTenantMembersHandler(LoadTenant loadTenant)
     {
         var tenant = await loadTenant(request.TenantId, cancellationToken);
 
-        return tenant is null
-            ? new TenantNotFound(request.TenantId)
-            : tenant.Members.Select(m => m.ToDto()).ToList();
+        return tenant is null ? new TenantNotFound(request.TenantId) : tenant.Members.Select(m => m.ToDto()).ToList();
     }
 }
 
@@ -38,18 +35,19 @@ public static class GetTenantMembersEndpoint
 {
     public static IEndpointRouteBuilder MapGetTenantMembersEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{TenantId}/members", async (
-                IMediator mediator,
-                [AsParameters] GetTenantMembersRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{TenantId}/members",
+                async (
+                    IMediator mediator, [AsParameters] GetTenantMembersRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    IReadOnlyCollection<TenantMemberDto> members => Results.Ok(members),
-                    TenantNotFound error => MapTenantNotFound(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        IReadOnlyCollection<TenantMemberDto> members => Results.Ok(members),
+                        TenantNotFound error => MapTenantNotFound(error),
+                    });
+                })
             .WithName("GetTenantMembers")
             .Produces<IReadOnlyCollection<TenantMemberDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound);

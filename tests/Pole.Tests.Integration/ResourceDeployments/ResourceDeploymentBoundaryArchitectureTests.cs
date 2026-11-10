@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Consumers;
 using Pole.Features.ResourceDeployments.Application.Creation;
@@ -9,7 +8,6 @@ using Pole.Features.ResourceDeployments.Application.Jobs;
 using Pole.Features.ResourceDeployments.Application.Mongo;
 using Pole.Features.ResourceDeployments.Application.Observation;
 using Pole.Features.ResourceDeployments.Application.Placements;
-using Pole.Features.ResourceDeployments.Application.Planning;
 using Pole.Features.ResourceDeployments.Application.Queries;
 using Pole.Features.ResourceDeployments.Application.Reconciliation;
 using Pole.Features.ResourceDeployments.Application.Requests;
@@ -20,8 +18,7 @@ namespace Pole.Tests.Integration.ResourceDeployments;
 
 public sealed class ResourceDeploymentBoundaryArchitectureTests
 {
-    private const string ApplicationProjectPath =
-        "src/features/ResourceDeployments/ResourceDeployments.Application";
+    private const string ApplicationProjectPath = "src/features/ResourceDeployments/ResourceDeployments.Application";
 
     public static TheoryData<Type> OrchestratorTypes =>
     [
@@ -30,25 +27,42 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
         typeof(ResourceDeploymentReconciler),
         typeof(WakeResourceDeploymentsOnRuntimeCellReadyConsumer),
         typeof(ReconcileResourceDeploymentConsumer),
-        typeof(DeleteResourceDeploymentConsumer)
+        typeof(DeleteResourceDeploymentConsumer),
     ];
+
+    private static string ApplicationSourceDirectory => Path.Combine(RepositoryRoot, ApplicationProjectPath);
+
+    private static string RepositoryRoot
+    {
+        get
+        {
+            for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+                 directory is not null;
+                 directory = directory.Parent)
+            {
+                var gitDirectory = Path.Combine(directory.FullName, ".git");
+                if (Directory.Exists(gitDirectory) || File.Exists(gitDirectory))
+                    return directory.FullName;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate the repository root.");
+        }
+    }
 
     [Theory]
     [MemberData(nameof(OrchestratorTypes))]
     public void Orchestrators_DoNotDependOnRawMongoOrDbContexts(Type type)
     {
-        var dependencies = type
-            .GetConstructors()
+        var dependencies = type.GetConstructors()
             .SelectMany(constructor => constructor.GetParameters())
             .Select(parameter => parameter.ParameterType)
             .ToArray();
 
-        Assert.DoesNotContain(dependencies,
-            dependency =>
-                dependency.Name.Contains("DbContext", StringComparison.Ordinal) ||
-                dependency == typeof(IServiceProvider) ||
-                dependency.IsGenericType &&
-                dependency.GetGenericTypeDefinition() == typeof(IMongoCollection<>));
+        Assert.DoesNotContain(
+            dependencies,
+            dependency => dependency.Name.Contains("DbContext", StringComparison.Ordinal) ||
+                dependency == typeof(IServiceProvider) || (dependency.IsGenericType &&
+                    dependency.GetGenericTypeDefinition() == typeof(IMongoCollection<>)));
     }
 
     [Fact]
@@ -88,7 +102,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             typeof(RecoverResourceDeploymentOperation),
             typeof(ResourceDeploymentWakePersistence),
             typeof(MongoResourceDeploymentObservationStore),
-            typeof(ResourceDeploymentFilters)
+            typeof(ResourceDeploymentFilters),
         ];
 
         Assert.All(implementationTypes, type => Assert.False(type.IsPublic));
@@ -99,18 +113,16 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
     {
         var interfaces = typeof(IResourceDeploymentAdapter).Assembly
             .GetTypes()
-            .Where(type =>
-                type.IsInterface &&
-                type.Namespace?.StartsWith(
-                    "Pole.Features.ResourceDeployments",
-                    StringComparison.Ordinal) == true)
+            .Where(type => type.IsInterface && type.Namespace?.StartsWith(
+                "Pole.Features.ResourceDeployments",
+                StringComparison.Ordinal) == true)
             .ToArray();
 
         Type[] providerStrategies =
         [
             typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver),
             typeof(IResourceDeploymentDiagnosticsProvider),
-            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver)
+            typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver),
         ];
         Assert.Equal(providerStrategies.OrderBy(type => type.FullName), interfaces.OrderBy(type => type.FullName));
     }
@@ -129,8 +141,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
     [Fact]
     public void LocalCapabilities_KeepOneDelegateAndOperationPerFile()
     {
-        var sourceFiles = Directory
-            .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
+        var sourceFiles = Directory.EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(file => !file.Contains(
                 $"{Path.DirectorySeparatorChar}Endpoints{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal))
@@ -138,22 +149,20 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             .ToArray();
 
         Assert.NotEmpty(sourceFiles);
-        Assert.All(sourceFiles,
+        Assert.All(
+            sourceFiles,
             file =>
             {
                 var source = File.ReadAllText(file);
-                Assert.Equal(1, source.Split("public delegate", StringSplitOptions.None).Length - 1);
-                Assert.Equal(
-                    1,
-                    source.Split("internal sealed class", StringSplitOptions.None).Length - 1);
+                Assert.Equal(1, source.Split("public delegate").Length - 1);
+                Assert.Equal(1, source.Split("internal sealed class").Length - 1);
             });
     }
 
     [Fact]
     public void RuntimeMongoFilters_AreOnlyBuiltInTheAggregateFilterCatalog()
     {
-        var violations = Directory
-            .EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
+        var violations = Directory.EnumerateFiles(ApplicationSourceDirectory, "*.cs", SearchOption.AllDirectories)
             .Where(file => !file.EndsWith(
                 $"{Path.DirectorySeparatorChar}ResourceDeploymentsFilters.cs",
                 StringComparison.Ordinal))
@@ -163,38 +172,14 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
             .Where(file =>
             {
                 var source = File.ReadAllText(file);
-                return source.Contains(
-                           "Builders<ResourceDeployment>.Filter",
-                           StringComparison.Ordinal) ||
-                       source.Contains(
-                           "FilterDefinition<ResourceDeployment>",
-                           StringComparison.Ordinal) ||
-                       source.Contains(".Find(deployment =>", StringComparison.Ordinal) ||
-                       source.Contains(".Find(session, deployment =>", StringComparison.Ordinal);
+                return source.Contains("Builders<ResourceDeployment>.Filter", StringComparison.Ordinal) ||
+                    source.Contains("FilterDefinition<ResourceDeployment>", StringComparison.Ordinal) ||
+                    source.Contains(".Find(deployment =>", StringComparison.Ordinal) || source.Contains(
+                        ".Find(session, deployment =>",
+                        StringComparison.Ordinal);
             })
             .ToArray();
 
         Assert.Empty(violations);
-    }
-
-    private static string ApplicationSourceDirectory => Path.Combine(
-        RepositoryRoot,
-        ApplicationProjectPath);
-
-    private static string RepositoryRoot
-    {
-        get
-        {
-            for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
-                 directory is not null;
-                 directory = directory.Parent)
-            {
-                var gitDirectory = Path.Combine(directory.FullName, ".git");
-                if (Directory.Exists(gitDirectory) || File.Exists(gitDirectory))
-                    return directory.FullName;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate the repository root.");
-        }
     }
 }

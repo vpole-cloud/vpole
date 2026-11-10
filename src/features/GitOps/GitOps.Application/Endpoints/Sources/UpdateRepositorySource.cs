@@ -8,9 +8,7 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
 using Pole.Mediator;
 using Pole.Validation;
 
@@ -20,13 +18,14 @@ namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 public sealed record UpdateRepositorySourceBody(
     long ExpectedRevision,
     int PollIntervalSeconds,
-    GitPrunePolicy Prune = GitPrunePolicy.Retain);
+    GitPrunePolicy Prune = GitPrunePolicy.Retain
+);
 
 public sealed record UpdateRepositorySourceRequest(
     [FromBody] UpdateRepositorySourceBody Body,
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<UpdateRepositorySourceOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<UpdateRepositorySourceOutcome>, ITenantWriteOperation;
 
 public union UpdateRepositorySourceOutcome(
     RepositorySourceView,
@@ -40,7 +39,8 @@ public sealed class UpdateRepositorySourceValidator : AbstractValidator<UpdateRe
     {
         RuleFor(item => item.Id).MongoObjectId("Source ID");
         RuleFor(item => item.Body).NotNull();
-        When(item => item.Body is not null,
+        When(
+            item => item.Body is not null,
             () =>
             {
                 RuleFor(item => item.Body.ExpectedRevision).GreaterThan(0);
@@ -50,8 +50,10 @@ public sealed class UpdateRepositorySourceValidator : AbstractValidator<UpdateRe
     }
 }
 
-public sealed class UpdateRepositorySourceHandler(GitRepositorySources sources, GitRepositoryQueries queries)
-    : IMediatorOutcomeHandler<UpdateRepositorySourceRequest, UpdateRepositorySourceOutcome>
+public sealed class UpdateRepositorySourceHandler(
+    GitRepositorySources sources,
+    GitRepositoryQueries queries
+) : IMediatorOutcomeHandler<UpdateRepositorySourceRequest, UpdateRepositorySourceOutcome>
 {
     public async Task<UpdateRepositorySourceOutcome> HandleAsync(
         UpdateRepositorySourceRequest request,
@@ -60,18 +62,23 @@ public sealed class UpdateRepositorySourceHandler(GitRepositorySources sources, 
         var tenantId = ObjectId.Parse(request.TenantId).ToString();
         var sourceId = ObjectId.Parse(request.Id).ToString();
 
-        var outcome = await sources.ChangePolicyAsync(new(tenantId,
+        var outcome = await sources.ChangePolicyAsync(
+            new ChangeGitSourcePolicy(
+                tenantId,
                 sourceId,
                 request.Body.ExpectedRevision,
-                new(TimeSpan.FromSeconds(request.Body.PollIntervalSeconds)), request.Body.Prune),
+                new GitSyncPolicy(TimeSpan.FromSeconds(request.Body.PollIntervalSeconds)),
+                request.Body.Prune),
             cancellationToken);
         return outcome switch
         {
-            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken)
-                is { } current ? current : new GitSourceNotFound(),
+            RepositorySource source => await queries.SourceAsync(source.TenantId, source.Id, cancellationToken) is
+                { } current
+                ? current
+                : new GitSourceNotFound(),
             GitSourceNotFound missing => missing,
             GitSourceRevisionConflict stale => stale,
-            GitSourceInactive inactive => inactive
+            GitSourceInactive inactive => inactive,
         };
     }
 }
@@ -80,16 +87,18 @@ public static class UpdateRepositorySourceEndpoint
 {
     public static IEndpointRouteBuilder MapUpdateRepositorySourceEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/{Id}",
-                async (IMediator mediator,
-                        [AsParameters] UpdateRepositorySourceRequest request, CancellationToken ct) =>
-                    (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
-                    {
-                        RepositorySourceView value => Results.Ok(value),
-                        GitSourceNotFound value => RepositoryHttpMappings.Map(value),
-                        GitSourceRevisionConflict value => RepositoryHttpMappings.Map(value),
-                        GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive)
-                    })).WithName("UpdateGitRepositorySource")
+        app.MapPut(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateRepositorySourceRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+                {
+                    RepositorySourceView value => Results.Ok(value),
+                    GitSourceNotFound value => RepositoryHttpMappings.Map(value),
+                    GitSourceRevisionConflict value => RepositoryHttpMappings.Map(value),
+                    GitSourceInactive inactive => RepositoryHttpMappings.Map(inactive),
+                }))
+            .WithName("UpdateGitRepositorySource")
             .WithMetadata(new RequestSizeLimitAttribute(SnapshotHttpLimits.MaximumSourceRequestBytes));
         return app;
     }

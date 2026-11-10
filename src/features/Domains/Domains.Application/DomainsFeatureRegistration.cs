@@ -4,7 +4,6 @@ using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.HostnameBindings;
 using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts.HttpMapping;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Realtime.Contracts;
@@ -13,8 +12,7 @@ namespace Pole.Features.Domains.Application;
 
 public static class DomainsFeatureRegistration
 {
-    public static IServiceCollection AddDomainsFeature(
-        this IServiceCollection services)
+    public static IServiceCollection AddDomainsFeature(this IServiceCollection services)
     {
         services.AddSingleton(new RealtimeTopic("domains", RealtimeScope.Tenant));
         services.AddDomainPersistence();

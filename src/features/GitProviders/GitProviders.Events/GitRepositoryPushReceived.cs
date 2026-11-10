@@ -11,4 +11,5 @@ public sealed record GitRepositoryPushReceived(
     string ExternalRepositoryId,
     string Branch,
     string HeadCommitHint,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;

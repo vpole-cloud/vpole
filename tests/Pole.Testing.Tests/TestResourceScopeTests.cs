@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Pole.Testing;
 using Xunit;
 
 namespace Pole.Testing.Tests;
@@ -11,21 +10,27 @@ public sealed class TestResourceScopeTests
     {
         var calls = new List<string>();
         var resources = new TestResourceScope("cleanup ordering");
-        resources.Defer("first", _ =>
-        {
-            calls.Add("first");
-            return Task.CompletedTask;
-        });
-        resources.Defer("failing", _ =>
-        {
-            calls.Add("failing");
-            throw new InvalidOperationException("expected cleanup failure");
-        });
-        resources.Defer("last", _ =>
-        {
-            calls.Add("last");
-            return Task.CompletedTask;
-        });
+        resources.Defer(
+            "first",
+            _ =>
+            {
+                calls.Add("first");
+                return Task.CompletedTask;
+            });
+        resources.Defer(
+            "failing",
+            _ =>
+            {
+                calls.Add("failing");
+                throw new InvalidOperationException("expected cleanup failure");
+            });
+        resources.Defer(
+            "last",
+            _ =>
+            {
+                calls.Add("last");
+                return Task.CompletedTask;
+            });
 
         var failure = await Assert.ThrowsAsync<AggregateException>(() => resources.DisposeAsync().AsTask());
 
@@ -36,22 +41,20 @@ public sealed class TestResourceScopeTests
     [Fact]
     public async Task Concurrent_cleanup_group_starts_all_actions_before_awaiting_completion()
     {
-        var resources = new TestResourceScope(
-            "concurrent cleanup",
-            cleanupTimeout: TimeSpan.FromSeconds(2));
+        var resources = new TestResourceScope("concurrent cleanup", cleanupTimeout: TimeSpan.FromSeconds(2));
         var group = resources.CreateConcurrentCleanupGroup("namespaces");
         var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = 0;
 
         for (var index = 0; index < 2; index++)
-        {
-            group.Defer($"namespace {index}", async cancellationToken =>
-            {
-                if (Interlocked.Increment(ref started) == 2)
-                    bothStarted.SetResult();
-                await bothStarted.Task.WaitAsync(cancellationToken);
-            });
-        }
+            group.Defer(
+                $"namespace {index}",
+                async cancellationToken =>
+                {
+                    if (Interlocked.Increment(ref started) == 2)
+                        bothStarted.SetResult();
+                    await bothStarted.Task.WaitAsync(cancellationToken);
+                });
 
         await resources.DisposeAsync();
 
@@ -140,16 +143,20 @@ public sealed class TestResourceScopeTests
         var calls = new List<string>();
         var resources = new TestResourceScope("cleanup sequence");
         var sequence = resources.CreateCleanupSequence("resource deletion");
-        sequence.Defer("delete", _ =>
-        {
-            calls.Add("delete");
-            throw new InvalidOperationException("ambiguous delete failure");
-        });
-        sequence.Defer("observe deletion", _ =>
-        {
-            calls.Add("observe");
-            return Task.CompletedTask;
-        });
+        sequence.Defer(
+            "delete",
+            _ =>
+            {
+                calls.Add("delete");
+                throw new InvalidOperationException("ambiguous delete failure");
+            });
+        sequence.Defer(
+            "observe deletion",
+            _ =>
+            {
+                calls.Add("observe");
+                return Task.CompletedTask;
+            });
 
         await Assert.ThrowsAsync<AggregateException>(() => resources.DisposeAsync().AsTask());
 
@@ -191,11 +198,13 @@ public sealed class TestResourceScopeTests
     {
         var cleanupCount = 0;
         var resources = new TestResourceScope("idempotent cleanup");
-        resources.Defer("resource", _ =>
-        {
-            cleanupCount++;
-            return Task.CompletedTask;
-        });
+        resources.Defer(
+            "resource",
+            _ =>
+            {
+                cleanupCount++;
+                return Task.CompletedTask;
+            });
 
         await resources.DisposeAsync();
         await resources.DisposeAsync();
@@ -220,27 +229,34 @@ public sealed class TestResourceScopeTests
         var maximumRunning = 0;
         var stateLock = new Lock();
         for (var index = 0; index < 5; index++)
-        {
-            group.Defer($"resource {index}", async cancellationToken =>
-            {
-                var ordinal = Interlocked.Increment(ref started);
-                lock (stateLock)
+            group.Defer(
+                $"resource {index}",
+                async cancellationToken =>
                 {
-                    running++;
-                    maximumRunning = Math.Max(maximumRunning, running);
-                }
-                if (ordinal == expectedConcurrency) firstBatchStarted.SetResult();
-                try
-                {
-                    if (ordinal <= expectedConcurrency) await releaseFirstBatch.Task.WaitAsync(cancellationToken);
-                    else await Task.Yield();
-                }
-                finally
-                {
-                    lock (stateLock) running--;
-                }
-            });
-        }
+                    var ordinal = Interlocked.Increment(ref started);
+                    lock (stateLock)
+                    {
+                        running++;
+                        maximumRunning = Math.Max(maximumRunning, running);
+                    }
+
+                    if (ordinal == expectedConcurrency)
+                        firstBatchStarted.SetResult();
+                    try
+                    {
+                        if (ordinal <= expectedConcurrency)
+                            await releaseFirstBatch.Task.WaitAsync(cancellationToken);
+                        else
+                            await Task.Yield();
+                    }
+                    finally
+                    {
+                        lock (stateLock)
+                        {
+                            running--;
+                        }
+                    }
+                });
 
         var cleanup = resources.DisposeAsync().AsTask();
         await firstBatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -269,13 +285,13 @@ public sealed class TestResourceScopeTests
         var group = resources.CreateConcurrentCleanupGroup("resources", maxConcurrency: 2);
         var attempted = 0;
         for (var index = 0; index < 4; index++)
-        {
-            group.Defer($"resource {index}", async cancellationToken =>
-            {
-                Interlocked.Increment(ref attempted);
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            });
-        }
+            group.Defer(
+                $"resource {index}",
+                async cancellationToken =>
+                {
+                    Interlocked.Increment(ref attempted);
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                });
 
         var failure = await Assert.ThrowsAsync<AggregateException>(() => resources.DisposeAsync().AsTask());
 
@@ -312,7 +328,8 @@ public sealed class TestResourceScopeTests
             var timings = new TestTimings(GetType(), directory: directory);
             var journal = new TestPhaseJournal("bounded request journal", directory);
             using var activation = journal.Activate();
-            for (var index = 0; index < 1100; index++) journal.Record(TestPhase.RequestStarted);
+            for (var index = 0; index < 1100; index++)
+                journal.Record(TestPhase.RequestStarted);
             var resources = new TestResourceScope("private-scope-canary", timings: timings);
             resources.Defer("private-resource-canary", _ => Task.CompletedTask, "cleanup.resource.delete");
 
@@ -327,20 +344,18 @@ public sealed class TestResourceScopeTests
         }
         finally
         {
-            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
         }
     }
 
     private static IEnumerable<Exception> Causes(Exception exception)
     {
         yield return exception;
-        IEnumerable<Exception> children = exception is AggregateException aggregate
-            ? aggregate.InnerExceptions
-            : exception.InnerException is { } inner ? [inner] : Enumerable.Empty<Exception>();
+        var children = exception is AggregateException aggregate ? aggregate.InnerExceptions :
+            exception.InnerException is { } inner ? [inner] : Enumerable.Empty<Exception>();
         foreach (var child in children)
-        {
-            foreach (var cause in Causes(child))
-                yield return cause;
-        }
+        foreach (var cause in Causes(child))
+            yield return cause;
     }
 }

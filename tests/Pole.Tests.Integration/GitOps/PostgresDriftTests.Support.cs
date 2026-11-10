@@ -1,44 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.FSharp.Core;
-using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.GitOps.Application;
-using Pole.Features.GitOps.Application.Endpoints.Sources;
-using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Compiler;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
-using Pole.Features.Postgres.Application;
-using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
-using Pole.Features.Postgres.Application.Declarations;
-using Pole.Features.Postgres.Application.Endpoints;
-using Pole.Features.Postgres.Application.Lifecycle;
-using Pole.Features.Postgres.Application.Mongo;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Migrations;
-using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
-using Pole.Features.Secrets.Application.Values;
-using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
-using Pole.Features.StorageProfiles.Domain;
-using Pole.Mediator;
-using Pole.Migrations;
-using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
@@ -48,66 +14,74 @@ public abstract partial class DeclarativePipelineTestBase
     private protected IMongoCollection<PostgresCluster> PostgresResources =>
         Fixture.Database.GetCollection<PostgresCluster>("Postgres");
 
-    private protected async Task SeedPostgresPlanningCatalog(PostgresDeploymentMode mode = PostgresDeploymentMode.StatefulSet)
+    private protected async Task SeedPostgresPlanningCatalog(
+        PostgresDeploymentMode mode = PostgresDeploymentMode.StatefulSet)
     {
         Services.GetRequiredService<PostgresSettings>().DefaultDeploymentMode = mode;
         await Fixture.PrepareNamedCatalogAsync();
     }
 
-    private protected static ManifestFile[] PostgresSnapshot(int version = 16, string username = "application", int size = 4,
-        int instances = 1, string? scope = "private-data", long storageRevision = 1) =>
+    private protected static ManifestFile[] PostgresSnapshot(
+        int version = 16,
+        string username = "application",
+        int size = 4,
+        int instances = 1,
+        string? scope = "private-data",
+        long storageRevision = 1) =>
     [
-        new("postgres.yaml", $$"""
-            apiVersion: pole.io/v1alpha1
-            kind: PostgresCluster
-            metadata:
-              name: database
-            spec:
-              resourceGroup: postgres-group
-              placement:
-                deploymentTarget: lab
-                computeProfile: { name: small, revision: 1 }
+        new(
+            "postgres.yaml",
+            $$"""
+              apiVersion: pole.io/v1alpha1
+              kind: PostgresCluster
+              metadata:
+                name: database
+              spec:
+                resourceGroup: postgres-group
+                placement:
+                  deploymentTarget: lab
+                  computeProfile: { name: small, revision: 1 }
+                  {{(scope is null ? "" : $"isolationScope: {scope}")}}
+                storage:
+                  sizeGb: {{size}}
+                  profile: { name: postgres-storage, revision: {{storageRevision}} }
+                version: {{version}}
+                instances: {{instances}}
+                username: {{username}}
+                bootstrapPassword: { secret: database-auth, key: password }
+              ---
+              apiVersion: pole.io/v1alpha1
+              kind: SecretBinding
+              metadata:
+                name: database-bootstrap
+              spec:
+                secret: database-auth
+                consumer: {kind: PostgresCluster, name: database}
+                usage: Bootstrap
+              ---
+              apiVersion: pole.io/v1alpha1
+              kind: Secret
+              metadata:
+                name: database-auth
+              spec:
+                resourceGroup: postgres-group
                 {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              storage:
-                sizeGb: {{size}}
-                profile: { name: postgres-storage, revision: {{storageRevision}} }
-              version: {{version}}
-              instances: {{instances}}
-              username: {{username}}
-              bootstrapPassword: { secret: database-auth, key: password }
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: SecretBinding
-            metadata:
-              name: database-bootstrap
-            spec:
-              secret: database-auth
-              consumer: {kind: PostgresCluster, name: database}
-              usage: Bootstrap
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: Secret
-            metadata:
-              name: database-auth
-            spec:
-              resourceGroup: postgres-group
-              {{(scope is null ? "" : $"isolationScope: {scope}")}}
-              keys: [password]
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: IsolationScope
-            metadata:
-              name: private-data
-            spec:
-              resourceGroup: postgres-group
-            ---
-            apiVersion: pole.io/v1alpha1
-            kind: ResourceGroup
-            metadata:
-              name: postgres-group
-            spec:
-              description: PostgreSQL group
-            """)
+                keys: [password]
+              ---
+              apiVersion: pole.io/v1alpha1
+              kind: IsolationScope
+              metadata:
+                name: private-data
+              spec:
+                resourceGroup: postgres-group
+              ---
+              apiVersion: pole.io/v1alpha1
+              kind: ResourceGroup
+              metadata:
+                name: postgres-group
+              spec:
+                description: PostgreSQL group
+              """),
     ];
 
     private protected async Task<PostgresCluster> InitializePostgres(ManifestFile[]? files = null)
@@ -115,7 +89,8 @@ public abstract partial class DeclarativePipelineTestBase
         files ??= PostgresSnapshot();
         var blocked = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.Blocked, blocked.Status);
-        var prepared = await PostgresResources.Find(ScenarioFilter<PostgresCluster>(item => item.TenantId)).SingleAsync();
+        var prepared = await PostgresResources.Find(ScenarioFilter<PostgresCluster>(item => item.TenantId))
+            .SingleAsync();
         Assert.True(prepared.IsPrepared);
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == prepared.Id).SingleAsync();
         Assert.IsType<PreparedResourceDeploymentState>(placement.State);

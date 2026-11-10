@@ -7,7 +7,10 @@ namespace Pole.Features.GitProviders.Application.GitHub;
 
 public delegate string CreateGitHubAppJwt();
 
-public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider timeProvider)
+public sealed class GitHubAppJwtFactory(
+    GitHubAppOptions options,
+    TimeProvider timeProvider
+)
 {
     public string Invoke()
     {
@@ -20,24 +23,23 @@ public sealed class GitHubAppJwtFactory(GitHubAppOptions options, TimeProvider t
 
         var handler = new JsonWebTokenHandler
         {
-            SetDefaultTimesOnTokenCreation = false
+            SetDefaultTimesOnTokenCreation = false,
         };
         var signingKey = new RsaSecurityKey(rsa)
         {
             CryptoProviderFactory = new CryptoProviderFactory
             {
-                CacheSignatureProviders = false
-            }
+                CacheSignatureProviders = false,
+            },
         };
-        return handler.CreateToken(new SecurityTokenDescriptor
-        {
-            Issuer = options.ClientId,
-            IssuedAt = now.AddSeconds(-60).UtcDateTime,
-            Expires = now.AddMinutes(8).UtcDateTime,
-            TokenType = "JWT",
-            SigningCredentials = new SigningCredentials(
-                signingKey,
-                SecurityAlgorithms.RsaSha256)
-        });
+        return handler.CreateToken(
+            new SecurityTokenDescriptor
+            {
+                Issuer = options.ClientId,
+                IssuedAt = now.AddSeconds(-60).UtcDateTime,
+                Expires = now.AddMinutes(8).UtcDateTime,
+                TokenType = "JWT",
+                SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.RsaSha256),
+            });
     }
 }

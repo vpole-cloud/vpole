@@ -6,7 +6,8 @@ namespace Pole.Features.ResourceConnections.Contracts;
 public sealed record ResourceConnectionPlanningVersion(
     string ConnectionId,
     long Revision,
-    long ReferenceFence)
+    long ReferenceFence
+)
 {
     public static string RevisionDocumentId(string connectionId) => $"ResourceConnection/{connectionId}";
 
@@ -17,7 +18,7 @@ public sealed record ResourceConnectionPlanningVersion(
         IReadOnlyDictionary<string, long> documents) =>
         documents.TryGetValue(RevisionDocumentId(connectionId), out var revision) && revision > 0 &&
         documents.TryGetValue(ReferenceFenceDocumentId(connectionId), out var fence) && fence >= 0
-            ? new(connectionId, revision, fence)
+            ? new ResourceConnectionPlanningVersion(connectionId, revision, fence)
             : null;
 }
 
@@ -25,12 +26,14 @@ public sealed record ConnectionDestinationPlanningVersion(
     ResourceTypeId ResourceType,
     string ResourceId,
     string RegistrationId,
-    long ReferenceFence);
+    long ReferenceFence
+);
 
 public sealed record ResourceConnectionReferencePlanningSnapshot(
     AdmitResourceConnectionReferencesRequest Request,
     IReadOnlyList<ResourceConnectionPlanningVersion> Connections,
-    IReadOnlyList<ConnectionDestinationPlanningVersion> Destinations);
+    IReadOnlyList<ConnectionDestinationPlanningVersion> Destinations
+);
 
 public sealed record ResourceConnectionReferencePlanningFenced;
 

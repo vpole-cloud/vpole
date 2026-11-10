@@ -1,6 +1,9 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using Pole.Features.Outbox.Application;
 using Xunit;
 
@@ -116,14 +119,11 @@ public sealed class OutboxDispatchServiceTests
         Assert.Equal(1, trigger.Count);
     }
 
-    private static OutboxProcessingTriggerService CreateService(
-        IServiceProvider services,
-        TimeSpan? interval) =>
-        new(
-            Options.Create(new OutboxSettings { ProcessingTriggerInterval = interval }),
-            services.GetRequiredService<IServiceScopeFactory>(),
-            TimeProvider.System,
-            NullLogger<OutboxProcessingTriggerService>.Instance);
+    private static OutboxProcessingTriggerService CreateService(IServiceProvider services, TimeSpan? interval) => new(
+        Options.Create(new OutboxSettings { ProcessingTriggerInterval = interval }),
+        services.GetRequiredService<IServiceScopeFactory>(),
+        TimeProvider.System,
+        NullLogger<OutboxProcessingTriggerService>.Instance);
 
     private static ServiceProvider CreateServices(IOutboxProcessingTrigger trigger) =>
         new ServiceCollection().AddSingleton(trigger).BuildServiceProvider();
@@ -133,39 +133,44 @@ public sealed class OutboxDispatchServiceTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSingleton<MongoDB.Driver.IMongoDatabase>(_ =>
+        services.AddSingleton<IMongoDatabase>(_ =>
             throw new InvalidOperationException("Disabled dispatch must not read MongoDB."));
         services.AddSingleton<IOutboxPublisher, DisabledPublisher>();
-        services.AddOutboxFeature(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
-        {
-            ValidateOnBuild = true,
-            ValidateScopes = true
-        });
+        services.AddOutboxFeature(new ConfigurationBuilder().Build());
+        await using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions
+            {
+                ValidateOnBuild = true,
+                ValidateScopes = true,
+            });
         var service = Assert.IsType<OutboxProcessingTriggerService>(
-            Assert.Single(provider.GetServices<Microsoft.Extensions.Hosting.IHostedService>()));
+            Assert.Single(provider.GetServices<IHostedService>()));
 
         await service.StartAsync(CancellationToken.None);
         await service.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(2));
         await service.StopAsync(CancellationToken.None);
     }
 
-    private static TaskCompletionSource Signal() =>
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private sealed class DisabledPublisher : IOutboxPublisher
     {
-        public Task PublishAsync(object message, Type messageType, CancellationToken cancellationToken) =>
+        public Task PublishAsync(
+            object message,
+            Type messageType,
+            CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Disabled dispatch must not publish.");
     }
 
     private sealed class RecordingTrigger(
-        Func<int, CancellationToken, Task> execute) : IOutboxProcessingTrigger
+        Func<int, CancellationToken, Task> execute
+    ) : IOutboxProcessingTrigger
     {
         private int _count;
         public int Count => Volatile.Read(ref _count);
 
-        public Task TriggerAsync(CancellationToken cancellationToken) =>
-            execute(Interlocked.Increment(ref _count), cancellationToken);
+        public Task TriggerAsync(CancellationToken cancellationToken) => execute(
+            Interlocked.Increment(ref _count),
+            cancellationToken);
     }
 }

@@ -3,6 +3,8 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Inventory;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Xunit;
 
@@ -19,15 +21,22 @@ public sealed partial class GitLifecyclePreviewProjectionTests
         var owner = await Create();
         var id = await Own(owner, widgets, "manual", GitResourceMaterialization.Allocated);
         var source = sameSource ? owner : await Create();
-        var result = await Services.GetRequiredService<GitAdoptionCandidates>().ReadAsync(new(
-            new(source.TenantId, source.Id), widgets.Kind, new GitNamedCandidateSearch("manual"), new(1, 50)), default);
+        var result = await Services.GetRequiredService<GitAdoptionCandidates>()
+            .ReadAsync(
+                new ReadGitAdoptionCandidates(
+                    new GitSourceIdentity(source.TenantId, source.Id),
+                    widgets.Kind,
+                    new GitNamedCandidateSearch("manual"),
+                    new DeclarationAdoptionCandidatePageRequest(1, 50)),
+                default);
         var candidate = Assert.Single(Assert.IsType<AdoptionCandidatePage>(result.Value).Items);
         Assert.Equal(id, candidate.ResourceId);
         Assert.Equal(owner.Id, candidate.OwnerSourceId);
         Assert.Equal(sameSource, candidate.Selectable);
         Assert.Equal(sameSource ? null : "OwnershipConflict", candidate.Blocker);
-        Assert.Equal(GitResourceMaterialization.Allocated, (await Inventory.Find(_ => true).SingleAsync())
-            .Materialization);
+        Assert.Equal(
+            GitResourceMaterialization.Allocated,
+            (await Inventory.Find(_ => true).SingleAsync()).Materialization);
     }
 
     [Fact]
@@ -35,10 +44,16 @@ public sealed partial class GitLifecyclePreviewProjectionTests
     {
         var source = await Create();
         var id = ObjectId.GenerateNewId().ToString();
-        await widgets.Documents.InsertOneAsync(Document(source.TenantId, id, "manual", "identity", "private-value",
-            null, 1));
-        var result = await Services.GetRequiredService<GitAdoptionCandidates>().ReadAsync(new(
-            new(source.TenantId, source.Id), widgets.Kind, new GitNamedCandidateSearch("manual"), new(1, 50)), default);
+        await widgets.Documents.InsertOneAsync(
+            Document(source.TenantId, id, "manual", "identity", "private-value", null, 1));
+        var result = await Services.GetRequiredService<GitAdoptionCandidates>()
+            .ReadAsync(
+                new ReadGitAdoptionCandidates(
+                    new GitSourceIdentity(source.TenantId, source.Id),
+                    widgets.Kind,
+                    new GitNamedCandidateSearch("manual"),
+                    new DeclarationAdoptionCandidatePageRequest(1, 50)),
+                default);
         var candidate = Assert.Single(Assert.IsType<AdoptionCandidatePage>(result.Value).Items);
         Assert.Equal(widgets.Kind, candidate.Kind);
         Assert.Equal(id, candidate.ResourceId);

@@ -1,7 +1,5 @@
 using MongoDB.Driver;
 using Pole.Features.ResourceGroups.Application.Mongo;
-using Pole.Features.ResourceGroups.Application.References;
-using Pole.Features.ResourceGroups.Application.ResourceRegistrations;
 using Pole.Features.ResourceGroups.Domain;
 
 namespace Pole.Features.ResourceGroups.Application.ResourceGroups;
@@ -10,15 +8,18 @@ public sealed record ResourceGroupPageQuery(
     string TenantId,
     int PageNumber,
     int PageSize,
-    string? Search);
+    string? Search
+);
 
 public sealed record ResourceGroupPage(
     IReadOnlyList<ResourceGroupPageItem> Items,
-    long TotalCount);
+    long TotalCount
+);
 
 public sealed record ResourceGroupPageItem(
     ResourceGroup ResourceGroup,
-    long ResourceCount);
+    long ResourceCount
+);
 
 public delegate Task<ResourceGroupPage> LoadResourceGroupPage(
     ResourceGroupPageQuery query,
@@ -26,7 +27,8 @@ public delegate Task<ResourceGroupPage> LoadResourceGroupPage(
 
 internal sealed class MongoLoadResourceGroupPage(
     IMongoCollection<ResourceGroup> resourceGroups,
-    IMongoCollection<ResourceRegistration> registrations)
+    IMongoCollection<ResourceRegistration> registrations
+)
 {
     public async Task<ResourceGroupPage> InvokeAsync(
         ResourceGroupPageQuery query,
@@ -34,11 +36,8 @@ internal sealed class MongoLoadResourceGroupPage(
     {
         ArgumentNullException.ThrowIfNull(query);
         var filter = ResourceGroupFilters.Search(query.TenantId, query.Search);
-        var totalCount = await resourceGroups.CountDocumentsAsync(
-            filter,
-            cancellationToken: cancellationToken);
-        var items = await resourceGroups
-            .Find(filter)
+        var totalCount = await resourceGroups.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var items = await resourceGroups.Find(filter)
             .SortBy(group => group.Name)
             .ThenBy(group => group.Id)
             .Skip(checked((query.PageNumber - 1) * query.PageSize))
@@ -48,9 +47,7 @@ internal sealed class MongoLoadResourceGroupPage(
         var counts = groupIds.Length == 0
             ? []
             : await registrations.Aggregate()
-                .Match(ResourceRegistrationFilters.ByResourceGroups(
-                    query.TenantId,
-                    groupIds))
+                .Match(ResourceRegistrationFilters.ByResourceGroups(query.TenantId, groupIds))
                 .Group(
                     registration => registration.ResourceGroupId,
                     group => new ResourceGroupRegistrationCount(group.Key, group.LongCount()))
@@ -60,13 +57,12 @@ internal sealed class MongoLoadResourceGroupPage(
             count => count.Count,
             StringComparer.Ordinal);
         return new ResourceGroupPage(
-            items.Select(group => new ResourceGroupPageItem(
-                group,
-                countByGroup.GetValueOrDefault(group.Id))).ToArray(),
+            items.Select(group => new ResourceGroupPageItem(group, countByGroup.GetValueOrDefault(group.Id))).ToArray(),
             totalCount);
     }
 }
 
 internal sealed record ResourceGroupRegistrationCount(
     string ResourceGroupId,
-    long Count);
+    long Count
+);

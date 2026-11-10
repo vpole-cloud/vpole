@@ -6,10 +6,7 @@ public readonly partial record struct ResourceTypeId
 {
     public const int MaximumLength = 128;
 
-    private ResourceTypeId(string value)
-    {
-        Value = value;
-    }
+    private ResourceTypeId(string value) => Value = value;
 
     public string Value { get; }
 
@@ -20,24 +17,16 @@ public readonly partial record struct ResourceTypeId
 
         var normalized = value.Trim();
         if (normalized.Length > MaximumLength)
-        {
-            throw new ArgumentException(
-                $"Resource type must be {MaximumLength} characters or less.",
-                nameof(value));
-        }
+            throw new ArgumentException($"Resource type must be {MaximumLength} characters or less.", nameof(value));
         if (!ResourceTypePattern().IsMatch(normalized))
-        {
             throw new ArgumentException(
                 "Resource type must contain lowercase path segments separated by '/'.",
                 nameof(value));
-        }
 
         return new ResourceTypeId(normalized);
     }
 
-    public static bool TryCreate(
-        string? value,
-        out ResourceTypeId resourceType)
+    public static bool TryCreate(string? value, out ResourceTypeId resourceType)
     {
         try
         {
@@ -60,14 +49,14 @@ public readonly partial record struct ResourceTypeId
 public enum ResourcePlacementCapability
 {
     SingleTarget = 0,
-    MultiTarget = 1
+    MultiTarget = 1,
 }
 
 public enum ComputeArchitecture
 {
     Any = 0,
     Amd64 = 1,
-    Arm64 = 2
+    Arm64 = 2,
 }
 
 public enum ComputeNodeAffinityOperator
@@ -77,13 +66,13 @@ public enum ComputeNodeAffinityOperator
     Exists = 2,
     DoesNotExist = 3,
     GreaterThan = 4,
-    LessThan = 5
+    LessThan = 5,
 }
 
 public enum ComputeTolerationOperator
 {
     Equal = 0,
-    Exists = 1
+    Exists = 1,
 }
 
 public enum ComputeTaintEffect
@@ -91,5 +80,5 @@ public enum ComputeTaintEffect
     Any = 0,
     NoSchedule = 1,
     PreferNoSchedule = 2,
-    NoExecute = 3
+    NoExecute = 3,
 }

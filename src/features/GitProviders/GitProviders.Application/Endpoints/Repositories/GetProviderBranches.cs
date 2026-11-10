@@ -20,8 +20,8 @@ public sealed record GetProviderBranchesRequest(
     [FromRoute] string RepositoryId,
     [FromTenantHeader] string TenantId,
     [FromQuery] int Page = 1,
-    [FromQuery] int PageSize = 100)
-    : IMediatorRequest<GetProviderBranchesOutcome>, ITenantReadOperation;
+    [FromQuery] int PageSize = 100
+) : IMediatorRequest<GetProviderBranchesOutcome>, ITenantReadOperation;
 
 public union GetProviderBranchesOutcome(
     ProviderPage<ProviderBranchDto>,
@@ -41,17 +41,14 @@ public sealed class GetProviderBranchesRequestValidator : AbstractValidator<GetP
 
 public sealed class GetProviderBranchesHandler(
     LoadGitProviderConnection loadGitProviderConnection,
-    GetProviderBranches getProviderBranches)
-    : IMediatorOutcomeHandler<GetProviderBranchesRequest, GetProviderBranchesOutcome>
+    GetProviderBranches getProviderBranches
+) : IMediatorOutcomeHandler<GetProviderBranchesRequest, GetProviderBranchesOutcome>
 {
     public async Task<GetProviderBranchesOutcome> HandleAsync(
         GetProviderBranchesRequest request,
         CancellationToken cancellationToken = default)
     {
-        var connection = await loadGitProviderConnection(
-            request.TenantId,
-            request.ConnectionId,
-            cancellationToken);
+        var connection = await loadGitProviderConnection(request.TenantId, request.ConnectionId, cancellationToken);
         if (connection is null)
             return new GitProviderConnectionNotFound(request.ConnectionId);
 
@@ -64,12 +61,13 @@ public sealed class GetProviderBranchesHandler(
         return pageResult switch
         {
             ProviderPage<ProviderBranch> success => new ProviderPage<ProviderBranchDto>(
-                success.Items.Select(item =>
-                    new ProviderBranchDto(item.Name, item.CommitSha, item.IsProtected)).ToArray(),
+                success.Items
+                    .Select(item => new ProviderBranchDto(item.Name, item.CommitSha, item.IsProtected))
+                    .ToArray(),
                 success.Page,
                 success.PageSize,
                 success.HasMore),
-            GitProviderRepositoryAccessError error => error
+            GitProviderRepositoryAccessError error => error,
         };
     }
 }
@@ -78,19 +76,20 @@ public static class GetProviderBranchesEndpoint
 {
     public static IEndpointRouteBuilder MapGetProviderBranchesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{ConnectionId}/repositories/{RepositoryId}/branches", async (
-                IMediator mediator,
-                [AsParameters] GetProviderBranchesRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{ConnectionId}/repositories/{RepositoryId}/branches",
+                async (
+                    IMediator mediator, [AsParameters] GetProviderBranchesRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ProviderPage<ProviderBranchDto> page => Results.Ok(page),
-                    GitProviderConnectionNotFound error => MapConnectionNotFound(error),
-                    GitProviderRepositoryAccessError error => MapRepositoryAccessError(error)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ProviderPage<ProviderBranchDto> page => Results.Ok(page),
+                        GitProviderConnectionNotFound error => MapConnectionNotFound(error),
+                        GitProviderRepositoryAccessError error => MapRepositoryAccessError(error),
+                    });
+                })
             .WithName("GetProviderRepositoryBranches")
             .Produces<ProviderPage<ProviderBranchDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound)

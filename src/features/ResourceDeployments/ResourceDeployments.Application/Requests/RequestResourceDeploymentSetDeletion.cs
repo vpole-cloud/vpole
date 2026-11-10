@@ -1,5 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.ResourceDeployments.Application;
 using Pole.Features.ResourceDeployments.Application.Admission;
 using Pole.Features.ResourceDeployments.Application.Common;
 using Pole.Features.ResourceDeployments.Application.Mongo;
@@ -13,19 +12,22 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
     StoreOutboxWrites storeOutboxWrites,
     ResourceDeploymentConnectionGuard connectionGuard,
     TimeProvider timeProvider,
-    ResourceDeploymentIsolationProjection isolation)
+    ResourceDeploymentIsolationProjection isolation
+)
 {
     public async Task<ResourceDeploymentSetMutationOutcome> InvokeAsync(
         ResourceDeploymentSetDeletionRequest request,
         IClientSessionHandle session,
         CancellationToken cancellationToken = default)
     {
-        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(
-            session,
-            "Resource deployment mutations");
+        ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment mutations");
         ArgumentNullException.ThrowIfNull(request);
         if (!await connectionGuard.FenceAsync(
-                request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken))
+                request.TenantId,
+                request.ResourceType,
+                request.ResourceId,
+                session,
+                cancellationToken))
             return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
 
         ResourceDeploymentMutationSupport.EnsureSetIsNonEmptyAndUnique(
@@ -33,11 +35,8 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
             deployment => deployment.ResourceDeploymentId,
             nameof(request));
 
-        var deploymentIds = request.Deployments
-            .Select(item => item.ResourceDeploymentId)
-            .ToArray();
-        var current = await resourceDeployments
-            .Find(
+        var deploymentIds = request.Deployments.Select(item => item.ResourceDeploymentId).ToArray();
+        var current = await resourceDeployments.Find(
                 session,
                 ResourceDeploymentFilters.ForResourceDeploymentIds(
                     request.TenantId,
@@ -46,20 +45,15 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
                     deploymentIds))
             .ToListAsync(cancellationToken);
         if (current.Count != request.Deployments.Count)
-        {
-            return new ResourceDeploymentMutationError(
-                new ResourceDeploymentMutationNotFound(request.ResourceId));
-        }
+            return new ResourceDeploymentMutationError(new ResourceDeploymentMutationNotFound(request.ResourceId));
 
         var byId = current.ToDictionary(deployment => deployment.Id, StringComparer.Ordinal);
         foreach (var item in request.Deployments)
         {
             var deployment = byId[item.ResourceDeploymentId];
             if (deployment.Revision != item.ExpectedDeploymentRevision)
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, item.ResourceDeploymentId));
-            }
 
             var computeExpectation = ResourceDeploymentMutationSupport.EnsureExpectedCompute(
                 request.ResourceId,
@@ -71,13 +65,9 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var updated = request.Deployments
-            .Select(item => byId[item.ResourceDeploymentId].RequestDeletion(
-                now,
-                request.ResourceRevision))
+            .Select(item => byId[item.ResourceDeploymentId].RequestDeletion(now, request.ResourceRevision))
             .ToArray();
-        var changed = updated
-            .Where(deployment => deployment.Revision != byId[deployment.Id].Revision)
-            .ToArray();
+        var changed = updated.Where(deployment => deployment.Revision != byId[deployment.Id].Revision).ToArray();
         foreach (var deployment in changed)
         {
             var original = byId[deployment.Id];
@@ -87,26 +77,26 @@ internal sealed class MongoRequestResourceDeploymentSetDeletion(
                 deployment,
                 cancellationToken: cancellationToken);
             if (replacement.ModifiedCount != 1)
-            {
                 return new ResourceDeploymentMutationError(
                     new ResourceDeploymentChanged(request.ResourceId, original.Id));
-            }
         }
 
         var connectionConflict = await connectionGuard.ReconcileAsync(
-            request.TenantId, request.ResourceType, request.ResourceId, session, cancellationToken);
+            request.TenantId,
+            request.ResourceType,
+            request.ResourceId,
+            session,
+            cancellationToken);
         if (connectionConflict is not null)
             return new ResourceDeploymentMutationError(connectionConflict);
 
         await storeOutboxWrites(
             session,
-            changed
-                .Where(deployment => deployment.State is PendingResourceDeploymentState)
+            changed.Where(deployment => deployment.State is PendingResourceDeploymentState)
                 .Select(deployment => deployment.ToCurrentRequestWrite())
                 .ToArray(),
             cancellationToken);
 
-        return new MutatedResourceDeployments(
-            await isolation.ProjectAsync(updated, cancellationToken));
+        return new MutatedResourceDeployments(await isolation.ProjectAsync(updated, cancellationToken));
     }
 }

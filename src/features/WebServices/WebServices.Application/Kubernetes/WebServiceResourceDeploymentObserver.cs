@@ -5,7 +5,6 @@ using Pole.Features.Core.Kubernetes;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Application.Connections;
 using Pole.Features.WebServices.Application.Queries;
 using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
@@ -14,47 +13,9 @@ namespace Pole.Features.WebServices.Application.Kubernetes;
 
 public sealed class WebServiceResourceDeploymentObserver(
     LoadWebServiceById loadResource,
-    IKubernetesClientProvider clients) : IResourceDeploymentObserver, IResourceDeploymentDiagnosticsProvider,
-    IResourceDeploymentBoundObserver
+    IKubernetesClientProvider clients
+) : IResourceDeploymentObserver, IResourceDeploymentDiagnosticsProvider, IResourceDeploymentBoundObserver
 {
-    private async Task<OwnedKubernetesWorkload?> ResolveDiagnosticsAsync(
-        ResourceDeploymentReconciliationSnapshot deployment,
-        CancellationToken ct)
-    {
-        if (deployment.ResourceType != WebServiceResourceDeployment.ResourceType)
-            return null;
-        var resource = await loadResource(deployment.TenantId, deployment.ResourceId, ct);
-        if (resource is null)
-            return null;
-        var identity = new WorkloadIdentityLabels(deployment.TenantId,
-            deployment.ResourceGroupId,
-            deployment.IsolationScopeId,
-            deployment.RuntimeCellId,
-            deployment.Placement.DeploymentTargetId,
-            WebServiceResourceDeployment.KubernetesResourceTypeLabel,
-            deployment.ResourceId,
-            deployment.Id);
-        var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, ct);
-        return await KubernetesWorkloadDiagnostics.DeploymentAsync(client,
-            resource.Name,
-            deployment.Placement.KubernetesNamespace,
-            identity,
-            deployment.DesiredGeneration,
-            ct);
-    }
-
-    public async Task<WorkloadDiagnostics> DiscoverAsync(ResourceDeploymentReconciliationSnapshot deployment,
-        CancellationToken cancellationToken = default) =>
-        await KubernetesWorkloadDiagnostics.DiscoverAsync(await ResolveDiagnosticsAsync(deployment, cancellationToken),
-            cancellationToken);
-
-    public Task<RuntimeLogOpenResult> OpenLogsAsync(ResourceDeploymentReconciliationSnapshot deployment,
-        RuntimeLogSelection selection,
-        CancellationToken cancellationToken = default) =>
-        KubernetesWorkloadDiagnostics.OpenAsync(ct => ResolveDiagnosticsAsync(deployment, ct),
-            selection,
-            cancellationToken);
-
     public async Task<ResourceDeploymentBoundObservation> ObserveBoundAsync(
         ResourceDeploymentObservationContext context,
         string bindingId,
@@ -62,11 +23,14 @@ public sealed class WebServiceResourceDeploymentObserver(
     {
         var deployment = context.Deployment;
         if (deployment.ResourceType != WebServiceResourceDeployment.ResourceType)
-            return new(null, new UnavailableWorkloadObservation("ResourceTypeMismatch"));
+            return new ResourceDeploymentBoundObservation(
+                null,
+                new UnavailableWorkloadObservation("ResourceTypeMismatch"));
         var resource = await loadResource(deployment.TenantId, deployment.ResourceId, cancellationToken);
         if (resource is null)
-            return new(null, new UnavailableWorkloadObservation("ResourceNotFound"));
-        var identity = new WorkloadIdentityLabels(deployment.TenantId,
+            return new ResourceDeploymentBoundObservation(null, new UnavailableWorkloadObservation("ResourceNotFound"));
+        var identity = new WorkloadIdentityLabels(
+            deployment.TenantId,
             deployment.ResourceGroupId,
             deployment.IsolationScopeId,
             deployment.RuntimeCellId,
@@ -78,13 +42,15 @@ public sealed class WebServiceResourceDeploymentObserver(
         var namespaceName = deployment.Placement.KubernetesNamespace;
         if (!await MatchesAsync())
             return Changed();
-        var observed = await KubernetesWorkloadObservation.DeploymentAsync(client,
+        var observed = await KubernetesWorkloadObservation.DeploymentAsync(
+            client,
             resource.Name,
             namespaceName,
             identity,
             deployment.DesiredGeneration,
             cancellationToken);
-        var workload = await KubernetesWorkloadDiagnostics.DeploymentAsync(client,
+        var workload = await KubernetesWorkloadDiagnostics.DeploymentAsync(
+            client,
             resource.Name,
             namespaceName,
             identity,
@@ -93,29 +59,49 @@ public sealed class WebServiceResourceDeploymentObserver(
         if (workload?.Controller.Uid != bindingId)
             return Changed();
         var diagnostics = await KubernetesWorkloadDiagnostics.DiscoverAsync(workload, cancellationToken);
-        var autoscaler = await ObserveAutoscalerAsync(client, new(resource, deployment, identity), cancellationToken);
+        var autoscaler = await ObserveAutoscalerAsync(
+            client,
+            new AutoscalerObservationRequest(resource, deployment, identity),
+            cancellationToken);
         if (!await MatchesAsync())
             return Changed();
-        return new(bindingId, autoscaler ?? observed)
+        return new ResourceDeploymentBoundObservation(bindingId, autoscaler ?? observed)
         {
-            Diagnostics = diagnostics
+            Diagnostics = diagnostics,
         };
 
-        Task<bool> MatchesAsync() => KubernetesWorkloadObservation.MatchesDeploymentBindingAsync(client,
+        Task<bool> MatchesAsync() => KubernetesWorkloadObservation.MatchesDeploymentBindingAsync(
+            client,
             resource.Name,
             namespaceName,
             identity,
             bindingId,
             cancellationToken);
 
-        static ResourceDeploymentBoundObservation Changed() =>
-            new(null, new UnavailableWorkloadObservation("BindingChanged"))
-            {
-                Diagnostics = new UnavailableWorkloadDiagnostics("BindingChanged")
-            };
+        static ResourceDeploymentBoundObservation Changed() => new(
+            null,
+            new UnavailableWorkloadObservation("BindingChanged"))
+        {
+            Diagnostics = new UnavailableWorkloadDiagnostics("BindingChanged"),
+        };
     }
 
-    public async Task<WorkloadObservation> ObserveAsync(ResourceDeploymentReconciliationSnapshot deployment,
+    public async Task<WorkloadDiagnostics> DiscoverAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        CancellationToken cancellationToken = default) => await KubernetesWorkloadDiagnostics.DiscoverAsync(
+        await ResolveDiagnosticsAsync(deployment, cancellationToken),
+        cancellationToken);
+
+    public Task<RuntimeLogOpenResult> OpenLogsAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        RuntimeLogSelection selection,
+        CancellationToken cancellationToken = default) => KubernetesWorkloadDiagnostics.OpenAsync(
+        ct => ResolveDiagnosticsAsync(deployment, ct),
+        selection,
+        cancellationToken);
+
+    public async Task<WorkloadObservation> ObserveAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
         CancellationToken cancellationToken = default)
     {
         if (deployment.ResourceType != WebServiceResourceDeployment.ResourceType)
@@ -123,7 +109,8 @@ public sealed class WebServiceResourceDeploymentObserver(
         var resource = await loadResource(deployment.TenantId, deployment.ResourceId, cancellationToken);
         if (resource is null)
             return new UnavailableWorkloadObservation("ResourceNotFound");
-        var identity = new WorkloadIdentityLabels(deployment.TenantId,
+        var identity = new WorkloadIdentityLabels(
+            deployment.TenantId,
             deployment.ResourceGroupId,
             deployment.IsolationScopeId,
             deployment.RuntimeCellId,
@@ -132,11 +119,15 @@ public sealed class WebServiceResourceDeploymentObserver(
             deployment.ResourceId,
             deployment.Id);
         var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, cancellationToken);
-        var autoscaler = await ObserveAutoscalerAsync(client, new(resource, deployment, identity), cancellationToken);
+        var autoscaler = await ObserveAutoscalerAsync(
+            client,
+            new AutoscalerObservationRequest(resource, deployment, identity),
+            cancellationToken);
         if (autoscaler is not null)
             return autoscaler;
 
-        return await KubernetesWorkloadObservation.DeploymentAsync(client,
+        return await KubernetesWorkloadObservation.DeploymentAsync(
+            client,
             resource.Name,
             deployment.Placement.KubernetesNamespace,
             identity,
@@ -144,13 +135,38 @@ public sealed class WebServiceResourceDeploymentObserver(
             cancellationToken);
     }
 
-    private sealed record AutoscalerObservationRequest(
-        WebService Resource,
-        ResourceDeploymentReconciliationSnapshot Deployment,
-        WorkloadIdentityLabels Identity);
+    private async Task<OwnedKubernetesWorkload?> ResolveDiagnosticsAsync(
+        ResourceDeploymentReconciliationSnapshot deployment,
+        CancellationToken ct)
+    {
+        if (deployment.ResourceType != WebServiceResourceDeployment.ResourceType)
+            return null;
+        var resource = await loadResource(deployment.TenantId, deployment.ResourceId, ct);
+        if (resource is null)
+            return null;
+        var identity = new WorkloadIdentityLabels(
+            deployment.TenantId,
+            deployment.ResourceGroupId,
+            deployment.IsolationScopeId,
+            deployment.RuntimeCellId,
+            deployment.Placement.DeploymentTargetId,
+            WebServiceResourceDeployment.KubernetesResourceTypeLabel,
+            deployment.ResourceId,
+            deployment.Id);
+        var client = await clients.GetAsync(deployment.Placement.DeploymentTargetId, ct);
+        return await KubernetesWorkloadDiagnostics.DeploymentAsync(
+            client,
+            resource.Name,
+            deployment.Placement.KubernetesNamespace,
+            identity,
+            deployment.DesiredGeneration,
+            ct);
+    }
 
     private static async Task<WorkloadObservation?> ObserveAutoscalerAsync(
-        IKubernetes client, AutoscalerObservationRequest request, CancellationToken ct)
+        IKubernetes client,
+        AutoscalerObservationRequest request,
+        CancellationToken ct)
     {
         if (request.Resource.Spec.Autoscaling is not { } desired)
             return null;
@@ -159,7 +175,8 @@ public sealed class WebServiceResourceDeploymentObserver(
         {
             var native = await client.AutoscalingV2.ReadNamespacedHorizontalPodAutoscalerAsync(
                 WebServiceInKubernetes.BuildAutoscalerName(request.Resource.Name),
-                request.Deployment.Placement.KubernetesNamespace, cancellationToken: ct);
+                request.Deployment.Placement.KubernetesNamespace,
+                cancellationToken: ct);
             if (native.Metadata.NamespaceProperty != request.Deployment.Placement.KubernetesNamespace ||
                 !KubernetesWorkloadObservation.Owns(native.Metadata, request.Identity) ||
                 native.Spec.ScaleTargetRef is not { ApiVersion: "apps/v1", Kind: "Deployment" } target ||
@@ -170,8 +187,8 @@ public sealed class WebServiceResourceDeploymentObserver(
             if (native.Metadata.DeletionTimestamp is not null || native.Spec.MinReplicas != desired.MinReplicas ||
                 native.Spec.MaxReplicas != desired.MaxReplicas || metrics is null || metrics.Count != 1 ||
                 metrics[0].Type != "Resource" || metrics[0].Resource?.Name != desired.Metric.Type ||
-                metrics[0].Resource?.Target?.Type != "Utilization" ||
-                metrics[0].Resource?.Target?.AverageUtilization != desired.Metric.TargetAverageUtilization)
+                metrics[0].Resource?.Target?.Type != "Utilization" || metrics[0].Resource?.Target?.AverageUtilization !=
+                desired.Metric.TargetAverageUtilization)
                 return new UnavailableWorkloadObservation("AutoscalerConfigurationDrift");
 
             return null;
@@ -189,4 +206,10 @@ public sealed class WebServiceResourceDeploymentObserver(
             return new UnavailableWorkloadObservation("AutoscalerUnavailable");
         }
     }
+
+    private sealed record AutoscalerObservationRequest(
+        WebService Resource,
+        ResourceDeploymentReconciliationSnapshot Deployment,
+        WorkloadIdentityLabels Identity
+    );
 }

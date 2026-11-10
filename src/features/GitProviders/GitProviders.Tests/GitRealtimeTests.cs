@@ -21,8 +21,13 @@ public sealed class GitRealtimeTests
             return Task.CompletedTask;
         });
         await consumer.HandleAsync(new GitProviderConnectionChangedEvent("connection", EventCore.Create("tenant")));
-        await consumer.HandleAsync(new SourceRepositoryChangedEvent(
-            "repository", "connection", "application-source", 1, EventCore.Create("tenant")));
+        await consumer.HandleAsync(
+            new SourceRepositoryChangedEvent(
+                "repository",
+                "connection",
+                "application-source",
+                1,
+                EventCore.Create("tenant")));
         Assert.Equal(2, notices.Count);
         Assert.All(notices, notice => Assert.Equal(new RealtimeChange("git", "tenant"), notice));
     }
@@ -31,7 +36,8 @@ public sealed class GitRealtimeTests
     public void GitRegistersOneTenantTopicWithoutResolvingProviderClients()
     {
         var services = new ServiceCollection().AddGitProvidersFeature(new ConfigurationBuilder().Build());
-        Assert.Equal(new RealtimeTopic("git", RealtimeScope.Tenant),
+        Assert.Equal(
+            new RealtimeTopic("git", RealtimeScope.Tenant),
             Assert.Single(services, item => item.ServiceType == typeof(RealtimeTopic)).ImplementationInstance);
     }
 }

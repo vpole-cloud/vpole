@@ -1,4 +1,5 @@
 using k8s;
+using k8s.Models;
 using Pole.Testing;
 using Xunit;
 using KubernetesClient = k8s.Kubernetes;
@@ -10,7 +11,9 @@ namespace Pole.Tests.Kubernetes;
 [Trait(TestTraits.Concern, "MultiCluster")]
 [Trait(TestTraits.Scope, TestTraits.Scopes.MultiCluster)]
 [Trait(TestTraits.Feature, "DeploymentTargets")]
-public sealed class KubernetesLabMultiClusterTests(KubernetesClusterFixture fixture)
+public sealed class KubernetesLabMultiClusterTests(
+    KubernetesClusterFixture fixture
+)
 {
     [KubernetesFact("multi-cluster")]
     public async Task Same_resource_name_is_isolated_across_workload_targets()
@@ -18,38 +21,38 @@ public sealed class KubernetesLabMultiClusterTests(KubernetesClusterFixture fixt
         var targets = new[]
         {
             fixture.State.GetRequiredTarget("workload-a"),
-            fixture.State.GetRequiredTarget("workload-b")
+            fixture.State.GetRequiredTarget("workload-b"),
         };
         var identity = fixture.Identity;
         var namespaceName = identity.CreateNamespaceName("multi");
         var clients = targets.Select(target => new KubernetesClient(target.CreateConfiguration())).ToArray();
         await using var resources = new TestResourceScope("multi-cluster namespace isolation");
-        resources.Defer("dispose Kubernetes clients", _ =>
-        {
-            foreach (var client in clients)
-                client.Dispose();
-            return Task.CompletedTask;
-        });
+        resources.Defer(
+            "dispose Kubernetes clients",
+            _ =>
+            {
+                foreach (var client in clients)
+                    client.Dispose();
+                return Task.CompletedTask;
+            });
         var namespaces = resources.CreateConcurrentCleanupGroup("owned namespaces");
 
         for (var index = 0; index < clients.Length; index++)
         {
-            await OwnedNamespaceManager.CreateTrackedAsync(
-                namespaces,
-                clients[index],
-                namespaceName,
-                identity);
-            await clients[index].CoreV1.CreateNamespacedConfigMapAsync(
-                new k8s.Models.V1ConfigMap
-                {
-                    Metadata = new k8s.Models.V1ObjectMeta { Name = "same-name" },
-                    Data = new Dictionary<string, string> { ["target"] = targets[index].Key }
-                },
-                namespaceName);
+            await OwnedNamespaceManager.CreateTrackedAsync(namespaces, clients[index], namespaceName, identity);
+            await clients[index]
+                .CoreV1
+                .CreateNamespacedConfigMapAsync(
+                    new V1ConfigMap
+                    {
+                        Metadata = new V1ObjectMeta { Name = "same-name" },
+                        Data = new Dictionary<string, string> { ["target"] = targets[index].Key },
+                    },
+                    namespaceName);
         }
 
-        var values = await Task.WhenAll(clients.Select(client =>
-            client.CoreV1.ReadNamespacedConfigMapAsync("same-name", namespaceName)));
+        var values = await Task.WhenAll(
+            clients.Select(client => client.CoreV1.ReadNamespacedConfigMapAsync("same-name", namespaceName)));
 
         Assert.Equal("workload-a", values[0].Data["target"]);
         Assert.Equal("workload-b", values[1].Data["target"]);
@@ -70,17 +73,13 @@ public sealed class KubernetesLabMultiClusterTests(KubernetesClusterFixture fixt
 
         await resources.CreateAsync(
             $"delete owned namespace '{namespaceName}'",
-            token => OwnedNamespaceManager.CreateAsync(
-                healthy,
-                namespaceName,
-                identity,
-                token),
+            token => OwnedNamespaceManager.CreateAsync(healthy, namespaceName, identity, token),
             (owned, token) => OwnedNamespaceManager.DeleteAsync(healthy, owned, token));
         await healthy.CoreV1.CreateNamespacedConfigMapAsync(
-            new k8s.Models.V1ConfigMap
+            new V1ConfigMap
             {
-                Metadata = new k8s.Models.V1ObjectMeta { Name = "healthy" },
-                Data = new Dictionary<string, string> { ["revision"] = "1" }
+                Metadata = new V1ObjectMeta { Name = "healthy" },
+                Data = new Dictionary<string, string> { ["revision"] = "1" },
             },
             namespaceName);
 

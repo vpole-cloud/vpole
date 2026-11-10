@@ -4,17 +4,21 @@ using System.Threading.Channels;
 namespace Pole.Observation;
 
 /// <summary>Negative transitions fence storage immediately; positive hints coalesce behind one native read.</summary>
-public sealed class ObservationOwner(IObservationSession session, TimeProvider clock)
+public sealed class ObservationOwner(
+    IObservationSession session,
+    TimeProvider clock
+)
 {
     public async Task RunAsync(long initialVersion, CancellationToken ct)
     {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var gate = new SemaphoreSlim(1);
-        var hints = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
-        {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true
-        });
+        var hints = Channel.CreateBounded<bool>(
+            new BoundedChannelOptions(1)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+            });
         SourceState state = new Disconnected(initialVersion);
         var tasks = new[] { PumpAsync(), SampleAsync(), RenewAsync(), ConfirmAsync() };
         try
@@ -41,7 +45,10 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
             }
         }
 
-        async Task SetSourceAsync(string? sourceId, long? expectedVersion = null, bool stop = false)
+        async Task SetSourceAsync(
+            string? sourceId,
+            long? expectedVersion = null,
+            bool stop = false)
         {
             await gate.WaitAsync(lifetime.Token);
             try
@@ -58,7 +65,7 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
 
                 if (state.Version == version && (state as Connected)?.Cut.SourceId == sourceId)
                     return;
-                if ((state is Connected) != (sourceId is not null))
+                if (state is Connected != sourceId is not null)
                     session.RecordSource(sourceId is not null);
                 if (state is Connected previous)
                 {
@@ -68,7 +75,8 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
 
                 state = sourceId is null
                     ? new Disconnected(version.Value)
-                    : new Connected(new(version.Value, sourceId),
+                    : new Connected(
+                        new ObservationCut(version.Value, sourceId),
                         CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token));
                 if (sourceId is not null)
                     hints.Writer.TryWrite(true);
@@ -86,7 +94,6 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
             try
             {
                 await foreach (var change in session.WatchAsync(lifetime.Token))
-                {
                     switch (change)
                     {
                         case ObservationSourceReady ready:
@@ -100,8 +107,8 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
                             bool matches;
                             try
                             {
-                                matches = invalidated.SourceId is null || state is Connected connected &&
-                                    connected.Cut.SourceId == invalidated.SourceId;
+                                matches = invalidated.SourceId is null || (state is Connected connected &&
+                                    connected.Cut.SourceId == invalidated.SourceId);
                                 if (matches)
                                     hints.Writer.TryWrite(true);
                             }
@@ -114,7 +121,6 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
                                 await SetSourceAsync(null);
                             break;
                     }
-                }
             }
             finally
             {
@@ -155,9 +161,7 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
                         ? ObservationSampleMetric.Accepted
                         : ObservationSampleMetric.Rejected;
                     if (result is ObservationSampleResult.BindingLost or ObservationSampleResult.Unavailable)
-                    {
                         await SetSourceAsync(null, captured.Version, result == ObservationSampleResult.Unavailable);
-                    }
                     else if (result == ObservationSampleResult.OwnerLost)
                         await lifetime.CancelAsync();
                 }
@@ -201,11 +205,16 @@ public sealed class ObservationOwner(IObservationSession session, TimeProvider c
         }
     }
 
-    private abstract record SourceState(long Version);
+    private abstract record SourceState(
+        long Version
+    );
 
-    private sealed record Disconnected(long Version) : SourceState(Version);
+    private sealed record Disconnected(
+        long Version
+    ) : SourceState(Version);
 
     private sealed record Connected(
         ObservationCut Cut,
-        CancellationTokenSource Lifetime) : SourceState(Cut.SourceVersion);
+        CancellationTokenSource Lifetime
+    ) : SourceState(Cut.SourceVersion);
 }

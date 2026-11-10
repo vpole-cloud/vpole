@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Web;
 using Pole.Cli.Authentication;
 using Xunit;
 
@@ -18,7 +19,7 @@ public sealed class OidcAuthenticatorTests
             OidcAuthenticator.RedirectUri,
             "state-value",
             "challenge-value");
-        var query = System.Web.HttpUtility.ParseQueryString(authorizationUri.Query);
+        var query = HttpUtility.ParseQueryString(authorizationUri.Query);
 
         Assert.Equal("code", query["response_type"]);
         Assert.Equal("state-value", query["state"]);
@@ -39,9 +40,13 @@ public sealed class OidcAuthenticatorTests
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var wait = OidcAuthenticator.WaitForAuthorizationCodeAsync(listener, "expected-state", cancellation.Token);
         using var client = new HttpClient();
-        using var rejected = await client.GetAsync(prefix + "callback?code=attacker&state=wrong-state&error=access_denied", cancellation.Token);
+        using var rejected = await client.GetAsync(
+            prefix + "callback?code=attacker&state=wrong-state&error=access_denied",
+            cancellation.Token);
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
-        using var accepted = await client.GetAsync(prefix + "callback?code=good-code&state=expected-state", cancellation.Token);
+        using var accepted = await client.GetAsync(
+            prefix + "callback?code=good-code&state=expected-state",
+            cancellation.Token);
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
         Assert.Equal("good-code", await wait);
     }
@@ -52,8 +57,14 @@ public sealed class OidcAuthenticatorTests
         Assert.Equal("127.0.0.1", OidcAuthenticator.RedirectUri.Host);
         Assert.Equal("/callback", OidcAuthenticator.RedirectUri.AbsolutePath);
         Assert.Equal(48763, OidcAuthenticator.RedirectUri.Port);
-        Assert.False(OidcAuthenticator.IsSecureEndpoint(new Uri("http://identity.example/token"), new Uri("http://localhost/realm")));
-        Assert.True(OidcAuthenticator.IsSecureEndpoint(new Uri("http://127.0.0.1:8080/token"), new Uri("http://localhost/realm")));
+        Assert.False(
+            OidcAuthenticator.IsSecureEndpoint(
+                new Uri("http://identity.example/token"),
+                new Uri("http://localhost/realm")));
+        Assert.True(
+            OidcAuthenticator.IsSecureEndpoint(
+                new Uri("http://127.0.0.1:8080/token"),
+                new Uri("http://localhost/realm")));
     }
 
     [Fact]
@@ -61,7 +72,9 @@ public sealed class OidcAuthenticatorTests
     {
         var verifier = "verifier-123";
         var expected = Convert.ToBase64String(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
         Assert.Equal(expected, OidcAuthenticator.CreateCodeChallenge(verifier));
     }
 

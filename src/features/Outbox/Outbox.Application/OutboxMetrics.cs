@@ -6,17 +6,17 @@ namespace Pole.Features.Outbox.Application;
 public sealed class OutboxMetrics : IDisposable
 {
     public const string MeterName = "Pole.Outbox";
-
-    private readonly Meter _meter = new(MeterName);
-    private readonly Counter<long> _published;
-    private readonly Counter<long> _retries;
     private readonly Counter<long> _abandoned;
     private readonly Counter<long> _cleaned;
+
+    private readonly Meter _meter = new(MeterName);
     private readonly Histogram<double> _publishDuration;
+    private readonly Counter<long> _published;
+    private readonly Counter<long> _retries;
     private readonly Histogram<double> _retryDelay;
-    private long _pendingCount;
     private long _abandonedCount;
     private double _oldestPendingAgeSeconds;
+    private long _pendingCount;
 
     public OutboxMetrics()
     {
@@ -55,6 +55,8 @@ public sealed class OutboxMetrics : IDisposable
             description: "Age of the oldest pending outbox message.");
     }
 
+    public void Dispose() => _meter.Dispose();
+
     public void RecordPublished(string eventType, TimeSpan duration)
     {
         var tags = new TagList { { "event.type", eventType } };
@@ -62,23 +64,20 @@ public sealed class OutboxMetrics : IDisposable
         _publishDuration.Record(duration.TotalSeconds, tags);
     }
 
-    public void RecordRetry(
-        string eventType,
-        TimeSpan delay)
+    public void RecordRetry(string eventType, TimeSpan delay)
     {
         var tags = new TagList { { "event.type", eventType } };
         _retries.Add(1, tags);
         _retryDelay.Record(delay.TotalSeconds, tags);
     }
 
-    public void RecordAbandoned(string eventType, string failureCode) =>
-        _abandoned.Add(
-            1,
-            new TagList
-            {
-                { "event.type", eventType },
-                { "failure.code", failureCode }
-            });
+    public void RecordAbandoned(string eventType, string failureCode) => _abandoned.Add(
+        1,
+        new TagList
+        {
+            { "event.type", eventType },
+            { "failure.code", failureCode },
+        });
 
     public void RecordCleaned(string state, long count)
     {
@@ -95,10 +94,6 @@ public sealed class OutboxMetrics : IDisposable
     {
         Interlocked.Exchange(ref _pendingCount, pendingCount);
         Interlocked.Exchange(ref _abandonedCount, abandonedCount);
-        Volatile.Write(
-            ref _oldestPendingAgeSeconds,
-            Math.Max(0, oldestPendingAge.TotalSeconds));
+        Volatile.Write(ref _oldestPendingAgeSeconds, Math.Max(0, oldestPendingAge.TotalSeconds));
     }
-
-    public void Dispose() => _meter.Dispose();
 }

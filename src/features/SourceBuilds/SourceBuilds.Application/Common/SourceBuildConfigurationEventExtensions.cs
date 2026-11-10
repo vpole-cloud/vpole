@@ -9,6 +9,6 @@ internal static class SourceBuildConfigurationEventExtensions
     public static SourceBuildConfigurationChangedEvent ToChangedEvent(this SourceBuildConfiguration configuration) =>
         new(configuration.Id, configuration.WebServiceId, configuration.TechnicalName, configuration.Revision)
         {
-            EventCore = EventCore.Create(configuration.TenantId)
+            EventCore = EventCore.Create(configuration.TenantId),
         };
 }

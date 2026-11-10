@@ -3,27 +3,25 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Endpoints;
-using Pole.Features.Functions.Application.FunctionApps;
 using Pole.Features.Functions.Application.Invocations;
 using Pole.Features.Functions.Application.Lifecycle;
-using Pole.Features.Functions.Application.Mongo;
-using Pole.Features.Functions.Application.Revisions;
 using Pole.Features.Functions.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.FunctionApps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
-    : MediatorIntegrationTestBase(fixture)
+public sealed class FunctionInvocationApiTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task History_and_manual_retry_are_tenant_scoped()
     {
         var (appId, revisionId, timer) = await CreatePromotedAppAsync();
-        var failed = FunctionInvocation.CreateTimer(
+        var failed = FunctionInvocation
+            .CreateTimer(
                 Data.TenantId,
                 appId,
                 revisionId,
@@ -33,11 +31,7 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
                 timer.NextOccurrenceUtc,
                 timer.Retry,
                 timer.UpdatedAtUtc)
-            .AcquireDispatchLease(
-                "dispatcher",
-                "lease",
-                timer.UpdatedAtUtc,
-                timer.UpdatedAtUtc.AddMinutes(5))
+            .AcquireDispatchLease("dispatcher", "lease", timer.UpdatedAtUtc, timer.UpdatedAtUtc.AddMinutes(5))
             .Fail(
                 "lease",
                 FunctionInvocationError.Create("failed", "Failed.", retryable: false),
@@ -47,28 +41,27 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
 
         var hiddenHistory = await Mediator.Send(new GetFunctionInvocationsRequest(appId, 50, otherTenant));
         var hiddenRetry = await Mediator.Send(new RetryFunctionInvocationRequest(appId, failed.Id, otherTenant));
-        Assert.IsType<FunctionAppNotFound>(hiddenHistory.HandlerOutcome() switch
-        {
-            FunctionAppNotFound notFound => notFound,
-            _ => throw new InvalidOperationException("Expected a Function App not-found outcome.")
-        });
-        Assert.IsType<FunctionAppNotFound>(hiddenRetry.HandlerOutcome() switch
-        {
-            RetryFunctionInvocationError error => error switch
+        Assert.IsType<FunctionAppNotFound>(
+            hiddenHistory.HandlerOutcome() switch
             {
                 FunctionAppNotFound notFound => notFound,
-                _ => throw new InvalidOperationException("Expected a Function App not-found outcome.")
-            },
-            _ => throw new InvalidOperationException("Expected a Function App retry failure outcome.")
-        });
+                _ => throw new InvalidOperationException("Expected a Function App not-found outcome."),
+            });
+        Assert.IsType<FunctionAppNotFound>(
+            hiddenRetry.HandlerOutcome() switch
+            {
+                RetryFunctionInvocationError error => error switch
+                {
+                    FunctionAppNotFound notFound => notFound,
+                    _ => throw new InvalidOperationException("Expected a Function App not-found outcome."),
+                },
+                _ => throw new InvalidOperationException("Expected a Function App retry failure outcome."),
+            });
 
         var history = await Mediator.Send(new GetFunctionInvocationsRequest(appId, 50, Data.TenantId));
         var items = history.RequireSuccess();
         Assert.Equal(failed.Id, Assert.Single(items).Id);
-        var retried = await Mediator.Send(new RetryFunctionInvocationRequest(
-            appId,
-            failed.Id,
-            Data.TenantId));
+        var retried = await Mediator.Send(new RetryFunctionInvocationRequest(appId, failed.Id, Data.TenantId));
         var response = retried.RequireSuccess();
         Assert.Equal(2, response.NextAttemptNumber);
         var stored = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == failed.Id).SingleAsync();
@@ -80,7 +73,8 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
     public async Task Manual_retry_respects_forbid_concurrency_policy()
     {
         var (appId, revisionId, timer) = await CreatePromotedAppAsync();
-        var failed = FunctionInvocation.CreateTimer(
+        var failed = FunctionInvocation
+            .CreateTimer(
                 Data.TenantId,
                 appId,
                 revisionId,
@@ -90,11 +84,7 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
                 timer.NextOccurrenceUtc,
                 timer.Retry,
                 timer.UpdatedAtUtc)
-            .AcquireDispatchLease(
-                "dispatcher",
-                "failed-lease",
-                timer.UpdatedAtUtc,
-                timer.UpdatedAtUtc.AddMinutes(5))
+            .AcquireDispatchLease("dispatcher", "failed-lease", timer.UpdatedAtUtc, timer.UpdatedAtUtc.AddMinutes(5))
             .Fail(
                 "failed-lease",
                 FunctionInvocationError.Create("failed", "Failed.", retryable: false),
@@ -111,20 +101,18 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
             timer.UpdatedAtUtc.AddSeconds(2));
         await DbContext.FunctionInvocations.InsertManyAsync([failed, active]);
 
-        var result = await Mediator.Send(new RetryFunctionInvocationRequest(
-            appId,
-            failed.Id,
-            Data.TenantId));
+        var result = await Mediator.Send(new RetryFunctionInvocationRequest(appId, failed.Id, Data.TenantId));
 
-        Assert.IsType<FunctionInvocationConcurrencyForbidden>(result.HandlerOutcome() switch
-        {
-            RetryFunctionInvocationError error => error switch
+        Assert.IsType<FunctionInvocationConcurrencyForbidden>(
+            result.HandlerOutcome() switch
             {
-                FunctionInvocationConcurrencyForbidden conflict => conflict,
-                _ => throw new InvalidOperationException("Expected a Function invocation concurrency failure.")
-            },
-            _ => throw new InvalidOperationException("Expected a Function App retry failure outcome.")
-        });
+                RetryFunctionInvocationError error => error switch
+                {
+                    FunctionInvocationConcurrencyForbidden conflict => conflict,
+                    _ => throw new InvalidOperationException("Expected a Function invocation concurrency failure."),
+                },
+                _ => throw new InvalidOperationException("Expected a Function App retry failure outcome."),
+            });
         var stored = await DbContext.FunctionInvocations.Find(candidate => candidate.Id == failed.Id).SingleAsync();
         Assert.Equal(FunctionInvocationState.Failed, stored.State);
     }
@@ -135,19 +123,19 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
         var (appId, revisionId, timer) = await CreatePromotedAppAsync();
         var hour = FunctionUsageBucket.ToHour(timer.UpdatedAtUtc);
         var bucket = FunctionUsageBucket.Create(
-            new FunctionMeterDimensions(
-                Data.TenantId,
-                appId,
-                revisionId,
-                timer.TriggerId,
-                timer.HandlerName,
-                FunctionMeterTriggerKind.Timer),
-            hour) with
-        {
-            InvocationCount = 3,
-            AttemptCount = 4,
-            UpdatedAtUtc = hour.AddMinutes(5)
-        };
+                new FunctionMeterDimensions(
+                    Data.TenantId,
+                    appId,
+                    revisionId,
+                    timer.TriggerId,
+                    timer.HandlerName,
+                    FunctionMeterTriggerKind.Timer),
+                hour) with
+            {
+                InvocationCount = 3,
+                AttemptCount = 4,
+                UpdatedAtUtc = hour.AddMinutes(5),
+            };
         await DbContext.FunctionUsageBuckets.InsertOneAsync(bucket);
         var invocation = FunctionInvocation.CreateTimer(
             Data.TenantId,
@@ -162,14 +150,10 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
         await DbContext.FunctionMeterEvents.InsertOneAsync(
             FunctionMeterEvent.Admitted(invocation, hour.AddMinutes(1)) with
             {
-                AggregatedAtUtc = hour.AddMinutes(5)
+                AggregatedAtUtc = hour.AddMinutes(5),
             });
 
-        var result = await Mediator.Send(new GetFunctionUsageRequest(
-            appId,
-            hour,
-            hour.AddHours(1),
-            Data.TenantId));
+        var result = await Mediator.Send(new GetFunctionUsageRequest(appId, hour, hour.AddHours(1), Data.TenantId));
 
         var usage = result.RequireSuccess();
         Assert.Equal(hour.AddMinutes(5), usage.AggregatedThroughUtc);
@@ -181,48 +165,40 @@ public sealed class FunctionInvocationApiTests(MongoReplicaSetFixture fixture)
     private async Task<(string AppId, string RevisionId, FunctionTimerState Timer)> CreatePromotedAppAsync()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var created = (await Mediator.Send(new CreateFunctionAppRequest(
-            new CreateFunctionAppRequestBody(
-                "timer-functions",
-                $"timers-{Data.TenantId}",
-                group.Id,
-                RevisionRequest(),
-                []),
-            Data.TenantId))).RequireSuccess();
+        var created = (await Mediator.Send(
+            new CreateFunctionAppRequest(
+                new CreateFunctionAppRequestBody(
+                    "timer-functions",
+                    $"timers-{Data.TenantId}",
+                    group.Id,
+                    RevisionRequest(),
+                    []),
+                Data.TenantId))).RequireSuccess();
         var markReady = Services.GetRequiredService<MarkFunctionRevisionReady>();
         var promote = Services.GetRequiredService<PromoteFunctionRevision>();
-        (await markReady(
-            Data.TenantId,
-            created.FunctionAppId,
-            created.RevisionId)).RequireLifecycleSuccess();
-        (await promote(
-            Data.TenantId,
-            created.FunctionAppId,
-            created.RevisionId)).RequireLifecycleSuccess();
+        (await markReady(Data.TenantId, created.FunctionAppId, created.RevisionId)).RequireLifecycleSuccess();
+        (await promote(Data.TenantId, created.FunctionAppId, created.RevisionId)).RequireLifecycleSuccess();
         var timer = await DbContext.FunctionTimerStates
             .Find(candidate => candidate.FunctionAppId == created.FunctionAppId)
             .SingleAsync();
         return (created.FunctionAppId, created.RevisionId, timer);
     }
 
-    private static FunctionRevisionRequest RevisionRequest() =>
-        new(
-            new FunctionImageRequest("registry.example", "team/functions", "v1"),
-            new FunctionConfiguration(
-                ImmutableDictionary<string, string>.Empty,
-                ImmutableDictionary<string, FunctionSecretReference>.Empty),
-            new FunctionResources(
-                new FunctionResourceValues(100, 128),
-                new FunctionResourceValues(500, 512)),
-            new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
-            [
-                new FunctionHandlerRequest(
-                    "cleanup",
-                    1,
-                    new TimerFunctionTriggerRequest(
-                        "*/5 * * * *",
-                        TimerConcurrencyPolicy.Forbid,
-                        TimerMisfirePolicy.FireOnce,
-                        new FunctionRetryPolicy(3, [5, 30])))
-            ]);
+    private static FunctionRevisionRequest RevisionRequest() => new(
+        new FunctionImageRequest("registry.example", "team/functions", "v1"),
+        new FunctionConfiguration(
+            ImmutableDictionary<string, string>.Empty,
+            ImmutableDictionary<string, FunctionSecretReference>.Empty),
+        new FunctionResources(new FunctionResourceValues(100, 128), new FunctionResourceValues(500, 512)),
+        new FunctionScalingPolicy(0, 5, 4, 8, 60, 30),
+        [
+            new FunctionHandlerRequest(
+                "cleanup",
+                1,
+                new TimerFunctionTriggerRequest(
+                    "*/5 * * * *",
+                    TimerConcurrencyPolicy.Forbid,
+                    TimerMisfirePolicy.FireOnce,
+                    new FunctionRetryPolicy(3, [5, 30]))),
+        ]);
 }

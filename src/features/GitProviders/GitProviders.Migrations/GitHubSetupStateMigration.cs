@@ -1,6 +1,6 @@
-using Pole.Migrations;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Migrations;
 
 namespace Pole.Features.GitProviders.Migrations;
 
@@ -20,23 +20,24 @@ public sealed class GitHubSetupStateMigration : IMigration
         await setupAttempts.Indexes.DropOneAsync("UX_GitHubSetupAttempts_OAuthState", cancellationToken);
 
         await setupAttempts.Indexes.CreateManyAsync(
-        [
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("State.InstallStateHash"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Sparse = true,
-                    Name = "UX_GitHubSetupAttempts_InstallState"
-                }),
-            new CreateIndexModel<BsonDocument>(
-                Builders<BsonDocument>.IndexKeys.Ascending("State.OAuthStateHash"),
-                new CreateIndexOptions
-                {
-                    Unique = true,
-                    Sparse = true,
-                    Name = "UX_GitHubSetupAttempts_OAuthState"
-                })
-        ], cancellationToken);
+            [
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("State.InstallStateHash"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Sparse = true,
+                        Name = "UX_GitHubSetupAttempts_InstallState",
+                    }),
+                new CreateIndexModel<BsonDocument>(
+                    Builders<BsonDocument>.IndexKeys.Ascending("State.OAuthStateHash"),
+                    new CreateIndexOptions
+                    {
+                        Unique = true,
+                        Sparse = true,
+                        Name = "UX_GitHubSetupAttempts_OAuthState",
+                    }),
+            ],
+            cancellationToken);
     }
 }

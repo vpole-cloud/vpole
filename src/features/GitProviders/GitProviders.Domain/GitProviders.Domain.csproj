@@ -1,17 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.GitProviders.Domain</AssemblyName>
-    <RootNamespace>Pole.Features.GitProviders.Domain</RootNamespace>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.GitProviders.Domain</AssemblyName>
+        <RootNamespace>Pole.Features.GitProviders.Domain</RootNamespace>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj" />
-    <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj" />
-    <PackageReference Include="MongoDB.Driver" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Workloads\Workloads.csproj"/>
+        <PackageReference Include="MongoDB.Driver"/>
+    </ItemGroup>
 
 </Project>

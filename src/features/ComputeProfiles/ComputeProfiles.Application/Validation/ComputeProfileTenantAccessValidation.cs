@@ -10,13 +10,13 @@ public union ValidateComputeProfileTenantAccessOutcome(
     ComputeProfileTenantAccessValid,
     SelectedComputeProfileTenantsNotFound);
 
-public delegate Task<ValidateComputeProfileTenantAccessOutcome>
-    ValidateComputeProfileTenantAccess(
+public delegate Task<ValidateComputeProfileTenantAccessOutcome> ValidateComputeProfileTenantAccess(
     ComputeProfileTenantAccess tenantAccess,
     CancellationToken cancellationToken = default);
 
 public sealed class MongoComputeProfileTenantAccessValidator(
-    EnsureTenantsExist ensureTenantsExist)
+    EnsureTenantsExist ensureTenantsExist
+)
 {
     public async Task<ValidateComputeProfileTenantAccessOutcome> InvokeAsync(
         ComputeProfileTenantAccess tenantAccess,
@@ -32,8 +32,7 @@ public sealed class MongoComputeProfileTenantAccessValidator(
         return result switch
         {
             TenantsExist => new ComputeProfileTenantAccessValid(),
-            TenantSetNotFound error =>
-                new SelectedComputeProfileTenantsNotFound(error.TenantIds)
+            TenantSetNotFound error => new SelectedComputeProfileTenantsNotFound(error.TenantIds),
         };
     }
 }

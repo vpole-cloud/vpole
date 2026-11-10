@@ -9,16 +9,10 @@ using Pole.Database;
 using Pole.Dns;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.Domains.Application;
-using Pole.Features.Domains.Application.Common;
 using Pole.Features.Domains.Application.DomainZones;
-using Pole.Features.Domains.Application.HostnameBindings;
-using Pole.Features.Domains.Application.Lifecycle;
-using Pole.Features.Domains.Application.Mongo;
 using Pole.Features.Domains.Contracts;
 using Pole.Features.Domains.Domain;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 using Pole.Workloads;
 using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
@@ -30,9 +24,12 @@ public static class CreateDomainZone
 {
     public static IEndpointRouteBuilder MapCreateDomainZoneEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/", async (IMediator mediator, [AsParameters] CreateDomainZoneRequest request, CancellationToken cancellationToken) =>
-                (await mediator.Send(request, cancellationToken)).ToHttpResult(
-                    ToHttpResult))
+        app.MapPost(
+                "/",
+                async (
+                        IMediator mediator, [AsParameters] CreateDomainZoneRequest request,
+                        CancellationToken cancellationToken) =>
+                    (await mediator.Send(request, cancellationToken)).ToHttpResult(ToHttpResult))
             .WithName("CreateDomainZone")
             .Produces<DomainZoneDto>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -42,28 +39,29 @@ public static class CreateDomainZone
         return app;
     }
 
-    private static IResult ToHttpResult(
-        CreateDomainZoneOutcome outcome) => outcome switch
-        {
-            TenantDomainZoneSnapshot zone =>
-                Results.Created($"/api/v1/domain-zones/{zone.Id}", DomainZoneDto.FromSnapshot(zone, null)),
-            DeploymentTargetDomainReservationAdmissionError error => MapDomainReservationAdmissionError(error),
-            ManagedDomainZoneAlreadyReserved error => MapManagedDomainZoneAlreadyReserved(error),
-            ManagedDomainZoneNameConflict error => MapManagedDomainZoneNameConflict(error),
-            ManagedDomainZoneDeploymentTargetChanged error => MapManagedDomainZoneDeploymentTargetChanged(error),
-            ManagedDomainZoneReferenceRejected error => MapManagedDomainZoneReferenceRejected(error)
-        };
+    private static IResult ToHttpResult(CreateDomainZoneOutcome outcome) => outcome switch
+    {
+        TenantDomainZoneSnapshot zone => Results.Created(
+            $"/api/v1/domain-zones/{zone.Id}",
+            DomainZoneDto.FromSnapshot(zone, null)),
+        DeploymentTargetDomainReservationAdmissionError error => MapDomainReservationAdmissionError(error),
+        ManagedDomainZoneAlreadyReserved error => MapManagedDomainZoneAlreadyReserved(error),
+        ManagedDomainZoneNameConflict error => MapManagedDomainZoneNameConflict(error),
+        ManagedDomainZoneDeploymentTargetChanged error => MapManagedDomainZoneDeploymentTargetChanged(error),
+        ManagedDomainZoneReferenceRejected error => MapManagedDomainZoneReferenceRejected(error),
+    };
 }
 
 public sealed record CreateDomainZoneBody(
     string DeploymentTargetId,
     string Label,
-    string TechnicalName);
+    string TechnicalName
+);
 
 public sealed record CreateDomainZoneRequest(
     [FromBody] CreateDomainZoneBody Body,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<CreateDomainZoneOutcome>, ITenantCreateOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<CreateDomainZoneOutcome>, ITenantCreateOperation;
 
 public union CreateDomainZoneOutcome(
     TenantDomainZoneSnapshot,
@@ -78,64 +76,63 @@ public sealed class CreateDomainZoneRequestValidator : AbstractValidator<CreateD
     public CreateDomainZoneRequestValidator()
     {
         RuleFor(request => request.Body).NotNull();
-        RuleFor(request => request.TenantId)
-            .MongoObjectId(TenantHeaders.TenantId);
-        When(request => request.Body is not null, () =>
-        {
-            RuleFor(request => request.Body.DeploymentTargetId)
-                .MongoObjectId("Deployment target ID");
-            RuleFor(request => request.Body.TechnicalName)
-                .Must(ResourceTechnicalName.IsValid)
-                .WithMessage("Technical name must be a lowercase DNS label beginning with a letter.");
-            RuleFor(request => request.Body.Label)
-                .Must(DnsLabel.IsValid)
-                .WithMessage("Label must be one valid ASCII DNS label.")
-                .Must(TenantDomainZoneLabelPolicy.IsManagedLabelAllowed)
-                .WithMessage(
-                    $"Labels beginning with '{TenantDomainZoneLabelPolicy.GeneratedPrefix}' are reserved for platform-generated zones.");
-        });
+        RuleFor(request => request.TenantId).MongoObjectId(TenantHeaders.TenantId);
+        When(
+            request => request.Body is not null,
+            () =>
+            {
+                RuleFor(request => request.Body.DeploymentTargetId).MongoObjectId("Deployment target ID");
+                RuleFor(request => request.Body.TechnicalName)
+                    .Must(ResourceTechnicalName.IsValid)
+                    .WithMessage("Technical name must be a lowercase DNS label beginning with a letter.");
+                RuleFor(request => request.Body.Label)
+                    .Must(DnsLabel.IsValid)
+                    .WithMessage("Label must be one valid ASCII DNS label.")
+                    .Must(TenantDomainZoneLabelPolicy.IsManagedLabelAllowed)
+                    .WithMessage(
+                        $"Labels beginning with '{TenantDomainZoneLabelPolicy.GeneratedPrefix}' are reserved for platform-generated zones.");
+            });
     }
 }
 
 public sealed class CreateDomainZoneHandler(
     AdmitDeploymentTargetPublicIngressForDomainReservation admitPublicIngress,
     RunMongoOutcomeTransaction<CreateDomainZoneOutcome> runMongoTransaction,
-    CreateManagedDomainZoneReservation createManagedDomainZone)
-    : IMediatorOutcomeHandler<CreateDomainZoneRequest, CreateDomainZoneOutcome>
+    CreateManagedDomainZoneReservation createManagedDomainZone
+) : IMediatorOutcomeHandler<CreateDomainZoneRequest, CreateDomainZoneOutcome>
 {
     public async Task<CreateDomainZoneOutcome> HandleAsync(
         CreateDomainZoneRequest request,
         CancellationToken cancellationToken = default)
     {
-        var admission = await admitPublicIngress(
-            request.TenantId,
-            request.Body.DeploymentTargetId,
-            cancellationToken);
+        var admission = await admitPublicIngress(request.TenantId, request.Body.DeploymentTargetId, cancellationToken);
         if (admission is DeploymentTargetDomainReservationAdmissionError admissionError)
             return admissionError;
         var publicIngress = (DeploymentTargetPublicIngressDto)admission.Value;
 
-        return await runMongoTransaction(async (transaction, ct) =>
-        {
-            var reserved = await createManagedDomainZone(
-                new CreateManagedDomainZoneCommand(
-                    ObjectId.GenerateNewId().ToString(),
-                    request.TenantId,
-                    publicIngress.DeploymentTargetId,
-                    request.Body.TechnicalName,
-                    request.Body.Label,
-                    publicIngress.PublicBaseDomain,
-                    publicIngress.WorkloadConfigurationRevision),
-                transaction.Session,
-                ct);
-            return reserved switch
+        return await runMongoTransaction(
+            async (transaction, ct) =>
             {
-                TenantDomainZoneSnapshot zone => transaction.Commit(zone),
-                ManagedDomainZoneAlreadyReserved error => transaction.Abort(error),
-                ManagedDomainZoneNameConflict error => transaction.Abort(error),
-                ManagedDomainZoneDeploymentTargetChanged error => transaction.Abort(error),
-                ManagedDomainZoneReferenceRejected error => transaction.Abort(error)
-            };
-        }, cancellationToken);
+                var reserved = await createManagedDomainZone(
+                    new CreateManagedDomainZoneCommand(
+                        ObjectId.GenerateNewId().ToString(),
+                        request.TenantId,
+                        publicIngress.DeploymentTargetId,
+                        request.Body.TechnicalName,
+                        request.Body.Label,
+                        publicIngress.PublicBaseDomain,
+                        publicIngress.WorkloadConfigurationRevision),
+                    transaction.Session,
+                    ct);
+                return reserved switch
+                {
+                    TenantDomainZoneSnapshot zone => transaction.Commit(zone),
+                    ManagedDomainZoneAlreadyReserved error => transaction.Abort(error),
+                    ManagedDomainZoneNameConflict error => transaction.Abort(error),
+                    ManagedDomainZoneDeploymentTargetChanged error => transaction.Abort(error),
+                    ManagedDomainZoneReferenceRejected error => transaction.Abort(error),
+                };
+            },
+            cancellationToken);
     }
 }

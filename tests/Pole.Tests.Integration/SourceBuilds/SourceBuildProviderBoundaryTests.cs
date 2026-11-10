@@ -1,26 +1,24 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.ContainerRegistries.Application.Mongo;
 using Pole.Features.ContainerRegistries.Application.Projects;
 using Pole.Features.ContainerRegistries.Application.Provisioning;
 using Pole.Features.ContainerRegistries.Contracts;
 using Pole.Features.ContainerRegistries.Domain;
-using Pole.Features.GitProviders.Application;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.GitProviders.Application.Connections;
 using Pole.Features.GitProviders.Application.ProviderOperations;
 using Pole.Features.GitProviders.Application.Repositories;
 using Pole.Features.GitProviders.Contracts;
 using Pole.Features.GitProviders.Domain;
-using Pole.ResultType;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.SourceBuilds;
 
 [Collection(IntegrationTestCollection.Global2)]
-public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixture)
-    : MongoIntegrationTestBase(fixture)
+public sealed class SourceBuildProviderBoundaryTests(
+    MongoReplicaSetFixture fixture
+) : MongoIntegrationTestBase(fixture)
 {
     [Fact]
     public async Task SourceRepositoryBuildCapabilities_AreTenantScopedAndMapTheBuildSnapshot()
@@ -36,10 +34,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             GitProviderAccountType.Organization,
             GitProviderRepositorySelection.Selected,
             Data.UserId,
-            new GitProviderConnectionFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now,
-                now));
+            new GitProviderConnectionFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now, now));
         var repository = SourceRepositoryFactory.Create(
             Data.TenantId,
             "application",
@@ -49,31 +44,30 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             "https://example.test/lsbV/sample",
             true,
             "main",
-            new SourceRepositoryFactory.CreateOptions(
-                ObjectId.GenerateNewId().ToString(),
-                now,
-                now));
+            new SourceRepositoryFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now, now));
         await Fixture.DbContext.GitProviderConnections.InsertOneAsync(connection);
         await Fixture.DbContext.SourceRepositories.InsertOneAsync(repository);
 
         var archiveDownloader = new RecordingArchiveDownloader();
-        LoadSourceRepository loadRepository = async (tenantId, sourceRepositoryId, cancellationToken) =>
-            await Fixture.DbContext.SourceRepositories
-                .Find(item => item.TenantId == tenantId && item.Id == sourceRepositoryId)
-                .FirstOrDefaultAsync(cancellationToken);
-        LoadGitProviderConnection loadConnection = async (tenantId, connectionId, cancellationToken) =>
-            await Fixture.DbContext.GitProviderConnections
-                .Find(item => item.TenantId == tenantId && item.Id == connectionId)
-                .FirstOrDefaultAsync(cancellationToken);
+        LoadSourceRepository loadRepository = async (
+            tenantId, sourceRepositoryId,
+            cancellationToken) => await Fixture.DbContext
+            .SourceRepositories
+            .Find(item => item.TenantId == tenantId && item.Id == sourceRepositoryId)
+            .FirstOrDefaultAsync(cancellationToken);
+        LoadGitProviderConnection loadConnection = async (
+            tenantId, connectionId,
+            cancellationToken) => await Fixture.DbContext
+            .GitProviderConnections
+            .Find(item => item.TenantId == tenantId && item.Id == connectionId)
+            .FirstOrDefaultAsync(cancellationToken);
         var finder = new SourceRepositoryBuildFinder(loadRepository);
         var archive = new SourceRepositoryArchiveDownloader(
             loadRepository,
             loadConnection,
             archiveDownloader.InvokeAsync);
 
-        var crossTenant = await finder.InvokeAsync(
-            ObjectId.GenerateNewId().ToString(),
-            repository.Id);
+        var crossTenant = await finder.InvokeAsync(ObjectId.GenerateNewId().ToString(), repository.Id);
         var snapshot = await finder.InvokeAsync(Data.TenantId, repository.Id);
 
         Assert.IsType<SourceRepositoryBuildNotFound>(crossTenant.Value);
@@ -112,23 +106,20 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
     {
         var now = DateTime.UtcNow;
         var project = RegistryProjectFactory.Create(
-            Data.TenantId,
-            ContainerRegistryProvider.Harbor,
-            "persisted-project-name",
-            Data.UserId,
-            new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
-        {
-            State = new ReadyRegistryProject(
-                "external-project",
-                "build-credential",
-                "pull-credential",
-                now)
-        };
+                Data.TenantId,
+                ContainerRegistryProvider.Harbor,
+                "persisted-project-name",
+                Data.UserId,
+                new RegistryProjectFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)) with
+            {
+                State = new ReadyRegistryProject("external-project", "build-credential", "pull-credential", now),
+            };
         await Fixture.DbContext.RegistryProjects.InsertOneAsync(project);
 
         var registryClient = new RecordingContainerRegistryClient();
         LoadTenantHarborRegistryProject loadProject = async (tenantId, cancellationToken) =>
-            await Fixture.DbContext.RegistryProjects
+            await Fixture.DbContext
+                .RegistryProjects
                 .Find(item => item.TenantId == tenantId && item.Provider == ContainerRegistryProvider.Harbor)
                 .FirstOrDefaultAsync(cancellationToken);
         var service = new TenantRegistryArtifactLookup(loadProject, registryClient);
@@ -179,8 +170,7 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
             ConnectionId = connection.Id;
             ExternalRepositoryId = repositoryId;
             CommitSha = commitSha;
-            return Task.FromResult<DownloadProviderRepositoryArchiveOutcome>(
-                new ProviderRepositoryArchiveDownloaded());
+            return Task.FromResult<DownloadProviderRepositoryArchiveOutcome>(new ProviderRepositoryArchiveDownloaded());
         }
     }
 
@@ -201,18 +191,14 @@ public sealed class SourceBuildProviderBoundaryTests(MongoReplicaSetFixture fixt
 
         public Task<ProvisionRegistryProjectOutcome> ProvisionProjectAsync(
             RegistryProjectProvisioningRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<DeleteRegistryRobotCredentialsOutcome> DeleteRobotCredentialsAsync(
             IReadOnlyCollection<RegistryRobotCleanupTarget> targets,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<DeleteRegistryProjectOutcome> DeleteProjectAsync(
             string externalProjectId,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
-
 }

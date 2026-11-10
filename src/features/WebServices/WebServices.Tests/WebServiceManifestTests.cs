@@ -1,12 +1,13 @@
-using Pole.Features.Core.Kubernetes;
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
-using System.Collections.Immutable;
+using k8s.Models;
+using Pole.Features.Core.Kubernetes;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.Shared.Models;
 using Pole.Features.WebServices.Application.Common;
-using Pole.Features.WebServices.Domain;
 using Pole.Features.WebServices.Application.Kubernetes;
+using Pole.Features.WebServices.Domain;
 using Pole.Workloads;
 using Xunit;
 
@@ -18,6 +19,10 @@ namespace Pole.Features.WebServices.Tests;
 [Trait("Feature", "WebServices")]
 public sealed class WebServiceManifestTests
 {
+    private const string WebServiceId = "507f1f77bcf86cd799439031";
+    private const string ResourceGroupId = "507f1f77bcf86cd799439032";
+    private const string IsolationScopeId = "507f1f77bcf86cd799439033";
+
     [Fact]
     public void Awaiting_artifact_cannot_render_workload_or_routes_and_promotion_uses_digest()
     {
@@ -27,7 +32,7 @@ public sealed class WebServiceManifestTests
         var awaiting = subject.WebService with
         {
             Spec = subject.WebService.Spec with { Image = WebServiceImageFactory.Pending(configurationId) },
-            Lifecycle = new AwaitingFirstArtifactWebServiceLifecycle()
+            Lifecycle = new AwaitingFirstArtifactWebServiceLifecycle(),
         };
         var inert = subject with { WebService = awaiting };
         Assert.Throws<InvalidOperationException>(() => inert.ToDeployment());
@@ -39,7 +44,8 @@ public sealed class WebServiceManifestTests
         var promoted = awaiting.PromoteArtifact(
             DeliveredSourceBuildImage.Create(configurationId, image, digest, jobId, 1));
         var active = subject with { WebService = promoted };
-        Assert.Equal($"{image.Server}/{image.Name}@{digest}",
+        Assert.Equal(
+            $"{image.Server}/{image.Name}@{digest}",
             Assert.Single(active.ToDeployment().Spec.Template.Spec.Containers).Image);
     }
 
@@ -49,24 +55,47 @@ public sealed class WebServiceManifestTests
         var subject = CreateSubject();
         var config = subject.WebService.Spec.Config with
         {
-            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty
-                .Add("PGHOST", new("connection", "Host",
-                ConfigurationKey: null)),
-            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add("PGPASSWORD", new("logical-secret", "password"))
+            ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty.Add(
+                "PGHOST",
+                new ConnectionEnvironmentReference("connection", "Host", ConfigurationKey: null)),
+            SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty.Add(
+                "PGPASSWORD",
+                new SecretEnvironmentReference("logical-secret", "password")),
         };
-        subject = subject with { WebService = subject.WebService with { Spec = subject.WebService.Spec with { Config = config } } };
+        subject = subject with
+        {
+            WebService = subject.WebService with { Spec = subject.WebService.Spec with { Config = config } },
+        };
         Assert.Throws<InvalidOperationException>(() => subject.ToDeployment());
         subject = subject with
         {
-            ResolvedEnvironment = [new k8s.Models.V1EnvVar { Name = "PGHOST", Value = "database.first.svc.cluster.local" },
-            new k8s.Models.V1EnvVar { Name = "PGPASSWORD", ValueFrom = new k8s.Models.V1EnvVarSource { SecretKeyRef = new k8s.Models.V1SecretKeySelector { Name = "projection", Key = "MAPPED_PASSWORD", Optional = false } } }]
+            ResolvedEnvironment =
+            [
+                new V1EnvVar { Name = "PGHOST", Value = "database.first.svc.cluster.local" },
+                new V1EnvVar
+                {
+                    Name = "PGPASSWORD",
+                    ValueFrom = new V1EnvVarSource
+                    {
+                        SecretKeyRef = new V1SecretKeySelector
+                            { Name = "projection", Key = "MAPPED_PASSWORD", Optional = false },
+                    },
+                },
+            ],
         };
         var env = Assert.Single(subject.ToDeployment().Spec.Template.Spec.Containers).Env;
         Assert.Equal("database.first.svc.cluster.local", env.Single(item => item.Name == "PGHOST").Value);
         var password = env.Single(item => item.Name == "PGPASSWORD");
-        Assert.Null(password.Value); Assert.Equal("MAPPED_PASSWORD", password.ValueFrom.SecretKeyRef.Key); Assert.False(password.ValueFrom.SecretKeyRef.Optional);
+        Assert.Null(password.Value);
+        Assert.Equal("MAPPED_PASSWORD", password.ValueFrom.SecretKeyRef.Key);
+        Assert.False(password.ValueFrom.SecretKeyRef.Optional);
         Assert.DoesNotContain("PGPASSWORD", subject.ToConfigMap().Data.Keys);
-        var other = subject with { ResolvedEnvironment = subject.ResolvedEnvironment.SetItem(0, new k8s.Models.V1EnvVar { Name = "PGHOST", Value = "database.second.svc.cluster.local" }) };
+        var other = subject with
+        {
+            ResolvedEnvironment = subject.ResolvedEnvironment.SetItem(
+                0,
+                new V1EnvVar { Name = "PGHOST", Value = "database.second.svc.cluster.local" }),
+        };
         Assert.NotEqual(env[0].Value, Assert.Single(other.ToDeployment().Spec.Template.Spec.Containers).Env[0].Value);
     }
 
@@ -76,12 +105,13 @@ public sealed class WebServiceManifestTests
         var subject = CreateSubject();
         var identity = new WorkloadIdentityLabels(
             subject.WebService.TenantId,
-                subject.WebService.ResourceGroupId,
-                "scope-44",
-                "cell-44",
-                "target-44",
-
-            "WebService", subject.WebService.Id, "deployment-44");
+            subject.WebService.ResourceGroupId,
+            "scope-44",
+            "cell-44",
+            "target-44",
+            "WebService",
+            subject.WebService.Id,
+            "deployment-44");
         subject = subject with { PlacementIdentity = identity };
         var workload = subject.ToDeployment();
         var service = subject.ToService();
@@ -90,7 +120,10 @@ public sealed class WebServiceManifestTests
         Assert.All(
             service.Spec.Selector,
             pair => Assert.Equal(pair.Value, workload.Spec.Template.Metadata.Labels[pair.Key]));
-        var revised = subject with { WebService = subject.WebService with { Revision = subject.WebService.Revision + 1 } };
+        var revised = subject with
+        {
+            WebService = subject.WebService with { Revision = subject.WebService.Revision + 1 },
+        };
         Assert.Equal(workload.Spec.Selector.MatchLabels, revised.ToDeployment().Spec.Selector.MatchLabels);
         Assert.Equal(service.Spec.Selector, revised.ToService().Spec.Selector);
         const string replacementId = "700000000000000000000044";
@@ -100,12 +133,13 @@ public sealed class WebServiceManifestTests
             PlacementIdentity = identity with
             {
                 ResourceId = replacementId,
-                ResourceDeploymentId = "replacement-deployment-44"
-            }
+                ResourceDeploymentId = "replacement-deployment-44",
+            },
         };
         Assert.Equal(subject.WebService.Name, replacement.WebService.Name);
         Assert.Equal(replacementId, replacement.ToService().Spec.Selector["pole.io/resource-id"]);
-        Assert.NotEqual(service.Spec.Selector["pole.io/resource-id"],
+        Assert.NotEqual(
+            service.Spec.Selector["pole.io/resource-id"],
             replacement.ToDeployment().Spec.Template.Metadata.Labels["pole.io/resource-id"]);
         Assert.DoesNotContain("app", service.Spec.Selector.Keys);
     }
@@ -147,12 +181,8 @@ public sealed class WebServiceManifestTests
         Assert.Equal("2", container.Resources.Limits["cpu"].ToString());
         Assert.Equal("512Mi", container.Resources.Limits["memory"].ToString());
         Assert.Equal("1", container.Resources.Requests["nvidia.com/gpu"].ToString());
-        Assert.Equal(
-            "linux",
-            deployment.Spec.Template.Spec.NodeSelector["kubernetes.io/os"]);
-        Assert.Equal(
-            "workload-runtime",
-            deployment.Spec.Template.Spec.RuntimeClassName);
+        Assert.Equal("linux", deployment.Spec.Template.Spec.NodeSelector["kubernetes.io/os"]);
+        Assert.Equal("workload-runtime", deployment.Spec.Template.Spec.RuntimeClassName);
     }
 
     [Fact]
@@ -161,11 +191,7 @@ public sealed class WebServiceManifestTests
         var manifest = CreateSubject();
         var requestedAt = new DateTime(2026, 7, 7, 12, 30, 0, DateTimeKind.Utc);
 
-        var deployment = manifest.ToDeployment(
-            WebServiceReleaseDeploymentMetadata.Create(
-                "release-7",
-                7,
-                requestedAt));
+        var deployment = manifest.ToDeployment(WebServiceReleaseDeploymentMetadata.Create("release-7", 7, requestedAt));
 
         var annotations = deployment.Spec.Template.Metadata.Annotations;
         Assert.Equal(WebServiceId, annotations["pole.server/webServiceId"]);
@@ -230,9 +256,7 @@ public sealed class WebServiceManifestTests
 
         var ingress = manifest.ToIngress();
         Assert.NotNull(ingress);
-        Assert.Equal(
-            ["api.example.com", "api.example.net"],
-            ingress.Spec.Rules.Select(rule => rule.Host));
+        Assert.Equal(["api.example.com", "api.example.net"], ingress.Spec.Rules.Select(rule => rule.Host));
         var path = Assert.Single(ingress.Spec.Rules[0].Http.Paths);
         var tls = Assert.Single(ingress.Spec.Tls);
 
@@ -278,7 +302,8 @@ public sealed class WebServiceManifestTests
         Assert.Equal("pole-apps", secret.Metadata.NamespaceProperty);
         Assert.Equal("kubernetes.io/dockerconfigjson", secret.Type);
 
-        var dockerConfig = JsonSerializer.Deserialize<JsonElement>(Encoding.UTF8.GetString(secret.Data[".dockerconfigjson"]));
+        var dockerConfig
+            = JsonSerializer.Deserialize<JsonElement>(Encoding.UTF8.GetString(secret.Data[".dockerconfigjson"]));
         var auths = dockerConfig.GetProperty("auths");
         var registry = auths.GetProperty("registry.example.com");
 
@@ -305,10 +330,8 @@ public sealed class WebServiceManifestTests
     [Fact]
     public void ToHorizontalPodAutoscaler_UsesAutoscalingValues_WhenConfigured()
     {
-        var manifest = CreateSubject(autoscaling: new AutoscalingSpec(
-            MinReplicas: 2,
-            MaxReplicas: 5,
-            Metric: new AutoscalingMetric("cpu", 80)));
+        var manifest = CreateSubject(
+            autoscaling: new AutoscalingSpec(MinReplicas: 2, MaxReplicas: 5, Metric: new AutoscalingMetric("cpu", 80)));
 
         var hpa = manifest.ToHorizontalPodAutoscaler();
 
@@ -327,28 +350,28 @@ public sealed class WebServiceManifestTests
         var spec = WebServiceTestData.CreateSpec().ToDomain() with
         {
             Image = new ImageInfo("registry.example.com", "platform/api-gateway", "2026.04.1", imageSecretName),
-            Config = new WebServiceConfig()
+            Config = new WebServiceConfig
             {
                 EnvironmentVariables = new Dictionary<string, string>
                 {
                     ["ASPNETCORE_ENVIRONMENT"] = "Development",
-                    ["LOG_LEVEL"] = "Debug"
+                    ["LOG_LEVEL"] = "Debug",
                 }.ToImmutableDictionary(),
-                PortMappings = [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(9090, "metrics", "TCP",
-                    "metrics")],
+                PortMappings =
+                    [new PortMapping(80, "8080", "TCP", "http"), new PortMapping(9090, "metrics", "TCP", "metrics")],
                 ConnectionEnvironmentReferences = ImmutableDictionary<string, ConnectionEnvironmentReference>.Empty,
-                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty
+                SecretEnvironmentReferences = ImmutableDictionary<string, SecretEnvironmentReference>.Empty,
             },
             Probes = new ProbeSpec(
                 Startup: new ProbeConfig("/health/startup", "8080"),
                 Liveness: new ProbeConfig("/health/live", "8080"),
                 Readiness: new ProbeConfig("/health/ready", "8080")),
-            Autoscaling = autoscaling
+            Autoscaling = autoscaling,
         };
 
         var options = WebServiceFactory.DefaultOptions with
         {
-            Id = WebServiceId
+            Id = WebServiceId,
         };
 
         var webService = WebServiceFactory.Create(
@@ -376,11 +399,11 @@ public sealed class WebServiceManifestTests
                 ComputeArchitecture.Any,
                 ExtendedResources:
                 [
-                    new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1)
+                    new ResourceDeploymentExtendedResource("nvidia.com/gpu", 1),
                 ],
                 NodeSelector:
                 [
-                    new ResourceDeploymentNodeSelector("kubernetes.io/os", "linux")
+                    new ResourceDeploymentNodeSelector("kubernetes.io/os", "linux"),
                 ],
                 RequiredNodeAffinity: [],
                 PreferredNodeAffinity: [],
@@ -397,8 +420,4 @@ public sealed class WebServiceManifestTests
                 webService.Id,
                 "deployment-44"));
     }
-
-    private const string WebServiceId = "507f1f77bcf86cd799439031";
-    private const string ResourceGroupId = "507f1f77bcf86cd799439032";
-    private const string IsolationScopeId = "507f1f77bcf86cd799439033";
 }

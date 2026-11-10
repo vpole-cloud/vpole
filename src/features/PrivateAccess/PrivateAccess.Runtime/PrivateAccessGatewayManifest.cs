@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using k8s.Models;
@@ -15,12 +16,14 @@ public sealed record PrivateAccessGatewayEndpoint(
     string KubernetesNamespace,
     string ServiceName,
     NetworkPort ServicePort,
-    NetworkPort TargetPort);
+    NetworkPort TargetPort
+);
 
 public sealed record PrivateAccessGatewaySettings(
     string Image,
     Uri BrokerUri,
-    IReadOnlyList<IPAddress> BrokerAddresses);
+    IReadOnlyList<IPAddress> BrokerAddresses
+);
 
 /// <summary>One gateway owns one tenant's access to one deployment target.</summary>
 public static class PrivateAccessGatewayManifest
@@ -48,7 +51,7 @@ public static class PrivateAccessGatewayManifest
         [TenantLabel] = identity.TenantId,
         [TargetLabel] = identity.DeploymentTargetId,
         [GatewayLabel] = identity.GatewayId,
-        [NamespaceLabel] = "true"
+        [NamespaceLabel] = "true",
     };
 
     public static V1Namespace BuildNamespace(PrivateAccessGatewayIdentity identity) => new()
@@ -63,9 +66,9 @@ public static class PrivateAccessGatewayManifest
                 [TenantLabel] = identity.TenantId,
                 [TargetLabel] = identity.DeploymentTargetId,
                 [NamespaceLabel] = "true",
-                ["pod-security.kubernetes.io/enforce"] = "restricted"
-            }
-        }
+                ["pod-security.kubernetes.io/enforce"] = "restricted",
+            },
+        },
     };
 
     public static V1NetworkPolicy BuildBaseline(PrivateAccessGatewayIdentity identity) => new()
@@ -76,15 +79,15 @@ public static class PrivateAccessGatewayManifest
         {
             Name = BaselineName,
             NamespaceProperty = Namespace(identity),
-            Labels = Labels(identity)
+            Labels = Labels(identity),
         },
         Spec = new V1NetworkPolicySpec
         {
             PodSelector = new V1LabelSelector(),
             PolicyTypes = ["Ingress", "Egress"],
             Ingress = [],
-            Egress = []
-        }
+            Egress = [],
+        },
     };
 
     public static V1Deployment BuildDeployment(
@@ -100,7 +103,7 @@ public static class PrivateAccessGatewayManifest
             {
                 Name = GatewayName,
                 NamespaceProperty = Namespace(identity),
-                Labels = labels
+                Labels = labels,
             },
             Spec = new V1DeploymentSpec
             {
@@ -114,8 +117,8 @@ public static class PrivateAccessGatewayManifest
                         Labels = labels,
                         Annotations = new Dictionary<string, string>
                         {
-                            [GenerationAnnotation] = identity.Generation.ToString(CultureInfo.InvariantCulture)
-                        }
+                            [GenerationAnnotation] = identity.Generation.ToString(CultureInfo.InvariantCulture),
+                        },
                     },
                     Spec = new V1PodSpec
                     {
@@ -129,7 +132,7 @@ public static class PrivateAccessGatewayManifest
                             RunAsUser = 65532,
                             RunAsGroup = 65532,
                             FsGroup = 65532,
-                            SeccompProfile = new V1SeccompProfile { Type = "RuntimeDefault" }
+                            SeccompProfile = new V1SeccompProfile { Type = "RuntimeDefault" },
                         },
                         Containers =
                         [
@@ -140,33 +143,38 @@ public static class PrivateAccessGatewayManifest
                                 Args = ["gateway"],
                                 Env =
                                 [
-                                    new V1EnvVar { Name = "POLE_ACCESS_BROKER", Value = settings.BrokerUri.AbsoluteUri },
+                                    new V1EnvVar
+                                        { Name = "POLE_ACCESS_BROKER", Value = settings.BrokerUri.AbsoluteUri },
                                     new V1EnvVar { Name = "POLE_ACCESS_TENANT", Value = identity.TenantId },
                                     new V1EnvVar { Name = "POLE_ACCESS_TARGET", Value = identity.DeploymentTargetId },
                                     new V1EnvVar { Name = "POLE_ACCESS_GATEWAY_ID", Value = identity.GatewayId },
-                                    new V1EnvVar { Name = "POLE_ACCESS_IDENTITY_FILE", Value = IdentityFile }
+                                    new V1EnvVar { Name = "POLE_ACCESS_IDENTITY_FILE", Value = IdentityFile },
                                 ],
-                                VolumeMounts = [new V1VolumeMount { Name = "identity", MountPath = "/run/pole-access", ReadOnlyProperty = true }],
+                                VolumeMounts =
+                                [
+                                    new V1VolumeMount
+                                        { Name = "identity", MountPath = "/run/pole-access", ReadOnlyProperty = true },
+                                ],
                                 SecurityContext = new V1SecurityContext
                                 {
                                     AllowPrivilegeEscalation = false,
                                     ReadOnlyRootFilesystem = true,
-                                    Capabilities = new V1Capabilities { Drop = ["ALL"] }
+                                    Capabilities = new V1Capabilities { Drop = ["ALL"] },
                                 },
                                 Resources = new V1ResourceRequirements
                                 {
                                     Requests = new Dictionary<string, ResourceQuantity>
                                     {
                                         ["cpu"] = new("10m"),
-                                        ["memory"] = new("32Mi")
+                                        ["memory"] = new("32Mi"),
                                     },
                                     Limits = new Dictionary<string, ResourceQuantity>
                                     {
                                         ["cpu"] = new("250m"),
-                                        ["memory"] = new("128Mi")
-                                    }
-                                }
-                            }
+                                        ["memory"] = new("128Mi"),
+                                    },
+                                },
+                            },
                         ],
                         Volumes =
                         [
@@ -176,35 +184,33 @@ public static class PrivateAccessGatewayManifest
                                 Secret = new V1SecretVolumeSource
                                 {
                                     SecretName = GatewayName,
-                                    DefaultMode = 288 // 0440; readable through fsGroup.
-                                }
-                            }
-                        ]
-                    }
-                }
-            }
+                                    DefaultMode = 288, // 0440; readable through fsGroup.
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
         };
     }
 
-    public static V1Secret BuildIdentitySecret(
-        PrivateAccessGatewayIdentity identity,
-        byte[] identityPfx) => new()
+    public static V1Secret BuildIdentitySecret(PrivateAccessGatewayIdentity identity, byte[] identityPfx) => new()
+    {
+        ApiVersion = "v1",
+        Kind = "Secret",
+        Type = "Opaque",
+        Metadata = new V1ObjectMeta
         {
-            ApiVersion = "v1",
-            Kind = "Secret",
-            Type = "Opaque",
-            Metadata = new V1ObjectMeta
+            Name = GatewayName,
+            NamespaceProperty = Namespace(identity),
+            Labels = Labels(identity),
+            Annotations = new Dictionary<string, string>
             {
-                Name = GatewayName,
-                NamespaceProperty = Namespace(identity),
-                Labels = Labels(identity),
-                Annotations = new Dictionary<string, string>
-                {
-                    [GenerationAnnotation] = identity.Generation.ToString(CultureInfo.InvariantCulture)
-                }
+                [GenerationAnnotation] = identity.Generation.ToString(CultureInfo.InvariantCulture),
             },
-            Data = new Dictionary<string, byte[]> { ["identity.pfx"] = identityPfx }
-        };
+        },
+        Data = new Dictionary<string, byte[]> { ["identity.pfx"] = identityPfx },
+    };
 
     public static V1NetworkPolicy BuildGatewayEgress(
         PrivateAccessGatewayIdentity identity,
@@ -212,39 +218,46 @@ public static class PrivateAccessGatewayManifest
         PrivateAccessGatewaySettings settings)
     {
         if (settings.BrokerAddresses.Count == 0 || settings.BrokerUri.Scheme != Uri.UriSchemeHttps)
-            throw new ArgumentException("Gateway broker egress requires an HTTPS origin and explicit addresses.",
+            throw new ArgumentException(
+                "Gateway broker egress requires an HTTPS origin and explicit addresses.",
                 nameof(settings));
         var rules = endpoints.Select(endpoint => new V1NetworkPolicyEgressRule
-        {
-            To = [DestinationPeer(identity, endpoint)],
-            Ports = [Port(endpoint.TargetPort.Value)]
-        }).ToList();
-        rules.Add(new V1NetworkPolicyEgressRule
-        {
-            To = settings.BrokerAddresses.Select(address => new V1NetworkPolicyPeer
             {
-                IpBlock = new V1IPBlock
-                {
-                    Cidr = $"{address}/{(address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128)}"
-                }
-            }).ToList(),
-            Ports = [Port(settings.BrokerUri.Port)]
-        });
-        rules.Add(new V1NetworkPolicyEgressRule
-        {
-            To =
-            [
-                new V1NetworkPolicyPeer
-                {
-                    NamespaceSelector = Selector(new Dictionary<string, string>
+                To = [DestinationPeer(identity, endpoint)],
+                Ports = [Port(endpoint.TargetPort.Value)],
+            })
+            .ToList();
+        rules.Add(
+            new V1NetworkPolicyEgressRule
+            {
+                To = settings.BrokerAddresses
+                    .Select(address => new V1NetworkPolicyPeer
                     {
-                        ["kubernetes.io/metadata.name"] = "kube-system"
-                    }),
-                    PodSelector = Selector(new Dictionary<string, string> { ["k8s-app"] = "kube-dns" })
-                }
-            ],
-            Ports = [Port(53), new V1NetworkPolicyPort { Protocol = "UDP", Port = 53 }]
-        });
+                        IpBlock = new V1IPBlock
+                        {
+                            Cidr = $"{address}/{(address.AddressFamily == AddressFamily.InterNetwork ? 32 : 128)}",
+                        },
+                    })
+                    .ToList(),
+                Ports = [Port(settings.BrokerUri.Port)],
+            });
+        rules.Add(
+            new V1NetworkPolicyEgressRule
+            {
+                To =
+                [
+                    new V1NetworkPolicyPeer
+                    {
+                        NamespaceSelector = Selector(
+                            new Dictionary<string, string>
+                            {
+                                ["kubernetes.io/metadata.name"] = "kube-system",
+                            }),
+                        PodSelector = Selector(new Dictionary<string, string> { ["k8s-app"] = "kube-dns" }),
+                    },
+                ],
+                Ports = [Port(53), new V1NetworkPolicyPort { Protocol = "UDP", Port = 53 }],
+            });
         return new V1NetworkPolicy
         {
             ApiVersion = "networking.k8s.io/v1",
@@ -253,57 +266,58 @@ public static class PrivateAccessGatewayManifest
             {
                 Name = GatewayName,
                 NamespaceProperty = Namespace(identity),
-                Labels = Labels(identity)
+                Labels = Labels(identity),
             },
             Spec = new V1NetworkPolicySpec
             {
                 PodSelector = Selector(Labels(identity)),
                 PolicyTypes = ["Ingress", "Egress"],
                 Ingress = [],
-                Egress = rules
-            }
+                Egress = rules,
+            },
         };
     }
 
     public static V1NetworkPolicy BuildDestinationIngress(
         PrivateAccessGatewayIdentity identity,
         PrivateAccessGatewayEndpoint endpoint) => new()
+    {
+        ApiVersion = "networking.k8s.io/v1",
+        Kind = "NetworkPolicy",
+        Metadata = new V1ObjectMeta
         {
-            ApiVersion = "networking.k8s.io/v1",
-            Kind = "NetworkPolicy",
-            Metadata = new V1ObjectMeta
-            {
-                Name = DestinationPolicyName(endpoint),
-                NamespaceProperty = endpoint.KubernetesNamespace,
-                Labels = DestinationPolicyLabels(identity, endpoint)
-            },
-            Spec = new V1NetworkPolicySpec
-            {
-                PodSelector = DestinationSelector(identity, endpoint),
-                PolicyTypes = ["Ingress"],
-                Ingress =
-                [
-                    new V1NetworkPolicyIngressRule
-                    {
-                        Ports = [Port(endpoint.TargetPort.Value)],
-                        FromProperty =
-                        [
-                            new V1NetworkPolicyPeer
-                            {
-                                NamespaceSelector = Selector(new Dictionary<string, string>
+            Name = DestinationPolicyName(endpoint),
+            NamespaceProperty = endpoint.KubernetesNamespace,
+            Labels = DestinationPolicyLabels(identity, endpoint),
+        },
+        Spec = new V1NetworkPolicySpec
+        {
+            PodSelector = DestinationSelector(identity, endpoint),
+            PolicyTypes = ["Ingress"],
+            Ingress =
+            [
+                new V1NetworkPolicyIngressRule
+                {
+                    Ports = [Port(endpoint.TargetPort.Value)],
+                    FromProperty =
+                    [
+                        new V1NetworkPolicyPeer
+                        {
+                            NamespaceSelector = Selector(
+                                new Dictionary<string, string>
                                 {
                                     ["kubernetes.io/metadata.name"] = Namespace(identity),
                                     [TenantLabel] = identity.TenantId,
                                     [TargetLabel] = identity.DeploymentTargetId,
-                                    [NamespaceLabel] = "true"
+                                    [NamespaceLabel] = "true",
                                 }),
-                                PodSelector = Selector(Labels(identity))
-                            }
-                        ]
-                    }
-                ]
-            }
-        };
+                            PodSelector = Selector(Labels(identity)),
+                        },
+                    ],
+                },
+            ],
+        },
+    };
 
     public static string DestinationPolicyName(PrivateAccessGatewayEndpoint endpoint) =>
         $"pole-access-gateway-{Convert.ToHexString(SHA256.HashData(
@@ -312,35 +326,37 @@ public static class PrivateAccessGatewayManifest
     public static Dictionary<string, string> DestinationPolicyLabels(
         PrivateAccessGatewayIdentity identity,
         PrivateAccessGatewayEndpoint endpoint) => new()
-        {
-            [TenantLabel] = identity.TenantId,
-            [TargetLabel] = identity.DeploymentTargetId,
-            [GatewayLabel] = identity.GatewayId,
-            [RuntimeCellLabel] = endpoint.RuntimeCellId,
-            [DeploymentLabel] = endpoint.ResourceDeploymentId
-        };
+    {
+        [TenantLabel] = identity.TenantId,
+        [TargetLabel] = identity.DeploymentTargetId,
+        [GatewayLabel] = identity.GatewayId,
+        [RuntimeCellLabel] = endpoint.RuntimeCellId,
+        [DeploymentLabel] = endpoint.ResourceDeploymentId,
+    };
 
     private static V1NetworkPolicyPeer DestinationPeer(
         PrivateAccessGatewayIdentity identity,
         PrivateAccessGatewayEndpoint endpoint) => new()
-        {
-            NamespaceSelector = Selector(new Dictionary<string, string>
+    {
+        NamespaceSelector = Selector(
+            new Dictionary<string, string>
             {
                 ["kubernetes.io/metadata.name"] = endpoint.KubernetesNamespace,
                 [TenantLabel] = identity.TenantId,
                 [TargetLabel] = identity.DeploymentTargetId,
-                [RuntimeCellLabel] = endpoint.RuntimeCellId
+                [RuntimeCellLabel] = endpoint.RuntimeCellId,
             }),
-            PodSelector = DestinationSelector(identity, endpoint)
-        };
+        PodSelector = DestinationSelector(identity, endpoint),
+    };
 
     private static V1LabelSelector DestinationSelector(
         PrivateAccessGatewayIdentity identity,
-        PrivateAccessGatewayEndpoint endpoint) => Selector(new Dictionary<string, string>
+        PrivateAccessGatewayEndpoint endpoint) => Selector(
+        new Dictionary<string, string>
         {
             [TenantLabel] = identity.TenantId,
             [RuntimeCellLabel] = endpoint.RuntimeCellId,
-            [DeploymentLabel] = endpoint.ResourceDeploymentId
+            [DeploymentLabel] = endpoint.ResourceDeploymentId,
         });
 
     private static V1LabelSelector Selector(Dictionary<string, string> labels) => new() { MatchLabels = labels };

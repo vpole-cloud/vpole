@@ -9,7 +9,8 @@ internal static class RealtimeBrowserAssertions
     public static async Task WaitForInitialBootstrapAsync(RealtimeBrowserJournal journal, CancellationToken ct)
     {
         // Playwright can lose the preceding document's response body after a full navigation.
-        await TestWait.UntilAsync(_ => Task.FromResult(!journal.Bootstraps.IsEmpty || journal.ParseFailures > 0),
+        await TestWait.UntilAsync(
+            _ => Task.FromResult(!journal.Bootstraps.IsEmpty || journal.ParseFailures > 0),
             TimeSpan.FromSeconds(30),
             "The login bootstrap response was not recorded before navigation.",
             ct);
@@ -20,7 +21,8 @@ internal static class RealtimeBrowserAssertions
     public static async Task AssertNoReadableCredentialsAsync(IPage page, RealtimeBrowserJournal journal)
     {
         // Only a boolean crosses the browser boundary; no token/cookie/storage value is exported.
-        var safe = await page.EvaluateAsync<bool>("""
+        var safe = await page.EvaluateAsync<bool>(
+            """
             () => {
               const jwt = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
               const cookie = /PoleRealtime\.Dev|__Secure-PoleRealtime/;
@@ -44,8 +46,8 @@ internal static class RealtimeBrowserAssertions
               return values.every(value => !jwt.test(value) && !cookie.test(value));
             }
             """);
-        Assert.True(safe && journal.UrlsSafe,
+        Assert.True(
+            safe && journal.UrlsSafe,
             "JWTs and realtime cookies must be absent from JavaScript-readable storage, cookies and request URLs.");
     }
-
 }

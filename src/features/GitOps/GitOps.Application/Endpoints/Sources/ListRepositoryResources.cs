@@ -22,24 +22,25 @@ public sealed record RepositoryResourceView(
     GitResourceMaterialization Materialization,
     bool PendingRemoval,
     string? Blocker,
-    string LastRunId);
+    string LastRunId
+);
 
 public sealed record RepositoryResourcePage(
     IReadOnlyList<RepositoryResourceView> Items,
     int Page,
     int PageSize,
     bool HasMore,
-    long InventoryRevision);
+    long InventoryRevision
+);
 
 public sealed record ListRepositoryResourcesRequest(
     [FromRoute] string Id,
     [FromTenantHeader] string TenantId,
     [FromQuery] int Page = 1,
-    [FromQuery] int PageSize = 50) : IMediatorRequest<ListRepositoryResourcesOutcome>, ITenantReadOperation;
+    [FromQuery] int PageSize = 50
+) : IMediatorRequest<ListRepositoryResourcesOutcome>, ITenantReadOperation;
 
-public union ListRepositoryResourcesOutcome(
-    RepositoryResourcePage,
-    GitSourceNotFound);
+public union ListRepositoryResourcesOutcome(RepositoryResourcePage, GitSourceNotFound);
 
 public sealed class ListRepositoryResourcesValidator : AbstractValidator<ListRepositoryResourcesRequest>
 {
@@ -51,26 +52,35 @@ public sealed class ListRepositoryResourcesValidator : AbstractValidator<ListRep
     }
 }
 
-public sealed class ListRepositoryResourcesHandler(GitRepositoryInventory inventory)
-    : IMediatorOutcomeHandler<ListRepositoryResourcesRequest, ListRepositoryResourcesOutcome>
+public sealed class ListRepositoryResourcesHandler(
+    GitRepositoryInventory inventory
+) : IMediatorOutcomeHandler<ListRepositoryResourcesRequest, ListRepositoryResourcesOutcome>
 {
-    public Task<ListRepositoryResourcesOutcome> HandleAsync(ListRepositoryResourcesRequest request,
-        CancellationToken cancellationToken = default) => inventory.ReadAsync(new(
-        ObjectId.Parse(request.TenantId).ToString(), ObjectId.Parse(request.Id).ToString(),
-        request.Page, request.PageSize), cancellationToken);
+    public Task<ListRepositoryResourcesOutcome> HandleAsync(
+        ListRepositoryResourcesRequest request,
+        CancellationToken cancellationToken = default) => inventory.ReadAsync(
+        new ReadRepositoryInventory(
+            ObjectId.Parse(request.TenantId).ToString(),
+            ObjectId.Parse(request.Id).ToString(),
+            request.Page,
+            request.PageSize),
+        cancellationToken);
 }
 
 public static class ListRepositoryResourcesEndpoint
 {
     public static IEndpointRouteBuilder MapListRepositoryResourcesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}/resources", async (IMediator mediator,
-                [AsParameters] ListRepositoryResourcesRequest request, CancellationToken ct) =>
-                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}/resources",
+                async (
+                    IMediator mediator, [AsParameters] ListRepositoryResourcesRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     RepositoryResourcePage page => Results.Ok(page),
-                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing)
-                })).WithName("ListRepositoryResources");
+                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
+                }))
+            .WithName("ListRepositoryResources");
         return app;
     }
 }

@@ -7,8 +7,8 @@ namespace Pole.Tests.E2E.Infrastructure;
 
 internal sealed class BrowserPhaseJournal : IDisposable
 {
-    private readonly IPage _page;
     private readonly TestPhaseJournal _journal;
+    private readonly IPage _page;
     private readonly ConcurrentDictionary<IRequest, long> _requests = new();
     private int _disposed;
 
@@ -20,6 +20,18 @@ internal sealed class BrowserPhaseJournal : IDisposable
         page.Response += OnResponse;
         page.RequestFailed += OnFailed;
         page.RequestFinished += OnFinished;
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        _page.Request -= OnRequest;
+        _page.Response -= OnResponse;
+        _page.RequestFailed -= OnFailed;
+        _page.RequestFinished -= OnFinished;
+        _requests.Clear();
+        _journal.Record(TestPhase.Cleanup);
     }
 
     private void OnRequest(object? sender, IRequest request)
@@ -42,14 +54,18 @@ internal sealed class BrowserPhaseJournal : IDisposable
         {
             Record(TestPhase.ResponseReceived, response.Request, id, response.Status);
             if (IsRuntimeLogs(response.Request))
-                Record(response.Status is >= 200 and < 300 ? TestPhase.StreamOpening : TestPhase.StreamFailed,
-                    response.Request, id, response.Status);
+                Record(
+                    response.Status is >= 200 and < 300 ? TestPhase.StreamOpening : TestPhase.StreamFailed,
+                    response.Request,
+                    id,
+                    response.Status);
         }
     }
 
     private void OnFailed(object? sender, IRequest request)
     {
-        if (!_requests.TryRemove(request, out var id)) return;
+        if (!_requests.TryRemove(request, out var id))
+            return;
         var cancelled = request.Failure == "net::ERR_ABORTED";
         Record(cancelled ? TestPhase.RequestCancelled : TestPhase.RequestFailed, request, id);
         if (IsRuntimeLogs(request))
@@ -62,37 +78,39 @@ internal sealed class BrowserPhaseJournal : IDisposable
             Record(TestPhase.StreamEnded, request, id);
     }
 
-    private static bool IsRuntimeLogs(IRequest request) =>
-        Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) &&
+    private static bool IsRuntimeLogs(IRequest request) => Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) &&
         uri.AbsolutePath.EndsWith("/runtime-logs", StringComparison.Ordinal);
 
-    private void Record(TestPhase phase, IRequest request, long id, int? status = null)
+    private void Record(
+        TestPhase phase,
+        IRequest request,
+        long id,
+        int? status = null)
     {
         PhaseRequestEvidence.Record(_journal, phase, new Uri(request.Url), id, status);
     }
 
-    internal static bool IsRuntimeRequest(IRequest request, string deploymentId, string uid, string container, bool follow) =>
-        request.Method == "GET" && IsRuntimeUrl(request.Url, deploymentId, uid, container, follow);
+    internal static bool IsRuntimeRequest(
+        IRequest request,
+        string deploymentId,
+        string uid,
+        string container,
+        bool follow) => request.Method == "GET" && IsRuntimeUrl(request.Url, deploymentId, uid, container, follow);
 
-    internal static bool IsRuntimeUrl(string url, string deploymentId, string uid, string container, bool follow)
+    internal static bool IsRuntimeUrl(
+        string url,
+        string deploymentId,
+        string uid,
+        string container,
+        bool follow)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            uri.AbsolutePath != $"/api/v1/resource-deployments/{Uri.EscapeDataString(deploymentId)}/runtime-logs")
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.AbsolutePath !=
+            $"/api/v1/resource-deployments/{Uri.EscapeDataString(deploymentId)}/runtime-logs")
             return false;
         var query = QueryHelpers.ParseQuery(uri.Query);
         return query.TryGetValue("instanceUid", out var actualUid) && actualUid == uid &&
-               query.TryGetValue("container", out var actualContainer) && actualContainer == container &&
-               query.TryGetValue("follow", out var actualFollow) && bool.TryParse(actualFollow.ToString(), out var value) && value == follow;
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _page.Request -= OnRequest;
-        _page.Response -= OnResponse;
-        _page.RequestFailed -= OnFailed;
-        _page.RequestFinished -= OnFinished;
-        _requests.Clear();
-        _journal.Record(TestPhase.Cleanup);
+            query.TryGetValue("container", out var actualContainer) && actualContainer == container &&
+            query.TryGetValue("follow", out var actualFollow) &&
+            bool.TryParse(actualFollow.ToString(), out var value) && value == follow;
     }
 }

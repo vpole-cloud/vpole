@@ -4,10 +4,14 @@ using Pole.Features.ComputeProfiles.Domain;
 
 namespace Pole.Features.ComputeProfiles.Application;
 
-internal sealed class ComputeProfileHistory(IMongoCollection<ComputeProfileRevision> revisions)
+internal sealed class ComputeProfileHistory(
+    IMongoCollection<ComputeProfileRevision> revisions
+)
 {
-    public Task StoreAsync(ComputeProfile profile, IClientSessionHandle session, CancellationToken ct) =>
-        StoreManyAsync([profile], session, ct);
+    public Task StoreAsync(
+        ComputeProfile profile,
+        IClientSessionHandle session,
+        CancellationToken ct) => StoreManyAsync([profile], session, ct);
 
     public Task StoreManyAsync(
         IReadOnlyCollection<ComputeProfile> profiles,
@@ -16,19 +20,21 @@ internal sealed class ComputeProfileHistory(IMongoCollection<ComputeProfileRevis
     {
         if (!session.IsInTransaction)
             throw new InvalidOperationException("Profile history must share the catalog transaction.");
-        if (profiles.Count == 0) return Task.CompletedTask;
+        if (profiles.Count == 0)
+            return Task.CompletedTask;
 
-        var writes = profiles.DistinctBy(profile => (profile.Id, profile.Revision)).Select(profile =>
-        {
-            var revision = ComputeProfileRevisionFactory.Create(profile);
-            return (WriteModel<ComputeProfileRevision>)new UpdateOneModel<ComputeProfileRevision>(
-                ComputeProfileRevisionFilters.Identity(revision.ComputeProfileId, revision.Revision),
-                Builders<ComputeProfileRevision>.Update
-                    .SetOnInsert(item => item.ComputeProfileId, revision.ComputeProfileId)
-                    .SetOnInsert(item => item.Revision, revision.Revision)
-                    .SetOnInsert(item => item.Snapshot, revision.Snapshot))
-            { IsUpsert = true };
-        }).ToArray();
+        var writes = profiles.DistinctBy(profile => (profile.Id, profile.Revision))
+            .Select(profile =>
+            {
+                var revision = ComputeProfileRevisionFactory.Create(profile);
+                return (WriteModel<ComputeProfileRevision>)new UpdateOneModel<ComputeProfileRevision>(
+                    ComputeProfileRevisionFilters.Identity(revision.ComputeProfileId, revision.Revision),
+                    Builders<ComputeProfileRevision>.Update
+                        .SetOnInsert(item => item.ComputeProfileId, revision.ComputeProfileId)
+                        .SetOnInsert(item => item.Revision, revision.Revision)
+                        .SetOnInsert(item => item.Snapshot, revision.Snapshot)) { IsUpsert = true };
+            })
+            .ToArray();
         return revisions.BulkWriteAsync(session, writes, cancellationToken: ct);
     }
 }

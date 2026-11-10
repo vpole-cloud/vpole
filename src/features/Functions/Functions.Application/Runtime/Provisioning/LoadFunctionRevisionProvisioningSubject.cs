@@ -1,6 +1,4 @@
 using MongoDB.Driver;
-using Pole.Features.Functions.Application;
-using Pole.Features.Functions.Application.Declarations;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
 
@@ -8,7 +6,8 @@ namespace Pole.Features.Functions.Application.Runtime.Provisioning;
 
 public sealed record FunctionRevisionProvisioningSubject(
     FunctionApp App,
-    FunctionRevision Revision);
+    FunctionRevision Revision
+);
 
 public delegate Task<FunctionRevisionProvisioningSubject?> LoadFunctionRevisionProvisioningSubject(
     string tenantId,
@@ -18,7 +17,8 @@ public delegate Task<FunctionRevisionProvisioningSubject?> LoadFunctionRevisionP
 
 public sealed class MongoLoadFunctionRevisionProvisioningSubject(
     IMongoCollection<FunctionApp> functionApps,
-    IMongoCollection<FunctionRevision> functionRevisions)
+    IMongoCollection<FunctionRevision> functionRevisions
+)
 {
     public async Task<FunctionRevisionProvisioningSubject?> InvokeAsync(
         string tenantId,
@@ -33,10 +33,7 @@ public sealed class MongoLoadFunctionRevisionProvisioningSubject(
             return null;
 
         var revision = await functionRevisions.Find(
-                FunctionRevisionProvisioningSubjectFilters.RevisionByOwner(
-                    tenantId,
-                    functionAppId,
-                    revisionId))
+                FunctionRevisionProvisioningSubjectFilters.RevisionByOwner(tenantId, functionAppId, revisionId))
             .FirstOrDefaultAsync(cancellationToken);
         return revision is null ? null : new FunctionRevisionProvisioningSubject(app, revision);
     }

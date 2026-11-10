@@ -5,12 +5,14 @@ namespace Pole.Features.ResourceGroups.Contracts;
 public sealed record NamedIsolationScopeRequest(
     string TenantId,
     string ResourceGroupId,
-    string? Name);
+    string? Name
+);
 
 public sealed record IsolationScopePlanningRequest(
     string TenantId,
     string ResourceGroupId,
-    string? IsolationScopeId);
+    string? IsolationScopeId
+);
 
 public sealed record IsolationScopePlanningSnapshot(
     string TenantId,
@@ -19,7 +21,8 @@ public sealed record IsolationScopePlanningSnapshot(
     string IsolationScopeId,
     long ScopeRevision,
     string Name,
-    bool IsDefault);
+    bool IsDefault
+);
 
 public sealed record IsolationScopePlanningUnavailable;
 
@@ -27,9 +30,7 @@ public sealed record IsolationScopePlanningFenced;
 
 public sealed record IsolationScopePlanningFenceRejected;
 
-public union ResolveNamedIsolationScopeOutcome(
-    IsolationScopePlanningSnapshot,
-    IsolationScopePlanningUnavailable);
+public union ResolveNamedIsolationScopeOutcome(IsolationScopePlanningSnapshot, IsolationScopePlanningUnavailable);
 
 public union LoadIsolationScopePlanningSnapshotOutcome(
     IsolationScopePlanningSnapshot,

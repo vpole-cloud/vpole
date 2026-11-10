@@ -11,7 +11,8 @@ public sealed record FunctionExecutionLease(
     string OwnerId,
     string Token,
     DateTimeOffset AcquiredAtUtc,
-    DateTimeOffset ExpiresAtUtc)
+    DateTimeOffset ExpiresAtUtc
+)
 {
     public static FunctionExecutionLease Create(
         string ownerId,
@@ -37,8 +38,7 @@ public sealed record FunctionExecutionLease(
 }
 
 public sealed record FunctionTimerState(
-    [property: BsonId]
-    string Id,
+    [property: BsonId] string Id,
     string TenantId,
     string FunctionAppId,
     string RevisionId,
@@ -54,7 +54,8 @@ public sealed record FunctionTimerState(
     bool Enabled,
     FunctionExecutionLease? Lease,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc) : ITenantOwned
+    DateTimeOffset UpdatedAtUtc
+) : ITenantOwned
 {
     public const string UtcTimeZone = "UTC";
 
@@ -70,25 +71,24 @@ public sealed record FunctionTimerState(
         TimerMisfirePolicy misfirePolicy,
         FunctionRetryPolicy retry,
         DateTimeOffset nextOccurrenceUtc,
-        DateTimeOffset nowUtc) =>
-        new(
-            FunctionDurableIdentity.Create("timer", tenantId, functionAppId, triggerId),
-            FunctionDurableModelGuard.NotBlank(tenantId, nameof(tenantId)),
-            FunctionDurableModelGuard.NotBlank(functionAppId, nameof(functionAppId)),
-            FunctionDurableModelGuard.NotBlank(revisionId, nameof(revisionId)),
-            FunctionDurableModelGuard.NotBlank(triggerId, nameof(triggerId)),
-            FunctionDurableModelGuard.NotBlank(handlerName, nameof(handlerName)),
-            FunctionDurableModelGuard.NotBlank(cron, nameof(cron)),
-            UtcTimeZone,
-            FunctionDurableModelGuard.Positive(scheduleVersion, nameof(scheduleVersion)),
-            concurrencyPolicy,
-            misfirePolicy,
-            FunctionDurableModelGuard.Retry(retry),
-            FunctionDurableModelGuard.Utc(nextOccurrenceUtc, nameof(nextOccurrenceUtc)),
-            Enabled: true,
-            Lease: null,
-            FunctionDurableModelGuard.Utc(nowUtc, nameof(nowUtc)),
-            nowUtc);
+        DateTimeOffset nowUtc) => new(
+        FunctionDurableIdentity.Create("timer", tenantId, functionAppId, triggerId),
+        FunctionDurableModelGuard.NotBlank(tenantId, nameof(tenantId)),
+        FunctionDurableModelGuard.NotBlank(functionAppId, nameof(functionAppId)),
+        FunctionDurableModelGuard.NotBlank(revisionId, nameof(revisionId)),
+        FunctionDurableModelGuard.NotBlank(triggerId, nameof(triggerId)),
+        FunctionDurableModelGuard.NotBlank(handlerName, nameof(handlerName)),
+        FunctionDurableModelGuard.NotBlank(cron, nameof(cron)),
+        UtcTimeZone,
+        FunctionDurableModelGuard.Positive(scheduleVersion, nameof(scheduleVersion)),
+        concurrencyPolicy,
+        misfirePolicy,
+        FunctionDurableModelGuard.Retry(retry),
+        FunctionDurableModelGuard.Utc(nextOccurrenceUtc, nameof(nextOccurrenceUtc)),
+        Enabled: true,
+        Lease: null,
+        FunctionDurableModelGuard.Utc(nowUtc, nameof(nowUtc)),
+        nowUtc);
 
     public FunctionTimerState Reconcile(
         string revisionId,
@@ -114,12 +114,11 @@ public sealed record FunctionTimerState(
         if (scheduleVersion == ScheduleVersion)
         {
             var unchanged = string.Equals(HandlerName, handlerName, StringComparison.Ordinal) &&
-                            string.Equals(Cron, cron, StringComparison.Ordinal) &&
-                            ConcurrencyPolicy == concurrencyPolicy &&
-                            MisfirePolicy == misfirePolicy &&
-                            NextOccurrenceUtc == nextOccurrenceUtc;
+                string.Equals(Cron, cron, StringComparison.Ordinal) && ConcurrencyPolicy == concurrencyPolicy &&
+                MisfirePolicy == misfirePolicy && NextOccurrenceUtc == nextOccurrenceUtc;
             if (!unchanged)
-                throw new InvalidOperationException("A schedule version cannot describe different timer configuration.");
+                throw new InvalidOperationException(
+                    "A schedule version cannot describe different timer configuration.");
 
             return this with
             {
@@ -127,7 +126,7 @@ public sealed record FunctionTimerState(
                 Retry = retry,
                 Enabled = true,
                 Lease = null,
-                UpdatedAtUtc = nowUtc
+                UpdatedAtUtc = nowUtc,
             };
         }
 
@@ -143,7 +142,7 @@ public sealed record FunctionTimerState(
             NextOccurrenceUtc = nextOccurrenceUtc,
             Enabled = true,
             Lease = null,
-            UpdatedAtUtc = nowUtc
+            UpdatedAtUtc = nowUtc,
         };
     }
 
@@ -162,7 +161,7 @@ public sealed record FunctionTimerState(
         return this with
         {
             Lease = FunctionExecutionLease.Create(ownerId, token, acquiredAtUtc, expiresAtUtc),
-            UpdatedAtUtc = acquiredAtUtc
+            UpdatedAtUtc = acquiredAtUtc,
         };
     }
 
@@ -174,13 +173,15 @@ public sealed record FunctionTimerState(
         RequireLease(leaseToken, nowUtc);
         FunctionDurableModelGuard.Utc(nextOccurrenceUtc, nameof(nextOccurrenceUtc));
         if (nextOccurrenceUtc <= NextOccurrenceUtc)
-            throw new ArgumentOutOfRangeException(nameof(nextOccurrenceUtc), "The next occurrence must advance the schedule.");
+            throw new ArgumentOutOfRangeException(
+                nameof(nextOccurrenceUtc),
+                "The next occurrence must advance the schedule.");
 
         return this with
         {
             NextOccurrenceUtc = nextOccurrenceUtc,
             Lease = null,
-            UpdatedAtUtc = nowUtc
+            UpdatedAtUtc = nowUtc,
         };
     }
 
@@ -197,20 +198,12 @@ public sealed record FunctionTimerState(
         return this with { Enabled = false, Lease = null, UpdatedAtUtc = nowUtc };
     }
 
-    public bool HasValidState() =>
-        !string.IsNullOrWhiteSpace(Id) &&
-        !string.IsNullOrWhiteSpace(TenantId) &&
-        !string.IsNullOrWhiteSpace(FunctionAppId) &&
-        !string.IsNullOrWhiteSpace(RevisionId) &&
-        !string.IsNullOrWhiteSpace(TriggerId) &&
-        !string.IsNullOrWhiteSpace(HandlerName) &&
-        !string.IsNullOrWhiteSpace(Cron) &&
-        TimeZone == UtcTimeZone &&
-        ScheduleVersion > 0 &&
-        NextOccurrenceUtc.Offset == TimeSpan.Zero &&
-        CreatedAtUtc.Offset == TimeSpan.Zero &&
-        UpdatedAtUtc.Offset == TimeSpan.Zero &&
-        (Enabled || Lease is null) &&
+    public bool HasValidState() => !string.IsNullOrWhiteSpace(Id) && !string.IsNullOrWhiteSpace(TenantId) &&
+        !string.IsNullOrWhiteSpace(FunctionAppId) && !string.IsNullOrWhiteSpace(RevisionId) &&
+        !string.IsNullOrWhiteSpace(TriggerId) && !string.IsNullOrWhiteSpace(HandlerName) &&
+        !string.IsNullOrWhiteSpace(Cron) && TimeZone == UtcTimeZone && ScheduleVersion > 0 &&
+        NextOccurrenceUtc.Offset == TimeSpan.Zero && CreatedAtUtc.Offset == TimeSpan.Zero &&
+        UpdatedAtUtc.Offset == TimeSpan.Zero && (Enabled || Lease is null) &&
         (Lease is null || Lease.ExpiresAtUtc > Lease.AcquiredAtUtc);
 
     private void RequireLease(string leaseToken, DateTimeOffset nowUtc)
@@ -238,16 +231,13 @@ public enum FunctionInvocationState
     Succeeded,
     Failed,
     Skipped,
-    Cancelled
+    Cancelled,
 }
 
 public static class FunctionInvocationStateExtensions
 {
-    public static bool IsTerminal(this FunctionInvocationState state) => state is
-        FunctionInvocationState.Succeeded or
-        FunctionInvocationState.Failed or
-        FunctionInvocationState.Skipped or
-        FunctionInvocationState.Cancelled;
+    public static bool IsTerminal(this FunctionInvocationState state) => state is FunctionInvocationState.Succeeded
+        or FunctionInvocationState.Failed or FunctionInvocationState.Skipped or FunctionInvocationState.Cancelled;
 
     public static bool IsNonTerminal(this FunctionInvocationState state) => !state.IsTerminal();
 }
@@ -255,18 +245,20 @@ public static class FunctionInvocationStateExtensions
 public sealed record FunctionInvocationError(
     string Code,
     string Message,
-    bool Retryable)
+    bool Retryable
+)
 {
-    public static FunctionInvocationError Create(string code, string message, bool retryable) =>
-        new(
-            FunctionDurableModelGuard.NotBlank(code, nameof(code)),
-            FunctionDurableModelGuard.NotBlank(message, nameof(message)),
-            retryable);
+    public static FunctionInvocationError Create(
+        string code,
+        string message,
+        bool retryable) => new(
+        FunctionDurableModelGuard.NotBlank(code, nameof(code)),
+        FunctionDurableModelGuard.NotBlank(message, nameof(message)),
+        retryable);
 }
 
 public sealed record FunctionInvocation(
-    [property: BsonId]
-    string Id,
+    [property: BsonId] string Id,
     string TenantId,
     string FunctionAppId,
     string RevisionId,
@@ -285,8 +277,13 @@ public sealed record FunctionInvocation(
     DateTimeOffset? AttemptStartedAtUtc,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? NextAttemptAtUtc,
-    FunctionInvocationError? Error) : ITenantOwned
+    FunctionInvocationError? Error
+) : ITenantOwned
 {
+    public bool CanRetry =>
+        State is FunctionInvocationState.Dispatching or FunctionInvocationState.Running &&
+        AttemptNumber < Retry.MaxAttempts;
+
     public static FunctionInvocation CreateTimer(
         string tenantId,
         string functionAppId,
@@ -298,33 +295,32 @@ public sealed record FunctionInvocation(
         FunctionRetryPolicy retry,
         DateTimeOffset nowUtc,
         bool isPastDue = false,
-        int missedOccurrenceCount = 0) =>
-        new(
-            FunctionDurableIdentity.Create(
-                "invocation",
-                tenantId,
-                triggerId,
-                scheduleVersion.ToString(CultureInfo.InvariantCulture),
-                scheduledForUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)),
-            FunctionDurableModelGuard.NotBlank(tenantId, nameof(tenantId)),
-            FunctionDurableModelGuard.NotBlank(functionAppId, nameof(functionAppId)),
-            FunctionDurableModelGuard.NotBlank(revisionId, nameof(revisionId)),
-            FunctionDurableModelGuard.NotBlank(triggerId, nameof(triggerId)),
-            FunctionDurableModelGuard.NotBlank(handlerName, nameof(handlerName)),
-            FunctionDurableModelGuard.Positive(scheduleVersion, nameof(scheduleVersion)),
-            FunctionDurableModelGuard.Utc(scheduledForUtc, nameof(scheduledForUtc)),
-            isPastDue,
-            FunctionDurableModelGuard.NonNegative(missedOccurrenceCount, nameof(missedOccurrenceCount)),
-            FunctionDurableModelGuard.Retry(retry),
-            FunctionInvocationState.Pending,
-            AttemptNumber: 1,
-            Lease: null,
-            FunctionDurableModelGuard.Utc(nowUtc, nameof(nowUtc)),
-            nowUtc,
-            AttemptStartedAtUtc: null,
-            CompletedAtUtc: null,
-            NextAttemptAtUtc: null,
-            Error: null);
+        int missedOccurrenceCount = 0) => new(
+        FunctionDurableIdentity.Create(
+            "invocation",
+            tenantId,
+            triggerId,
+            scheduleVersion.ToString(CultureInfo.InvariantCulture),
+            scheduledForUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)),
+        FunctionDurableModelGuard.NotBlank(tenantId, nameof(tenantId)),
+        FunctionDurableModelGuard.NotBlank(functionAppId, nameof(functionAppId)),
+        FunctionDurableModelGuard.NotBlank(revisionId, nameof(revisionId)),
+        FunctionDurableModelGuard.NotBlank(triggerId, nameof(triggerId)),
+        FunctionDurableModelGuard.NotBlank(handlerName, nameof(handlerName)),
+        FunctionDurableModelGuard.Positive(scheduleVersion, nameof(scheduleVersion)),
+        FunctionDurableModelGuard.Utc(scheduledForUtc, nameof(scheduledForUtc)),
+        isPastDue,
+        FunctionDurableModelGuard.NonNegative(missedOccurrenceCount, nameof(missedOccurrenceCount)),
+        FunctionDurableModelGuard.Retry(retry),
+        FunctionInvocationState.Pending,
+        AttemptNumber: 1,
+        Lease: null,
+        FunctionDurableModelGuard.Utc(nowUtc, nameof(nowUtc)),
+        nowUtc,
+        AttemptStartedAtUtc: null,
+        CompletedAtUtc: null,
+        NextAttemptAtUtc: null,
+        Error: null);
 
     public FunctionInvocation AcquireDispatchLease(
         string ownerId,
@@ -334,15 +330,12 @@ public sealed record FunctionInvocation(
     {
         if (State.IsTerminal())
             throw new InvalidOperationException($"A terminal invocation in state '{State}' cannot be dispatched.");
-        if ((State == FunctionInvocationState.Pending &&
-             NextAttemptAtUtc is { } pendingDispatchAtUtc &&
-             pendingDispatchAtUtc > acquiredAtUtc) ||
-            (State == FunctionInvocationState.RetryScheduled &&
-             (NextAttemptAtUtc is null || NextAttemptAtUtc > acquiredAtUtc)))
+        if ((State == FunctionInvocationState.Pending && NextAttemptAtUtc is { } pendingDispatchAtUtc &&
+                pendingDispatchAtUtc > acquiredAtUtc) || (State == FunctionInvocationState.RetryScheduled &&
+                (NextAttemptAtUtc is null || NextAttemptAtUtc > acquiredAtUtc)))
             throw new InvalidOperationException("The invocation dispatch is not due yet.");
-        if (State is FunctionInvocationState.Dispatching or FunctionInvocationState.Running &&
-            Lease is { } current && current.IsActiveAt(acquiredAtUtc) &&
-            !string.Equals(current.Token, token, StringComparison.Ordinal))
+        if (State is FunctionInvocationState.Dispatching or FunctionInvocationState.Running && Lease is { } current &&
+            current.IsActiveAt(acquiredAtUtc) && !string.Equals(current.Token, token, StringComparison.Ordinal))
             throw new InvalidOperationException("The invocation already has an active dispatch lease.");
 
         var nextAttemptNumber = State == FunctionInvocationState.RetryScheduled
@@ -356,7 +349,7 @@ public sealed record FunctionInvocation(
             Lease = FunctionExecutionLease.Create(ownerId, token, acquiredAtUtc, expiresAtUtc),
             UpdatedAtUtc = acquiredAtUtc,
             AttemptStartedAtUtc = null,
-            NextAttemptAtUtc = null
+            NextAttemptAtUtc = null,
         };
     }
 
@@ -374,7 +367,7 @@ public sealed record FunctionInvocation(
         return this with
         {
             Lease = Lease! with { ExpiresAtUtc = expiresAtUtc },
-            UpdatedAtUtc = renewedAtUtc
+            UpdatedAtUtc = renewedAtUtc,
         };
     }
 
@@ -402,7 +395,7 @@ public sealed record FunctionInvocation(
             UpdatedAtUtc = nowUtc,
             AttemptStartedAtUtc = null,
             NextAttemptAtUtc = nextDispatchAtUtc,
-            Error = reason
+            Error = reason,
         };
     }
 
@@ -415,7 +408,7 @@ public sealed record FunctionInvocation(
             State = FunctionInvocationState.Running,
             UpdatedAtUtc = startedAtUtc,
             AttemptStartedAtUtc = startedAtUtc,
-            Error = null
+            Error = null,
         };
     }
 
@@ -442,7 +435,7 @@ public sealed record FunctionInvocation(
             UpdatedAtUtc = nowUtc,
             AttemptStartedAtUtc = null,
             NextAttemptAtUtc = nextAttemptAtUtc,
-            Error = error
+            Error = error,
         };
     }
 
@@ -484,7 +477,7 @@ public sealed record FunctionInvocation(
                 UpdatedAtUtc = nowUtc,
                 AttemptStartedAtUtc = null,
                 NextAttemptAtUtc = nextAttemptAtUtc,
-                Error = error
+                Error = error,
             }
             : Complete(FunctionInvocationState.Failed, nowUtc, error);
     }
@@ -519,51 +512,35 @@ public sealed record FunctionInvocation(
             Error = FunctionInvocationError.Create(
                 "manual_retry",
                 "The invocation was queued for a manual retry.",
-                retryable: true)
+                retryable: true),
         };
     }
 
-    public bool CanRetry => State is FunctionInvocationState.Dispatching or FunctionInvocationState.Running &&
-                            AttemptNumber < Retry.MaxAttempts;
-
     public bool HasValidState()
     {
-        if (string.IsNullOrWhiteSpace(Id) ||
-            string.IsNullOrWhiteSpace(TenantId) ||
-            string.IsNullOrWhiteSpace(FunctionAppId) ||
-            string.IsNullOrWhiteSpace(RevisionId) ||
-            string.IsNullOrWhiteSpace(TriggerId) ||
-            string.IsNullOrWhiteSpace(HandlerName) ||
-            ScheduleVersion <= 0 ||
-            AttemptNumber <= 0 ||
-            MissedOccurrenceCount < 0 ||
-            ScheduledForUtc.Offset != TimeSpan.Zero ||
-            CreatedAtUtc.Offset != TimeSpan.Zero ||
-            UpdatedAtUtc.Offset != TimeSpan.Zero)
+        if (string.IsNullOrWhiteSpace(Id) || string.IsNullOrWhiteSpace(TenantId) ||
+            string.IsNullOrWhiteSpace(FunctionAppId) || string.IsNullOrWhiteSpace(RevisionId) ||
+            string.IsNullOrWhiteSpace(TriggerId) || string.IsNullOrWhiteSpace(HandlerName) || ScheduleVersion <= 0 ||
+            AttemptNumber <= 0 || MissedOccurrenceCount < 0 || ScheduledForUtc.Offset != TimeSpan.Zero ||
+            CreatedAtUtc.Offset != TimeSpan.Zero || UpdatedAtUtc.Offset != TimeSpan.Zero)
             return false;
 
         return State switch
         {
-            FunctionInvocationState.Pending =>
-                Lease is null && AttemptStartedAtUtc is null && CompletedAtUtc is null &&
-                (NextAttemptAtUtc is null && Error is null ||
-                 NextAttemptAtUtc is not null && Error is { Retryable: true }),
-            FunctionInvocationState.Dispatching =>
-                Lease is not null && AttemptStartedAtUtc is null && CompletedAtUtc is null &&
-                NextAttemptAtUtc is null,
-            FunctionInvocationState.Running =>
-                Lease is not null && AttemptStartedAtUtc is not null && CompletedAtUtc is null &&
+            FunctionInvocationState.Pending => Lease is null && AttemptStartedAtUtc is null && CompletedAtUtc is null &&
+                ((NextAttemptAtUtc is null && Error is null) ||
+                    (NextAttemptAtUtc is not null && Error is { Retryable: true })),
+            FunctionInvocationState.Dispatching => Lease is not null && AttemptStartedAtUtc is null &&
+                CompletedAtUtc is null && NextAttemptAtUtc is null,
+            FunctionInvocationState.Running => Lease is not null && AttemptStartedAtUtc is not null &&
+                CompletedAtUtc is null && NextAttemptAtUtc is null && Error is null,
+            FunctionInvocationState.RetryScheduled => Lease is null && AttemptStartedAtUtc is null &&
+                CompletedAtUtc is null && NextAttemptAtUtc is not null && Error is { Retryable: true },
+            FunctionInvocationState.Succeeded => Lease is null && CompletedAtUtc is not null &&
                 NextAttemptAtUtc is null && Error is null,
-            FunctionInvocationState.RetryScheduled =>
-                Lease is null && AttemptStartedAtUtc is null && CompletedAtUtc is null &&
-                NextAttemptAtUtc is not null && Error is { Retryable: true },
-            FunctionInvocationState.Succeeded =>
-                Lease is null && CompletedAtUtc is not null && NextAttemptAtUtc is null && Error is null,
-            FunctionInvocationState.Failed or
-            FunctionInvocationState.Skipped or
-            FunctionInvocationState.Cancelled =>
+            FunctionInvocationState.Failed or FunctionInvocationState.Skipped or FunctionInvocationState.Cancelled =>
                 Lease is null && CompletedAtUtc is not null && NextAttemptAtUtc is null && Error is not null,
-            _ => false
+            _ => false,
         };
     }
 
@@ -580,7 +557,7 @@ public sealed record FunctionInvocation(
             UpdatedAtUtc = completedAtUtc,
             CompletedAtUtc = completedAtUtc,
             NextAttemptAtUtc = null,
-            Error = error
+            Error = error,
         };
     }
 
@@ -610,14 +587,14 @@ public sealed record FunctionInvocation(
 public enum FunctionMeterTriggerKind
 {
     Http,
-    Timer
+    Timer,
 }
 
 public enum FunctionMeterEventPhase
 {
     Admitted,
     Started,
-    Completed
+    Completed,
 }
 
 public enum FunctionMeterOutcome
@@ -628,7 +605,7 @@ public enum FunctionMeterOutcome
     TimedOut,
     Cancelled,
     PlatformFailure,
-    Skipped
+    Skipped,
 }
 
 public sealed record FunctionMeterDimensions(
@@ -637,11 +614,11 @@ public sealed record FunctionMeterDimensions(
     string RevisionId,
     string TriggerId,
     string HandlerName,
-    FunctionMeterTriggerKind TriggerKind);
+    FunctionMeterTriggerKind TriggerKind
+);
 
 public sealed record FunctionMeterEvent(
-    [property: BsonId]
-    string Id,
+    [property: BsonId] string Id,
     string TenantId,
     string FunctionAppId,
     string RevisionId,
@@ -655,18 +632,18 @@ public sealed record FunctionMeterEvent(
     long? ExecutionDurationMilliseconds,
     DateTimeOffset OccurredAtUtc,
     DateTime OccurredAtUtcDateTime,
-    DateTimeOffset? AggregatedAtUtc) : ITenantOwned
+    DateTimeOffset? AggregatedAtUtc
+) : ITenantOwned
 {
     public FunctionMeterDimensions Dimensions =>
         new(TenantId, FunctionAppId, RevisionId, TriggerId, HandlerName, TriggerKind);
 
-    public static FunctionMeterEvent Admitted(FunctionInvocation invocation, DateTimeOffset occurredAtUtc) =>
-        Create(
-            invocation,
-            FunctionMeterEventPhase.Admitted,
-            outcome: null,
-            executionDurationMilliseconds: null,
-            occurredAtUtc);
+    public static FunctionMeterEvent Admitted(FunctionInvocation invocation, DateTimeOffset occurredAtUtc) => Create(
+        invocation,
+        FunctionMeterEventPhase.Admitted,
+        outcome: null,
+        executionDurationMilliseconds: null,
+        occurredAtUtc);
 
     public static FunctionMeterEvent CreateFact(
         FunctionMeterDimensions dimensions,
@@ -749,26 +726,24 @@ public sealed record FunctionMeterEvent(
         FunctionMeterEventPhase phase,
         FunctionMeterOutcome? outcome,
         long? executionDurationMilliseconds,
-        DateTimeOffset occurredAtUtc) =>
-        CreateFact(
-            new FunctionMeterDimensions(
-                invocation.TenantId,
-                invocation.FunctionAppId,
-                invocation.RevisionId,
-                invocation.TriggerId,
-                invocation.HandlerName,
-                FunctionMeterTriggerKind.Timer),
-            invocation.Id,
-            invocation.AttemptNumber,
-            phase,
-            outcome,
-            executionDurationMilliseconds,
-            occurredAtUtc);
+        DateTimeOffset occurredAtUtc) => CreateFact(
+        new FunctionMeterDimensions(
+            invocation.TenantId,
+            invocation.FunctionAppId,
+            invocation.RevisionId,
+            invocation.TriggerId,
+            invocation.HandlerName,
+            FunctionMeterTriggerKind.Timer),
+        invocation.Id,
+        invocation.AttemptNumber,
+        phase,
+        outcome,
+        executionDurationMilliseconds,
+        occurredAtUtc);
 }
 
 public sealed record FunctionUsageBucket(
-    [property: BsonId]
-    string Id,
+    [property: BsonId] string Id,
     string TenantId,
     string FunctionAppId,
     string RevisionId,
@@ -782,13 +757,15 @@ public sealed record FunctionUsageBucket(
     long FailedAttemptCount,
     long SkippedCount,
     long ExecutionDurationMilliseconds,
-    DateTimeOffset UpdatedAtUtc) : ITenantOwned
+    DateTimeOffset UpdatedAtUtc
+) : ITenantOwned
 {
     public static FunctionUsageBucket Create(FunctionMeterDimensions dimensions, DateTimeOffset hourUtc)
     {
         FunctionDurableModelGuard.Dimensions(dimensions);
         FunctionDurableModelGuard.Utc(hourUtc, nameof(hourUtc));
-        if (hourUtc.Minute != 0 || hourUtc.Second != 0 || hourUtc.Millisecond != 0 || hourUtc.Ticks % TimeSpan.TicksPerSecond != 0)
+        if (hourUtc.Minute != 0 || hourUtc.Second != 0 || hourUtc.Millisecond != 0 ||
+            hourUtc.Ticks % TimeSpan.TicksPerSecond != 0)
             throw new ArgumentOutOfRangeException(nameof(hourUtc), "A usage bucket must start on an exact UTC hour.");
 
         return new FunctionUsageBucket(
@@ -835,15 +812,15 @@ public sealed record FunctionUsageBucket(
             FunctionMeterEventPhase.Admitted => this with
             {
                 InvocationCount = checked(InvocationCount + 1),
-                UpdatedAtUtc = meterEvent.OccurredAtUtc
+                UpdatedAtUtc = meterEvent.OccurredAtUtc,
             },
             FunctionMeterEventPhase.Started => this with
             {
                 AttemptCount = checked(AttemptCount + 1),
-                UpdatedAtUtc = meterEvent.OccurredAtUtc
+                UpdatedAtUtc = meterEvent.OccurredAtUtc,
             },
             FunctionMeterEventPhase.Completed => ApplyCompleted(meterEvent),
-            _ => throw new InvalidOperationException($"Unknown meter event phase '{meterEvent.Phase}'.")
+            _ => throw new InvalidOperationException($"Unknown meter event phase '{meterEvent.Phase}'."),
         };
     }
 
@@ -873,9 +850,9 @@ public sealed record FunctionUsageBucket(
             SucceededAttemptCount = checked(SucceededAttemptCount + succeeded),
             FailedAttemptCount = checked(FailedAttemptCount + failed),
             SkippedCount = checked(SkippedCount + skipped),
-            ExecutionDurationMilliseconds = checked(
-                ExecutionDurationMilliseconds + meterEvent.ExecutionDurationMilliseconds.Value),
-            UpdatedAtUtc = meterEvent.OccurredAtUtc
+            ExecutionDurationMilliseconds
+            = checked(ExecutionDurationMilliseconds + meterEvent.ExecutionDurationMilliseconds.Value),
+            UpdatedAtUtc = meterEvent.OccurredAtUtc,
         };
     }
 }

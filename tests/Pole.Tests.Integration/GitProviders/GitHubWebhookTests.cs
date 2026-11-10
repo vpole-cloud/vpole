@@ -11,21 +11,21 @@ using Pole.Features.GitProviders.Application.Endpoints.Callbacks;
 using Pole.Features.GitProviders.Application.Webhooks;
 using Pole.Features.GitProviders.Domain;
 using Pole.Features.GitProviders.Events;
-using Pole.Features.Outbox.Contracts;
-using Pole.Features.Outbox.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitProviders;
 
 [Collection(IntegrationTestCollection.Global4)]
-public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : IsolatedApiIntegrationTestBase(fixture)
+public sealed class GitHubWebhookTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedApiIntegrationTestBase(fixture)
 {
     private const string Path = "/api/v1/integrations/github/webhook";
     private const string Sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-    private IMongoCollection<GitHubDeliveryReceipt> Receipts => Fixture.Database
-        .GetCollection<GitHubDeliveryReceipt>("GitHubDeliveryReceipts");
+    private IMongoCollection<GitHubDeliveryReceipt> Receipts =>
+        Fixture.Database.GetCollection<GitHubDeliveryReceipt>("GitHubDeliveryReceipts");
 
     private IMongoCollection<OutboxMessage> Outbox => Fixture.Database.GetCollection<OutboxMessage>("OutboxMessages");
 
@@ -41,7 +41,8 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
         Assert.Equal(receipt, BsonSerializer.Deserialize<GitHubDeliveryReceipt>(receipt.ToBson()));
         Assert.DoesNotContain("payload-secret-marker", receipt.ToJson());
         var message = await Outbox.Find(Builders<OutboxMessage>.Filter.Empty).SingleAsync();
-        var value = JsonSerializer.Deserialize<GitRepositoryPushReceived>(message.PayloadJson,
+        var value = JsonSerializer.Deserialize<GitRepositoryPushReceived>(
+            message.PayloadJson,
             EventExtensions.SerializerOptions)!;
         Assert.Equal(Data.TenantId, value.EventCore.TenantId);
         Assert.Equal(connection.Id, value.ConnectionId);
@@ -74,7 +75,8 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
     [InlineData("ping", "{}")] // Signed non-push deliveries are acknowledged without a GitOps signal.
     [InlineData("pull_request", "{}")]
     [InlineData("push", "{\"ref\":\"refs/tags/v1\"}")]
-    [InlineData("push",
+    [InlineData(
+        "push",
         "{\"ref\":\"refs/heads/main\",\"after\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"repository\":{\"id\":77},\"installation\":{\"id\":999}}")]
     public async Task IrrelevantDeliveriesDoNotEnqueueSources(string type, string body)
     {
@@ -93,7 +95,7 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
         Assert.Equal(1, await Outbox.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
         using var request = new HttpRequestMessage(HttpMethod.Post, Path)
         {
-            Content = new ByteArrayContent(new byte[25 * 1024 * 1024 + 1])
+            Content = new ByteArrayContent(new byte[25 * 1024 * 1024 + 1]),
         };
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await Client.SendAsync(request)).StatusCode);
     }
@@ -112,15 +114,17 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
     {
         await Connection();
         var store = ApiServices.GetRequiredService<StoreOutboxWrites>();
-        StoreOutboxWrites failing = async (session, writes, ct) =>
+        StoreOutboxWrites failing = async (
+            session, writes,
+            ct) =>
         {
             await store(session, writes, ct);
             throw new IOException("Injected after outbox write");
         };
         var persistence = ActivatorUtilities.CreateInstance<GitHubWebhookPersistence>(ApiServices, failing);
         await Assert.ThrowsAsync<IOException>(() => persistence.StoreAsync(
-            new(Guid.NewGuid().ToString(), new string('a', 64), "push", DateTime.UtcNow),
-            new("42", "77", "main", Sha),
+            new GitHubDeliveryReceipt(Guid.NewGuid().ToString(), new string('a', 64), "push", DateTime.UtcNow),
+            new GitHubBranchPush("42", "77", "main", Sha),
             default));
         Assert.Equal(0, await Receipts.CountDocumentsAsync(Builders<GitHubDeliveryReceipt>.Filter.Empty));
         Assert.Equal(0, await Outbox.CountDocumentsAsync(Builders<OutboxMessage>.Filter.Empty));
@@ -132,7 +136,7 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
         using var stream = new StreamingPayload(new byte[25 * 1024 * 1024 + 1]);
         using var request = new HttpRequestMessage(HttpMethod.Post, Path)
         {
-            Content = new StreamContent(stream)
+            Content = new StreamContent(stream),
         };
         Assert.Null(request.Content.Headers.ContentLength);
         using var response = await Client.SendAsync(request);
@@ -140,14 +144,10 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
         Assert.Equal(0, await Receipts.CountDocumentsAsync(Builders<GitHubDeliveryReceipt>.Filter.Empty));
     }
 
-    private sealed class StreamingPayload(byte[] bytes) : MemoryStream(bytes, writable: false)
-    {
-        public override bool CanSeek => false;
-    }
-
     private async Task<GitProviderConnection> Connection()
     {
-        var connection = GitProviderConnectionFactory.Create(Data.TenantId,
+        var connection = GitProviderConnectionFactory.Create(
+            Data.TenantId,
             "github",
             GitProviderKind.GitHub,
             "42",
@@ -157,31 +157,45 @@ public sealed class GitHubWebhookTests(MongoReplicaSetFixture fixture) : Isolate
             GitProviderRepositorySelection.All,
             Data.UserId,
             GitProviderConnectionFactory.DefaultOptions);
-        await Fixture.Database.GetCollection<GitProviderConnection>("GitProviderConnections")
+        await Fixture.Database
+            .GetCollection<GitProviderConnection>("GitProviderConnections")
             .InsertOneAsync(connection);
         return connection;
     }
 
-    private static string Push(string branch = "refs/heads/main") => JsonSerializer.Serialize(new
-    {
-        @ref = branch,
-        after = Sha,
-        installation = new { id = 42 },
-        repository = new { id = 77 },
-        tenantId = "untrusted-tenant",
-        commits = new[] { new { message = "payload-secret-marker" } }
-    });
+    private static string Push(string branch = "refs/heads/main") => JsonSerializer.Serialize(
+        new
+        {
+            @ref = branch,
+            after = Sha,
+            installation = new { id = 42 },
+            repository = new { id = 77 },
+            tenantId = "untrusted-tenant",
+            commits = new[] { new { message = "payload-secret-marker" } },
+        });
 
-    private static string Sign(string body) => "sha256=" + Convert.ToHexStringLower(HMACSHA256.HashData(
-        Encoding.UTF8.GetBytes(TestApiApplication.GitHubWebhookSecret),
-        Encoding.UTF8.GetBytes(body)));
+    private static string Sign(string body) => "sha256=" + Convert.ToHexStringLower(
+        HMACSHA256.HashData(
+            Encoding.UTF8.GetBytes(TestApiApplication.GitHubWebhookSecret),
+            Encoding.UTF8.GetBytes(body)));
 
-    private Task<HttpResponseMessage> Send(string body, string delivery, string type = "push", string? signature = null)
+    private Task<HttpResponseMessage> Send(
+        string body,
+        string delivery,
+        string type = "push",
+        string? signature = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, Path) { Content = new StringContent(body) };
         request.Headers.Add("X-GitHub-Delivery", delivery);
         request.Headers.Add("X-GitHub-Event", type);
         request.Headers.Add("X-Hub-Signature-256", signature ?? Sign(body));
         return Client.SendAsync(request);
+    }
+
+    private sealed class StreamingPayload(
+        byte[] bytes
+    ) : MemoryStream(bytes, writable: false)
+    {
+        public override bool CanSeek => false;
     }
 }

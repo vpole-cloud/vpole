@@ -6,23 +6,17 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Database;
 using Pole.Features.ComputeProfiles.Contracts;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Quotas.Contracts;
-using Pole.Features.RedisServices.Application;
 using Pole.Features.RedisServices.Application.Common;
-using Pole.Features.RedisServices.Application.Declarations;
-using Pole.Features.RedisServices.Application.Mongo;
 using Pole.Features.RedisServices.Application.Services;
 using Pole.Features.RedisServices.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
-using Pole.Features.Shared.Models;
 using Pole.Features.StorageProfiles.Contracts;
 using Pole.Mediator;
-using Pole.ResultType;
 using Pole.Validation;
 using static Pole.Features.DeploymentTargets.Contracts.HttpMapping.DeploymentTargetContractHttpMappings;
 using static Pole.Features.Quotas.Contracts.HttpMapping.QuotaContractHttpMappings;
@@ -39,22 +33,22 @@ public static class CreateRedisService
     {
         public IEndpointRouteBuilder MapCreateRedisServiceEndpoint()
         {
-            app.MapPost("/", async (
-                    [FromServices] IMediator mediator,
-                    [AsParameters] CreateRedisServiceRequest request,
-                    CancellationToken cancellationToken) =>
-                    (await mediator.Send(request, cancellationToken))
-                    .ToHttpResult(outcome => outcome switch
-                    {
-                        CreateRedisServiceResponse response => Results.Accepted(value: response),
-                        RedisServiceNameAlreadyExists error => RedisHttpMappings.MapNameAlreadyExists(error),
-                        DeploymentTargetNewWorkloadAdmissionError error => MapNewWorkloadAdmissionError(error),
-                        ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
-                        StorageProfileResolutionError error => StorageHttpMappings.MapResolutionError(error),
-                        CreateResourceDeploymentError error => MapDeploymentError(error),
-                        ResourceRegistrationMutationError error => MapRegistrationMutationError(error),
-                        QuotaExecutionError error => MapExecutionError(error)
-                    }))
+            app.MapPost(
+                    "/",
+                    async (
+                            [FromServices] IMediator mediator, [AsParameters] CreateRedisServiceRequest request,
+                            CancellationToken cancellationToken) =>
+                        (await mediator.Send(request, cancellationToken)).ToHttpResult(outcome => outcome switch
+                        {
+                            CreateRedisServiceResponse response => Results.Accepted(value: response),
+                            RedisServiceNameAlreadyExists error => RedisHttpMappings.MapNameAlreadyExists(error),
+                            DeploymentTargetNewWorkloadAdmissionError error => MapNewWorkloadAdmissionError(error),
+                            ComputeProfileResolutionError error => ComputeHttpMappings.MapResolutionError(error),
+                            StorageProfileResolutionError error => StorageHttpMappings.MapResolutionError(error),
+                            CreateResourceDeploymentError error => MapDeploymentError(error),
+                            ResourceRegistrationMutationError error => MapRegistrationMutationError(error),
+                            QuotaExecutionError error => MapExecutionError(error),
+                        }))
                 .WithName("CreateRedisService")
                 .Produces<CreateRedisServiceResponse>(StatusCodes.Status202Accepted);
 
@@ -80,10 +74,11 @@ public sealed class CreateRedisServiceHandler(
     AdmitDeploymentTargetForNewWorkload admitDeploymentTarget,
     ResolveComputeProfile resolveComputeProfile,
     CreateResourceDeployment createResourceDeployment,
-    IResourceRegistrar resourceRegistrar)
-    : IMediatorOutcomeHandler<CreateRedisServiceRequest, CreateRedisServiceOutcome>
+    IResourceRegistrar resourceRegistrar
+) : IMediatorOutcomeHandler<CreateRedisServiceRequest, CreateRedisServiceOutcome>
 {
-    public async Task<CreateRedisServiceOutcome> HandleAsync(CreateRedisServiceRequest request,
+    public async Task<CreateRedisServiceOutcome> HandleAsync(
+        CreateRedisServiceRequest request,
         CancellationToken cancellationToken = default)
     {
         var targetResult = await admitDeploymentTarget(
@@ -106,9 +101,7 @@ public sealed class CreateRedisServiceHandler(
                 RedisResourceDeployment.ResourceType),
             cancellationToken);
         if (computeProfileResult is ComputeProfileResolutionError computeProfileError)
-        {
             return computeProfileError;
-        }
 
         var computeProfile = (ResolvedComputeProfile)computeProfileResult.Value;
 
@@ -126,7 +119,7 @@ public sealed class CreateRedisServiceHandler(
         var storageProfile = (ResolvedStorageProfile)storageProfileResult.Value;
         var createOptions = RedisFactory.DefaultCreateOptions with
         {
-            Tags = request.Body.Tags
+            Tags = request.Body.Tags,
         };
         var newRedis = RedisFactory.Create(
             tenantId: request.TenantId,
@@ -140,14 +133,9 @@ public sealed class CreateRedisServiceHandler(
             storageProfile.ProfileRevision,
             storageProfile.StorageClassName);
 
-        var quotaInput = RedisQuotaInput.Create(
-            computeProfile.Requests.CpuMillis,
-            computeProfile.Requests.MemoryMi);
-        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<
-            RedisQuotaInput,
-            CreateRedisServiceOutcome>(
-            new ExecuteQuotaAdmissionRequest<global::Pole.Features.RedisServices.Application.Common.RedisQuotaInput,
-                global::Pole.Features.RedisServices.Application.Endpoints.CreateRedisServiceOutcome>(
+        var quotaInput = RedisQuotaInput.Create(computeProfile.Requests.CpuMillis, computeProfile.Requests.MemoryMi);
+        return await quotaAdmissionExecutor.ExecuteOutcomeAsync<RedisQuotaInput, CreateRedisServiceOutcome>(
+            new ExecuteQuotaAdmissionRequest<RedisQuotaInput, CreateRedisServiceOutcome>(
                 TenantId: request.TenantId,
                 ResourceKey: RedisQuotaResourceKey.Create(newRedis.Id),
                 Mutation: new CreateQuotaMutation<RedisQuotaInput>(quotaInput),
@@ -159,25 +147,20 @@ public sealed class CreateRedisServiceHandler(
                         newRedis,
                         transactionCancellationToken);
                     if (persisted is RedisServiceNameAlreadyExists nameConflict)
-                    {
-                        return transaction.Abort(
-                            new CreateRedisServiceOutcome(nameConflict));
-                    }
+                        return transaction.Abort(new CreateRedisServiceOutcome(nameConflict));
 
                     var registration = await resourceRegistrar.RegisterAsync(
                         new RegisterResourceRequest(
                             TenantId: newRedis.TenantId,
                             ResourceGroupId: newRedis.ResourceGroupId,
                             Resource: new ResourceRegistrationDescriptor(
-                            RedisResourceDeployment.ResourceType,
-                            newRedis.Id,
-                            newRedis.Name)),
+                                RedisResourceDeployment.ResourceType,
+                                newRedis.Id,
+                                newRedis.Name)),
                         session: transaction.Session,
                         cancellationToken: transactionCancellationToken);
                     if (registration is ResourceRegistrationMutationError registrationError)
-                    {
                         return transaction.Abort(registrationError);
-                    }
 
                     var deploymentResult = await createResourceDeployment(
                         new CreateResourceDeploymentRequest(
@@ -194,29 +177,26 @@ public sealed class CreateRedisServiceHandler(
                         transaction.Session,
                         transactionCancellationToken);
                     if (deploymentResult is CreateResourceDeploymentError deploymentError)
-                    {
                         return transaction.Abort(deploymentError);
-                    }
                     var deployment = (PlacementSummaryDto)deploymentResult.Value;
 
-                    return transaction.Commit(new CreateRedisServiceOutcome(
-                        new CreateRedisServiceResponse(newRedis.Id, deployment)));
+                    return transaction.Commit(
+                        new CreateRedisServiceOutcome(new CreateRedisServiceResponse(newRedis.Id, deployment)));
                 }),
             cancellationToken: cancellationToken);
     }
 
-    private static ResolvedResourceDeploymentTarget ToResolvedResourceDeploymentTarget(
-        DeploymentTargetLookupDto target) =>
-        new(
-            target.Id,
-            target.WorkloadConfiguration.Revision,
-            target.WorkloadConfiguration.Ingress is { } ingress
-                ? ResourceDeploymentIngressConfiguration.Create(
-                    ingress.IngressClassName,
-                    ingress.ClusterIssuerName,
-                    ingress.PublicBaseDomain,
-                    [])
-                : null);
+    private static ResolvedResourceDeploymentTarget
+        ToResolvedResourceDeploymentTarget(DeploymentTargetLookupDto target) => new(
+        target.Id,
+        target.WorkloadConfiguration.Revision,
+        target.WorkloadConfiguration.Ingress is { } ingress
+            ? ResourceDeploymentIngressConfiguration.Create(
+                ingress.IngressClassName,
+                ingress.ClusterIssuerName,
+                ingress.PublicBaseDomain,
+                [])
+            : null);
 }
 
 public sealed record CreateRedisServiceRequest(
@@ -255,19 +235,15 @@ public sealed class CreateRedisServiceRequestBodyValidator : AbstractValidator<C
             .MaximumLength(30)
             .Matches("^[a-z0-9-]+$")
             .WithMessage("Name must contain only lowercase letters, numbers, and hyphens.");
-        RuleFor(x => x.ResourceGroupId)
-            .NotEmpty()
-            .MongoObjectId("Resource group ID");
-        RuleFor(x => x.Spec)
-            .SetValidator(new RedisSpecDtoValidator());
-        RuleFor(body => body.ComputeProfileId)
-            .OptionalMongoObjectId("Compute profile ID");
-        When(body => body.Placement is not null, () =>
-        {
-            RuleFor(body => body.Placement!.IsolationScopeId)
-                .OptionalMongoObjectId("Isolation scope ID");
-            RuleFor(body => body.Placement!.DeploymentTargetId)
-                .OptionalMongoObjectId("Deployment target ID");
-        });
+        RuleFor(x => x.ResourceGroupId).NotEmpty().MongoObjectId("Resource group ID");
+        RuleFor(x => x.Spec).SetValidator(new RedisSpecDtoValidator());
+        RuleFor(body => body.ComputeProfileId).OptionalMongoObjectId("Compute profile ID");
+        When(
+            body => body.Placement is not null,
+            () =>
+            {
+                RuleFor(body => body.Placement!.IsolationScopeId).OptionalMongoObjectId("Isolation scope ID");
+                RuleFor(body => body.Placement!.DeploymentTargetId).OptionalMongoObjectId("Deployment target ID");
+            });
     }
 }

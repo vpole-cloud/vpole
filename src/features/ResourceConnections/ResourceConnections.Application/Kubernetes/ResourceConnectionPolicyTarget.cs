@@ -3,13 +3,8 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using Pole.Features.DeploymentTargets.Contracts;
-using Pole.Features.ResourceConnections.Application.Common;
 using Pole.Features.ResourceConnections.Application.Connections;
-using Pole.Features.ResourceConnections.Application.Declarations;
-using Pole.Features.ResourceConnections.Application.Mongo;
 using Pole.Features.ResourceConnections.Application.Recovery;
-using Pole.Features.ResourceConnections.Application.References;
-using Pole.Features.ResourceConnections.Application.Topology;
 using Pole.Features.ResourceConnections.Domain;
 using Pole.Features.ResourceGroups.Contracts;
 
@@ -20,11 +15,17 @@ public sealed record ResourceConnectionPolicySucceeded;
 public sealed record ResourceConnectionPolicyDesiredStateChanged;
 
 public sealed record ResourceConnectionPolicyTargetUnavailable;
+
 public sealed record ResourceConnectionPolicyBaselineUnavailable;
+
 public sealed record ResourceConnectionPolicyNamespaceUnavailable;
+
 public sealed record ResourceConnectionPolicyOwnershipConflict;
+
 public sealed record ResourceConnectionPolicyConcurrentWrite;
+
 public sealed record ResourceConnectionPolicyRequestRejected;
+
 public sealed record ResourceConnectionPolicyTransportUnavailable;
 
 public union ResourceConnectionPolicyApplyOutcome(
@@ -69,8 +70,8 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
     IKubernetesClientProvider clients,
     EnsureRuntimeCellIngressBaseline ensureBaseline,
     LoadResourceConnection loadConnection,
-    LoadResourceConnectionTombstone loadTombstone)
-    : IResourceConnectionPolicyTarget
+    LoadResourceConnectionTombstone loadTombstone
+) : IResourceConnectionPolicyTarget
 {
     public async Task<ResourceConnectionPolicyApplyOutcome> ApplyAsync(
         ResourceConnection connection,
@@ -91,11 +92,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 return failure;
 
             var client = await clients.GetAsync(snapshot.TargetId, cancellationToken);
-            var existing = await ReadAsync(
-                client,
-                connection.Id,
-                snapshot.DestinationNamespace,
-                cancellationToken);
+            var existing = await ReadAsync(client, connection.Id, snapshot.DestinationNamespace, cancellationToken);
             if (existing is not null && !ResourceConnectionPolicyManifestBuilder.IsOwned(
                     existing,
                     connection.TenantId,
@@ -110,8 +107,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 return new ResourceConnectionPolicyDesiredStateChanged();
 
             var desired = ResourceConnectionPolicyManifestBuilder.Build(connection, snapshot);
-            if (existing is not null &&
-                ResourceConnectionPolicyManifestBuilder.MatchesDesired(existing, desired))
+            if (existing is not null && ResourceConnectionPolicyManifestBuilder.MatchesDesired(existing, desired))
                 return new ResourceConnectionPolicySucceeded();
 
             V1NetworkPolicy written;
@@ -131,6 +127,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                     snapshot.DestinationNamespace,
                     cancellationToken: cancellationToken);
             }
+
             if (!await IsCurrentApplyAsync(connection, snapshot, cancellationToken))
             {
                 // A stale create can complete after a newer delete saw 404. The
@@ -149,18 +146,20 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                             Preconditions = new V1Preconditions
                             {
                                 Uid = written.Metadata.Uid,
-                                ResourceVersion = written.Metadata.ResourceVersion
-                            }
+                                ResourceVersion = written.Metadata.ResourceVersion,
+                            },
                         },
                         cancellationToken: cancellationToken);
                 }
-                catch (HttpOperationException exception)
-                    when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
+                catch (HttpOperationException exception) when
+                    (exception.Response?.StatusCode == HttpStatusCode.NotFound)
                 {
                     // The newer cleanup already removed this exact object.
                 }
+
                 return new ResourceConnectionPolicyDesiredStateChanged();
             }
+
             return new ResourceConnectionPolicySucceeded();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -185,24 +184,22 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
     public Task<ResourceConnectionPolicyDeleteOutcome> DeleteAsync(
         ResourceConnection connection,
         ConnectionTargetSnapshot snapshot,
-        CancellationToken cancellationToken = default) =>
-        DeletePolicyAsync(
-            connection.TenantId,
-            connection.Id,
-            snapshot,
-            ct => IsCurrentCleanupAsync(connection, snapshot, ct),
-            cancellationToken);
+        CancellationToken cancellationToken = default) => DeletePolicyAsync(
+        connection.TenantId,
+        connection.Id,
+        snapshot,
+        ct => IsCurrentCleanupAsync(connection, snapshot, ct),
+        cancellationToken);
 
     public Task<ResourceConnectionPolicyDeleteOutcome> DeleteTombstoneAsync(
         ResourceConnectionCleanupTombstone tombstone,
         ConnectionTargetSnapshot snapshot,
-        CancellationToken cancellationToken = default) =>
-        DeletePolicyAsync(
-            tombstone.TenantId,
-            tombstone.Id,
-            snapshot,
-            ct => IsCurrentTombstoneAsync(tombstone, snapshot, ct),
-            cancellationToken);
+        CancellationToken cancellationToken = default) => DeletePolicyAsync(
+        tombstone.TenantId,
+        tombstone.Id,
+        snapshot,
+        ct => IsCurrentTombstoneAsync(tombstone, snapshot, ct),
+        cancellationToken);
 
     private async Task<ResourceConnectionPolicyDeleteOutcome> DeletePolicyAsync(
         string tenantId,
@@ -214,11 +211,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         try
         {
             var client = await clients.GetAsync(snapshot.TargetId, cancellationToken);
-            var existing = await ReadAsync(
-                client,
-                connectionId,
-                snapshot.DestinationNamespace,
-                cancellationToken);
+            var existing = await ReadAsync(client, connectionId, snapshot.DestinationNamespace, cancellationToken);
             if (existing is null)
                 return new ResourceConnectionPolicySucceeded();
             if (!ResourceConnectionPolicyManifestBuilder.IsOwned(
@@ -238,8 +231,8 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                     Preconditions = new V1Preconditions
                     {
                         Uid = existing.Metadata.Uid,
-                        ResourceVersion = existing.Metadata.ResourceVersion
-                    }
+                        ResourceVersion = existing.Metadata.ResourceVersion,
+                    },
                 },
                 cancellationToken: cancellationToken);
             return new ResourceConnectionPolicySucceeded();
@@ -269,8 +262,7 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         CancellationToken cancellationToken)
     {
         var current = await loadConnection(expected.TenantId, expected.Id, cancellationToken);
-        return current?.Generation == expected.Generation &&
-            current.Lifecycle is ActiveResourceConnection active &&
+        return current?.Generation == expected.Generation && current.Lifecycle is ActiveResourceConnection active &&
             active.Targets.Any(target => target.Snapshot.HasSameResolvedValues(snapshot));
     }
 
@@ -284,11 +276,11 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
             return false;
         return current.Lifecycle switch
         {
-            ActiveResourceConnection active =>
-                !active.Targets.Any(target => target.Snapshot.PolicyLocation == snapshot.PolicyLocation) &&
+            ActiveResourceConnection active => !active.Targets.Any(target =>
+                    target.Snapshot.PolicyLocation == snapshot.PolicyLocation) &&
                 active.RetiringTargets.Any(target => target.Snapshot.PolicyLocation == snapshot.PolicyLocation),
             DeletingResourceConnection deleting => deleting.Targets.Any(target =>
-                target.Snapshot.PolicyLocation == snapshot.PolicyLocation)
+                target.Snapshot.PolicyLocation == snapshot.PolicyLocation),
         };
     }
 
@@ -297,16 +289,13 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
         ConnectionTargetSnapshot snapshot,
         CancellationToken cancellationToken)
     {
-        var current = await loadTombstone(
-            expected.TenantId,
-            expected.Id,
-            cancellationToken);
+        var current = await loadTombstone(expected.TenantId, expected.Id, cancellationToken);
         return current?.Generation == expected.Generation &&
             current.Targets.Any(target => target.HasSameResolvedValues(snapshot));
     }
 
     private static async Task<V1NetworkPolicy?> ReadAsync(
-        k8s.IKubernetes client,
+        IKubernetes client,
         string connectionId,
         string namespaceName,
         CancellationToken cancellationToken)
@@ -318,44 +307,38 @@ internal sealed class KubernetesResourceConnectionPolicyTarget(
                 namespaceName,
                 cancellationToken: cancellationToken);
         }
-        catch (HttpOperationException exception)
-            when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
+        catch (HttpOperationException exception) when (exception.Response?.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
     }
 
-    private static ResourceConnectionPolicyApplyOutcome ApplyFailureForHttp(
-        HttpOperationException exception) => exception.Response?.StatusCode switch
+    private static ResourceConnectionPolicyApplyOutcome ApplyFailureForHttp(HttpOperationException exception) =>
+        exception.Response?.StatusCode switch
         {
             HttpStatusCode.NotFound => new ResourceConnectionPolicyNamespaceUnavailable(),
             HttpStatusCode.Conflict => new ResourceConnectionPolicyConcurrentWrite(),
-            _ => new ResourceConnectionPolicyRequestRejected()
+            _ => new ResourceConnectionPolicyRequestRejected(),
         };
 
     private static ResourceConnectionPolicyApplyOutcome? BaselineFailure(
         EnsureRuntimeCellIngressBaselineOutcome outcome) => outcome switch
-        {
-            RuntimeCellIngressBaselineReady => null,
-            RuntimeCellIngressBaselineTargetNotFound or
-            RuntimeCellIngressBaselineTargetDisabled or
-            RuntimeCellIngressBaselineDefaultTargetNotConfigured or
-            RuntimeCellIngressBaselineTargetConnectionUnavailable =>
-                new ResourceConnectionPolicyTargetUnavailable(),
-            RuntimeCellIngressBaselineNotReady or
-            RuntimeCellIngressBaselinePlacementMismatch or
-            RuntimeCellIngressBaselineNamespaceOwnershipConflict or
-            RuntimeCellIngressBaselineNamespaceUnavailable or
-            RuntimeCellIngressBaselinePolicyOwnershipConflict or
-            RuntimeCellIngressBaselinePolicyUnavailable =>
-                new ResourceConnectionPolicyBaselineUnavailable()
-        };
+    {
+        RuntimeCellIngressBaselineReady => null,
+        RuntimeCellIngressBaselineTargetNotFound or RuntimeCellIngressBaselineTargetDisabled
+            or RuntimeCellIngressBaselineDefaultTargetNotConfigured
+            or RuntimeCellIngressBaselineTargetConnectionUnavailable => new ResourceConnectionPolicyTargetUnavailable(),
+        RuntimeCellIngressBaselineNotReady or RuntimeCellIngressBaselinePlacementMismatch
+            or RuntimeCellIngressBaselineNamespaceOwnershipConflict or RuntimeCellIngressBaselineNamespaceUnavailable
+            or RuntimeCellIngressBaselinePolicyOwnershipConflict
+            or RuntimeCellIngressBaselinePolicyUnavailable => new ResourceConnectionPolicyBaselineUnavailable(),
+    };
 
-    private static ResourceConnectionPolicyDeleteOutcome DeleteFailureForHttp(
-        HttpOperationException exception) => exception.Response?.StatusCode switch
+    private static ResourceConnectionPolicyDeleteOutcome DeleteFailureForHttp(HttpOperationException exception) =>
+        exception.Response?.StatusCode switch
         {
             HttpStatusCode.NotFound => new ResourceConnectionPolicySucceeded(),
             HttpStatusCode.Conflict => new ResourceConnectionPolicyConcurrentWrite(),
-            _ => new ResourceConnectionPolicyRequestRejected()
+            _ => new ResourceConnectionPolicyRequestRejected(),
         };
 }

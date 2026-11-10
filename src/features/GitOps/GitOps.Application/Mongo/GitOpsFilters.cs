@@ -12,8 +12,8 @@ internal static class GitRepositoryFilters
     public static FilterDefinition<RepositorySource> Tenant(string tenant) =>
         Builders<RepositorySource>.Filter.Eq(item => item.TenantId, tenant);
 
-    public static FilterDefinition<RepositorySource> VisibleTenant(string tenant) =>
-        Tenant(tenant) & Builders<RepositorySource>.Filter.Ne(item => item.Activity, GitSourceActivity.Deleted);
+    public static FilterDefinition<RepositorySource> VisibleTenant(string tenant) => Tenant(tenant) &
+        Builders<RepositorySource>.Filter.Ne(item => item.Activity, GitSourceActivity.Deleted);
 
     public static FilterDefinition<RepositorySource> VisibleSource(string tenant, string source) =>
         Source(tenant, source) & Builders<RepositorySource>.Filter.Ne(item => item.Activity, GitSourceActivity.Deleted);
@@ -34,8 +34,10 @@ internal static class GitRepositoryFilters
         Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<ManagedDeclaration>.Filter.In(item => item.SourceId, ids);
 
-    public static FilterDefinition<GitOperationReceipt> Receipts(string tenant, string source, string run) =>
-        Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, tenant) &
+    public static FilterDefinition<GitOperationReceipt> Receipts(
+        string tenant,
+        string source,
+        string run) => Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.SourceId, source) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.RunId, run);
 
@@ -55,8 +57,10 @@ internal static class GitRepositoryFilters
     public static FilterDefinition<GitSynchronizationState> State(string tenant, string source) =>
         Builders<GitSynchronizationState>.Filter.Eq(item => item.Id, StateId(tenant, source));
 
-    public static FilterDefinition<GitReconciliationRun> Run(string tenant, string source, string run) =>
-        Builders<GitReconciliationRun>.Filter.Eq(item => item.Stamp.Source.TenantId, tenant) &
+    public static FilterDefinition<GitReconciliationRun> Run(
+        string tenant,
+        string source,
+        string run) => Builders<GitReconciliationRun>.Filter.Eq(item => item.Stamp.Source.TenantId, tenant) &
         Builders<GitReconciliationRun>.Filter.Eq(item => item.Stamp.Source.SourceId, source) &
         Builders<GitReconciliationRun>.Filter.Eq(item => item.Id, run);
 
@@ -69,15 +73,16 @@ internal static class GitRepositoryFilters
 
     public static FilterDefinition<GitReconciliationRun> HumanConfirmedLifecycle() =>
         Builders<GitReconciliationRun>.Filter.OfType<GitRunInput, GitInputLifecycle>(item => item.Input) &
-        Builders<GitReconciliationRun>.Filter.OfType<GitPreviewState, GitPreviewConfirmed>(
-            item => ((GitInputLifecycle)item.Input).Plan.Authorization);
+        Builders<GitReconciliationRun>.Filter.OfType<GitPreviewState, GitPreviewConfirmed>(item =>
+            ((GitInputLifecycle)item.Input).Plan.Authorization);
 
     public static FilterDefinition<GitReconciliationRun> PriorHumanLifecycle(GitRunStamp stamp) =>
         PreviousRuns(stamp) & HumanConfirmedLifecycle();
 
     public static FilterDefinition<RepositorySource> SourceRevision(GitRunStamp stamp) =>
-        Source(stamp.Source.TenantId, stamp.Source.SourceId) &
-        Builders<RepositorySource>.Filter.Eq(item => item.Revision, stamp.ConfigurationRevision);
+        Source(stamp.Source.TenantId, stamp.Source.SourceId) & Builders<RepositorySource>.Filter.Eq(
+            item => item.Revision,
+            stamp.ConfigurationRevision);
 
     public static FilterDefinition<GitSynchronizationState> ActiveState(GitRunStamp stamp) =>
         State(stamp.Source.TenantId, stamp.Source.SourceId) &
@@ -85,21 +90,16 @@ internal static class GitRepositoryFilters
         Builders<GitSynchronizationState>.Filter.Eq(item => item.CurrentRun!.RunId, stamp.RunId) &
         Builders<GitSynchronizationState>.Filter.Eq(item => item.CurrentRun!.Generation, stamp.Generation);
 
-    public static FilterDefinition<GitReconciliationRun> LiveClaim(
-        GitRunStamp stamp,
-        GitClaimIdentity claim) => Run(stamp.Source.TenantId, stamp.Source.SourceId, stamp.RunId) &
-                                   Builders<GitReconciliationRun>.Filter.Eq(item => item.Stamp.Fence, stamp.Fence) &
-                                   Builders<GitReconciliationRun>.Filter.Eq(
-                                       item => item.Stamp.ConfigurationRevision,
-                                       stamp.ConfigurationRevision) &
-                                   Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item =>
-                                       item.State) &
-                                   Builders<GitReconciliationRun>.Filter.Eq(
-                                       item => ((GitRunClaimed)item.State).Lease.WorkerId, claim.WorkerId) &
-                                   Builders<GitReconciliationRun>.Filter.Eq(
-                                       item => ((GitRunClaimed)item.State).Lease.Attempt, claim.Attempt) &
-                                   Builders<GitReconciliationRun>.Filter.AfterServerNow(
-                                       item => ((GitRunClaimed)item.State).Lease.ExpiresAtUtc);
+    public static FilterDefinition<GitReconciliationRun> LiveClaim(GitRunStamp stamp, GitClaimIdentity claim) =>
+        Run(stamp.Source.TenantId, stamp.Source.SourceId, stamp.RunId) &
+        Builders<GitReconciliationRun>.Filter.Eq(item => item.Stamp.Fence, stamp.Fence) &
+        Builders<GitReconciliationRun>.Filter.Eq(
+            item => item.Stamp.ConfigurationRevision,
+            stamp.ConfigurationRevision) &
+        Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item => item.State) &
+        Builders<GitReconciliationRun>.Filter.Eq(item => ((GitRunClaimed)item.State).Lease.WorkerId, claim.WorkerId) &
+        Builders<GitReconciliationRun>.Filter.Eq(item => ((GitRunClaimed)item.State).Lease.Attempt, claim.Attempt) &
+        Builders<GitReconciliationRun>.Filter.AfterServerNow(item => ((GitRunClaimed)item.State).Lease.ExpiresAtUtc);
 }
 
 internal static class ManagedDeclarationFilters
@@ -109,16 +109,17 @@ internal static class ManagedDeclarationFilters
     public static FilterDefinition<ManagedDeclaration> Address(string tenant, ResourceAddress address) =>
         Builders<ManagedDeclaration>.Filter.Eq(item => item.Id, AddressId(tenant, address));
 
-    public static FilterDefinition<ManagedDeclaration> Resource(string tenant, string kind, string id) =>
-        Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
+    public static FilterDefinition<ManagedDeclaration> Resource(
+        string tenant,
+        string kind,
+        string id) => Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<ManagedDeclaration>.Filter.Eq(item => item.Kind, kind) &
         Builders<ManagedDeclaration>.Filter.Eq(item => item.ResourceId, id);
 
     public static FilterDefinition<ManagedDeclaration> Resources(
         string tenant,
         string kind,
-        IReadOnlyCollection<string> ids) =>
-        Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
+        IReadOnlyCollection<string> ids) => Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<ManagedDeclaration>.Filter.Eq(item => item.Kind, kind) &
         Builders<ManagedDeclaration>.Filter.In(item => item.ResourceId, ids);
 
@@ -126,7 +127,9 @@ internal static class ManagedDeclarationFilters
         Builders<ManagedDeclaration>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<ManagedDeclaration>.Filter.Eq(item => item.SourceId, source);
 
-    public static FilterDefinition<ManagedDeclaration> CreatedResources(string tenant, string source,
+    public static FilterDefinition<ManagedDeclaration> CreatedResources(
+        string tenant,
+        string source,
         IReadOnlyCollection<string> ids) => SourceInventory(tenant, source) &
         Builders<ManagedDeclaration>.Filter.Eq(item => item.Materialization, GitResourceMaterialization.Created) &
         Builders<ManagedDeclaration>.Filter.In(item => item.ResourceId, ids);
@@ -137,14 +140,19 @@ internal static class ManagedDeclarationFilters
 
 internal static class GitLifecycleCleanupFilters
 {
-    public static FilterDefinition<GitOperationReceipt> BeginReceipts(string tenant, string source, string kind,
+    public static FilterDefinition<GitOperationReceipt> BeginReceipts(
+        string tenant,
+        string source,
+        string kind,
         string resourceId) => Builders<GitOperationReceipt>.Filter.Where(item => item.TenantId == tenant &&
         item.SourceId == source && item.Kind == kind && item.ResourceId == resourceId && item.Blocker == null &&
         item.Lifecycle != null && item.Lifecycle.Step == GitLifecycleStep.BeginRemoval);
 
-    public static FilterDefinition<GitReconciliationRun> Run(string tenant, string source, string run) =>
-        Builders<GitReconciliationRun>.Filter.Where(item => item.Id == run && item.Stamp.Source.TenantId == tenant &&
-            item.Stamp.Source.SourceId == source);
+    public static FilterDefinition<GitReconciliationRun> Run(
+        string tenant,
+        string source,
+        string run) => Builders<GitReconciliationRun>.Filter.Where(item =>
+        item.Id == run && item.Stamp.Source.TenantId == tenant && item.Stamp.Source.SourceId == source);
 
     public static FilterDefinition<GitLifecycleCleanupProof> Proof(string id) =>
         Builders<GitLifecycleCleanupProof>.Filter.Eq(item => item.Id, id);
@@ -164,8 +172,10 @@ internal static class GitLifecyclePreviewFilters
         Source(source) & Builders<GitOperationPreview>.Filter.Eq(item => item.Id, preview);
 
     public static FilterDefinition<GitOperationPreview> Revision(
-        GitSourceIdentity source, string preview, long revision) =>
-        Preview(source, preview) & Builders<GitOperationPreview>.Filter.Eq(item => item.Revision, revision);
+        GitSourceIdentity source,
+        string preview,
+        long revision) => Preview(source, preview) &
+        Builders<GitOperationPreview>.Filter.Eq(item => item.Revision, revision);
 
     public static FilterDefinition<GitOperationPreview> TenantPreviews(string tenant, IEnumerable<string> previews) =>
         Builders<GitOperationPreview>.Filter.Eq(item => item.Source.Source.TenantId, tenant) &
@@ -174,14 +184,19 @@ internal static class GitLifecyclePreviewFilters
 
 internal static class GitAcceptedReferenceFilters
 {
-    public static string Key(GitSourceIdentity source, string consumer, string kind, string name) =>
-        $"{source.TenantId}/{source.SourceId}/{consumer}/{kind}/{name}";
+    public static string Key(
+        GitSourceIdentity source,
+        string consumer,
+        string kind,
+        string name) => $"{source.TenantId}/{source.SourceId}/{consumer}/{kind}/{name}";
 
     public static FilterDefinition<GitAcceptedReference> Identity(string id) =>
         Builders<GitAcceptedReference>.Filter.Eq(item => item.Id, id);
 
-    public static FilterDefinition<GitAcceptedReference> Target(string tenant, string kind, string resource) =>
-        Builders<GitAcceptedReference>.Filter.Eq(item => item.Source.TenantId, tenant) &
+    public static FilterDefinition<GitAcceptedReference> Target(
+        string tenant,
+        string kind,
+        string resource) => Builders<GitAcceptedReference>.Filter.Eq(item => item.Source.TenantId, tenant) &
         Builders<GitAcceptedReference>.Filter.Eq(item => item.Target.Kind, kind) &
         Builders<GitAcceptedReference>.Filter.Eq(item => item.Target.ResourceId, resource);
 
@@ -200,8 +215,10 @@ internal static class GitOperationPlanFilters
     public static FilterDefinition<GitPlannedOperation> Identity(string id) =>
         Builders<GitPlannedOperation>.Filter.Eq(item => item.Id, id);
 
-    public static FilterDefinition<GitPlannedOperation> Run(string tenant, string source, string run) =>
-        Builders<GitPlannedOperation>.Filter.Eq(item => item.Stamp.Run.Source.TenantId, tenant) &
+    public static FilterDefinition<GitPlannedOperation> Run(
+        string tenant,
+        string source,
+        string run) => Builders<GitPlannedOperation>.Filter.Eq(item => item.Stamp.Run.Source.TenantId, tenant) &
         Builders<GitPlannedOperation>.Filter.Eq(item => item.Stamp.Run.Source.SourceId, source) &
         Builders<GitPlannedOperation>.Filter.Eq(item => item.Stamp.Run.RunId, run);
 }
@@ -212,8 +229,11 @@ internal static class GitOperationReceiptFilters
         Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<GitOperationReceipt>.Filter.In(item => item.RunId, runs);
 
-    public static FilterDefinition<GitOperationReceipt> ForRun(string tenant, string source, string run, long fence) =>
-        Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, tenant) &
+    public static FilterDefinition<GitOperationReceipt> ForRun(
+        string tenant,
+        string source,
+        string run,
+        long fence) => Builders<GitOperationReceipt>.Filter.Eq(item => item.TenantId, tenant) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.SourceId, source) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.RunId, run) &
         Builders<GitOperationReceipt>.Filter.Eq(item => item.Fence, fence);
@@ -228,7 +248,8 @@ internal static class GitSchedulingFilters
     public static FilterDefinition<RepositorySource> EligibleSources(GitSchedulingEligibility eligibility) =>
         eligibility == GitSchedulingEligibility.Active
             ? Builders<RepositorySource>.Filter.Eq(item => item.Activity, GitSourceActivity.Active)
-            : Builders<RepositorySource>.Filter.In(item => item.Activity,
+            : Builders<RepositorySource>.Filter.In(
+                item => item.Activity,
                 [GitSourceActivity.Active, GitSourceActivity.Paused, GitSourceActivity.Detaching]);
 
     public static FilterDefinition<RepositorySource> Repository(RepositorySyncSignal signal) =>
@@ -236,14 +257,14 @@ internal static class GitSchedulingFilters
         Builders<RepositorySource>.Filter.Eq(item => item.TenantId, signal.TenantId) &
         Builders<RepositorySource>.Filter.Eq(item => item.Repository.Provider, signal.Provider) &
         Builders<RepositorySource>.Filter.Eq(item => item.Repository.ConnectionId, signal.ConnectionId) &
-        Builders<RepositorySource>.Filter.Eq(item => item.Repository.ExternalRepositoryId,
+        Builders<RepositorySource>.Filter.Eq(
+            item => item.Repository.ExternalRepositoryId,
             signal.ExternalRepositoryId) &
         Builders<RepositorySource>.Filter.Eq(item => item.Repository.Branch, signal.Branch);
 
     public static FilterDefinition<GitSynchronizationState> Pending() =>
         Builders<GitSynchronizationState>.Filter.Eq(item => item.CurrentRun, null) &
-        Builders<GitSynchronizationState>.Filter.Where(item =>
-            item.RequestedGeneration > item.CompletedGeneration);
+        Builders<GitSynchronizationState>.Filter.Where(item => item.RequestedGeneration > item.CompletedGeneration);
 
     public static FilterDefinition<GitSynchronizationState> PollDue(DateTime now) =>
         Builders<GitSynchronizationState>.Filter.Lte(item => item.NextPollAtUtc, now);
@@ -251,12 +272,12 @@ internal static class GitSchedulingFilters
     public static FilterDefinition<GitReconciliationRun> Recoverable() =>
         Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunWaiting>(item => item.State) |
         (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunDelayed>(item => item.State) &
-            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(
-                item => ((GitRunDelayed)item.State).NextAttemptAtUtc)) |
+            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(item =>
+                ((GitRunDelayed)item.State).NextAttemptAtUtc)) |
         (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunWaitingCleanup>(item => item.State) &
-            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(
-                item => ((GitRunWaitingCleanup)item.State).NextAttemptAtUtc)) |
+            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(item =>
+                ((GitRunWaitingCleanup)item.State).NextAttemptAtUtc)) |
         (Builders<GitReconciliationRun>.Filter.OfType<GitRunState, GitRunClaimed>(item => item.State) &
-            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(
-                item => ((GitRunClaimed)item.State).Lease.ExpiresAtUtc));
+            Builders<GitReconciliationRun>.Filter.AtOrBeforeServerNow(item =>
+                ((GitRunClaimed)item.State).Lease.ExpiresAtUtc));
 }

@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Pole.Features.Outbox.Application.Delivery;
-using Pole.Features.Outbox.Application.Mongo;
 using Pole.Features.Outbox.Application.Writes;
 using Pole.Features.Outbox.Contracts;
 
@@ -10,8 +9,7 @@ namespace Pole.Features.Outbox.Application;
 
 public static class OutboxPersistenceRegistration
 {
-    public static IServiceCollection AddOutboxPersistence(
-        this IServiceCollection services)
+    public static IServiceCollection AddOutboxPersistence(this IServiceCollection services)
     {
         services.TryAddSingleton(serviceProvider => serviceProvider
             .GetRequiredService<IMongoDatabase>()
@@ -20,12 +18,10 @@ public static class OutboxPersistenceRegistration
         AddCapability<MongoLoadDueOutboxMessages, LoadDueOutboxMessages>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoTryPersistOutboxMessageTransition,
-            TryPersistOutboxMessageTransition>(
+        AddCapability<MongoTryPersistOutboxMessageTransition, TryPersistOutboxMessageTransition>(
             services,
             implementation => implementation.InvokeAsync);
-        AddCapability<MongoCleanupTerminalOutboxMessages,
-            CleanupTerminalOutboxMessages>(
+        AddCapability<MongoCleanupTerminalOutboxMessages, CleanupTerminalOutboxMessages>(
             services,
             implementation => implementation.InvokeAsync);
         AddCapability<MongoLoadOutboxQueueSnapshot, LoadOutboxQueueSnapshot>(
@@ -44,7 +40,6 @@ public static class OutboxPersistenceRegistration
         where TDelegate : Delegate
     {
         services.TryAddSingleton<TImplementation>();
-        services.TryAddSingleton(serviceProvider =>
-            bind(serviceProvider.GetRequiredService<TImplementation>()));
+        services.TryAddSingleton(serviceProvider => bind(serviceProvider.GetRequiredService<TImplementation>()));
     }
 }

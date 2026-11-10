@@ -1,32 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.Functions.Runtime</AssemblyName>
-    <RootNamespace>Pole.Features.Functions.Runtime</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="KubernetesClient" />
-    <PackageReference Include="MassTransit.Abstractions" />
-    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
-    <PackageReference Include="Microsoft.Orleans.Server" />
-    <PackageReference Include="Pole.Functions.Protocol" />
-  </ItemGroup>
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj" />
-    <ProjectReference Include="..\Functions.Application\Functions.Application.csproj" />
-    <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj" />
-    <ProjectReference Include="..\Functions.Events\Functions.Events.csproj" />
-    <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj" />
-    <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj" />
-    <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj" />
-    <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj" />
-    <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj" />
-    <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj" />
-    <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Functions.Runtime</AssemblyName>
+        <RootNamespace>Pole.Features.Functions.Runtime</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="KubernetesClient"/>
+        <PackageReference Include="MassTransit.Abstractions"/>
+        <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens"/>
+        <PackageReference Include="Microsoft.Orleans.Server"/>
+        <PackageReference Include="Pole.Functions.Protocol"/>
+    </ItemGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\Secrets\Secrets.Contracts\Secrets.Contracts.csproj"/>
+        <ProjectReference Include="..\Functions.Application\Functions.Application.csproj"/>
+        <ProjectReference Include="..\Functions.Domain\Functions.Domain.csproj"/>
+        <ProjectReference Include="..\Functions.Events\Functions.Events.csproj"/>
+        <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Contracts\ResourceDeployments.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceGroups\ResourceGroups.Contracts\ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="..\..\ResourceDeployments\ResourceDeployments.Events\ResourceDeployments.Events.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Kubernetes\Kubernetes.csproj"/>
+        <ProjectReference Include="..\..\..\shared\Observability\Observability.csproj"/>
+        <ProjectReference Include="..\..\..\shared\ResultType\ResultType.csproj"/>
+    </ItemGroup>
 </Project>

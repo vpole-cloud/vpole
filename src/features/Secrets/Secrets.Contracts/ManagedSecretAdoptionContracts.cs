@@ -4,14 +4,16 @@ namespace Pole.Features.Secrets.Contracts;
 
 public sealed record ManagedSecretIdentityExpectation(
     string Key,
-    string ExpectedValue);
+    string ExpectedValue
+);
 
 public sealed record ReadManagedSecretAdoptionRequest(
     string TenantId,
     ManagedSecretOwner Owner,
     string ResourceGroupId,
     string IsolationScopeId,
-    ManagedSecretIdentityExpectation Identity);
+    ManagedSecretIdentityExpectation Identity
+);
 
 // Identity is compared inside Secrets. No stored credential value crosses this boundary.
 public sealed record ManagedSecretAdoptionSnapshot(
@@ -19,7 +21,8 @@ public sealed record ManagedSecretAdoptionSnapshot(
     string SecretId,
     long Revision,
     long ReferenceFence,
-    long ValueVersion);
+    long ValueVersion
+);
 
 public sealed record ManagedSecretIdentityMismatch;
 
@@ -31,9 +34,7 @@ public union ReadManagedSecretAdoptionOutcome(
 
 public sealed record ManagedSecretAdoptionFenced;
 
-public union FenceManagedSecretAdoptionOutcome(
-    ManagedSecretAdoptionFenced,
-    ManagedSecretChanged);
+public union FenceManagedSecretAdoptionOutcome(ManagedSecretAdoptionFenced, ManagedSecretChanged);
 
 public delegate Task<ReadManagedSecretAdoptionOutcome> ReadManagedSecretAdoption(
     ReadManagedSecretAdoptionRequest request,

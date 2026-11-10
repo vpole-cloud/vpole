@@ -21,7 +21,8 @@ public sealed class ResourceDeploymentsObservationDocumentTests
         Assert.Equal(document, restored.ToBsonDocument(type));
         Assert.DoesNotContain("_t", document.Names);
         Assert.Equal(kind == "demand" ? BsonType.String : BsonType.ObjectId, document["_id"].BsonType);
-        Assert.All(document.Elements.Where(element => element.Name.EndsWith("AtUtc", StringComparison.Ordinal)),
+        Assert.All(
+            document.Elements.Where(element => element.Name.EndsWith("AtUtc", StringComparison.Ordinal)),
             element => Assert.True(element.Value.IsBsonNull || element.Value.BsonType == BsonType.DateTime));
     }
 
@@ -33,14 +34,43 @@ public sealed class ResourceDeploymentsObservationDocumentTests
         var pin = new ObservationContextPin("pole/web-service", id, id, id, id, 1, 2, 3, id, 4, 5, "namespace");
         return kind switch
         {
-            "control" => new ObservationControlDocument(id, tenant, pin, 6, 7, 8, 9,
-                "replica", "lease-token", utc.AddMinutes(1), true, "binding", null, utc),
-            "demand" => new ObservationDemandDocument($"{tenant}/{id}/interest", tenant, id,
-                "interest", "connection", "session", utc.AddMinutes(5), utc.AddMinutes(1)),
-            "snapshot" => new ObservationSnapshotDocument(id, tenant, pin, "binding", 7, 8, utc,
-                new StoredObservation("Unavailable", "Forbidden", null), null, "fingerprint", null),
-            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+            "control" => new ObservationControlDocument(
+                id,
+                tenant,
+                pin,
+                6,
+                7,
+                8,
+                9,
+                "replica",
+                "lease-token",
+                utc.AddMinutes(1),
+                true,
+                "binding",
+                null,
+                utc),
+            "demand" => new ObservationDemandDocument(
+                $"{tenant}/{id}/interest",
+                tenant,
+                id,
+                "interest",
+                "connection",
+                "session",
+                utc.AddMinutes(5),
+                utc.AddMinutes(1)),
+            "snapshot" => new ObservationSnapshotDocument(
+                id,
+                tenant,
+                pin,
+                "binding",
+                7,
+                8,
+                utc,
+                new StoredObservation("Unavailable", "Forbidden", null),
+                null,
+                "fingerprint",
+                null),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
     }
-
 }

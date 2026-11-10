@@ -10,7 +10,8 @@ namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresDeclarationTests
 {
-    private static JsonObject Spec() => JsonNode.Parse("""
+    private static JsonObject Spec() => JsonNode.Parse(
+        """
         {
           "resourceGroup":"data",
           "placement":{"deploymentTarget":"lab","computeProfile":{"name":"small","revision":2}},
@@ -23,15 +24,19 @@ public sealed class PostgresDeclarationTests
     [Fact]
     public void NormalizationMakesInitialCapacityExplicitAndRetainsOnlyBootstrapReference()
     {
-        var normalized = PostgresDeclarations.normalize(new PostgresSettings(),
+        var normalized = PostgresDeclarations.normalize(
+            new PostgresSettings(),
             JsonSerializer.SerializeToElement(Spec()));
         Assert.Equal(1, normalized.GetProperty("instances").GetInt32());
-        Assert.Equal(normalized.GetRawText(),
+        Assert.Equal(
+            normalized.GetRawText(),
             PostgresDeclarations.normalize(new PostgresSettings(), normalized).GetRawText());
         var facts = PostgresDeclarations.facts(normalized);
-        Assert.Contains(facts.References, item => item.Target == new ResourceAddress("Secret", "database-password")
-            && item.RequiredKey == "password" && item.RequiresAccess);
-        var steps = PostgresDeclarations.steps(new("PostgresCluster", "database"), normalized);
+        Assert.Contains(
+            facts.References,
+            item => item.Target == new ResourceAddress("Secret", "database-password") &&
+                item.RequiredKey == "password" && item.RequiresAccess);
+        var steps = PostgresDeclarations.steps(new ResourceAddress("PostgresCluster", "database"), normalized);
         Assert.Equal([DeclarationPhase.Prepare, DeclarationPhase.Configure], steps.Select(item => item.Phase));
     }
 
@@ -43,8 +48,9 @@ public sealed class PostgresDeclarationTests
     {
         var spec = Spec();
         spec[field] = value;
-        Assert.Throws<JsonException>(() =>
-            PostgresDeclarations.normalize(new PostgresSettings(), JsonSerializer.SerializeToElement(spec)));
+        Assert.Throws<JsonException>(() => PostgresDeclarations.normalize(
+            new PostgresSettings(),
+            JsonSerializer.SerializeToElement(spec)));
     }
 
     [Theory]

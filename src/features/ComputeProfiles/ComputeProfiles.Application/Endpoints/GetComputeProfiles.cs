@@ -4,22 +4,22 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Features.ComputeProfiles.Application.Catalog;
+using Pole.Features.ComputeProfiles.Application.Common;
 using Pole.Mediator;
 
 namespace Pole.Features.ComputeProfiles.Application.Endpoints;
 
 public sealed record GetComputeProfilesRequest(
     [FromQuery] int PageNumber = 1,
-    [FromQuery] int PageSize = 50)
-    : IMediatorRequest<GetComputeProfilesOutcome>;
+    [FromQuery] int PageSize = 50
+) : IMediatorRequest<GetComputeProfilesOutcome>;
 
 public union GetComputeProfilesOutcome(ComputeProfilePageDto);
 
 public sealed class GetComputeProfilesHandler(
-    LoadComputeProfilePage loadComputeProfilePage)
-    : IMediatorOutcomeHandler<GetComputeProfilesRequest, GetComputeProfilesOutcome>
+    LoadComputeProfilePage loadComputeProfilePage
+) : IMediatorOutcomeHandler<GetComputeProfilesRequest, GetComputeProfilesOutcome>
 {
     public async Task<GetComputeProfilesOutcome> HandleAsync(
         GetComputeProfilesRequest request,
@@ -36,8 +36,7 @@ public sealed class GetComputeProfilesHandler(
     }
 }
 
-public sealed class GetComputeProfilesRequestValidator
-    : AbstractValidator<GetComputeProfilesRequest>
+public sealed class GetComputeProfilesRequestValidator : AbstractValidator<GetComputeProfilesRequest>
 {
     public GetComputeProfilesRequestValidator()
     {
@@ -48,20 +47,20 @@ public sealed class GetComputeProfilesRequestValidator
 
 public static class GetComputeProfilesEndpoint
 {
-    public static IEndpointRouteBuilder MapGetComputeProfilesEndpoint(
-        this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapGetComputeProfilesEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/", async (
-                IMediator mediator,
-                [AsParameters] GetComputeProfilesRequest request,
-                CancellationToken cancellationToken) =>
-            {
-                var result = await mediator.Send(request, cancellationToken);
-                return result.ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] GetComputeProfilesRequest request,
+                    CancellationToken cancellationToken) =>
                 {
-                    ComputeProfilePageDto page => Results.Ok(page)
-                });
-            })
+                    var result = await mediator.Send(request, cancellationToken);
+                    return result.ToHttpResult(outcome => outcome switch
+                    {
+                        ComputeProfilePageDto page => Results.Ok(page),
+                    });
+                })
             .WithName("GetComputeProfiles")
             .Produces<ComputeProfilePageDto>();
         return app;

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,9 +7,6 @@ using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Application.Sources;
-using Pole.Features.GitOps.Contracts;
-using Pole.Features.GitOps.Domain;
-using Pole.Features.GitOps.Primitives;
 using Pole.Mediator;
 using Pole.Validation;
 
@@ -18,12 +14,10 @@ namespace Pole.Features.GitOps.Application.Endpoints.Sources;
 
 public sealed record GetRepositorySourceRequest(
     [FromRoute] string Id,
-    [FromTenantHeader] string TenantId)
-    : IMediatorRequest<GetRepositorySourceOutcome>, ITenantReadOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<GetRepositorySourceOutcome>, ITenantReadOperation;
 
-public union GetRepositorySourceOutcome(
-    RepositorySourceView,
-    GitSourceNotFound);
+public union GetRepositorySourceOutcome(RepositorySourceView, GitSourceNotFound);
 
 public sealed class GetRepositorySourceValidator : AbstractValidator<GetRepositorySourceRequest>
 {
@@ -33,8 +27,9 @@ public sealed class GetRepositorySourceValidator : AbstractValidator<GetReposito
     }
 }
 
-public sealed class GetRepositorySourceHandler(GitRepositoryQueries queries)
-    : IMediatorOutcomeHandler<GetRepositorySourceRequest, GetRepositorySourceOutcome>
+public sealed class GetRepositorySourceHandler(
+    GitRepositoryQueries queries
+) : IMediatorOutcomeHandler<GetRepositorySourceRequest, GetRepositorySourceOutcome>
 {
     public async Task<GetRepositorySourceOutcome> HandleAsync(
         GetRepositorySourceRequest request,
@@ -52,14 +47,16 @@ public static class GetRepositorySourceEndpoint
 {
     public static IEndpointRouteBuilder MapGetRepositorySourceEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/{Id}",
-            async (IMediator mediator,
-                    [AsParameters] GetRepositorySourceRequest request, CancellationToken ct) =>
-                (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        app.MapGet(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] GetRepositorySourceRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     RepositorySourceView value => Results.Ok(value),
-                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing)
-                })).WithName("GetRepositorySource");
+                    GitSourceNotFound missing => RepositoryHttpMappings.Map(missing),
+                }))
+            .WithName("GetRepositorySource");
         return app;
     }
 }

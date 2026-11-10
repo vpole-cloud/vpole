@@ -1,10 +1,8 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Database;
-using Pole.Features.ComputeProfiles.Domain;
-using Pole.Features.GitOps.Application;
 using Pole.Features.GitOps.Application.Endpoints.Sources;
 using Pole.Features.GitOps.Application.Sources;
 using Pole.Features.GitOps.Compiler;
@@ -13,38 +11,26 @@ using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Clusters;
-using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Declarations;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Lifecycle;
-using Pole.Features.Postgres.Application.Mongo;
 using Pole.Features.Postgres.Domain;
-using Pole.Features.Postgres.Migrations;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
-using Pole.Features.Secrets.Application;
-using Pole.Features.Secrets.Application.Bindings;
-using Pole.Features.Secrets.Application.Bootstrap;
-using Pole.Features.Secrets.Application.Declarations;
-using Pole.Features.Secrets.Application.Lifecycle;
-using Pole.Features.Secrets.Application.Managed;
-using Pole.Features.Secrets.Application.Mongo;
-using Pole.Features.Secrets.Application.Projections;
-using Pole.Features.Secrets.Application.References;
-using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Mediator;
-using Pole.Migrations;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
 namespace Pole.Tests.Integration.GitOps;
 
 [Collection(IntegrationTestCollection.Tenant2)]
-public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : DeclarativePipelineTestBase(fixture)
+public sealed class PostgresDriftTests(
+    MongoReplicaSetFixture fixture
+) : DeclarativePipelineTestBase(fixture)
 {
     [Fact]
     public async Task PostgresBootstrapSameCommitRepairsCapacityPolicyThenNoOpPreservesBusinessState()
@@ -56,34 +42,41 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == resource.Id).SingleAsync();
         Assert.IsNotType<PreparedResourceDeploymentState>(placement.State);
         Assert.Equal(1, placement.ResolvedPlacement.Storage!.StorageProfileRevision);
-        var scope = await DbContext.IsolationScopes.Find(item => item.TenantId == Data.TenantId && item.Name == "private-data").SingleAsync();
+        var scope = await DbContext.IsolationScopes
+            .Find(item => item.TenantId == Data.TenantId && item.Name == "private-data")
+            .SingleAsync();
         Assert.Equal(scope.Id, placement.IsolationScopeId);
-        await DbContext.ResourceDeployments.UpdateOneAsync(item => item.Id == placement.Id,
+        await DbContext.ResourceDeployments.UpdateOneAsync(
+            item => item.Id == placement.Id,
             Builders<ResourceDeployment>.Update.Set(item => item.FixedReplicas, 2).Inc(item => item.Revision, 1));
         var downloads = repository.ReadCommits.Count;
         var repairedRun = await Apply(PostgresSnapshot());
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, repairedRun.Status);
         Assert.Equal(downloads, repository.ReadCommits.Count);
         var repaired = await PostgresResources.Find(item => item.Id == resource.Id).SingleAsync();
-        Assert.Equal(1, (await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync())
-            .FixedReplicas);
-        var operations = (await Services.GetRequiredService<GitRepositoryQueries>().OperationsAsync(
-            Data.TenantId, source, repairedRun.Context!.RunId, 1, 20, default))!.Items;
+        Assert.Equal(
+            1,
+            (await DbContext.ResourceDeployments.Find(item => item.Id == placement.Id).SingleAsync()).FixedReplicas);
+        var operations = (await Services.GetRequiredService<GitRepositoryQueries>()
+            .OperationsAsync(Data.TenantId, source, repairedRun.Context!.RunId, 1, 20, default))!.Items;
         var configure = operations.Single(item => item.Kind == "PostgresCluster" &&
-            item.Phase == DeclarationPhase.Configure).Plan!;
+                item.Phase == DeclarationPhase.Configure)
+            .Plan!;
         Assert.Equal(GitPlannedAction.Update, configure.Action);
         Assert.Contains("configuration.fixedReplicas", configure.ChangedFields);
-        Assert.DoesNotContain("initial-private-value", System.Text.Json.JsonSerializer.Serialize(operations));
+        Assert.DoesNotContain("initial-private-value", JsonSerializer.Serialize(operations));
         var events = await BusinessEvents();
         var stableRun = await Apply(PostgresSnapshot());
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, stableRun.Status);
-        Assert.Equal(repaired.Revision, (await PostgresResources.Find(item => item.Id == resource.Id)
-            .SingleAsync()).Revision);
-        Assert.Equal(credential.CurrentVersion, (await Secrets.Find(item => item.Id == credential.Id)
-            .SingleAsync()).CurrentVersion);
+        Assert.Equal(
+            repaired.Revision,
+            (await PostgresResources.Find(item => item.Id == resource.Id).SingleAsync()).Revision);
+        Assert.Equal(
+            credential.CurrentVersion,
+            (await Secrets.Find(item => item.Id == credential.Id).SingleAsync()).CurrentVersion);
         Assert.Equal(events, await BusinessEvents());
-        var view = await Services.GetRequiredService<GitRepositoryQueries>().RunAsync(Data.TenantId, source,
-            stableRun.Context!.RunId, default);
+        var view = await Services.GetRequiredService<GitRepositoryQueries>()
+            .RunAsync(Data.TenantId, source, stableRun.Context!.RunId, default);
         Assert.Equal(RepositoryRunStatus.AlreadyCurrent, view!.Status);
         Assert.Equal(new RepositoryOperationSummary(0, 0, 6, 0, 0, null), view.Operations);
     }
@@ -99,8 +92,9 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var run = await Apply(PostgresSnapshot());
         Assert.Equal(RepositoryPipelineStatus.Blocked, run.Status);
         Assert.Equal(0, await Secrets.CountDocumentsAsync(item => item.Id == bootstrap.CredentialId));
-        Assert.Equal(resource.Revision, (await PostgresResources.Find(item => item.Id == resource.Id)
-            .SingleAsync()).Revision);
+        Assert.Equal(
+            resource.Revision,
+            (await PostgresResources.Find(item => item.Id == resource.Id).SingleAsync()).Revision);
         Assert.Equal(events, await BusinessEvents());
     }
 
@@ -112,19 +106,33 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var bootstrap = Assert.IsType<ConfiguredPostgresProvisioning>(resource.Provisioning).Bootstrap;
         var ownerCredential = await Secrets.Find(item => item.Id == bootstrap.CredentialId).SingleAsync();
         var sourceSecret = await Secrets.Find(item => item.Id == bootstrap.SourceSecretId).SingleAsync();
-        var prepared = Assert.IsType<PreparedManagedSecret>((await Services.GetRequiredService<PrepareManagedSecret>()(
-            new(resource.TenantId, bootstrap.CredentialId, new("pole/postgresql", resource.Id), ownerCredential.Name,
-                ownerCredential.CurrentVersion + 1,
-                new Dictionary<string, string> { ["username"] = bootstrap.Username, ["password"] = "rotated-owner" },
-                ManagedSecretKubernetesType.BasicAuthentication), default)).Value);
+        var prepared = Assert.IsType<PreparedManagedSecret>(
+            (await Services.GetRequiredService<PrepareManagedSecret>()(
+                new PrepareManagedSecretRequest(
+                    resource.TenantId,
+                    bootstrap.CredentialId,
+                    new ManagedSecretOwner("pole/postgresql", resource.Id),
+                    ownerCredential.Name,
+                    ownerCredential.CurrentVersion + 1,
+                    new Dictionary<string, string>
+                        { ["username"] = bootstrap.Username, ["password"] = "rotated-owner" },
+                    ManagedSecretKubernetesType.BasicAuthentication),
+                default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        Assert.IsType<ManagedSecretMutationSucceeded>((await Services.GetRequiredService<RotateManagedSecret>()(
-            new(prepared, ownerCredential.CurrentVersion), session, default)).Value);
+        Assert.IsType<ManagedSecretMutationSucceeded>(
+            (await Services.GetRequiredService<RotateManagedSecret>()(
+                new RotateManagedSecretRequest(prepared, ownerCredential.CurrentVersion),
+                session,
+                default)).Value);
         await session.CommitTransactionAsync();
-        Assert.IsType<Secret>((await Services.GetRequiredService<PersistRotatedSecret>()(sourceSecret.TenantId,
-            sourceSecret.Id, sourceSecret.CurrentVersion,
-            new Dictionary<string, string> { ["password"] = "later-source-value" }, default)).Value);
+        Assert.IsType<Secret>(
+            (await Services.GetRequiredService<PersistRotatedSecret>()(
+                sourceSecret.TenantId,
+                sourceSecret.Id,
+                sourceSecret.CurrentVersion,
+                new Dictionary<string, string> { ["password"] = "later-source-value" },
+                default)).Value);
         var versionDocuments = Fixture.Database.GetCollection<BsonDocument>("SecretVersions");
         var versionFilter = new BsonDocument { ["SecretId"] = bootstrap.CredentialId, ["Version"] = prepared.Version };
         var encryptedVersion = await versionDocuments.Find(versionFilter).SingleAsync();
@@ -134,8 +142,9 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var stable = await Secrets.Find(item => item.Id == bootstrap.CredentialId).SingleAsync();
         Assert.Equal(prepared.Version, stable.CurrentVersion);
         Assert.Equal(encryptedVersion, await versionDocuments.Find(versionFilter).SingleAsync());
-        Assert.Equal(resource.Revision, (await PostgresResources.Find(item => item.Id == resource.Id)
-            .SingleAsync()).Revision);
+        Assert.Equal(
+            resource.Revision,
+            (await PostgresResources.Find(item => item.Id == resource.Id).SingleAsync()).Revision);
         Assert.Equal(events, await BusinessEvents());
     }
 
@@ -146,20 +155,26 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var resource = await InitializePostgres();
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
-        var update = await Services.GetRequiredService<PersistUpdatedPostgresCluster>().Invoke(
-            new(resource, resource.UpdateDesiredState(1, 4), null), session, default);
-        Assert.Equal(PostgresMutationConflictReason.GitOwnedConfiguration,
+        var update = await Services.GetRequiredService<PersistUpdatedPostgresCluster>()
+            .Invoke(
+                new PersistUpdatedPostgresClusterRequest(resource, resource.UpdateDesiredState(1, 4), null),
+                session,
+                default);
+        Assert.Equal(
+            PostgresMutationConflictReason.GitOwnedConfiguration,
             Assert.IsType<PostgresOutcome<Unit, PostgresClusterUpdateConflict>.PostgresError>(update).Item.Reason);
-        var delete = await Services.GetRequiredService<BeginPostgresClusterDeletion>().Invoke(
-            new(resource, resource.BeginDeletion(DateTime.UtcNow), null, null), session, default);
-        Assert.Equal(PostgresMutationConflictReason.GitOwnedConfiguration,
+        var delete = await Services.GetRequiredService<BeginPostgresClusterDeletion>()
+            .Invoke(
+                new BeginPostgresClusterDeletionRequest(resource, resource.BeginDeletion(DateTime.UtcNow), null, null),
+                session,
+                default);
+        Assert.Equal(
+            PostgresMutationConflictReason.GitOwnedConfiguration,
             Assert.IsType<PostgresOutcome<Unit, PostgresClusterDeletionConflict>.PostgresError>(delete).Item.Reason);
         await session.AbortTransactionAsync();
         var handler = ActivatorUtilities.CreateInstance<GetPostgresClusterHandler>(Services);
-        var endpoint = (IMediatorOutcomeHandler<
-            GetPostgresClusterByIdRequest, GetPostgresClusterByIdOutcome>)handler;
-        var detail = await endpoint.HandleAsync(
-            new GetPostgresClusterByIdRequest(resource.Id, resource.TenantId), default);
+        var endpoint = (IMediatorOutcomeHandler<GetPostgresClusterByIdRequest, GetPostgresClusterByIdOutcome>)handler;
+        var detail = await endpoint.HandleAsync(new GetPostgresClusterByIdRequest(resource.Id, resource.TenantId));
         Assert.NotNull(Assert.IsType<GetPostgresClusterByIdOutcome.PostgresClusterFound>(detail).Item.GitOps);
     }
 
@@ -171,7 +186,10 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         await PostgresResources.DeleteOneAsync(item => item.Id == original.Id);
         var result = await Apply(PostgresSnapshot());
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await PostgresResources.CountDocumentsAsync(
+                Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -180,23 +198,30 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         await SeedPostgresPlanningCatalog();
         var original = await InitializePostgres();
         var intercepted = false;
-        var mutations = new BeforeNoOp(Services.GetRequiredService<IGitOpsMutations>(), async (operation, ct) =>
-        {
-            if (intercepted || operation.Declaration.Address.Kind != "PostgresCluster" ||
-                operation.Phase != DeclarationPhase.Configure)
-                return;
+        var mutations = new BeforeNoOp(
+            Services.GetRequiredService<IGitOpsMutations>(),
+            async (operation, ct) =>
+            {
+                if (intercepted || operation.Declaration.Address.Kind != "PostgresCluster" ||
+                    operation.Phase != DeclarationPhase.Configure)
+                    return;
 
-            intercepted = true;
-            await DbContext.ResourceDeployments.UpdateOneAsync(item => item.ResourceId == original.Id,
-                Builders<ResourceDeployment>.Update.Set(item => item.FixedReplicas, 2).Inc(item => item.Revision, 1),
-                cancellationToken: ct);
-        });
+                intercepted = true;
+                await DbContext.ResourceDeployments.UpdateOneAsync(
+                    item => item.ResourceId == original.Id,
+                    Builders<ResourceDeployment>.Update
+                        .Set(item => item.FixedReplicas, 2)
+                        .Inc(item => item.Revision, 1),
+                    cancellationToken: ct);
+            });
         var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customMutations: mutations)
-            .SubmitAsync(new(Data.TenantId, source), PostgresSnapshot());
+            .SubmitAsync(new GitSourceIdentity(Data.TenantId, source), PostgresSnapshot());
         Assert.True(intercepted);
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, result.Status);
-        Assert.Equal(1, (await DbContext.ResourceDeployments.Find(item => item.ResourceId == original.Id)
-            .SingleAsync()).FixedReplicas);
+        Assert.Equal(
+            1,
+            (await DbContext.ResourceDeployments.Find(item => item.ResourceId == original.Id).SingleAsync())
+            .FixedReplicas);
     }
 
     [Fact]
@@ -205,7 +230,9 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         await SeedPostgresPlanningCatalog();
         var original = Services.GetRequiredService<CreateResourceDeployment>();
         var called = false;
-        CreateResourceDeployment rejectAfterCreate = async (request, session, ct) =>
+        CreateResourceDeployment rejectAfterCreate = async (
+            request, session,
+            ct) =>
         {
             var result = await original(request, session, ct);
             Assert.IsType<PlacementSummaryDto>(result.Value);
@@ -217,18 +244,27 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var execution = ActivatorUtilities.CreateInstance<PostgresDeclarationExecution>(Services, rejectAfterCreate);
         var failing = ActivatorUtilities.CreateInstance<DeclarativePostgresProvider>(Services, execution);
         var providers = Services.GetServices<IDeclarativeResourceProvider>();
-        var registry = new DeclarativeProviderRegistry(providers.Select(item =>
-            item.Kind == "PostgresCluster" ? failing : item));
+        var registry
+            = new DeclarativeProviderRegistry(
+                providers.Select(item => item.Kind == "PostgresCluster" ? failing : item));
         var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
-            .SubmitAsync(new(Data.TenantId, source), PostgresSnapshot());
+            .SubmitAsync(new GitSourceIdentity(Data.TenantId, source), PostgresSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
-        Assert.Equal(0, await DbContext.ResourceDeployments.CountDocumentsAsync(item =>
-            item.TenantId == Data.TenantId && item.ResourceType == "pole/postgresql"));
-        Assert.Equal(0, await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
-            item.TenantId == Data.TenantId && item.DisplayName == "database"));
-        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "PostgresCluster").SingleAsync();
+        Assert.Equal(
+            0,
+            await PostgresResources.CountDocumentsAsync(
+                Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await DbContext.ResourceDeployments.CountDocumentsAsync(item =>
+                item.TenantId == Data.TenantId && item.ResourceType == "pole/postgresql"));
+        Assert.Equal(
+            0,
+            await DbContext.ResourceRegistrations.CountDocumentsAsync(item =>
+                item.TenantId == Data.TenantId && item.DisplayName == "database"));
+        var owned = await Inventory.Find(item => item.TenantId == Data.TenantId && item.Kind == "PostgresCluster")
+            .SingleAsync();
         Assert.Equal(GitResourceMaterialization.Allocated, owned.Materialization);
         Assert.Null(owned.Projections.Applied);
     }
@@ -238,7 +274,9 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
     {
         await SeedPostgresPlanningCatalog(PostgresDeploymentMode.Operator);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(PostgresSnapshot())).Status);
-        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
+        var prepared = await PostgresResources
+            .Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId))
+            .SingleAsync();
         await Supply("initial-private-value");
         var configuredRun = await Apply(PostgresSnapshot(size: 6, instances: 2));
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, configuredRun.Status);
@@ -264,20 +302,30 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
         var current = await InitializePostgres();
         var result = await Apply(PostgresSnapshot(size: size, instances: instances));
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(current.Revision, (await PostgresResources.Find(item => item.Id == current.Id)
-            .SingleAsync()).Revision);
+        Assert.Equal(
+            current.Revision,
+            (await PostgresResources.Find(item => item.Id == current.Id).SingleAsync()).Revision);
     }
 
     [Fact]
     public async Task PostgresRequiresBootstrapGrantBeforeAnyMutation()
     {
         await SeedPostgresPlanningCatalog();
-        var files = PostgresSnapshot().Select(item => item with
-        { Content = item.Content.Replace("usage: Bootstrap", "usage: Runtime", StringComparison.Ordinal) }).ToArray();
+        var files = PostgresSnapshot()
+            .Select(item => item with
+            {
+                Content = item.Content.Replace("usage: Bootstrap", "usage: Runtime", StringComparison.Ordinal),
+            })
+            .ToArray();
         var result = await Apply(files);
         Assert.Equal(RepositoryPipelineStatus.InvalidSnapshot, result.Status);
-        Assert.Equal(0, await PostgresResources.CountDocumentsAsync(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
-        Assert.Equal(0, await Secrets.CountDocumentsAsync(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await PostgresResources.CountDocumentsAsync(
+                Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)));
+        Assert.Equal(
+            0,
+            await Secrets.CountDocumentsAsync(Builders<Secret>.Filter.Eq(item => item.TenantId, Data.TenantId)));
     }
 
     [Fact]
@@ -285,45 +333,57 @@ public sealed class PostgresDriftTests(MongoReplicaSetFixture fixture) : Declara
     {
         await SeedPostgresPlanningCatalog();
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(PostgresSnapshot())).Status);
-        var prepared = await PostgresResources.Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId)).SingleAsync();
+        var prepared = await PostgresResources
+            .Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId))
+            .SingleAsync();
         var bootstrap = Assert.IsType<PreparedPostgresProvisioning>(prepared.Provisioning).Bootstrap;
         await Supply("initial-private-value");
         var original = Services.GetRequiredService<RequestResourceDeploymentSetApply>();
         var called = false;
-        RequestResourceDeploymentSetApply rejectAfterActivation = async (request, session, ct) =>
+        RequestResourceDeploymentSetApply rejectAfterActivation = async (
+            request, session,
+            ct) =>
         {
             var result = await original(request, session, ct);
             Assert.IsType<MutatedResourceDeployments>(result.Value);
-            Assert.Equal(1, await Secrets.CountDocumentsAsync(session, item => item.Id == bootstrap.CredentialId,
-                cancellationToken: ct));
+            Assert.Equal(
+                1,
+                await Secrets.CountDocumentsAsync(
+                    session,
+                    item => item.Id == bootstrap.CredentialId,
+                    cancellationToken: ct));
             called = true;
             return new ResourceDeploymentMutationError(new ResourceDeploymentPlacementUnavailable(request.ResourceId));
         };
         var execution = ActivatorUtilities.CreateInstance<PostgresDeclarationExecution>(
-            Services, rejectAfterActivation);
+            Services,
+            rejectAfterActivation);
         var failing = ActivatorUtilities.CreateInstance<DeclarativePostgresProvider>(Services, execution);
         var providers = Services.GetServices<IDeclarativeResourceProvider>();
-        var registry = new DeclarativeProviderRegistry(providers.Select(item =>
-            item.Kind == "PostgresCluster" ? failing : item));
+        var registry
+            = new DeclarativeProviderRegistry(
+                providers.Select(item => item.Kind == "PostgresCluster" ? failing : item));
         var events = await BusinessEvents();
         var result = await new RepositoryPipelineDriver(Services, Fixture, Data, repository, customProviders: registry)
-            .SubmitAsync(new(Data.TenantId, source), PostgresSnapshot());
+            .SubmitAsync(new GitSourceIdentity(Data.TenantId, source), PostgresSnapshot());
         Assert.True(called);
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
         Assert.Equal(0, await Secrets.CountDocumentsAsync(item => item.Id == bootstrap.CredentialId));
-        Assert.Equal(prepared.Revision, (await PostgresResources.Find(item => item.Id == prepared.Id)
-            .SingleAsync()).Revision);
-        Assert.IsType<PreparedResourceDeploymentState>((await DbContext.ResourceDeployments
-            .Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
+        Assert.Equal(
+            prepared.Revision,
+            (await PostgresResources.Find(item => item.Id == prepared.Id).SingleAsync()).Revision);
+        Assert.IsType<PreparedResourceDeploymentState>(
+            (await DbContext.ResourceDeployments.Find(item => item.ResourceId == prepared.Id).SingleAsync()).State);
         Assert.Equal(events, await BusinessEvents());
         Assert.Equal(RepositoryPipelineStatus.ConfigurationApplied, (await Apply(PostgresSnapshot())).Status);
         Assert.Equal(1, await Secrets.CountDocumentsAsync(item => item.Id == bootstrap.CredentialId));
     }
 }
 
-
 [Collection(IntegrationTestCollection.Global)]
-public sealed class PostgresDriftGlobalTests(MongoReplicaSetFixture fixture) : IsolatedDeclarativePipelineTestBase(fixture)
+public sealed class PostgresDriftGlobalTests(
+    MongoReplicaSetFixture fixture
+) : IsolatedDeclarativePipelineTestBase(fixture)
 {
     [Theory]
     [InlineData("version")]
@@ -334,19 +394,25 @@ public sealed class PostgresDriftGlobalTests(MongoReplicaSetFixture fixture) : I
     {
         await SeedPostgresPlanningCatalog();
         var original = await InitializePostgres();
-        var storage = await DbContext.StorageProfiles.Find(item => item.Id == NamedCatalogTestData.PostgresStorageProfileId)
+        var storage = await DbContext.StorageProfiles
+            .Find(item => item.Id == NamedCatalogTestData.PostgresStorageProfileId)
             .SingleAsync();
         var updated = storage with { Revision = 2 };
         await DbContext.StorageProfiles.ReplaceOneAsync(item => item.Id == storage.Id, updated);
-        await Fixture.Database.GetCollection<StorageProfileRevision>("StorageProfileRevisions")
+        await Fixture.Database
+            .GetCollection<StorageProfileRevision>("StorageProfileRevisions")
             .InsertOneAsync(StorageProfileRevisionFactory.Create(updated));
         var events = await BusinessEvents();
-        var result = await Apply(PostgresSnapshot(version: field == "version" ? 17 : 16,
-            username: field == "username" ? "replacement" : "application",
-            scope: field == "scope" ? null : "private-data", storageRevision: field == "storageRevision" ? 2 : 1));
+        var result = await Apply(
+            PostgresSnapshot(
+                version: field == "version" ? 17 : 16,
+                username: field == "username" ? "replacement" : "application",
+                scope: field == "scope" ? null : "private-data",
+                storageRevision: field == "storageRevision" ? 2 : 1));
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(original.Revision, (await PostgresResources.Find(item => item.Id == original.Id)
-            .SingleAsync()).Revision);
+        Assert.Equal(
+            original.Revision,
+            (await PostgresResources.Find(item => item.Id == original.Id).SingleAsync()).Revision);
         Assert.Equal(events, await BusinessEvents());
     }
 }

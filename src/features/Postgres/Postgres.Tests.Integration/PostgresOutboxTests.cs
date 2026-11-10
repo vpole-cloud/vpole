@@ -1,13 +1,17 @@
-using Pole.Features.Postgres.Tests.Integration.Infrastructure;
-using Xunit;
 using System.Text.Json;
+using Pole.Features.Postgres.Tests.Integration.Infrastructure;
 using Pole.Observability;
+using Xunit;
+
 namespace Pole.Features.Postgres.Tests.Integration;
 
-public sealed class PostgresOutboxTests(MongoReplicaSetFixture fixture) : MediatorIntegrationTestBase(fixture)
+public sealed class PostgresOutboxTests(
+    MongoReplicaSetFixture fixture
+) : MediatorIntegrationTestBase(fixture)
 {
     private const string TraceId = "0123456789abcdef0123456789abcdef";
     private const string CorrelationId = "postgres-test";
+
     [Fact]
     public async Task StoreEvent_PersistsTraceContext_ForFSharpPostgresEvents()
     {
