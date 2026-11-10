@@ -24,6 +24,7 @@ fixture.database.migrations.Full fixture.database.migrations.Identity
 fixture.database.migrations.DeploymentTargets fixture.database.migrations.StorageCatalog
 fixture.database.migrations.StorageObservation fixture.database.migrations.ComputeCatalog fixture.database.migrations.Catalogs
 fixture.e2e.buildkit.forward.start fixture.e2e.buildkit.ready
+fixture.e2e.browser.transport.start fixture.e2e.cleanup.browser.container
 fixture.e2e.cleanup.api-client.dispose fixture.e2e.cleanup.application
 fixture.e2e.cleanup.application.dispose fixture.e2e.cleanup.application.stop
 fixture.e2e.cleanup.buildkit.forward.dispose fixture.e2e.cleanup.external
@@ -38,6 +39,7 @@ fixture.e2e.credentials.prepare fixture.e2e.default-tenant.ready fixture.e2e.dis
 fixture.e2e.frontend.ready fixture.e2e.github-stub.ready fixture.e2e.graph.build
 fixture.e2e.graph.construct fixture.e2e.graph.start fixture.e2e.graph.startup.wait
 fixture.e2e.harbor.forward.start fixture.e2e.harbor.ready fixture.e2e.initialize
+fixture.e2e.image.native-deletion
 fixture.e2e.keycloak.bootstrap-user.create fixture.e2e.keycloak.discovery.ready
 fixture.e2e.keycloak.realm.configure fixture.e2e.keycloak.ui-client.configure
 fixture.e2e.lab-service-access fixture.e2e.platform-user.create fixture.e2e.server.ready
@@ -45,13 +47,29 @@ fixture.e2e.users.prepare
 cleanup.action cleanup.compute.delete cleanup.group.concurrent cleanup.group.delete-and-wait
 cleanup.group.sequence cleanup.namespace.wait-deleted cleanup.redis.healthy cleanup.redis.relay
 cleanup.storage.disable cleanup.target.delete cleanup.total cleanup.transport.restore
-e2e.browser.container.dispose e2e.browser.context.dispose e2e.browser.dispose e2e.browser.setup
+e2e.browser.acquire e2e.browser.container.dispose e2e.browser.context.dispose e2e.browser.dispose e2e.browser.setup
+e2e.cleanup.DeleteAdminResourceAsync e2e.cleanup.DeleteAsync e2e.cleanup.DeleteComputeProfileAsync
+e2e.cleanup.DeleteDatabaseAsync e2e.cleanup.DeleteGroupAsync e2e.cleanup.DeleteIfPresentAsync
+e2e.cleanup.DeleteRedisAsync e2e.cleanup.DeleteResourceAsync e2e.cleanup.DeleteResourceGroupAsync
+e2e.cleanup.DeleteServiceAsync e2e.cleanup.DeleteTenantResourceAsync e2e.cleanup.DeleteWebServiceAsync
+e2e.cleanup.DeleteWithConflictRetryAsync
 e2e.case e2e.gitops.build.ready e2e.gitops.image.prepare e2e.gitops.lifecycle.cleanup
 e2e.gitops.lifecycle.replace e2e.gitops.lifecycle.wait e2e.gitops.namespace.ready
 e2e.gitops.native.cleanup e2e.gitops.postgres.ready e2e.gitops.wait e2e.gitops.web-service.ready
+e2e.image.delete-final e2e.image.delete-original e2e.image.desktop e2e.image.mobile
+e2e.image.quota-and-recreation e2e.image.recreate
 e2e.log-containers.ready e2e.namespace.ready e2e.observation.replacement.ready
 e2e.observation.sample e2e.postgres.ready e2e.realtime.window.covered
 e2e.realtime.window.disconnected e2e.redis.ready e2e.scenario e2e.setup
+e2e.public-bindings.domain e2e.public-bindings.secret e2e.tenant-access.membership e2e.tenant-access.tabs
+e2e.readiness.WaitForAppliedAsync e2e.readiness.WaitForBrowserSearchProjectionAsync
+e2e.readiness.WaitForBuildAsync e2e.readiness.WaitForCompletedBuildLogAsync
+e2e.readiness.WaitForInstancesAsync e2e.readiness.WaitForNotFoundAsync
+e2e.readiness.WaitForPlacementFailureAsync e2e.readiness.WaitForPlacementsAsync
+e2e.readiness.WaitForProjectionAsync e2e.readiness.WaitForQuietReleaseRecoveryAsync
+e2e.readiness.WaitForReadyAsync e2e.readiness.WaitForRedisLifecycleRunAsync
+e2e.readiness.WaitForReleaseAsync e2e.readiness.WaitForReleaseOutcomeAsync
+e2e.readiness.WaitForRuntimeCellsAsync e2e.readiness.public-service
 e2e.source-build.infrastructure.ready e2e.web-service.ready e2e.workloads.ready
 kubernetes.namespace.create kubernetes.namespace.delete-request kubernetes.namespace.dispose
 kubernetes.namespace.wait-deleted kubernetes.peer.dispose kubernetes.pod.create-and-ready
