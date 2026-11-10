@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -146,6 +147,39 @@ class TimingSummaryTests(unittest.TestCase):
         self.assertEqual(0, report["backend"]["unmatched_phase_records"])
         self.assertEqual(1, report["diagnostics"]["invalid_timing_records"])
         self.assertEqual(10000, report["backend"]["case_records"][0]["phase_interval_union_ms"])
+        self.assertNotIn("canary", json.dumps(report) + timings.markdown(report))
+
+    def test_emitted_e2e_phase_names_are_accepted_by_the_reporter(self):
+        directory = timings.ROOT / "tests/Pole.Tests.E2E"
+        sources = [*directory.glob("*E2ETests.cs"), *directory.glob("*Journey.cs"),
+                   *(directory / "Infrastructure").glob("PoleE2EFixture*.cs")]
+        emitted = {phase for source in sources for phase in re.findall(
+            r'"((?:e2e\.|fixture\.e2e\.)[^"\n]+)"', source.read_text())}
+        self.assertGreater(len(emitted), 50)
+        self.assertEqual([], sorted(phase for phase in emitted if timings.safe_phase(phase) != phase))
+
+    def test_new_journey_and_browser_phases_survive_without_allowing_resource_labels(self):
+        owner = "Pole.Tests.E2E.Example"
+        self.trx([(owner, "Scenario", 0, 10, 1)])
+        phases = ["e2e.browser.acquire", "e2e.public-bindings.secret", "e2e.public-bindings.domain",
+                  "e2e.tenant-access.tabs", "e2e.tenant-access.membership", "e2e.image.quota-and-recreation",
+                  "e2e.image.recreate", "e2e.readiness.WaitForReadyAsync", "e2e.cleanup.DeleteGroupAsync"]
+        for phase in phases:
+            self.phase(owner, 1, 2, phase=phase)
+        fixture_phases = ["fixture.e2e.browser.transport.start", "fixture.e2e.cleanup.browser.container",
+                          "fixture.e2e.image.native-deletion"]
+        for phase in fixture_phases:
+            self.phase("Pole.Tests.E2E.Infrastructure.PoleE2EFixture", 0, 1, phase=phase, kind="fixture")
+        for phase in ["e2e.cleanup.private-resource-canary", "e2e.readiness.PrivateTokenCanary",
+                      "e2e.public-bindings.secret-canary", "fixture.e2e.browser.private-canary"]:
+            self.phase(owner, 1, 2, phase=phase)
+
+        report = self.summary()
+
+        self.assertEqual(len(phases), report["backend"]["matched_phase_records"])
+        self.assertEqual(set(phases), {row["phase"] for row in report["backend"]["phases"]})
+        self.assertEqual(set(fixture_phases), {row["phase"] for row in report["fixtures"]["phases"]})
+        self.assertEqual(4, report["diagnostics"]["invalid_timing_records"])
         self.assertNotIn("canary", json.dumps(report) + timings.markdown(report))
 
     def test_missing_profiles_remain_visible_and_bad_records_are_counted_without_payload(self):
