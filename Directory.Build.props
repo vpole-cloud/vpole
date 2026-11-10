@@ -1,9 +1,11 @@
 <Project>
-    <PropertyGroup>
-        <PoleArchitectureRole Condition="'$(PoleArchitectureRole)' == '' And
+    <PropertyGroup Condition="'$(PoleArchitectureRole)' == '' And
         ('$(MSBuildProjectName)' == 'Migrations' Or
-         $([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Migrations')))">Migration
-        </PoleArchitectureRole>
+         $([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Migrations')))">
+        <PoleArchitectureRole>Migration</PoleArchitectureRole>
+    </PropertyGroup>
+
+    <PropertyGroup>
         <PoleArchitectureRole Condition="'$(PoleArchitectureRole)' == ''">Production</PoleArchitectureRole>
     </PropertyGroup>
 
