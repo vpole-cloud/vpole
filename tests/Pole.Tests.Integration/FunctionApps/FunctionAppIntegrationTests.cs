@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -175,6 +176,49 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
             promote(Data.TenantId, created.FunctionAppId, created.RevisionId),
             promote(Data.TenantId, created.FunctionAppId, created.RevisionId));
         Assert.All(promotions, result => result.RequireLifecycleSuccess());
+        Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.functions/v1/function-revision-promoted"));
+    }
+
+    [Fact]
+    public async Task Promotion_is_idempotent_when_another_promotion_commits_between_lifecycle_reads()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
+        var created = await CreateAsync(group.Id);
+        (await Services.GetRequiredService<MarkFunctionRevisionReady>()(
+            Data.TenantId, created.FunctionAppId, created.RevisionId)).RequireLifecycleSuccess();
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var appRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var apps = DispatchProxy.Create<IMongoCollection<FunctionApp>, PausedFunctionAppRead>();
+        var paused = (PausedFunctionAppRead)(object)apps;
+        paused.Inner = DbContext.FunctionApps;
+        paused.AfterRead = async () =>
+        {
+            appRead.SetResult();
+            await resume.Task.WaitAsync(timeout.Token);
+        };
+        await using var provider = TestServiceProviderFactory.Create(Fixture,
+            services => services.AddSingleton(apps), testScope: TestScope);
+        using var scope = provider.CreateScope();
+        var delayedPromote = scope.ServiceProvider.GetRequiredService<PromoteFunctionRevision>();
+        var delayed = delayedPromote(Data.TenantId, created.FunctionAppId, created.RevisionId, timeout.Token);
+
+        FunctionRevisionLifecycleOutcome first;
+        try
+        {
+            await appRead.Task.WaitAsync(timeout.Token);
+            first = await Services.GetRequiredService<PromoteFunctionRevision>()(
+                Data.TenantId, created.FunctionAppId, created.RevisionId, timeout.Token);
+        }
+        finally
+        {
+            resume.TrySetResult();
+        }
+
+        var second = await delayed;
+        first.RequireLifecycleSuccess();
+        second.RequireLifecycleSuccess();
         Assert.Equal(1L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.functions/v1/function-revision-promoted"));
     }
 
@@ -654,6 +698,37 @@ public sealed class FunctionAppIntegrationTests(MongoReplicaSetFixture fixture)
         return ready is not FunctionRevisionLifecycleCompleted
             ? ready
             : await promote(tenantId, functionAppId, revisionId);
+    }
+
+    public class PausedFunctionAppRead : DispatchProxy
+    {
+        public IMongoCollection<FunctionApp> Inner { get; set; } = null!;
+        public Func<Task> AfterRead { get; set; } = null!;
+        private int _reads;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            var result = targetMethod!.Invoke(Inner, args);
+            return targetMethod.Name == nameof(IMongoCollection<FunctionApp>.FindAsync) &&
+                   result is Task<IAsyncCursor<FunctionApp>> read && Interlocked.Increment(ref _reads) == 1
+                ? PauseAsync(read)
+                : result;
+        }
+
+        private async Task<IAsyncCursor<FunctionApp>> PauseAsync(Task<IAsyncCursor<FunctionApp>> read)
+        {
+            var cursor = await read;
+            try
+            {
+                await AfterRead();
+                return cursor;
+            }
+            catch
+            {
+                cursor.Dispose();
+                throw;
+            }
+        }
     }
 
     private async Task<CreateFunctionAppResponse> CreateAsync(string resourceGroupId)
