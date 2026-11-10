@@ -40,7 +40,7 @@ public sealed class RuntimeCellLifecycleEventTests
             },
             {
                 typeof(RuntimeCellDeletionRequestedEvent),
-                new RuntimeCellDeletionRequestedEvent(RuntimeCellId, Generation) { EventCore = Core },
+                new RuntimeCellDeletionRequestedEvent(RuntimeCellId, Generation, null, 0) { EventCore = Core },
                 "pole.resource-groups/v1/runtime-cell-deletion-requested"
             },
             {

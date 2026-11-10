@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text.Json;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
@@ -7,44 +6,18 @@ using MassTransit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Application.Consumers;
 using Pole.Features.ResourceGroups.Application.Jobs;
-using Pole.Features.ResourceGroups.Domain;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Platform.Hosting;
 using Xunit;
-using EventJson = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Tests.Integration.ResourceGroups;
 
 public sealed class RuntimeCellDeletionDispatchTests
 {
-    [Fact]
-    public void LegacyDeletingDocumentAndEvent_DefaultToInitialCheck()
-    {
-        var now = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
-        var cell = RuntimeCellFactory.Create(ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(),
-            ObjectId.GenerateNewId().ToString(), ObjectId.GenerateNewId().ToString(), "legacy-cell",
-            new RuntimeCellFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), now)).RequestDeletion(now);
-        var document = cell.ToBsonDocument();
-        document["State"].AsBsonDocument.Remove("NextCheckAtUtc");
-        document["State"].AsBsonDocument.Remove("CheckSequence");
-
-        var legacy = BsonSerializer.Deserialize<RuntimeCell>(document);
-        var state = Assert.IsType<DeletingRuntimeCellState>(legacy.State);
-        Assert.Equal(0, state.CheckSequence);
-        Assert.Null(state.NextCheckAtUtc);
-        var request = JsonSerializer.Deserialize<RuntimeCellDeletionRequestedEvent>(
-            """{"runtimeCellId":"legacy-cell","generation":2,"eventCore":{"tenantId":"tenant"}}""", EventJson.SerializerOptions)!;
-        Assert.Equal("tenant", request.EventCore.TenantId);
-        Assert.Equal(0, request.CheckSequence);
-        Assert.Null(request.NotBeforeUtc);
-    }
-
     [Fact]
     public async Task ScheduledMessage_RetainsDueSequenceAndTenant_AndSchedulingFailurePropagates()
     {

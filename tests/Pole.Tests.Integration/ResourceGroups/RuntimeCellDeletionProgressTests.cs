@@ -213,24 +213,6 @@ public sealed class RuntimeCellDeletionProgressTests(MongoReplicaSetFixture fixt
         Assert.Equal(0L, await DbContext.CountOutboxMessagesAsync(Data.TenantId, "pole.resource-groups/v1/runtime-cell-deleted"));
     }
 
-    [Fact]
-    public async Task LegacyDeletingDocument_CanAdvanceThroughTheMissingSequenceFence()
-    {
-        var deleting = (await InsertCellAsync()).RequestDeletion(InitialTime.AddMinutes(1));
-        var legacy = deleting.ToBsonDocument();
-        legacy["State"].AsBsonDocument.Remove("NextCheckAtUtc");
-        legacy["State"].AsBsonDocument.Remove("CheckSequence");
-        await DbContext.Database.GetCollection<BsonDocument>("RuntimeCells").ReplaceOneAsync(
-            document => document["_id"] == ObjectId.Parse(deleting.Id), legacy);
-        var loaded = await DbContext.RuntimeCells.Find(cell => cell.Id == deleting.Id).SingleAsync();
-
-        await CreateLifecyclePersistence(InitialTime.AddMinutes(2)).PersistDeletionAsync(loaded,
-            loaded.DesiredGeneration, new RuntimeCellNamespaceDeletionPending(loaded.KubernetesNamespace));
-
-        var saved = await DbContext.RuntimeCells.Find(cell => cell.Id == deleting.Id).SingleAsync();
-        Assert.Equal(1, Assert.IsType<DeletingRuntimeCellState>(saved.State).CheckSequence);
-    }
-
     private async Task<RuntimeCell> InsertPendingAsync()
     {
         var cell = (await InsertCellAsync()).RequestDeletion(InitialTime.AddMinutes(1));
