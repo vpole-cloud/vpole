@@ -32,8 +32,8 @@ public sealed record RuntimeCellReconciliationFailedEvent(
 public sealed record RuntimeCellDeletionRequestedEvent(
     string RuntimeCellId,
     long Generation,
-    DateTime? NotBeforeUtc = null,
-    long CheckSequence = 0) : IPoleEvent
+    DateTime? NotBeforeUtc,
+    long CheckSequence) : IPoleEvent
 {
     public EventCore EventCore { get; init; } = EventCore.Create();
 }

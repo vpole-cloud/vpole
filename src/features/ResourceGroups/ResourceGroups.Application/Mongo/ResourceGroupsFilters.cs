@@ -276,14 +276,9 @@ internal static class RuntimeCellFilters
     public static FilterDefinition<RuntimeCell> AtDeletionCheck(RuntimeCell runtimeCell)
     {
         var deleting = (DeletingRuntimeCellState)runtimeCell.State;
-        var sequence = Builders<RuntimeCell>.Filter.Eq(
-            cell => ((DeletingRuntimeCellState)cell.State).CheckSequence, deleting.CheckSequence);
-        if (deleting.CheckSequence == 0)
-            sequence = Builders<RuntimeCell>.Filter.Or(sequence,
-                Builders<RuntimeCell>.Filter.Exists(cell => ((DeletingRuntimeCellState)cell.State).CheckSequence, false));
         return Builders<RuntimeCell>.Filter.And(
             AtDesiredGenerationAndState<DeletingRuntimeCellState>(runtimeCell, runtimeCell.DesiredGeneration),
-            sequence,
+            Builders<RuntimeCell>.Filter.Eq(cell => ((DeletingRuntimeCellState)cell.State).CheckSequence, deleting.CheckSequence),
             Builders<RuntimeCell>.Filter.Eq(cell => ((DeletingRuntimeCellState)cell.State).NextCheckAtUtc, deleting.NextCheckAtUtc));
     }
 

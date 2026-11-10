@@ -68,36 +68,18 @@ public sealed class GeneratedDomainZoneIdentityTests(MongoReplicaSetFixture fixt
         Assert.Equal(2, await DbContext.OutboxMessages.CountDocumentsAsync(message => message.EventType == "pole.domains/v1/domain-metadata-changed"));
     }
 
-    [Fact]
-    public async Task ExistingLegacyZoneKeepsItsIdentityAndDoesNotEmitAnotherChange()
-    {
-        var legacy = await SeedLegacyAsync();
-        var reused = Success(await GetOrCreateAsync(FirstTenant, "Acme Corporation"));
-
-        Assert.Equal(legacy.Id, reused.Id);
-        Assert.Equal(legacy.Label, reused.Label);
-        Assert.Equal(legacy.Domain, reused.Domain);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
-    }
-
     [Theory]
     [InlineData("Acme Corporation", "different.example.test")]
     [InlineData("Renamed tenant", "example.test")]
-    public async Task LegacyCompatibilityDoesNotAcceptAnotherBaseDomainOrTenantName(string name, string baseDomain)
+    public async Task ExistingZoneRejectsAnotherBaseDomainOrTenantName(string name, string baseDomain)
     {
-        await SeedLegacyAsync();
+        var existing = Success(await GetOrCreateAsync(FirstTenant, "Acme Corporation"));
         var error = Assert.IsType<GeneratedDomainZoneError>((await GetOrCreateAsync(FirstTenant, name, baseDomain)).Value);
         Assert.IsType<GeneratedDomainZoneMismatch>(error.Value);
-        Assert.Equal(0, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
-    }
-
-    private async Task<TenantDomainZone> SeedLegacyAsync()
-    {
-        var zone = TenantDomainZoneFactory.CreateGenerated(FirstTenant, Target,
-            "pole-generated-acme-corporation-" + FirstTenant[..8], DnsName.Create("example.test"),
-            new("6a0000000000000000000004", DateTime.UtcNow));
-        await Database.GetCollection<TenantDomainZone>("TenantDomainZones").InsertOneAsync(zone);
-        return zone;
+        var persisted = await Database.GetCollection<TenantDomainZone>("TenantDomainZones")
+            .Find(zone => zone.Id == existing.Id).SingleAsync();
+        Assert.Equal(existing.Domain, persisted.Domain);
+        Assert.Equal(1, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
     }
 
     private Task<GetOrCreateGeneratedDomainZonesOutcome> GetOrCreateAsync(string tenantId, string name, string baseDomain = "example.test")

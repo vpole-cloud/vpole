@@ -51,9 +51,8 @@ concurrent or stale results from advancing the same check twice.
 
 Only confirmed native absence permits the transaction that marks the cell deleted and releases
 its deployment-target reference. ResourceGroup finalization follows that commit. The minutely
-recovery scanner restores lost dispatches and still accepts legacy deleting documents and events
-without scheduling fields. Actual infrastructure and ownership failures keep their existing
-failure/retry path; ordinary deletion progress does not enter that backoff.
+recovery scanner restores lost dispatches. Actual infrastructure and ownership failures keep their
+existing failure/retry path; ordinary deletion progress does not enter that backoff.
 
 ## RuntimeCell ingress baseline
 

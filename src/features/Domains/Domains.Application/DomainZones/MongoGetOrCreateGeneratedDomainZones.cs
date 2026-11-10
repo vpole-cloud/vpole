@@ -65,8 +65,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
             if (existingByTarget.TryGetValue(
                     CanonicalObjectId(candidate.DeploymentTargetId),
                     out var persisted) &&
-                !string.Equals(candidate.Domain, persisted.Domain, StringComparison.Ordinal) &&
-                !MatchesLegacyGeneratedZone(persisted, requestsByTarget[CanonicalObjectId(candidate.DeploymentTargetId)], tenant.DisplayName))
+                !string.Equals(candidate.Domain, persisted.Domain, StringComparison.Ordinal))
             {
                 return new GeneratedDomainZoneError(
                     new GeneratedDomainZoneMismatch(candidate.DeploymentTargetId));
@@ -167,14 +166,7 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
         new GeneratedDomainZoneConflict(
             zones.Select(zone => zone.DeploymentTargetId).ToArray());
 
-    private static bool MatchesLegacyGeneratedZone(
-        TenantDomainZone zone,
-        GetOrCreateGeneratedZoneRequest request,
-        string displayName) =>
-        zone.Label == GeneratedZoneLabel(displayName, request.TenantId, tenantIdLength: 8) &&
-        zone.Domain == DnsName.Combine(DnsLabel.Create(zone.Label), DnsName.Create(request.PublicBaseDomain)).Value;
-
-    private static string GeneratedZoneLabel(string displayName, string tenantId, int tenantIdLength = 24)
+    private static string GeneratedZoneLabel(string displayName, string tenantId)
     {
         if (!ObjectId.TryParse(tenantId, out var parsedTenantId))
             throw new ArgumentException("A MongoDB ObjectId is required.", nameof(tenantId));
@@ -186,13 +178,13 @@ internal sealed class MongoGetOrCreateGeneratedDomainZones(
                 .ToArray())
             .Trim('-');
         slug = string.IsNullOrEmpty(slug) ? "tenant" : slug;
-        var tenantIdFragment = parsedTenantId.ToString()[..tenantIdLength];
-        var tenantIdFragmentWithSeparatorLength = tenantIdFragment.Length + 1;
+        var canonicalTenantId = parsedTenantId.ToString();
+        var tenantIdWithSeparatorLength = canonicalTenantId.Length + 1;
         var maximumSlugLength = DnsLabel.MaximumLength -
                                 TenantDomainZoneLabelPolicy.GeneratedPrefix.Length -
-                                tenantIdFragmentWithSeparatorLength;
+                                tenantIdWithSeparatorLength;
         return
-            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}{slug[..Math.Min(slug.Length, maximumSlugLength)].TrimEnd('-')}-{tenantIdFragment}";
+            $"{TenantDomainZoneLabelPolicy.GeneratedPrefix}{slug[..Math.Min(slug.Length, maximumSlugLength)].TrimEnd('-')}-{canonicalTenantId}";
     }
 
     private static void EnsureRequestSet(IReadOnlyList<GetOrCreateGeneratedZoneRequest> requests)

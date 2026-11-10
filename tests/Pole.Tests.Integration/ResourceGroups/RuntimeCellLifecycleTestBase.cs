@@ -92,7 +92,7 @@ public abstract class RuntimeCellLifecycleTestBase(
         };
 
     private protected static RuntimeCellDeletionRequestedEvent DeletionEvent(RuntimeCell cell) =>
-        new(cell.Id, cell.DesiredGeneration)
+        new(cell.Id, cell.DesiredGeneration, null, 0)
         {
             EventCore = EventCore.Create(cell.TenantId)
         };
