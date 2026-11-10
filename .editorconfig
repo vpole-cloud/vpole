@@ -178,8 +178,8 @@ indent_size = 4
 resharper_csharp_arguments_literal = named
 # Leave single-argument calls and indexers unchanged.
 resharper_csharp_arguments_skip_single = true
-# Preserve deliberate declaration breaks: delegates share method parameter formatting (POLE007).
-resharper_csharp_keep_existing_linebreaks = true
+# Reflow existing breaks so short methods, delegates and unions become compact.
+resharper_csharp_keep_existing_linebreaks = false
 resharper_csharp_keep_existing_expr_member_arrangement = false
 max_line_length = 120
 csharp_new_line_before_open_brace = all
@@ -191,7 +191,7 @@ resharper_csharp_keep_existing_embedded_arrangement = false
 resharper_csharp_keep_existing_embedded_block_arrangement = false
 resharper_csharp_place_simple_embedded_statement_on_same_line = false
 resharper_csharp_place_simple_embedded_block_on_same_line = false
-# Chop long argument lists; existing manual line breaks are preserved.
+# Wrap long calls before their lambda argument, keeping the parameter and => together.
 resharper_csharp_wrap_arguments_style = chop_if_long
 # Put each call in a long chain on its own line, starting before the first dot.
 resharper_csharp_wrap_chained_method_calls = chop_if_long

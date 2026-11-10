@@ -256,9 +256,9 @@ Feature handlers should describe feature intent while shared infrastructure owns
 
 [Agent delivery](agent-delivery.md) defines canonical compiled examples, the early slice
 review, semantic architecture diagnostics, formatting and the mandatory full local
-test gate. New positional record/union/delegate declarations with multiple parameters
-put each parameter on its own line. Shared DTOs are allowed; a shared mutation outcome
-that adds impossible results to unrelated handlers is not.
+test gate. New positional records and record structs with multiple parameters put each
+parameter on its own line. Unions and delegates follow ordinary method formatting. Shared DTOs
+are allowed; a shared mutation outcome that adds impossible results to unrelated handlers is not.
 
 ## Record data construction
 

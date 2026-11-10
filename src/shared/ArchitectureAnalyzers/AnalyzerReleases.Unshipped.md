@@ -10,7 +10,7 @@
 | POLE004 | Architecture | Error    | Factory-owned domain entities do not expose mutable collection properties.                  |
 | POLE005 | Architecture | Error    | Domain State, Status and Lifecycle properties use dedicated types.                          |
 | POLE006 | Architecture | Error    | Each endpoint file contains only one mediator request-handler pair.                         |
-| POLE007 | Architecture | Error    | Multi-parameter records, unions and delegates use one parameter per line.                   |
+| POLE007 | Architecture | Error    | Multi-parameter records and record structs use one parameter per line.                     |
 | POLE008 | Architecture | Error    | Declare Mongo filters in named helpers                                                      |
 | POLE009 | Architecture | Error    | Stored record data uses one constructor/property style; exact legacy members are ratcheted. |
 
