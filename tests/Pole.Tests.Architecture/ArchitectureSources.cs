@@ -91,7 +91,9 @@ internal static class ArchitectureSources
 
         foreach (var child in Directory.EnumerateDirectories(directory))
         {
-            if (Path.GetFileName(child) is "bin" or "obj" or ".artifacts" or ".tmp" or ".git" or "node_modules")
+            // Local agent metadata is not repository source and can disappear while tools detach.
+            if (Path.GetFileName(child) is "bin" or "obj" or ".artifacts" or ".tmp" or ".git" or
+                ".agents" or "node_modules")
                 continue;
 
             foreach (var path in SourceFiles(child, searchPattern))
