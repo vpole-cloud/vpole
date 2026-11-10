@@ -13,8 +13,16 @@ public sealed class ArchitectureSourceDiscoveryTests
         var directory = Path.Combine(Path.GetTempPath(), "pole-architecture-sources-" + Guid.NewGuid().ToString("N"));
         try
         {
-            string[] included = ["src/Domain", "src/.artifacts-example/Sample", "src/artifacts/Sample"];
-            string[] excluded = [".artifacts/runtime/context/Program", "src/bin/Debug/Generated", "src/obj/Generated"];
+            string[] included =
+            [
+                "src/Domain", "src/.artifacts-example/Sample", "src/artifacts/Sample",
+                "src/.agents-example/Sample", "src/agents/Sample"
+            ];
+            string[] excluded =
+            [
+                ".artifacts/runtime/context/Program", ".agents/local/Program",
+                "src/bin/Debug/Generated", "src/obj/Generated"
+            ];
             foreach (var relative in included.Concat(excluded))
             {
                 var path = Path.Combine(directory, relative + extension);
