@@ -49,11 +49,18 @@ internal sealed class MongoPromoteFunctionRevision(
             default:
                 throw new InvalidOperationException("Unsupported Function revision lifecycle state.");
         }
-        if (state.App.ActiveRevisionId == revisionId &&
-            state.App.PendingRevisionId is null &&
-            state.Revision.Status is ActiveFunctionRevisionStatus)
+        if (state.Revision.Status is ActiveFunctionRevisionStatus)
         {
-            return new FunctionRevisionLifecycleCompleted();
+            var app = state.App;
+            if (app.ActiveRevisionId != revisionId || app.PendingRevisionId is not null)
+            {
+                // A concurrent promotion can commit between the app and revision reads.
+                app = await functionApps.Find(
+                        FunctionRevisionLifecycleFilters.AppByOwner(tenantId, functionAppId))
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+            if (app is not null && app.ActiveRevisionId == revisionId && app.PendingRevisionId is null)
+                return new FunctionRevisionLifecycleCompleted();
         }
         if (state.App.PendingRevisionId != revisionId)
             return new FunctionRevisionNotPending(functionAppId, revisionId);
