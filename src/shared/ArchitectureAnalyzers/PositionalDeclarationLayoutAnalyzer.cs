@@ -13,8 +13,8 @@ public sealed class PositionalDeclarationLayoutAnalyzer : DiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
-        "Expand positional declarations",
-        "Put each parameter of multi-parameter record, union or delegate '{0}' on its own line",
+        "Expand positional records",
+        "Put each parameter of multi-parameter record '{0}' on its own line",
         "Architecture",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -34,11 +34,7 @@ public sealed class PositionalDeclarationLayoutAnalyzer : DiagnosticAnalyzer
                      .DescendantNodes().OfType<ParameterListSyntax>())
         {
             var declaration = parameters.Parent!;
-            // The analyzer remains netstandard2-compatible. Preview union syntax is supplied by
-            // the host compiler; UnionKeyword is intentionally recognized without its newer enum.
-            var isUnion = declaration.ChildTokens().Any(token =>
-                token.ValueText == "union" && !token.IsKind(SyntaxKind.IdentifierToken));
-            if (declaration is not RecordDeclarationSyntax and not DelegateDeclarationSyntax && !isUnion)
+            if (declaration is not RecordDeclarationSyntax)
                 continue;
             if (parameters.Parameters.Count < 2)
                 continue;

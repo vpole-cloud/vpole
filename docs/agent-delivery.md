@@ -63,8 +63,9 @@ The repository compiler diagnostics complement review:
 - `POLE004`: those entities do not expose mutable collection APIs.
 - `POLE005`: Domain `State`, `Status` and `Lifecycle` properties use dedicated types.
 - `POLE006`: one concrete endpoint-handler contract per endpoint file.
-- `POLE007`: each parameter of multi-parameter positional records, record structs,
-  unions and delegates starts on its own line; architecture tests cover all sources.
+- `POLE007`: each parameter of multi-parameter positional records and record structs
+  starts on its own line; architecture tests cover all sources. Unions and delegates follow
+  ordinary method formatting.
 - `POLE008` rejects inline Mongo filter lambdas in Application runtime operations; use named
   `*Filters` helpers. It resolves driver filter arguments semantically, so ordinary collection
   predicates remain allowed.

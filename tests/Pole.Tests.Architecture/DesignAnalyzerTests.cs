@@ -229,11 +229,9 @@ public sealed class DesignAnalyzerTests
     [Theory]
     [InlineData("public record Pair(int First, int Second);")]
     [InlineData("public record struct Pair(int First, int Second);")]
-    [InlineData("public delegate void Pair(int first, int second);")]
-    [InlineData("public record A; public record B; public union Pair(A, B);")]
     [InlineData("public record Pair(\n    int First, int Second);")]
     [InlineData("public record Pair(int First,\n    int Second);")]
-    public async Task Layout_RejectsCompressedPositionalDeclarations(string source)
+    public async Task Layout_RejectsCompressedPositionalRecords(string source)
     {
         var diagnostics = await Analyze(new PositionalDeclarationLayoutAnalyzer(), (source, "Pair.cs"));
         Assert.Equal(PositionalDeclarationLayoutAnalyzer.DiagnosticId, Assert.Single(diagnostics).Id);
@@ -241,6 +239,11 @@ public sealed class DesignAnalyzerTests
 
     [Theory]
     [InlineData("public record Pair(\n    int First,\n    int Second);")]
+    [InlineData("public record struct Pair(\n    int First,\n    int Second);")]
+    [InlineData("public record A; public record B; public union Pair(A, B);")]
+    [InlineData("public record A; public record B; public record C; public union Triple(A, B, C);")]
+    [InlineData("public delegate void Pair(int first, int second);")]
+    [InlineData("public delegate void Triple(int first, int second, int third);")]
     [InlineData("public delegate void Pair(\n    int first,\n    int second);")]
     [InlineData("public record A; public record B; public union Pair(\n    A,\n    B);")]
     [InlineData("public record Single(int Value);")]
@@ -249,13 +252,13 @@ public sealed class DesignAnalyzerTests
     [InlineData("public class C { public void M(int first, int second) {} }")]
     [InlineData("public class @union(int first, int second);")]
     [InlineData("public record Pair(\n    [property: System.Obsolete] int First,\n    int Second);")]
-    public async Task Layout_AllowsExpandedDeclarationsSingleParametersAndOrdinaryMethods(string source)
+    public async Task Layout_AllowsExpandedRecordsSingleParametersAndOtherDeclarations(string source)
     {
         Assert.Empty(await Analyze(new PositionalDeclarationLayoutAnalyzer(), (source, "Pair.cs")));
     }
 
     [Fact]
-    public async Task RepositoryPositionalDeclarations_UseExpandedLayout()
+    public async Task RepositoryPositionalRecords_UseExpandedLayout()
     {
         // Also check the analyzer and architecture-test projects, which are exempt
         // from the global build-analyzer wiring.
