@@ -91,22 +91,23 @@ def prepare_test_coverage(root, directory):
     return output / "coverage.runsettings", evidence
 
 
-def check(directory):
+def check(directory, format_only=False):
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
     fingerprint = source_fingerprint()
     root = directory / "repository"
-    report = {"status": "running", "fingerprint": fingerprint, "tests": {}}
+    report = {"status": "running", "fingerprint": fingerprint, "mode": "format-only" if format_only else "complete", "tests": {}}
     try:
         snapshot_sources(root)
         projects = wire_snapshot(root)
         environment = validation_environment()
         report["worktree_id"] = environment["POLE_TEST_WORKTREE_ID"]
         report["run_id"] = environment["POLE_TEST_RUN_ID"]
-        # Semantic architecture checks inspect every project, including F# references and
-        # evaluated test roles. A selected-project build cannot provide that evidence.
-        execute("restore", ["dotnet", "restore", "Pole.slnx", *MSBUILD], root, directory)
-        execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *MSBUILD], root, directory)
+        if not format_only:
+            # Semantic architecture checks inspect every project, including F# references and
+            # evaluated test roles. A selected-project build cannot provide that evidence.
+            execute("restore", ["dotnet", "restore", "Pole.slnx", *MSBUILD], root, directory)
+            execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *MSBUILD], root, directory)
         feature = root / "src/features" / FEATURE
         sources = sorted(path for path in feature.rglob("*.cs")
                          if not {"bin", "obj"} & set(path.relative_to(feature).parts))
@@ -115,18 +116,19 @@ def check(directory):
                 if len(line) > 120:
                     raise GateError(f"Generated C# exceeds 120 characters: {source.relative_to(root)}:{number}")
         check_format(root, directory, sources)
-        coverage_settings, report["coverage_settings"] = prepare_test_coverage(root, directory)
-        report["coverage_modules"] = {}
-        for index, project in enumerate(projects):
-            results = directory / f"tests-{index}"
-            execute(f"tests-{index}", ["dotnet", "test", str(project), "--no-build", "--no-restore",
-                    "--nologo", "-maxcpucount:1", "-nodeReuse:false", "--collect:Code Coverage;Format=Cobertura",
-                    "--settings", str(coverage_settings),
-                    "--logger", "trx;LogFileName=results.trx", "--results-directory", str(results)],
-                    root, directory, environment)
-            report["tests"][project.stem] = read_trx(results / "results.trx")
-            report["coverage_modules"][project.stem] = read_coverage_reports(
-                results, report["coverage_settings"]["assemblies"])
+        if not format_only:
+            coverage_settings, report["coverage_settings"] = prepare_test_coverage(root, directory)
+            report["coverage_modules"] = {}
+            for index, project in enumerate(projects):
+                results = directory / f"tests-{index}"
+                execute(f"tests-{index}", ["dotnet", "test", str(project), "--no-build", "--no-restore",
+                        "--nologo", "-maxcpucount:1", "-nodeReuse:false", "--collect:Code Coverage;Format=Cobertura",
+                        "--settings", str(coverage_settings),
+                        "--logger", "trx;LogFileName=results.trx", "--results-directory", str(results)],
+                        root, directory, environment)
+                report["tests"][project.stem] = read_trx(results / "results.trx")
+                report["coverage_modules"][project.stem] = read_coverage_reports(
+                    results, report["coverage_settings"]["assemblies"])
         if fingerprint != source_fingerprint():
             raise GateError("Template or repository inputs changed during validation.")
         report["status"] = "passed"
@@ -135,16 +137,18 @@ def check(directory):
         raise
     finally:
         (directory / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-    print("Generated feature build, formatting, architecture, unit and Mongo/API tests passed with zero skips.")
+    print("Generated feature formatting passed; behavioral suites not required." if format_only else
+          "Generated feature build, formatting, architecture, unit and Mongo/API tests passed with zero skips.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-directory", type=Path,
                         default=ROOT / ".artifacts/feature-template" / str(time.time_ns()))
+    parser.add_argument("--format-only", action="store_true")
     args = parser.parse_args()
     try:
-        check(args.results_directory)
+        check(args.results_directory, args.format_only)
     except (GateError, OSError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 

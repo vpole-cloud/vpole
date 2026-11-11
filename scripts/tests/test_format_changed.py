@@ -26,6 +26,13 @@ class FormatChangedTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.root, text=True)
 
+    def test_template_readmes_use_the_markdown_parser_without_treating_code_templates_as_docs(self):
+        executable = self.root / "src/api/frontend/node_modules/.bin/prettier"
+        executable.parent.mkdir(parents=True)
+        executable.touch()
+        result = formatter.commands(self.root, ["templates/feature/README.md.tpl", "Resource.cs.tpl"], False)
+        self.assertEqual([[str(executable), "--parser", "markdown", "--check", "templates/feature/README.md.tpl"]], result)
+
     def test_write_refuses_partial_staging_without_invoking_formatter(self):
         path = self.root / "file with spaces.cs"
         path.write_text("record B;\n")

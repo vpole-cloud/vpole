@@ -80,3 +80,25 @@ class FeatureTemplateValidationTests(unittest.TestCase):
                 validator.check(self.root / "results")
         self.assertEqual(["dotnet", "restore", "Pole.slnx"], execute.call_args_list[0].args[1][:3])
         self.assertEqual(["dotnet", "build", "Pole.slnx"], execute.call_args_list[1].args[1][:3])
+
+    def test_format_only_checks_generated_sources_without_build_coverage_or_test_claims(self):
+        output = self.root / "format-results"
+        def wire(root):
+            feature = root / "src/features" / validator.FEATURE
+            feature.mkdir(parents=True)
+            (feature / "Example.cs").write_text("class Example { }\n")
+            return []
+        with patch.object(validator, "source_fingerprint", return_value="current"), \
+                patch.object(validator, "snapshot_sources"), patch.object(validator, "wire_snapshot", side_effect=wire), \
+                patch.object(validator, "validation_environment", return_value={
+                    "POLE_TEST_WORKTREE_ID": "worktree", "POLE_TEST_RUN_ID": "run"}), \
+                patch.object(validator, "execute") as execute, patch.object(validator, "check_format") as formatter, \
+                patch.object(validator, "prepare_test_coverage") as coverage:
+            validator.check(output, format_only=True)
+        execute.assert_not_called()
+        formatter.assert_called_once()
+        coverage.assert_not_called()
+        result = json.loads((output / "result.json").read_text())
+        self.assertEqual("format-only", result["mode"])
+        self.assertEqual("passed", result["status"])
+        self.assertEqual({}, result["tests"])

@@ -32,15 +32,19 @@ def ensure_not_partially_staged(root, paths):
 def commands(root, paths, write):
     csharp = [path for path in paths if Path(path).suffix == ".cs"]
     prettier = [path for path in paths if Path(path).suffix in PRETTIER_SUFFIXES]
+    template_docs = [path for path in paths if path.endswith(".md.tpl")]
     result = []
     if csharp:
         result.append([sys.executable, str(root / "scripts/cleanupcode.py"),
                        "--write" if write else "--check", "--", *csharp])
-    if prettier:
+    if prettier or template_docs:
         executable = root / "src/api/frontend/node_modules/.bin/prettier"
         if not executable.is_file():
             raise ValueError("Install the repository's frontend dependencies before formatting; no packages are downloaded automatically.")
-        result.append([str(executable), "--write" if write else "--check", *prettier])
+        if prettier:
+            result.append([str(executable), "--write" if write else "--check", *prettier])
+        if template_docs:
+            result.append([str(executable), "--parser", "markdown", "--write" if write else "--check", *template_docs])
     return result
 
 
