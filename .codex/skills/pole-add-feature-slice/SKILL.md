@@ -30,7 +30,8 @@ Rules stay in the canonical docs; the starter is an executable example, not anot
 
 When changing the starter or generator, run `python3 scripts/check_feature_template.py`: it tests
 the materialized projects with production analyzers, the existing architecture suite and real
-Mongo/API tests. Generator unit tests alone are not evidence that the example works. Use the
+Mongo/API tests. For proven template formatting use `--format-only`; README-only changes use structural checks.
+Generator unit tests alone are not evidence that semantic template changes work. Use the
 [review checklist](../../../docs/review-checklist.md) before handoff.
 
 1. Model valid states and transitions in Domain, using factories or methods that preserve invariants.
@@ -44,8 +45,8 @@ Load the focused Pole skill when the slice touches tenant scoping, outbox delive
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md`. Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final source tree. For broad changes, also run `--profile full`, including Kubernetes and E2E. Every selected test must pass with zero skips; missing prerequisites and pre-existing failures block publication. A passing PR profile proves only its selected groups. Use `record-review`, `verify` and the publication wrapper with current evidence as described in AGENTS.md.
+Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
 
-If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.
+If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.
 
 Before implementation, name the exact canonical compiled/tested files for the affected patterns. The primary agent reviews one representative slice against those references before the pattern is repeated; this is an internal checkpoint, not another user approval. Add a focused automated safeguard for recurring mistakes where the invariant is mechanically checkable. Existing explicit user approval satisfies the corresponding approval gate.
