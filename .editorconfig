@@ -212,7 +212,7 @@ csharp_space_after_comma = true
 csharp_space_around_binary_operators = before_and_after
 dotnet_sort_system_directives_first = true
 
-[*.{json,yml,yaml,js,jsx,ts,tsx}]
+[*.{json,yml,yaml,js,jsx,ts,tsx,css,html}]
 indent_style = space
 indent_size = 2
 
