@@ -4,6 +4,7 @@ using MongoDB.Bson.Serialization;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.FeatureName.Domain;
 using Pole.Features.FeatureName.Events;
+using Pole.Multitenancy.Primitives;
 using Xunit;
 
 namespace Pole.Features.FeatureName.Tests;
@@ -17,6 +18,7 @@ public sealed class ResourceNameTests
     public void Factory_sets_explicit_initial_values_and_BSON_preserves_identity()
     {
         var resource = Create();
+        Assert.Equal(TenantId, Assert.IsAssignableFrom<ITenantOwned>(resource).TenantId);
         Assert.Equal(1, resource.Revision);
         Assert.Equal(new ResourceNameAudit(CreatedAt, CreatedAt), resource.Audit);
         Assert.Equal("Alpha", resource.Details.Name);
@@ -30,8 +32,7 @@ public sealed class ResourceNameTests
     public void Update_changes_one_revision_and_preserves_creation_time()
     {
         var resource = Create();
-        var updated = resource.UpdateDetails(
-            ResourceNameDetails.Create("Beta", "Changed"), CreatedAt.AddMinutes(1));
+        var updated = resource.UpdateDetails(ResourceNameDetails.Create("Beta", "Changed"), CreatedAt.AddMinutes(1));
         Assert.Equal(2, updated.Revision);
         Assert.Equal(CreatedAt, updated.Audit.CreatedAtUtc);
         Assert.Equal(CreatedAt.AddMinutes(1), updated.Audit.UpdatedAtUtc);
@@ -42,7 +43,8 @@ public sealed class ResourceNameTests
     public void Normalized_no_op_returns_the_original_instance()
     {
         var resource = Create();
-        Assert.Same(resource,
+        Assert.Same(
+            resource,
             resource.UpdateDetails(ResourceNameDetails.Create(" Alpha ", " Initial "), CreatedAt.AddHours(1)));
     }
 
@@ -57,7 +59,9 @@ public sealed class ResourceNameTests
     {
         Assert.Throws<ArgumentException>(() => ResourceNameDetails.Create(new string('x', 81), ""));
         Assert.Throws<ArgumentException>(() => ResourceNameDetails.Create("Alpha", new string('x', 501)));
-        Assert.Throws<ArgumentException>(() => ResourceNameFactory.Create("invalid", Create().Details,
+        Assert.Throws<ArgumentException>(() => ResourceNameFactory.Create(
+            "invalid",
+            Create().Details,
             new(ObjectId.GenerateNewId().ToString(), CreatedAt)));
     }
 
@@ -66,27 +70,38 @@ public sealed class ResourceNameTests
     {
         var resource = Create();
         Assert.Throws<ArgumentException>(() => resource.UpdateDetails(new("", ""), CreatedAt.AddMinutes(1)));
-        Assert.Throws<ArgumentException>(() => ResourceNameFactory.Create(TenantId, new("", ""),
+        Assert.Throws<ArgumentException>(() => ResourceNameFactory.Create(
+            TenantId,
+            new("", ""),
             new(ObjectId.GenerateNewId().ToString(), CreatedAt)));
-        Assert.Throws<ArgumentException>(() => ResourceNameFactory.Create(TenantId, resource.Details,
+        Assert.Throws<ArgumentException>(() => ResourceNameFactory.Create(
+            TenantId,
+            resource.Details,
             new(ObjectId.GenerateNewId().ToString(), DateTime.SpecifyKind(CreatedAt, DateTimeKind.Unspecified))));
-        Assert.Throws<ArgumentException>(() =>
-            resource.UpdateDetails(new("Beta", "Changed"), CreatedAt.AddMinutes(-1)));
+        Assert.Throws<ArgumentException>(() => resource.UpdateDetails(
+            new("Beta", "Changed"),
+            CreatedAt.AddMinutes(-1)));
     }
 
     [Fact]
     public void Event_round_trip_retains_tenant_metadata_without_exporting_domain_details()
     {
         var resource = Create();
-        var changed = new ResourceNameCreatedEvent(resource.Id, resource.Details.Name, resource.Revision,
+        var changed = new ResourceNameCreatedEvent(
+            resource.Id,
+            resource.Details.Name,
+            resource.Revision,
             EventCore.Create(resource.TenantId));
         var json = JsonSerializer.Serialize(changed, EventExtensions.SerializerOptions);
-        Assert.Equal(changed,
+        Assert.Equal(
+            changed,
             JsonSerializer.Deserialize<ResourceNameCreatedEvent>(json, EventExtensions.SerializerOptions));
         Assert.DoesNotContain("description", json, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(TenantId, changed.EventCore.TenantId);
     }
 
-    private static ResourceName Create() => ResourceNameFactory.Create(TenantId,
-        ResourceNameDetails.Create(" Alpha ", " Initial "), new(ObjectId.GenerateNewId().ToString(), CreatedAt));
+    private static ResourceName Create() => ResourceNameFactory.Create(
+        TenantId,
+        ResourceNameDetails.Create(" Alpha ", " Initial "),
+        new(ObjectId.GenerateNewId().ToString(), CreatedAt));
 }
