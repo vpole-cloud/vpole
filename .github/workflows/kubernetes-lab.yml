@@ -15,7 +15,47 @@ permissions:
   contents: read
 
 jobs:
+  selection:
+    name: Scope and structural checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      behavioral: ${{ steps.scope.outputs.behavioral }}
+      automation: ${{ steps.scope.outputs.automation }}
+      template: ${{ steps.scope.outputs.template }}
+      template_format: ${{ steps.scope.outputs.template_format }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            11.0.100-rc.3.26522.148
+            10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Select checks from the complete change
+        id: scope
+        env:
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/master' }}
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          force=()
+          if [[ "$FORCE_FULL" == true ]]; then force=(--force-full); fi
+          python3 scripts/quality_gate.py plan --base "$REVIEW_BASE" "${force[@]}" --output .artifacts/scope.json --github-output "$GITHUB_OUTPUT"
+          python3 scripts/quality_gate.py checks --base "$REVIEW_BASE" "${force[@]}"
+      - name: Upload selection evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-scope
+          path: .artifacts/scope.json
+          retention-days: 14
+
   feature-template:
+    needs: selection
+    if: needs.selection.outputs.template == 'true' || needs.selection.outputs.template_format == 'true'
     name: Generated feature example
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -29,8 +69,16 @@ jobs:
           dotnet-version: |
             11.0.100-rc.3.26522.148
             10.0.x
-      - name: Build and test the generated feature with real architecture and Mongo
-        run: python3 scripts/check_feature_template.py --results-directory .artifacts/feature-template/ci
+      - name: Test generator and checker automation
+        if: needs.selection.outputs.automation == 'true'
+        run: python3 scripts/run_script_tests.py
+      - name: Verify the generated feature for the selected mode
+        env:
+          FORMAT_ONLY: ${{ needs.selection.outputs.template_format }}
+        run: |
+          flags=()
+          if [[ "$FORMAT_ONLY" == true ]]; then flags=(--format-only); fi
+          python3 scripts/check_feature_template.py --results-directory .artifacts/feature-template/ci "${flags[@]}"
       - name: Upload bounded template validation result
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,6 +88,8 @@ jobs:
           retention-days: 14
 
   backend:
+    needs: selection
+    if: needs.selection.outputs.behavioral == 'true'
     name: Backend
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 240 || 120 }}
@@ -119,7 +169,7 @@ jobs:
           ./infrastructure/kubernetes-lab/lab.sh verify
           python3 scripts/quality_gate.py headroom --results-directory .artifacts/coverage/backend/raw --phase after-lab
 
-      - name: Run all backend tests with coverage
+      - name: Run selected backend suites with coverage
         run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw --profile "${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}"
 
       - name: Reject failed, skipped, or missing backend suites
@@ -201,6 +251,8 @@ jobs:
           done < <(jq --raw-output '.targets[] | [.key, .kubeconfigPath, .context] | @tsv' "${state}")
 
   frontend:
+    needs: selection
+    if: needs.selection.outputs.behavioral == 'true'
     name: Frontend
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -269,3 +321,15 @@ jobs:
           path: .artifacts/frontend-ci-safe
           if-no-files-found: error
           retention-days: 14
+
+  verification:
+    name: Required verification
+    if: always()
+    needs: [selection, feature-template, backend, frontend]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject missing, failed or cancelled selected jobs
+        env:
+          GATE_CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/quality_gate.py check-ci
