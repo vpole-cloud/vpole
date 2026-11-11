@@ -494,7 +494,6 @@ service.
 This contract test builds a hermetic `FROM scratch` image, pushes it to a unique private Harbor
 project, verifies the digest returned by BuildKit, and removes the project afterward.
 
-
 ## Gate profiles and concurrency
 
 Infrastructure-free tests of CI configuration, lab state parsing and cleanup helpers live in

@@ -88,10 +88,11 @@ because a policy mentions the rule, or rerun a test manually merely to tick a se
 - **Boundaries and contracts:** architecture suites cover project roles, dependencies, endpoint
   layout and the contract parameter limit. They do not prove a provider decomposition or an
   operation's set of possible results is well designed; R3/R4 still apply.
-- **Mongo:** `POLE001` and `POLE008` cover adapter access and named filters. On a tree where
-  `POLE013` only rejects literal filter-field arguments, that is its coverage; computed paths,
-  updates, sorts, indexes and the raw BSON policy still need manual review unless additional
-  semantic checks are actually present. Passing one rule is not proof of the whole R5 area.
+- **Mongo:** `POLE001` and `POLE008` cover adapter access and named filters. `POLE013` checks
+  typed field arguments in production C# filter, update, sort and index builders. `POLE014`
+  and semantic F# architecture checks cover raw BSON types with scoped exceptions. Serializer
+  mappings, query semantics and exception reasons still need R5 review; passing one diagnostic
+  is not proof of the whole area.
 - **Transport, tenant and transactions:** use actual HTTP enum, tenant-isolation, serialization,
   rollback, concurrency and recovery regressions for the changed boundary. Inspect the assertions
   and production composition; a passing test name does not establish coverage.

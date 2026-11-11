@@ -44,7 +44,7 @@ Load the focused Pole skill when the slice touches tenant scoping, outbox delive
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run` on the final source tree. Every local backend, frontend, automation, and infrastructure test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+Follow `docs/agent-delivery.md`. Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final source tree. For broad changes, also run `--profile full`, including Kubernetes and E2E. Every selected test must pass with zero skips; missing prerequisites and pre-existing failures block publication. A passing PR profile proves only its selected groups. Use `record-review`, `verify` and the publication wrapper with current evidence as described in AGENTS.md.
 
 If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.
 
