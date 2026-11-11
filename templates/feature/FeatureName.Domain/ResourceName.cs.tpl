@@ -1,14 +1,18 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using Pole.Multitenancy.Primitives;
 
 namespace Pole.Features.FeatureName.Domain;
 
 public sealed record ResourceName(
-    [property: BsonId, BsonRepresentation(BsonType.ObjectId)] string Id,
-    [property: BsonRepresentation(BsonType.ObjectId)] string TenantId,
+    [property: BsonId, BsonRepresentation(BsonType.ObjectId)]
+    string Id,
+    [property: BsonRepresentation(BsonType.ObjectId)]
+    string TenantId,
     ResourceNameDetails Details,
     long Revision,
-    ResourceNameAudit Audit)
+    ResourceNameAudit Audit
+) : ITenantOwned
 {
     public ResourceName UpdateDetails(ResourceNameDetails details, DateTime updatedAtUtc)
     {
@@ -30,7 +34,8 @@ public sealed record ResourceName(
 
 public sealed record ResourceNameDetails(
     string Name,
-    string Description)
+    string Description
+)
 {
     public const int MaximumNameLength = 80;
     public const int MaximumDescriptionLength = 500;
@@ -51,15 +56,20 @@ public sealed record ResourceNameDetails(
 
 public sealed record ResourceNameAudit(
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc
+);
 
 public static class ResourceNameFactory
 {
     public sealed record CreateOptions(
         string Id,
-        DateTime CreatedAtUtc);
+        DateTime CreatedAtUtc
+    );
 
-    public static ResourceName Create(string tenantId, ResourceNameDetails details, CreateOptions options)
+    public static ResourceName Create(
+        string tenantId,
+        ResourceNameDetails details,
+        CreateOptions options)
     {
         if (!ObjectId.TryParse(tenantId, out _))
             throw new ArgumentException("Tenant ID must be an ObjectId.", nameof(tenantId));
