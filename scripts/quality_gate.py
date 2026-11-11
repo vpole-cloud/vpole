@@ -15,6 +15,8 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 
+import verification_scope as scope
+
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / ".artifacts" / "quality"
 RECEIPT = ARTIFACTS / "receipt.json"
@@ -30,22 +32,7 @@ def git(*args):
 
 
 def source_fingerprint(root=ROOT):
-    names = subprocess.check_output(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root
-    ).decode().split("\0")
-    digest = hashlib.sha256()
-    for name in sorted(set(names) - {""}):
-        path = root / name
-        # Hash the tested filesystem tree, independent of staging deleted paths.
-        if not path.is_symlink() and not path.is_file():
-            continue
-        digest.update(name.encode() + b"\0")
-        if path.is_symlink():
-            digest.update(b"link\0" + os.readlink(path).encode())
-        elif path.is_file():
-            digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return scope.fingerprint(scope.working_tree(root))
 
 
 def test_projects(root=ROOT):
@@ -295,10 +282,14 @@ def require_current_receipt():
     if receipt.get("status") != "passed":
         raise GateError(receipt.get("failure", "The selected local gate has not passed"))
     if receipt.get("fingerprint") != source_fingerprint():
-        raise GateError("Sources changed after the full local gate; rerun every suite")
+        raise GateError("Sources changed; run the gate to validate the delta or rerun the selected suites")
     if receipt.get("base_sha") != git("rev-parse", receipt["base"]):
         raise GateError("Review base changed; rerun the full local gate")
-    if receipt.get("projects") != selected_projects(receipt.get("profile", "full")):
+    if receipt.get("mode", "all") == "reduced":
+        required = scope.plan(receipt["base"], ROOT)
+        if required["behavioral"] or (required["template"] and not receipt.get("validated", {}).get("template")):
+            raise GateError("Reduced evidence does not cover the complete PR diff")
+    elif receipt.get("projects") != selected_projects(receipt.get("profile", "full")):
         raise GateError("Test project inventory changed; rerun the full local gate")
     return receipt
 
@@ -448,6 +439,9 @@ def run_full(base, profile="full", config=None):
     directory = ARTIFACTS / time.strftime("%Y%m%d-%H%M%S")
     directory.mkdir()
     receipt = {"status": "running", "profile": profile, "base": base, "base_sha": git("rev-parse", base), "fingerprint": source_fingerprint(), "steps": [], "tests": {}}
+    receipt.update(version=2, mode="all", tested_head=git("rev-parse", "HEAD"),
+                   committed=git("status", "--porcelain") == "",
+                   validated={"behavioral": True, "template": True})
     save_receipt(receipt)  # An interrupted run invalidates older success evidence.
     steps = receipt["steps"]
     try:
@@ -466,9 +460,9 @@ def run_full(base, profile="full", config=None):
         execute("restore", ["dotnet", "restore", "Pole.slnx", *build_options(settings["buildMaxCpuCount"])], directory, steps)
         execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *build_options(settings["buildMaxCpuCount"])], directory, steps)
         execute("dotnet-tools-restore", ["dotnet", "tool", "restore"], directory, steps)
-        command = format_command(base)
-        if command:
-            execute("format", command, directory, steps)
+        diff_base = git("merge-base", receipt["base_sha"], "HEAD")
+        execute("documents", [sys.executable, "scripts/check_change_documents.py", "--base", diff_base], directory, steps)
+        execute("format", [sys.executable, "scripts/format_changed.py", "--base", diff_base, "--check"], directory, steps)
         template_directory = ROOT / ".artifacts/feature-template" / directory.name
         execute("feature-template", [sys.executable, "scripts/check_feature_template.py",
                 "--results-directory", str(template_directory)], directory, steps)
@@ -500,6 +494,95 @@ def run_full(base, profile="full", config=None):
         save_receipt(receipt)
 
 
+def run_structural_checks(selection, directory, steps):
+    execute("documents", [sys.executable, "scripts/check_change_documents.py", "--base",
+                          selection["diff_base_sha"]], directory, steps)
+    execute("frontend-install", ["npm", "ci", "--prefix", "src/api/frontend"], directory, steps)
+    if any(item["path"].endswith(".cs") for item in selection["files"]):
+        execute("dotnet-tools-restore", ["dotnet", "tool", "restore"], directory, steps)
+    execute("format", [sys.executable, "scripts/format_changed.py", "--base",
+                       selection["diff_base_sha"], "--check"], directory, steps)
+    execute("diff-check", ["git", "diff", "--check", selection["diff_base_sha"]], directory, steps)
+
+
+def reusable_receipt(previous, selection):
+    if (not previous or previous.get("status") != "passed" or not previous.get("committed")
+            or previous.get("base_sha") != selection["base_sha"]):
+        return None
+    try:
+        tested = scope.committed_tree(ROOT, previous["tested_head"])
+        if scope.fingerprint(tested) != previous["fingerprint"]:
+            return None
+        current = scope.working_tree(ROOT)
+        if selection.get("fingerprint") and scope.fingerprint(current) != selection["fingerprint"]:
+            return None
+        delta = scope.classify_trees(tested, current)
+    except (KeyError, ValueError, subprocess.CalledProcessError):
+        return None
+    if any(item["kind"] not in {"documentation", "formatting", "template-format"} for item in delta["files"]):
+        return None
+    validated = previous.get("validated", {})
+    if selection["behavioral"] and not validated.get("behavioral"):
+        return None
+    if selection["template"] and not validated.get("template"):
+        return None
+    return delta
+
+
+def run_selected(base, profile="pr", config=None):
+    previous = json.loads(RECEIPT.read_text()) if RECEIPT.exists() else None
+    save_receipt({"status": "running", "base": base})
+    selection = scope.plan(base, ROOT, force_full=profile == "full")
+    reuse = None if profile == "full" else reusable_receipt(previous, selection)
+    if selection["behavioral"] and reuse is None:
+        run_full(base, profile, config)
+        return
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    directory = ARTIFACTS / str(time.time_ns())
+    directory.mkdir()
+    receipt = {"version": 2, "mode": "all" if reuse and selection["behavioral"] else "reduced",
+               "profile": profile, "selection": selection, "base": base, "base_sha": selection["base_sha"],
+               "fingerprint": selection["fingerprint"], "status": "running", "steps": [], "tests": {},
+               "projects": [], "tested_head": git("rev-parse", "HEAD"),
+               "committed": git("status", "--porcelain") == "", "validated": {}}
+    if reuse is not None:
+        receipt["profile"] = previous["profile"]
+        for key in ("tests", "projects", "validated"):
+            receipt[key] = previous[key]
+        receipt["reused"] = {"from_head": previous["tested_head"], "from_fingerprint": previous["fingerprint"],
+                             "to_head": receipt["tested_head"], "delta": reuse["files"]}
+    save_receipt(receipt)
+    try:
+        if source_fingerprint() != receipt["fingerprint"]:
+            raise GateError("Inputs changed after classification")
+        run_structural_checks(selection, directory, receipt["steps"])
+        if selection["automation"] and reuse is None:
+            report = directory / "scripts.json"
+            execute("automation", [sys.executable, "scripts/run_script_tests.py", str(report)], directory, receipt["steps"])
+            receipt["tests"]["automation"] = json.loads(report.read_text())
+        if (selection["template"] or selection["template_format"]):
+            output = ROOT / ".artifacts/feature-template" / directory.name
+            command = [sys.executable, "scripts/check_feature_template.py", "--results-directory", str(output)]
+            if reuse is not None or not selection["template"]:
+                command.append("--format-only")
+            execute("feature-template", command, directory, receipt["steps"])
+            generated = json.loads((output / "result.json").read_text())
+            if generated["status"] != "passed" or generated["fingerprint"] != receipt["fingerprint"]:
+                raise GateError("Generated evidence does not match the current source")
+            if "--format-only" not in command:
+                receipt["tests"]["generated"] = generated["tests"]
+                receipt["validated"]["template"] = True
+        if source_fingerprint() != receipt["fingerprint"]:
+            raise GateError("Inputs changed during selected verification")
+        receipt["status"] = "passed"
+    except (GateError, OSError, ValueError, subprocess.CalledProcessError) as error:
+        receipt.update(status="failed", failure=str(error))
+        raise
+    finally:
+        save_receipt(receipt)
+    print("Selected checks passed. Unselected suites were not required, not reported as passed.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -507,9 +590,17 @@ def main():
         sub = commands.add_parser(name)
         sub.add_argument("--base", default="origin/master")
         if name == "run":
-            sub.add_argument("--profile", choices=PROFILES, default="full")
+            sub.add_argument("--profile", choices=PROFILES, default="pr")
             sub.add_argument("--config", type=Path)
     commands.add_parser("verify")
+    commands.add_parser("check-ci")
+    for name in ("plan", "checks"):
+        sub = commands.add_parser(name)
+        sub.add_argument("--base", default="origin/master")
+        sub.add_argument("--force-full", action="store_true")
+        if name == "plan":
+            sub.add_argument("--output", type=Path)
+            sub.add_argument("--github-output", type=Path)
     backend_lane = commands.add_parser("backend")
     backend_lane.add_argument("--results-directory", type=Path, required=True)
     backend_lane.add_argument("--profile", choices=PROFILES, default="full")
@@ -534,7 +625,29 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "run":
-            run_full(args.base, args.profile, args.config)
+            run_selected(args.base, args.profile, args.config)
+        elif args.command in ("plan", "checks"):
+            selection = scope.plan(args.base, ROOT, force_full=args.force_full)
+            if args.command == "plan":
+                rendered = json.dumps(selection, indent=2) + "\n"
+                if args.output:
+                    args.output.parent.mkdir(parents=True, exist_ok=True)
+                    args.output.write_text(rendered)
+                else:
+                    print(rendered)
+                if args.github_output:
+                    with args.github_output.open("a") as stream:
+                        for key in ("behavioral", "template", "template_format", "automation"):
+                            stream.write(f"{key}={str(selection[key]).lower()}\n")
+            else:
+                directory = ARTIFACTS / str(time.time_ns())
+                directory.mkdir(parents=True)
+                run_structural_checks(selection, directory, [])
+                if source_fingerprint() != selection["fingerprint"]:
+                    raise GateError("Inputs changed during CI structural checks")
+        elif args.command == "check-ci":
+            required = scope.validate_ci_needs(json.loads(os.environ["GATE_CI_NEEDS"]))
+            print(json.dumps({job: "passed" if selected else "not required" for job, selected in required.items()}))
         elif args.command == "backend":
             settings = gate_settings(args.config)
             run_backend(args.results_directory, profile=args.profile,
@@ -584,7 +697,7 @@ def main():
                     raise GateError("Push the tested commit before opening a PR; remote branch differs")
                 subprocess.run(["gh", "pr", "create", "--base", args.base, "--head", branch, "--title", args.title, "--body-file", str(args.body_file.resolve())], cwd=ROOT, check=True)
             else:
-                print(f"Current {receipt.get('profile', 'full')}-profile evidence matches the source tree.")
+                print(f"Current {receipt.get('mode', 'all')} verification evidence matches the source tree.")
     except (GateError, OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)
         return 1
