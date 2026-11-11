@@ -71,7 +71,7 @@ complete the manual checks. Keep the record concise; link existing evidence inst
       based on committed code? Verify exact current test evidence, unresolved risks, approved scope
       and authorization for the next Git action. Historical success is not current evidence. See
       [delivery and review fixes](agent-delivery.md#review-record-and-review-fixes) and the
-      [publication gate](agent-delivery.md#full-local-gate-before-a-pull-request).
+      [publication gate](agent-delivery.md#local-and-ci-gate-profiles).
 
 ## Automated evidence and its limits
 
