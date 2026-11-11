@@ -14,7 +14,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from create_feature import create_feature
-from quality_gate import GateError, MSBUILD, ROOT, read_trx, source_fingerprint
+from quality_gate import GateError, MSBUILD, ROOT, read_coverage_reports, read_trx, source_fingerprint
 
 FEATURE = "FeatureTemplateProbe"
 RESOURCE = "TemplateEntry"
@@ -49,10 +49,6 @@ def wire_snapshot(root):
     for project in projects:
         ET.SubElement(solution.getroot(), "Project", Path=project.relative_to(root).as_posix())
     solution.write(root / "Pole.slnx")
-    selected = ET.Element("Solution")
-    for project in [*projects, architecture]:
-        ET.SubElement(selected, "Project", Path=project.relative_to(root).as_posix())
-    ET.ElementTree(selected).write(root / "FeatureTemplate.slnx")
     return [feature / f"{FEATURE}.Tests/{FEATURE}.Tests.csproj", architecture,
             feature / f"{FEATURE}.Tests.Integration/{FEATURE}.Tests.Integration.csproj"]
 
@@ -87,6 +83,14 @@ def check_format(root, directory, sources):
                        *(source.relative_to(root).as_posix() for source in sources)], root, directory)
 
 
+def prepare_test_coverage(root, directory):
+    output = root / ".artifacts/template-coverage"
+    execute("coverage-settings", [sys.executable, "scripts/quality_gate.py", "coverage-settings",
+                                 "--results-directory", str(output)], root, directory)
+    evidence = json.loads((output / "coverage-settings.json").read_text())
+    return output / "coverage.runsettings", evidence
+
+
 def check(directory):
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -99,8 +103,10 @@ def check(directory):
         environment = validation_environment()
         report["worktree_id"] = environment["POLE_TEST_WORKTREE_ID"]
         report["run_id"] = environment["POLE_TEST_RUN_ID"]
-        execute("restore", ["dotnet", "restore", "FeatureTemplate.slnx", *MSBUILD], root, directory)
-        execute("build", ["dotnet", "build", "FeatureTemplate.slnx", "--no-restore", *MSBUILD], root, directory)
+        # Semantic architecture checks inspect every project, including F# references and
+        # evaluated test roles. A selected-project build cannot provide that evidence.
+        execute("restore", ["dotnet", "restore", "Pole.slnx", *MSBUILD], root, directory)
+        execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *MSBUILD], root, directory)
         feature = root / "src/features" / FEATURE
         sources = sorted(path for path in feature.rglob("*.cs")
                          if not {"bin", "obj"} & set(path.relative_to(feature).parts))
@@ -109,16 +115,18 @@ def check(directory):
                 if len(line) > 120:
                     raise GateError(f"Generated C# exceeds 120 characters: {source.relative_to(root)}:{number}")
         check_format(root, directory, sources)
+        coverage_settings, report["coverage_settings"] = prepare_test_coverage(root, directory)
+        report["coverage_modules"] = {}
         for index, project in enumerate(projects):
             results = directory / f"tests-{index}"
             execute(f"tests-{index}", ["dotnet", "test", str(project), "--no-build", "--no-restore",
                     "--nologo", "-maxcpucount:1", "-nodeReuse:false", "--collect:Code Coverage;Format=Cobertura",
+                    "--settings", str(coverage_settings),
                     "--logger", "trx;LogFileName=results.trx", "--results-directory", str(results)],
                     root, directory, environment)
             report["tests"][project.stem] = read_trx(results / "results.trx")
-            coverage = list(results.rglob("*.cobertura.xml"))
-            if not coverage or any(ET.parse(path).getroot().tag != "coverage" for path in coverage):
-                raise GateError(f"Generated feature coverage missing or invalid for {project.stem}")
+            report["coverage_modules"][project.stem] = read_coverage_reports(
+                results, report["coverage_settings"]["assemblies"])
         if fingerprint != source_fingerprint():
             raise GateError("Template or repository inputs changed during validation.")
         report["status"] = "passed"
