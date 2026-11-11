@@ -18,7 +18,7 @@ Inspect the changed files, nearest tests, and the verified commands in `AGENTS.m
 - Kubernetes client behavior: use a small live-cluster test only when manifests or fakes cannot prove it.
 - Production DI, Keycloak, RabbitMQ, browser flows, or cross-service behavior: use Aspire E2E.
 - Frontend logic: run Vitest. TypeScript and production bundling: run the build. React and lint rules: run lint.
-- Documentation, skills, or agent guidance use structural validation during editing; publication still requires every local test as specified below.
+- Documentation, skills and proven formatting use the structural publication lane; executable assets, fixtures and unproven changes retain behavioral verification. Templates are checked through generated code. Follow the complete-diff criteria in `docs/agent-delivery.md`.
 
 An in-memory or standalone database is not evidence for Mongo transaction, replica-set, race, or concurrency behavior. A mocked HTTP boundary is not evidence for route binding or authentication middleware. A generated manifest is not evidence that a live cluster accepts or reconciles it.
 
@@ -54,6 +54,6 @@ Return the commands run, pass/fail counts, the first actionable failure, skipped
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run --profile pr` on the final source tree. Run `--profile full` for broad changes and manual CI, including Kubernetes and E2E. Every selected test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
 
-If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.
+If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.

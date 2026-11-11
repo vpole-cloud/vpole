@@ -104,7 +104,8 @@ because a policy mentions the rule, or rerun a test manually merely to tick a se
 
 Store the complete record in ignored task notes or a review artifact. A short handoff can link it.
 For documentation-only changes, explain the runtime areas that are not applicable and record
-structural/link validation; publication still requires the full gate.
+structural/link validation. Publication uses the selected evidence required by the complete PR diff,
+not an unconditional full gate. Record any reused tested SHA, new SHA and safe-delta proofs.
 
 ```text
 Target: request/scope; base SHA; head SHA; working-tree state

@@ -137,5 +137,8 @@ rejection, normalized no-op and rollback after a real outbox insert. Generator t
 renaming, path validation and refusal to overwrite existing work. Reports are local artifacts;
 never treat an interrupted/failed run or a structural generator test as a passing executable sample.
 
-The full local publication gate and a separate CI job execute the generated-feature checker.
+The selected local publication gate and a separate CI job execute the generated-feature checker
+when template behavior changes. Proven template formatting uses `--format-only`: generate output
+and check formatting without solution build or behavioral suites. README-only changes use the
+documentation lane.
 This focused lane does not replace the full [publication gate](../../docs/agent-delivery.md).

@@ -70,6 +70,6 @@ Do not edit files, commit, push, publish, or spawn more agents. Provide findings
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md`. Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final source tree. For broad changes, also run `--profile full`, including Kubernetes and E2E. Every selected test must pass with zero skips; missing prerequisites and pre-existing failures block publication. A passing PR profile proves only its selected groups. Use `record-review`, `verify` and the publication wrapper with current evidence as described in AGENTS.md.
+Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
 
-If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.
+If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.

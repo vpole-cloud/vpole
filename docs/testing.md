@@ -94,7 +94,8 @@ The isolated source snapshot retains production analyzers and runs the full exis
 suite plus generated Domain/BSON/event and HTTP/Mongo/outbox tests with no filters or skips.
 Reports include source fingerprint, test-run ownership, coverage and checked TRX totals.
 
-The full local quality gate and the dedicated CI job require this lane. It does not need the live
+The selected local quality gate and the dedicated CI job require this lane when template behavior changes.
+Proven template-only formatting uses `check_feature_template.py --format-only`, without build or Mongo suites. It does not need the live
 Kubernetes lab and does not replace other publication checks. Plain generator automation tests
 prove safe scaffolding only; they are not evidence for transactions or API binding.
 
@@ -160,13 +161,18 @@ project limits and runs groups in sequence. Each selected profile retains comple
 
 ## Publication requirement
 
-Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final
-source tree. All selected backend, frontend and automation tests must pass without filters
-or skips. Run `--profile full` locally before broad changes and in manual CI. Missing prerequisites
-block the affected profile. A PR-profile receipt proves Fast, Services and frontend only.
-The gate checks report inventory, formatting and current sources. See
-[agent delivery](agent-delivery.md). Summaries of failing tests must identify the affected
-tests and reason.
+Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final tree.
+The complete PR diff selects structural-only, generated-template or behavioral lanes under
+[the verification criteria](agent-delivery.md#local-and-ci-gate-profiles). Docs and proven formatting
+do not require backend/frontend suites. Templates are validated through generated code. Behavioral
+changes retain the complete Fast/Services/frontend profile. `--profile full` forces fresh Kubernetes
+and E2E verification for broad/infrastructure changes and manual CI. Selected tests must all pass
+without filters or skips; unselected lanes are not claimed as passed.
+
+The receipt can retain successful behavioral results across a later committed docs/proven-formatting
+delta with the same base, while recording both source identities and fresh structural checks. Other
+source/base changes require new relevant evidence. `verify` never silently blesses changed sources.
+Summaries of failing selected tests must identify the tests and reason.
 
 ## Running tests
 
@@ -499,8 +505,10 @@ project, verifies the digest returned by BuildKit, and removes the project after
 Infrastructure-free tests of CI configuration, lab state parsing and cleanup helpers live in
 `tests/Pole.Testing.Tests`. They run in Fast on every PR.
 
-`python3 scripts/quality_gate.py run --profile pr` runs Fast and Services plus frontend.
-`--profile full` adds Kubernetes and E2E. CI uses full only for manual workflow_dispatch.
+`python3 scripts/quality_gate.py run --profile pr` selects checks by the complete PR diff.
+When behavioral suites are required it runs Fast and Services plus frontend. `--profile full`
+forces all groups, including Kubernetes and E2E. CI uses the same classification; manual
+workflow_dispatch forces full.
 Plain `dotnet test` still discovers all .NET projects in Pole.slnx.
 
 Each group runs with a separate project concurrency limit. Local defaults are Fast 4,

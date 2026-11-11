@@ -53,11 +53,19 @@ npm run build
 npm run lint
 ```
 
-`npm test`, `npm run build`, and `npm run lint` are required frontend gates. Run them on the current change; do not reuse historical passing results as current evidence.
+`npm test`, `npm run build`, and `npm run lint` are required when the selected behavioral gate
+includes frontend. Documentation/proven-formatting exemptions and recorded safe-delta reuse follow
+`docs/agent-delivery.md`; never present unrelated historical results as current evidence.
 
 Docker is required for `tests/Pole.Tests.Integration`. Aspire E2E and live Kubernetes checks require their documented services and cluster prerequisites. Read `docs/testing.md`, `docs/aspire-local-development.md`, and `docs/aspire-e2e-testing.md`; never claim these lanes passed when their prerequisites were unavailable.
 
-Use `$pole-test-runner` for focused development checks. Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr`: every selected test must pass without filters or skips. Run `--profile full` locally before broad changes and through manual CI. Infrastructure unavailability and pre-existing failures block publication. See [agent delivery](docs/agent-delivery.md) for canonical implementations, early slice review and evidence commands.
+Use `$pole-test-runner` for focused development checks. Before opening a PR, run
+`python3 scripts/quality_gate.py run --profile pr`: it selects verification from the complete PR diff.
+Docs/proven formatting require structural evidence; template changes require generated-code evidence;
+behavioral/uncertain changes retain full PR suites. Use `--profile full` for broad/infrastructure work
+and manual CI. Every selected test must pass without filters/skips. Missing selected infrastructure
+and baseline failures block publication. See [agent delivery](docs/agent-delivery.md) for criteria,
+proof/reuse limits, canonical implementations and evidence commands.
 
 Standalone C# formatting uses the pinned CleanupCode tool: run `dotnet tool restore` once,
 then `python3 scripts/quality_gate.py check-format` or `format`. The shared `Pole Safe Cleanup`
@@ -95,7 +103,7 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 - Tests in separate worktrees are isolated, including Docker and Kubernetes resources. Docker-backed suites may run concurrently across worktrees. Kubernetes-backed suites may also overlap, but queue them by default because of host load; the primary agent coordinates heavy runs and permits overlap when capacity allows. See [test scheduling](docs/testing.md#parallelism-across-worktrees).
 - Within a worktree, build once before parallel `--no-build --no-restore` runs of distinct infrastructure-free projects; use the gate’s configured per-group limits. Kubernetes and E2E each default to one concurrent project.
 - For an explicit multi-issue/team-lead delivery workflow, use `$pole-deliver-issues` to coordinate scope, separate worktrees, review, verification and authorized PR/merge actions.
-- Before opening any pull request, complete the PR gate with zero failed or skipped selected tests. For broad changes also run the full profile including Kubernetes, Harbor and Aspire E2E. A passing PR profile only proves its selected groups.
+- Before opening a pull request, complete the selected verification for the whole PR diff with zero failed/skipped selected tests. Docs/proven formatting and templates use their documented reduced lanes. Broad/infrastructure changes also require the full profile including Kubernetes, Harbor and Aspire E2E. Evidence proves only its selected boundaries.
 - For new features or repeated endpoint families, give agents exact canonical reference files and review one complete representative slice before repeating its pattern. This primary-agent checkpoint does not require another user approval.
 - Before an authorized push or pull request for a non-trivial code change, complete the applicable gate profile and self-review, then delegate one independent review to a fresh built-in agent using `$pole-post-task-review`. Do not create a persistent reviewer persona or run multiple reviewers by default.
 - Give that reviewer a bounded prompt containing the request or issue, approved plan when present, base branch or commit, exact diff target, test commands and outcomes, skipped checks, and known risks. The reviewer inspects the shared checkout read-only, does not edit or delegate further, and returns prioritized findings with file and line references.

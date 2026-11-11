@@ -50,9 +50,9 @@ Follow [test scheduling](../../../docs/testing.md#parallelism-across-worktrees).
 host capacity are separate concerns: Docker tests can overlap across worktrees; Kubernetes-backed
 runs are isolated too, but queue them by default because they are heavy. The primary agent schedules
 heavy runs across the whole batch. Within one worktree, preserve build/output and test-project
-serialization rules. The full quality-gate command retains its own sequential execution.
+serialization rules. The selected quality-gate command retains its own group scheduling.
 
-Use focused checks during development and the full local gate before publication, exactly as
+Use focused checks during development and the selected local verification before publication, exactly as
 specified in agent delivery. Missing infrastructure, inherited failures, or a draft PR do not waive
 that gate. Diagnose failed prerequisites and use scoped recovery; do not reset a shared lab while
 other runs are active. Reproduce bugs at the relevant boundary, fix their cause and retain meaningful
@@ -66,12 +66,12 @@ or manifest tests alone cannot establish that the API starts or a browser displa
 - Complete self-review and the required independent read-only review of the exact diff. Give the
   reviewer acceptance criteria, base/target, actual checks and remaining uncertainties. Follow the
   repository's limit on follow-up reviews; the primary agent owns finding resolution.
-- Record real full-run and review evidence with the existing quality-gate commands. Source or base
+- Record real selected-run and review evidence with the existing quality-gate commands. Source or base
   changes require renewed evidence under that gate; never relabel an old successful run as current.
 - Publish only within the user's authorization and through the documented PR wrapper. Each PR needs
   its own evidence and explanation. An agent must not open a draft while required tests are blocked.
 - If merge is authorized, use the dependency order. Rebase onto the actual merged base, resolve
-  conflicts deliberately, satisfy the full local gate and await green CI for the exact head before
+  conflicts deliberately, satisfy the selected local gate and await green CI for the exact head before
   each merge. Use a head-match guard and preserve linear history. Honor “do not merge” independently
   of permission to implement or publish.
 

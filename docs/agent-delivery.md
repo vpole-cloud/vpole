@@ -116,17 +116,44 @@ test a refinement to the rule when it misclassifies valid code.
 
 ## Local and CI gate profiles
 
-The PR profile runs every Fast and Services project plus frontend tests, build and lint.
-Use `python3 scripts/quality_gate.py run --profile pr`. Kubernetes and Aspire E2E run in
-the full profile through `python3 scripts/quality_gate.py run --profile full` after
-`bash infrastructure/kubernetes-lab/lab.sh up`. The default profile is full.
-Run full locally before broad changes. CI runs PR on pull requests and master pushes,
-and full on workflow_dispatch.
+Verification is selected from the **complete PR diff**, including staged, unstaged and untracked
+inputs, against the merge base of the named review target. Never classify only the last commit.
+Run `python3 scripts/quality_gate.py plan --base origin/master` to inspect paths, reasons and
+selected lanes. Unknown or unproven changes retain behavioral verification.
 
-The selected profile must pass on the final source tree, including documentation/tooling
-changes. Every selected suite runs without test filters and must have zero failed or skipped
-tests. Expected failures, unavailable infrastructure and baseline failures remain failed
-evidence for that profile. A PR receipt proves only Fast, Services and frontend.
+| Change                  | Admission criteria                                                                         | Required evidence                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Documentation           | Canonical Markdown/skills paths only; executable assets and fixtures excluded              | Changed-file formatting, local targets/anchors, skill metadata, content/command self-review                          |
+| Formatting              | Existing regular files, unchanged executable mode; supported syntax/structured-value proof | Proof, current formatter, diff check and self-review; no behavioral suites                                           |
+| Templates/generator     | Starter inputs or owned generator/checker and their tests                                  | Generated solution build, formatting, full architecture and generated unit/Mongo suites; automation for tool changes |
+| Template formatting     | Proven unchanged generated C# tokens or project XML values                                 | Generate output and run its formatting checks; no Mongo rerun                                                        |
+| Behavioral or uncertain | Runtime/build/dependencies, analyzers, gate/CI mechanisms, unsupported proofs              | All PR-profile suites; full profile for broad/infrastructure changes                                                 |
+
+The default `python3 scripts/quality_gate.py run --profile pr` selects these obligations; mixed
+changes take their union. `--profile full` explicitly forces every lane, including Kubernetes and
+Aspire E2E, after `bash infrastructure/kubernetes-lab/lab.sh up`. CI uses the same selection for
+PRs/master pushes; manual workflow_dispatch forces full. Unselected jobs are **not required**, not
+passed tests. The stable `Required verification` CI job rejects failed, cancelled, missing or
+skipped selected jobs. Configure branch protection to require that aggregate check.
+
+Formatting proof is deliberately narrow. C# uses the pinned SDK's preview parser and compares
+exact tokens plus non-whitespace trivia, retaining literals, comments, directives and inactive
+branches. Syntax errors, import/member rearrangement and semantic cleanup are not formatting.
+MSBuild/solution XML retains element order, attributes, property text, comments and processing
+instructions; DTD, CDATA and xml:space are unsupported. JSON retains lexical literals and key
+order. F#, YAML, JavaScript/TypeScript/JSX, other formats, new/deleted code and renames have no
+automatic formatting exemption. A whitespace-only Git diff is not a proof. Formatter/settings
+changes receive normal behavioral verification, not a filename-based waiver.
+
+Documentation classification applies to canonical docs, feature README/docs and skill Markdown,
+not arbitrary `.md` fixtures/assets. Generated README text is documentation. Review changed
+commands and agent authority manually; a link or frontmatter check does not validate their intent.
+Kubernetes audits are required only for selected Kubernetes lanes; do not start a lab for docs or
+metadata-template Mongo tests.
+
+Every **selected** suite runs without filters and must have zero failures/skips. Missing prerequisites,
+expected failures and baseline failures block the selected lane. The `pr` behavioral profile proves
+Fast, Services and frontend; it does not prove live Kubernetes/E2E behavior.
 
 Both profiles discover projects from Pole.slnx and run restore/build once, followed by bounded
 concurrent project execution with coverage. Local defaults are Fast 4, Services 2, Kubernetes 1,
@@ -150,8 +177,7 @@ CI installs both, and the complete local gate restores tools before formatting.
 
 Use `python3 scripts/quality_gate.py format` to apply C# formatting before the final run. It uses `origin/master` as the comparison base by default;
 `--base` can select the explicitly agreed base of a stacked change. Formatting
-only changed files avoids unrelated repository-wide rewrites; tests are never
-restricted to changed files or features. For a stacked PR tested with
+only changed files avoids unrelated repository-wide rewrites; each selected behavioral suite remains complete rather than filtered by changed files. For a stacked PR tested with
 `run --base origin/parent`, publish with `open-pr --base parent`. The publication
 command defaults to `master` and rejects a target whose origin ref differs from
 the recorded review base.
@@ -188,7 +214,7 @@ environment or report the blocker; do not open even a draft PR while it remains.
 The gate stops on failure, so a failed run may leave later suites unexecuted.
 Only a subsequent complete successful run authorizes publication.
 
-After the full run, complete self-review and, for non-trivial code changes, a fresh
+After selected verification, complete self-review and, for non-trivial code changes, a fresh
 independent read-only review as required by `AGENTS.md`. For its documented
 documentation/mechanical exemptions, record the primary agent’s self-review instead.
 Record the actual review result:
@@ -201,12 +227,22 @@ python3 scripts/quality_gate.py open-pr --title '<title>' --body-file <descripti
 ```
 
 The wrapper also requires a clean task branch whose pushed commit matches local HEAD.
-The receipt binds results to source contents, the test-project inventory and the
-review base. Source changes invalidate it, including test-only and formatting
-changes. Staging deletions/renames and committing identical tested contents do not
-invalidate it. An interrupted run invalidates previous success. The receipt is local evidence, not a substitute
-for CI or independent review; do not fabricate one or bypass the wrapper with a
-direct PR-creation tool. The wrapper itself does not grant publication permission.
+The receipt binds current structural checks, selected suites, source fingerprint, review target and
+project inventory. `record-review`, `verify` and `open-pr` accept reduced evidence only when it covers
+the complete current diff. They do not accept a user-selected category flag or a forged "docs" label.
+
+After a successful **committed, clean** tested state, `run` may reuse its behavioral results if the
+review target is unchanged and the entire additional diff is documentation or proven formatting.
+The receipt records the previous tested SHA/fingerprint, current SHA and exact delta proofs; new
+structural/generated-format checks still run and review must be recorded again. No reuse is allowed
+from failed/interrupted evidence, dirty tested inputs, insufficient selected lanes, changed base,
+semantic/template changes or changed project inventory. Test and gate source changes receive no
+special exemption. Explicit `--profile full` always runs freshly. Uncommitted runs can be verified
+unchanged but cannot seed reuse. A rebase changing the review base requires fresh evidence.
+
+The receipt is local evidence, not a substitute for CI or required independent review. Do not
+fabricate one or bypass the wrapper with direct PR creation. Publication still requires a clean
+authorized task branch, matching pushed HEAD and matching target base; no gate grants Git permission.
 
 ## Failure-first summaries and lasting fixes
 
