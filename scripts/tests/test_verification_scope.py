@@ -60,6 +60,33 @@ class ScopeTests(unittest.TestCase):
             self.assertTrue(self.classify(original, changed, "Feature.csproj")["behavioral"])
         self.assertTrue(self.classify('<Project><!-- keep --></Project>', '<Project/>', "x.csproj")["behavioral"])
 
+    def test_nested_msbuild_property_string_changes_are_not_formatting(self):
+        before = '<Project><PropertyGroup><Payload><Data a="1" b="2" /></Payload></PropertyGroup></Project>'
+        after = '<Project><PropertyGroup><Payload><Data b="2" a="1" /></Payload></PropertyGroup></Project>'
+        with tempfile.TemporaryDirectory() as directory:
+            values = []
+            for index, text in enumerate((before, after)):
+                path = Path(directory) / f"case-{index}.props"
+                path.write_text(text)
+                values.append(subprocess.check_output(
+                    ["dotnet", "msbuild", str(path), "-nologo", "-getProperty:Payload"], text=True))
+        self.assertNotEqual(values[0], values[1], "The regression must establish an actual MSBuild value change")
+        self.assertTrue(self.classify(before, after, "settings.props")["behavioral"])
+
+    def test_nested_metadata_task_payloads_and_namespace_changes_require_behavioral_verification(self):
+        pairs = [
+            ('<Project><ItemGroup><File Include="a"><Data><X a="1" b="2"/></Data></File></ItemGroup></Project>',
+             '<Project><ItemGroup><File Include="a"><Data><X b="2" a="1"/></Data></File></ItemGroup></Project>'),
+            ('<Project><UsingTask TaskFactory="Custom"><Task><X a="1" b="2"/></Task></UsingTask></Project>',
+             '<Project><UsingTask TaskFactory="Custom"><Task><X b="2" a="1"/></Task></UsingTask></Project>'),
+            ('<Project xmlns:unused="urn:test"/>', '<Project/>'),
+            ('<Project xmlns:a="urn:test"><a:X/></Project>', '<Project xmlns:b="urn:test"><b:X/></Project>'),
+        ]
+        for before, after in pairs:
+            self.assertTrue(self.classify(before, after, "settings.props")["behavioral"])
+        ordinary = '<Project><ItemGroup><PackageReference Include="A"><PrivateAssets>all</PrivateAssets></PackageReference></ItemGroup></Project>'
+        self.assertFalse(self.classify(ordinary, ordinary.replace('><', '>\n    <'), "App.csproj")["behavioral"])
+
     def test_xml_dtd_cdata_and_space_sensitive_documents_are_not_formatting_proofs(self):
         for text in ['<!DOCTYPE Project><Project/>', '<Project><![CDATA[ ]]></Project>',
                      '<Project xml:space="preserve"> </Project>']:
