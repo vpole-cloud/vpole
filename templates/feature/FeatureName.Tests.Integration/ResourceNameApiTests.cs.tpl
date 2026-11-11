@@ -28,14 +28,17 @@ namespace Pole.Features.FeatureName.Tests.Integration;
 public sealed class FeatureNameMongoCollection : ICollectionFixture<MongoReplicaSetFixture>;
 
 [Collection("feature-route-mongo")]
-public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyncLifetime
+public sealed class ResourceNameApiTests(
+    MongoReplicaSetFixture fixture
+) : IAsyncLifetime
 {
     private const string Route = "/api/v1/feature-route/";
     private static readonly JsonSerializerOptions JsonOptions = PoleHttpJson.CreateSerializerOptions();
+
     private IMongoCollection<ResourceName> Resources =>
         fixture.Database.GetCollection<ResourceName>("FeatureName");
-    private IMongoCollection<OutboxMessage> Outbox =>
-        fixture.Database.GetCollection<OutboxMessage>("OutboxMessages");
+
+    private IMongoCollection<OutboxMessage> Outbox => fixture.Database.GetCollection<OutboxMessage>("OutboxMessages");
 
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -45,8 +48,10 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
     {
         await using var host = await StartAsync();
         using var client = AuthenticatedClient(host, TestPlatformDefaults.TenantId);
-        using var created = await client.PostAsJsonAsync(Route,
-            new ResourceNameDetailsDto(" Alpha ", " Initial "), JsonOptions);
+        using var created = await client.PostAsJsonAsync(
+            Route,
+            new ResourceNameDetailsDto(" Alpha ", " Initial "),
+            JsonOptions);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var dto = Assert.IsType<ResourceNameDto>(
             await created.Content.ReadFromJsonAsync<ResourceNameDto>(JsonOptions));
@@ -55,12 +60,13 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         using var read = await client.GetAsync(created.Headers.Location);
         Assert.Equal(dto, await read.Content.ReadFromJsonAsync<ResourceNameDto>(JsonOptions));
         var stored = await Resources.Find(item => item.Id == dto.Id).SingleAsync();
-        var message = await Outbox
-            .Find(item => item.EventType == "pole.feature-route/v1/resource-created")
+        var message = await Outbox.Find(item => item.EventType == "pole.feature-route/v1/resource-created")
             .SingleAsync();
         Assert.Equal(stored.TenantId, message.TenantId);
-        var changed = Assert.IsType<ResourceNameCreatedEvent>(JsonSerializer.Deserialize<ResourceNameCreatedEvent>(
-            message.PayloadJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var changed = Assert.IsType<ResourceNameCreatedEvent>(
+            JsonSerializer.Deserialize<ResourceNameCreatedEvent>(
+                message.PayloadJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal(dto.Id, changed.ResourceId);
         Assert.Equal(stored.TenantId, changed.EventCore.TenantId);
     }
@@ -71,7 +77,8 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         await using var host = await StartAsync();
         using var client = AuthenticatedClient(host, TestPlatformDefaults.TenantId);
         var body = new ResourceNameDetailsDto("Alpha", "Initial");
-        var replies = await Task.WhenAll(client.PostAsJsonAsync(Route, body, JsonOptions),
+        var replies = await Task.WhenAll(
+            client.PostAsJsonAsync(Route, body, JsonOptions),
             client.PostAsJsonAsync(Route, body, JsonOptions));
         try
         {
@@ -99,8 +106,10 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         var dto = await CreateAsync(first);
         using var hidden = await second.GetAsync(Route + dto.Id);
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
-        using var refused = await second.PutAsJsonAsync(Route + dto.Id,
-            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "Changed") }, JsonOptions);
+        using var refused = await second.PutAsJsonAsync(
+            Route + dto.Id,
+            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "Changed") },
+            JsonOptions);
         Assert.Equal(HttpStatusCode.NotFound, refused.StatusCode);
         using var sameName = await second.PostAsJsonAsync(Route, dto.Details, JsonOptions);
         Assert.Equal(HttpStatusCode.Created, sameName.StatusCode);
@@ -115,16 +124,21 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         await using var host = await StartAsync();
         using var client = AuthenticatedClient(host, TestPlatformDefaults.TenantId);
         var dto = await CreateAsync(client);
-        using var updated = await client.PutAsJsonAsync(Route + dto.Id,
-            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "Changed") }, JsonOptions);
+        using var updated = await client.PutAsJsonAsync(
+            Route + dto.Id,
+            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "Changed") },
+            JsonOptions);
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         var current = await Resources.Find(item => item.Id == dto.Id).SingleAsync();
         Assert.Equal(2, current.Revision);
-        using var stale = await client.PutAsJsonAsync(Route + dto.Id,
-            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Gamma", "Other") }, JsonOptions);
+        using var stale = await client.PutAsJsonAsync(
+            Route + dto.Id,
+            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Gamma", "Other") },
+            JsonOptions);
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         await AssertCodeAsync(stale, "feature-route.revision-conflict");
-        using var unchanged = await client.PutAsJsonAsync(Route + dto.Id,
+        using var unchanged = await client.PutAsJsonAsync(
+            Route + dto.Id,
             new { expectedRevision = 2, details = new ResourceNameDetailsDto(" Beta ", " Changed ") },
             JsonOptions);
         Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
@@ -139,9 +153,12 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         using var client = AuthenticatedClient(host, TestPlatformDefaults.TenantId);
         var dto = await CreateAsync(client);
         var replies = await Task.WhenAll(
-            client.PutAsJsonAsync(Route + dto.Id,
-                new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "First") }, JsonOptions),
-            client.PutAsJsonAsync(Route + dto.Id,
+            client.PutAsJsonAsync(
+                Route + dto.Id,
+                new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "First") },
+                JsonOptions),
+            client.PutAsJsonAsync(
+                Route + dto.Id,
                 new { expectedRevision = 1, details = new ResourceNameDetailsDto("Gamma", "Second") },
                 JsonOptions));
         try
@@ -165,12 +182,16 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         await using var host = await StartAsync();
         using var client = AuthenticatedClient(host, TestPlatformDefaults.TenantId);
         var dto = await CreateAsync(client);
-        using var second = await client.PostAsJsonAsync(Route,
-            new ResourceNameDetailsDto("Beta", "Other"), JsonOptions);
+        using var second = await client.PostAsJsonAsync(
+            Route,
+            new ResourceNameDetailsDto("Beta", "Other"),
+            JsonOptions);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         var original = await Resources.Find(item => item.Id == dto.Id).SingleAsync();
-        using var conflict = await client.PutAsJsonAsync(Route + dto.Id,
-            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "Changed") }, JsonOptions);
+        using var conflict = await client.PutAsJsonAsync(
+            Route + dto.Id,
+            new { expectedRevision = 1, details = new ResourceNameDetailsDto("Beta", "Changed") },
+            JsonOptions);
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         await AssertCodeAsync(conflict, "feature-route.name-conflict");
         Assert.Equal(original, await Resources.Find(item => item.Id == dto.Id).SingleAsync());
@@ -181,7 +202,8 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
     public async Task Actual_migration_rejects_an_invalid_stored_revision()
     {
         await using var host = await StartAsync();
-        var resource = ResourceNameFactory.Create(TestPlatformDefaults.TenantId,
+        var resource = ResourceNameFactory.Create(
+            TestPlatformDefaults.TenantId,
             ResourceNameDetails.Create("Alpha", "Initial"),
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         var failure = await Assert.ThrowsAsync<MongoWriteException>(() =>
@@ -195,8 +217,10 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
     {
         await using var host = await StartAsync();
         using var anonymous = host.GetClient();
-        using var denied = await anonymous.PostAsJsonAsync(Route,
-            new ResourceNameDetailsDto("Alpha", ""), JsonOptions);
+        using var denied = await anonymous.PostAsJsonAsync(
+            Route,
+            new ResourceNameDetailsDto("Alpha", ""),
+            JsonOptions);
         Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var withoutTenant = AuthenticatedClient(host, tenantId: null);
         using var missing = await withoutTenant.GetAsync(Route + ObjectId.GenerateNewId());
@@ -214,7 +238,8 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
     public async Task Failure_after_actual_outbox_insert_rolls_back_root_and_outbox(bool update)
     {
         await using var host = await StartAsync(failOutbox: true);
-        var resource = ResourceNameFactory.Create(TestPlatformDefaults.TenantId,
+        var resource = ResourceNameFactory.Create(
+            TestPlatformDefaults.TenantId,
             ResourceNameDetails.Create("Alpha", "Initial"),
             new(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow));
         if (update)
@@ -228,8 +253,8 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
         {
             var persist = scope.ServiceProvider.GetRequiredService<PersistUpdatedResourceName>();
             await Assert.ThrowsAsync<InvalidOperationException>(() => persist(
-                new(resource.TenantId, resource.Id, 1,
-                ResourceNameDetails.Create("Beta", "Changed")), CancellationToken.None));
+                new(resource.TenantId, resource.Id, 1, ResourceNameDetails.Create("Beta", "Changed")),
+                CancellationToken.None));
             Assert.Equal(resource, await Resources.Find(item => item.Id == resource.Id).SingleAsync());
         }
         else
@@ -244,21 +269,26 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
 
     private async Task<FeatureTestHost> StartAsync(bool failOutbox = false)
     {
-        var host = await FeatureTestHost.StartAsync(new ConfigurationBuilder().Build(),
-            typeof(FeatureNameFeature).Assembly, typeof(ResourceNameCreatedEvent).Assembly,
+        var host = await FeatureTestHost.StartAsync(
+            new ConfigurationBuilder().Build(),
+            typeof(FeatureNameFeature).Assembly,
+            typeof(ResourceNameCreatedEvent).Assembly,
             (services, _) => services.AddFeatureNameFeature().AddResourceConnectionsFeature(),
             endpoints => endpoints.MapFeatureNameEndpoints(),
             configureServices: services =>
             {
                 services.AddSingleton(fixture.Client);
                 services.AddSingleton(fixture.Database);
-                services.AddFeatureMigrations("pole.feature-route",
+                services.AddFeatureMigrations(
+                    "pole.feature-route",
                     typeof(FeatureNameSchemaMigration).Assembly);
 
                 if (failOutbox)
                 {
                     services.RemoveAll<StoreOutboxWrites>();
-                    services.AddSingleton<StoreOutboxWrites>(_ => async (session, writes, ct) =>
+                    services.AddSingleton<StoreOutboxWrites>(_ => async (
+                        session, writes,
+                        ct) =>
                     {
                         await fixture.StoreOutboxWrites(session, writes, ct);
                         throw new InvalidOperationException("Injected failure after outbox insert.");
@@ -280,11 +310,12 @@ public sealed class ResourceNameApiTests(MongoReplicaSetFixture fixture) : IAsyn
 
     private static async Task<ResourceNameDto> CreateAsync(HttpClient client)
     {
-        using var created = await client.PostAsJsonAsync(Route,
-            new ResourceNameDetailsDto("Alpha", "Initial"), JsonOptions);
+        using var created = await client.PostAsJsonAsync(
+            Route,
+            new ResourceNameDetailsDto("Alpha", "Initial"),
+            JsonOptions);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        return Assert.IsType<ResourceNameDto>(
-            await created.Content.ReadFromJsonAsync<ResourceNameDto>(JsonOptions));
+        return Assert.IsType<ResourceNameDto>(await created.Content.ReadFromJsonAsync<ResourceNameDto>(JsonOptions));
     }
 
     private static async Task AssertCodeAsync(HttpResponseMessage response, string expected)

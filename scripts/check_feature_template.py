@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -80,6 +81,12 @@ def execute(name, command, root, directory, environment=None):
         raise GateError(f"Generated feature {name} failed; see {log}")
 
 
+def check_format(root, directory, sources):
+    execute("tool-restore", ["dotnet", "tool", "restore"], root, directory)
+    execute("format", [sys.executable, "scripts/cleanupcode.py", "--check",
+                       *(source.relative_to(root).as_posix() for source in sources)], root, directory)
+
+
 def check(directory):
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=False)
@@ -101,8 +108,7 @@ def check(directory):
             for number, line in enumerate(source.read_text().splitlines(), 1):
                 if len(line) > 120:
                     raise GateError(f"Generated C# exceeds 120 characters: {source.relative_to(root)}:{number}")
-        execute("format", ["dotnet", "format", "whitespace", "FeatureTemplate.slnx", "--no-restore",
-                           "--verify-no-changes", "--include", *map(str, sources)], root, directory)
+        check_format(root, directory, sources)
         for index, project in enumerate(projects):
             results = directory / f"tests-{index}"
             execute(f"tests-{index}", ["dotnet", "test", str(project), "--no-build", "--no-restore",

@@ -18,8 +18,11 @@ public static class CreateResourceNameEndpoint
 {
     public static IEndpointRouteBuilder MapCreateResourceNameEndpoint(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/", async (IMediator mediator, [AsParameters] CreateResourceNameRequest request,
-                CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        endpoints.MapPost(
+                "/",
+                async (
+                    IMediator mediator, [AsParameters] CreateResourceNameRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     ResourceNameDto value => Results.Created($"/api/v1/feature-route/{value.Id}", value),
                     ResourceNameNameAlreadyExists error => MapNameConflict(error)
@@ -34,26 +37,31 @@ public static class CreateResourceNameEndpoint
 
 public sealed record CreateResourceNameRequest(
     [FromBody] ResourceNameDetailsDto Body,
-    [FromTenantHeader] string TenantId) : IMediatorRequest<CreateResourceNameOutcome>, ITenantCreateOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<CreateResourceNameOutcome>, ITenantCreateOperation;
 
-public union CreateResourceNameOutcome(
-    ResourceNameDto,
-    ResourceNameNameAlreadyExists);
+public union CreateResourceNameOutcome(ResourceNameDto, ResourceNameNameAlreadyExists);
 
 public sealed class CreateResourceNameValidator : AbstractValidator<CreateResourceNameRequest>
 {
     public CreateResourceNameValidator() => RuleFor(request => request.Body)
-        .NotNull().SetValidator(new ResourceNameDetailsValidator());
+        .NotNull()
+        .SetValidator(new ResourceNameDetailsValidator());
 }
 
-public sealed class CreateResourceNameHandler(PersistCreatedResourceName persist, TimeProvider timeProvider)
-    : IMediatorOutcomeHandler<CreateResourceNameRequest, CreateResourceNameOutcome>
+public sealed class CreateResourceNameHandler(
+    PersistCreatedResourceName persist,
+    TimeProvider timeProvider
+) : IMediatorOutcomeHandler<CreateResourceNameRequest, CreateResourceNameOutcome>
 {
-    public async Task<CreateResourceNameOutcome> HandleAsync(CreateResourceNameRequest request,
+    public async Task<CreateResourceNameOutcome> HandleAsync(
+        CreateResourceNameRequest request,
         CancellationToken cancellationToken = default)
     {
         var details = ResourceNameDetails.Create(request.Body.Name, request.Body.Description);
-        var resource = ResourceNameFactory.Create(request.TenantId, details,
+        var resource = ResourceNameFactory.Create(
+            request.TenantId,
+            details,
             new(ObjectId.GenerateNewId().ToString(), timeProvider.GetUtcNow().UtcDateTime));
         var result = await persist(resource, cancellationToken);
         return result switch

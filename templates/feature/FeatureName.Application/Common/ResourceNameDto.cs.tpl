@@ -5,16 +5,24 @@ namespace Pole.Features.FeatureName.Application.Common;
 public sealed record ResourceNameDto(
     string Id,
     ResourceNameDetailsDto Details,
-    long Revision)
+    long Revision
+)
 {
-    public static ResourceNameDto From(ResourceName resource) =>
-        new(resource.Id, new(resource.Details.Name, resource.Details.Description), resource.Revision);
+    public static ResourceNameDto From(ResourceName resource) => new(
+        resource.Id,
+        new(resource.Details.Name, resource.Details.Description),
+        resource.Revision);
 }
 
-public sealed record ResourceNameNotFound(string Id);
+public sealed record ResourceNameNotFound(
+    string Id
+);
 
-public sealed record ResourceNameNameAlreadyExists(string Name);
+public sealed record ResourceNameNameAlreadyExists(
+    string Name
+);
 
 public sealed record ResourceNameRevisionConflict(
     string Id,
-    long ExpectedRevision);
+    long ExpectedRevision
+);

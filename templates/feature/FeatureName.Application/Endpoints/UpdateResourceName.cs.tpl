@@ -18,8 +18,11 @@ public static class UpdateResourceNameEndpoint
 {
     public static IEndpointRouteBuilder MapUpdateResourceNameEndpoint(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPut("/{Id}", async (IMediator mediator, [AsParameters] UpdateResourceNameRequest request,
-                CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
+        endpoints.MapPut(
+                "/{Id}",
+                async (
+                    IMediator mediator, [AsParameters] UpdateResourceNameRequest request,
+                    CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     ResourceNameDto value => Results.Ok(value),
                     ResourceNameNotFound error => MapMissing(error),
@@ -37,11 +40,13 @@ public static class UpdateResourceNameEndpoint
 public sealed record UpdateResourceNameRequest(
     [FromRoute] string Id,
     [FromBody] UpdateResourceNameBody Body,
-    [FromTenantHeader] string TenantId) : IMediatorRequest<UpdateResourceNameOutcome>, ITenantWriteOperation;
+    [FromTenantHeader] string TenantId
+) : IMediatorRequest<UpdateResourceNameOutcome>, ITenantWriteOperation;
 
 public sealed record UpdateResourceNameBody(
     long ExpectedRevision,
-    ResourceNameDetailsDto Details);
+    ResourceNameDetailsDto Details
+);
 
 public union UpdateResourceNameOutcome(
     ResourceNameDto,
@@ -55,22 +60,27 @@ public sealed class UpdateResourceNameValidator : AbstractValidator<UpdateResour
     {
         RuleFor(request => request.Id).Length(24).MongoObjectId("Resource ID");
         RuleFor(request => request.Body).NotNull();
-        When(request => request.Body is not null, () =>
-        {
-            RuleFor(request => request.Body.ExpectedRevision).GreaterThan(0);
-            RuleFor(request => request.Body.Details).NotNull().SetValidator(new ResourceNameDetailsValidator());
-        });
+        When(
+            request => request.Body is not null,
+            () =>
+            {
+                RuleFor(request => request.Body.ExpectedRevision).GreaterThan(0);
+                RuleFor(request => request.Body.Details).NotNull().SetValidator(new ResourceNameDetailsValidator());
+            });
     }
 }
 
-public sealed class UpdateResourceNameHandler(PersistUpdatedResourceName persist)
-    : IMediatorOutcomeHandler<UpdateResourceNameRequest, UpdateResourceNameOutcome>
+public sealed class UpdateResourceNameHandler(
+    PersistUpdatedResourceName persist
+) : IMediatorOutcomeHandler<UpdateResourceNameRequest, UpdateResourceNameOutcome>
 {
-    public async Task<UpdateResourceNameOutcome> HandleAsync(UpdateResourceNameRequest request,
+    public async Task<UpdateResourceNameOutcome> HandleAsync(
+        UpdateResourceNameRequest request,
         CancellationToken cancellationToken = default)
     {
         var details = ResourceNameDetails.Create(request.Body.Details.Name, request.Body.Details.Description);
-        var result = await persist(new(request.TenantId, request.Id, request.Body.ExpectedRevision, details),
+        var result = await persist(
+            new(request.TenantId, request.Id, request.Body.ExpectedRevision, details),
             cancellationToken);
         return result switch
         {
