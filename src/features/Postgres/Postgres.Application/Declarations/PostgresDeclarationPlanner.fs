@@ -5,6 +5,7 @@ open System.Threading
 open System.Threading.Tasks
 open MongoDB.Driver
 open Pole.Features.GitOps.Contracts
+open Pole.Features.GitOps.Primitives
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Domain

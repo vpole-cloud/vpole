@@ -161,8 +161,7 @@ public sealed class SecretProjectionReconciliationTests
                     Ingress: null,
                     DeploymentRevision: 1,
                     DesiredOperation: ResourceDeploymentDesiredOperation.Apply,
-                    Isolation:
-                    new ResourceDeploymentIsolationDto(
+                    Isolation: new ResourceDeploymentIsolationDto(
                         "Unknown",
                         "EnforcementRequired",
                         "EnforcementNotEstablished",

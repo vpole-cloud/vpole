@@ -45,7 +45,8 @@ class FormatChangedTests(unittest.TestCase):
                                execute=lambda command, **kwargs: calls.append(command) or SimpleNamespace(returncode=0))
         self.assertEqual(0, result)
         self.assertIn("new.cs", calls[0])
-        self.assertIn("--verify-no-changes", calls[0])
+        self.assertIn("--check", calls[0])
+        self.assertEqual(str(self.root / "scripts/cleanupcode.py"), calls[0][1])
         self.assertEqual(index, self.git("write-tree"))
 
     def test_formatter_failure_is_reported_and_never_staged(self):

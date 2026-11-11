@@ -105,7 +105,10 @@ public sealed class TenantWorkspaceBrowserE2ETests(
                     {
                         targets = new[]
                         {
-                            new { deploymentTargetId = Text(targets.EnumerateArray().First(), "id"), fixedReplicas = 1 },
+                            new
+                            {
+                                deploymentTargetId = Text(targets.EnumerateArray().First(), "id"), fixedReplicas = 1
+                            },
                         },
                     },
                 },

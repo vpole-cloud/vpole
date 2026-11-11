@@ -76,4 +76,6 @@
 	<s:Boolean x:Key="/Default/UserDictionary/Words/=sctp/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/UserDictionary/Words/=traefik/@EntryIndexedValue">True</s:Boolean>
 	<s:Boolean x:Key="/Default/UserDictionary/Words/=vite/@EntryIndexedValue">True</s:Boolean>
+    <!-- Formatting only: shared by Rider and the local/CI CleanupCode gate. -->
+    <s:String x:Key="/Default/CodeStyle/CodeCleanup/Profiles/=Pole_0020Safe_0020Cleanup/@EntryIndexedValue">&lt;Profile name="Pole Safe Cleanup"&gt;&lt;CSReformatCode&gt;True&lt;/CSReformatCode&gt;&lt;/Profile&gt;</s:String>
 </wpf:ResourceDictionary>

@@ -34,8 +34,8 @@ def commands(root, paths, write):
     prettier = [path for path in paths if Path(path).suffix in PRETTIER_SUFFIXES]
     result = []
     if csharp:
-        result.append(["dotnet", "format", "whitespace", "Pole.slnx", "--no-restore",
-                       *([] if write else ["--verify-no-changes"]), "--include", *csharp])
+        result.append([sys.executable, str(root / "scripts/cleanupcode.py"),
+                       "--write" if write else "--check", "--", *csharp])
     if prettier:
         executable = root / "src/api/frontend/node_modules/.bin/prettier"
         if not executable.is_file():

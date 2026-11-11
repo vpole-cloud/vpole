@@ -43,7 +43,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 11.0.100-rc.3.26522.148
+          dotnet-version: |
+            10.0.x
+            11.0.100-rc.3.26522.148
 
       - uses: actions/setup-node@v4
         with:
@@ -61,10 +63,22 @@ jobs:
       - name: Build backend
         run: dotnet build Pole.slnx --no-restore --disable-build-servers --nologo -maxcpucount:2 -nodeReuse:false
 
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
       - name: Check source formatting
         env:
           FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/master' }}
         run: python3 scripts/quality_gate.py check-format --base "$FORMAT_BASE"
+
+      - name: Upload CleanupCode report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanupcode-formatting
+          path: .artifacts/cleanupcode/**/report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Test delivery automation and lab recovery
         run: |
@@ -72,9 +86,6 @@ jobs:
           for test_script in infrastructure/kubernetes-lab/tests/*.sh; do
             bash "$test_script"
           done
-
-      - name: Restore coverage report tool
-        run: dotnet tool restore
 
       - name: Start and verify the full lab
         if: github.event_name == 'workflow_dispatch'

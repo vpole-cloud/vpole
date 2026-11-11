@@ -379,7 +379,8 @@ public sealed class AddWebServiceDeploymentHandler(
                         placement.Ingress.ClusterIssuerName,
                         placement.Ingress.PublicBaseDomain!,
                         [
-                            hostname ?? throw new InvalidOperationException("A public deployment hostname is required."),
+                            hostname ?? throw new InvalidOperationException(
+                                "A public deployment hostname is required."),
                         ])),
             placement.Compute.ToResourceDeploymentConfiguration(),
             Storage: null,

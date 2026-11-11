@@ -9,6 +9,8 @@ open System.Threading
 open MongoDB.Driver
 open Pole.Features.GitOps.Contracts
 open Pole.Features.GitOps.Primitives
+open Pole.Features.Postgres.Application
+open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Mongo
 open Pole.Features.Postgres.Application.Lifecycle

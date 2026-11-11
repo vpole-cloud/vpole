@@ -74,7 +74,7 @@ The repository compiler diagnostics complement review:
   legacy members have exact per-member allowances, checked by architecture tests.
 - `POLE011`: Domain constructors require explicit arguments; factories own initial defaults.
 - `POLE010`: feature-owned typed Mongo collection roots belong to the owning Domain project.
-- `.editorconfig` and `dotnet format whitespace` verify changed C# source formatting.
+- `.editorconfig` and pinned CleanupCode verify changed C# source formatting with `Pole Safe Cleanup`.
 
 - `POLE014`: production code uses typed MongoDB APIs instead of `BsonDocument`, `BsonArray` and
   `BsonValue`; deliberate boundaries require a reasoned `ViolateArchitecture` attribute. Migration
@@ -117,8 +117,11 @@ limits and per-project command durations. TRX and Cobertura checks require every
 Frontend pending/todo tests also fail the gate. The full profile verifies lab readiness and leaks.
 Logs and results live under `.artifacts/quality/`.
 
-Use `python3 scripts/quality_gate.py format` to apply C# whitespace formatting
-before the final run. It uses `origin/master` as the comparison base by default;
+Run `dotnet tool restore` once before standalone formatting commands. CleanupCode is pinned
+in `.config/dotnet-tools.json`; it requires a .NET 10 runtime alongside the pinned .NET 11 SDK.
+CI installs both, and the complete local gate restores tools before formatting.
+
+Use `python3 scripts/quality_gate.py format` to apply C# formatting before the final run. It uses `origin/master` as the comparison base by default;
 `--base` can select the explicitly agreed base of a stacked change. Formatting
 only changed files avoids unrelated repository-wide rewrites; tests are never
 restricted to changed files or features. For a stacked PR tested with
@@ -126,9 +129,25 @@ restricted to changed files or features. For a stacked PR tested with
 command defaults to `master` and rejects a target whose origin ref differs from
 the recorded review base.
 
+`check-format` formats temporary copies and fails if any selected C# file differs; it never
+rewrites sources or the Git index. `format` applies the resulting diff only after a successful
+tool run, refuses partially staged files and concurrent source/settings edits, and never stages
+changes. Logs, per-file differences and the pinned tool/profile metadata are retained under
+`.artifacts/cleanupcode/`. CI uploads the metadata-only formatting report; source
+patches and raw tool logs stay local. Tool failures print the final formatting diagnostics.
+
+`Pole Safe Cleanup` is a shared Rider profile in `Pole.sln.DotSettings` with only
+`CSReformatCode` enabled. The gate validates that contract and invokes CleanupCode on files,
+without a solution: this mode only reformats and does not execute semantic cleanup tasks.
+The selected source paths and their EditorConfig hierarchy are copied before the tool runs;
+global, personal and automatic project settings layers are disabled. F#, project XML and
+other languages are excluded from this C# lane. Keep `Pole Full Cleanup` as an explicit IDE
+operation: it is not the gate profile. The broader profile previously removed required F#
+imports and an object cast needed for serializer overload inference.
+
 For a safe combined changed-file check, use
 `python3 scripts/format_changed.py --base <review-base> --check`. It checks C# with
-the pinned SDK formatter and supported frontend/document files with the locally
+the pinned CleanupCode formatter and supported frontend/document files with the locally
 installed Prettier. Use `--write` to apply formatting before review. Write mode
 refuses files with both staged and unstaged edits. Neither mode stages, stashes,
 downloads tools, installs hooks, or changes Git configuration. A fully staged
