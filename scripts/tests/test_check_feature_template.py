@@ -53,3 +53,30 @@ class FeatureTemplateValidationTests(unittest.TestCase):
         command = execute.call_args_list[1].args[1]
         self.assertEqual(["scripts/cleanupcode.py", "--check", "src/features/Entries/Entry.cs"], command[1:])
         self.assertEqual(self.root, execute.call_args_list[1].args[2])
+
+    def test_coverage_reuses_the_current_gate_product_inventory(self):
+        output = self.root / ".artifacts/template-coverage"
+        output.mkdir(parents=True)
+        evidence = {"assemblies": ["Product", "Product.Migrations"], "settings": "coverage.runsettings"}
+        (output / "coverage-settings.json").write_text(json.dumps(evidence))
+        with patch.object(validator, "execute") as execute:
+            settings, observed = validator.prepare_test_coverage(self.root, self.root / "results")
+        self.assertEqual(output / "coverage.runsettings", settings)
+        self.assertEqual(evidence, observed)
+        self.assertEqual(["scripts/quality_gate.py", "coverage-settings", "--results-directory", str(output)],
+                         execute.call_args.args[1][1:])
+
+    def test_semantic_architecture_prerequisites_build_the_whole_snapshot_solution(self):
+        def stop_after_build(name, *args):
+            if name == "build":
+                raise validator.GateError("controlled build stop")
+
+        with patch.object(validator, "source_fingerprint", return_value="current"), \
+                patch.object(validator, "snapshot_sources"), patch.object(validator, "wire_snapshot"), \
+                patch.object(validator, "validation_environment", return_value={
+                    "POLE_TEST_WORKTREE_ID": "worktree", "POLE_TEST_RUN_ID": "run"}), \
+                patch.object(validator, "execute", side_effect=stop_after_build) as execute:
+            with self.assertRaisesRegex(validator.GateError, "controlled build stop"):
+                validator.check(self.root / "results")
+        self.assertEqual(["dotnet", "restore", "Pole.slnx"], execute.call_args_list[0].args[1][:3])
+        self.assertEqual(["dotnet", "build", "Pole.slnx"], execute.call_args_list[1].args[1][:3])
