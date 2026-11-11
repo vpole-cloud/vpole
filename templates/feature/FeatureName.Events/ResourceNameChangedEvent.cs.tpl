@@ -8,11 +8,13 @@ public sealed record ResourceNameCreatedEvent(
     string ResourceId,
     string Name,
     long Revision,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;
 
 [EntityName("pole.feature-route/v1/resource-updated")]
 public sealed record ResourceNameUpdatedEvent(
     string ResourceId,
     string Name,
     long Revision,
-    EventCore EventCore) : IPoleEvent;
+    EventCore EventCore
+) : IPoleEvent;

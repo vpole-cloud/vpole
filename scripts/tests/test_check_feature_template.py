@@ -44,3 +44,12 @@ class FeatureTemplateValidationTests(unittest.TestCase):
     def test_validation_requires_a_fresh_results_directory(self):
         with self.assertRaises(FileExistsError):
             validator.check(self.root)
+
+    def test_formatting_uses_the_shared_pinned_safe_cleanup_on_generated_sources(self):
+        source = self.root / "src/features/Entries/Entry.cs"
+        with patch.object(validator, "execute") as execute:
+            validator.check_format(self.root, self.root / "results", [source])
+        self.assertEqual(["dotnet", "tool", "restore"], execute.call_args_list[0].args[1])
+        command = execute.call_args_list[1].args[1]
+        self.assertEqual(["scripts/cleanupcode.py", "--check", "src/features/Entries/Entry.cs"], command[1:])
+        self.assertEqual(self.root, execute.call_args_list[1].args[2])

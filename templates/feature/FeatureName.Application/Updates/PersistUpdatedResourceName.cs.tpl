@@ -13,7 +13,8 @@ public sealed record UpdateResourceNameInput(
     string TenantId,
     string Id,
     long ExpectedRevision,
-    ResourceNameDetails Details);
+    ResourceNameDetails Details
+);
 
 public union PersistUpdatedResourceNameOutcome(
     ResourceName,
@@ -29,14 +30,18 @@ internal sealed class MongoPersistUpdatedResourceName(
     IMongoCollection<ResourceName> resources,
     StoreOutboxWrites storeOutboxWrites,
     RunMongoOutcomeTransaction<PersistUpdatedResourceNameOutcome> runTransaction,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider
+)
 {
     public Task<PersistUpdatedResourceNameOutcome> InvokeAsync(
-        UpdateResourceNameInput request, CancellationToken ct) =>
-        runTransaction(async (transaction, token) =>
+        UpdateResourceNameInput request,
+        CancellationToken ct) => runTransaction(
+        async (transaction, token) =>
         {
-            var current = await resources.Find(transaction.Session,
-                ResourceNameFilters.ById(request.TenantId, request.Id)).FirstOrDefaultAsync(token);
+            var current = await resources.Find(
+                    transaction.Session,
+                    ResourceNameFilters.ById(request.TenantId, request.Id))
+                .FirstOrDefaultAsync(token);
             if (current is null)
                 return transaction.Abort(new ResourceNameNotFound(request.Id));
 
@@ -50,12 +55,16 @@ internal sealed class MongoPersistUpdatedResourceName(
             ReplaceOneResult replaced;
             try
             {
-                replaced = await resources.ReplaceOneAsync(transaction.Session,
+                replaced = await resources.ReplaceOneAsync(
+                    transaction.Session,
                     ResourceNameFilters.AtRevision(request.TenantId, request.Id, request.ExpectedRevision),
-                    updated, cancellationToken: token);
+                    updated,
+                    cancellationToken: token);
             }
             catch (MongoWriteException exception) when (MongoDuplicateKey.IsForIndex(
-                exception, FeatureNameIndexes.TenantName, resources.CollectionNamespace.CollectionName))
+                                                            exception,
+                                                            FeatureNameIndexes.TenantName,
+                                                            resources.CollectionNamespace.CollectionName))
             {
                 return transaction.Abort(new ResourceNameNameAlreadyExists(updated.Details.Name));
             }
@@ -63,9 +72,13 @@ internal sealed class MongoPersistUpdatedResourceName(
             if (replaced.MatchedCount == 0)
                 return transaction.Abort(new ResourceNameRevisionConflict(request.Id, request.ExpectedRevision));
 
-            var changed = new ResourceNameUpdatedEvent(updated.Id, updated.Details.Name, updated.Revision,
+            var changed = new ResourceNameUpdatedEvent(
+                updated.Id,
+                updated.Details.Name,
+                updated.Revision,
                 EventCore.Create(updated.TenantId));
             await storeOutboxWrites(transaction.Session, [OutboxWrite.Create(changed)], token);
             return transaction.Commit(updated);
-        }, ct);
+        },
+        ct);
 }
