@@ -232,7 +232,8 @@ public sealed class AutomaticPhaseEvidenceTests
         var output = File.ReadAllText(journal.Path);
         foreach (var canary in new[]
                  {
-                     "browser-resource-canary", "browser-uid-canary", "browser-container-canary", "unknown-query-canary",
+                     "browser-resource-canary", "browser-uid-canary", "browser-container-canary",
+                     "unknown-query-canary",
                  })
             Assert.DoesNotContain(canary, output, StringComparison.Ordinal);
     }

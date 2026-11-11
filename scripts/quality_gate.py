@@ -278,7 +278,7 @@ def format_command(base, fix=False):
     paths = changed_csharp(base)
     if not paths:
         return None
-    return ["dotnet", "format", "whitespace", "Pole.slnx", "--no-restore", *([] if fix else ["--verify-no-changes"]), "--include", *paths]
+    return [sys.executable, "scripts/cleanupcode.py", "--write" if fix else "--check", "--", *paths]
 
 
 def save_receipt(receipt):
@@ -465,6 +465,7 @@ def run_full(base, profile="full", config=None):
         execute("frontend-install", ["npm", "ci", "--prefix", "src/api/frontend"], directory, steps)
         execute("restore", ["dotnet", "restore", "Pole.slnx", *build_options(settings["buildMaxCpuCount"])], directory, steps)
         execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *build_options(settings["buildMaxCpuCount"])], directory, steps)
+        execute("dotnet-tools-restore", ["dotnet", "tool", "restore"], directory, steps)
         command = format_command(base)
         if command:
             execute("format", command, directory, steps)
@@ -550,7 +551,9 @@ def main():
         elif args.command in ("format", "check-format"):
             command = format_command(args.base, fix=args.command == "format")
             if command:
-                subprocess.run(command, cwd=ROOT, check=True)
+                result = subprocess.run(command, cwd=ROOT, check=False)
+                if result.returncode:
+                    raise GateError("CleanupCode formatting failed; inspect the output and .artifacts/cleanupcode/")
         elif args.command == "check-backend-reports":
             check_backend_reports(args.directory, profile=args.profile)
         elif args.command == "check-frontend-report":

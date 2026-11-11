@@ -908,7 +908,9 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                                     Preference = new V1NodeSelectorTerm
                                     {
                                         MatchExpressions =
-                                            [new V1NodeSelectorRequirement { Key = "old", OperatorProperty = "Exists" }],
+                                        [
+                                            new V1NodeSelectorRequirement { Key = "old", OperatorProperty = "Exists" }
+                                        ],
                                     },
                                 },
                             ],

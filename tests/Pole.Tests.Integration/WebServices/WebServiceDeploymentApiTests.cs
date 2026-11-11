@@ -553,7 +553,8 @@ public sealed class WebServiceDeploymentApiTests(
                 new WebServiceReleaseFactory.CreateOptions(ObjectId.GenerateNewId().ToString(), DateTime.UtcNow),
                 service.Exposure) with
             {
-                Outcome = outcome, CompletedAtUtc = outcome == WebServiceReleaseOutcome.Pending ? null : DateTime.UtcNow,
+                Outcome = outcome,
+                CompletedAtUtc = outcome == WebServiceReleaseOutcome.Pending ? null : DateTime.UtcNow,
             };
         await Fixture.Database.WebServiceReleases().InsertOneAsync(release);
     }

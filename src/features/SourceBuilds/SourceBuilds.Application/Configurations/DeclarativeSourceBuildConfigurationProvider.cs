@@ -473,7 +473,9 @@ internal sealed class DeclarativeSourceBuildConfigurationProvider(
     private static DeclarationDocumentVersion[] Versions(References references) =>
     [
         new(SourceRepositoryVersionKeys.Revision(references.Repository.Id), references.Repository.Revision),
-        new(DeclarationVersionKeys.Resource(WebServiceKind, references.Target.WebServiceId), references.Target.Revision),
+        new(
+            DeclarationVersionKeys.Resource(WebServiceKind, references.Target.WebServiceId),
+            references.Target.Revision),
     ];
 
     private static DeclarationProjection Project(

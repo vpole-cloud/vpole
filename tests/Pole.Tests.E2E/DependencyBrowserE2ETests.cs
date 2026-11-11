@@ -563,7 +563,8 @@ public sealed class DependencyBrowserE2ETests(
                 {
                     new
                     {
-                        deploymentTargetId = targetId, storageClassName = Text(classes.EnumerateArray().First(), "name"),
+                        deploymentTargetId = targetId,
+                        storageClassName = Text(classes.EnumerateArray().First(), "name"),
                     },
                 },
                 allowedResourceTypes = new[] { "pole/postgresql", "pole/redis" },

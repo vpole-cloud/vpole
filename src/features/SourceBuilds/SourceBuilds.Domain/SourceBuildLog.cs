@@ -133,16 +133,15 @@ public sealed record SourceBuildLog(
         };
     }
 
-    public SourceBuildLog Recover(DateTime now) => now >= ExpiresAtUtc && State is not ExpiredSourceBuildLog
-        ?
-        this with
+    public SourceBuildLog Recover(DateTime now) => now >= ExpiresAtUtc && State is not ExpiredSourceBuildLog ? this with
         {
             Entries = [], LastAppendFingerprint = null, State = new ExpiredSourceBuildLog(now),
             Revision = checked(Revision + 1),
-        }
-        : State is OpenSourceBuildLog open && now >= open.LeaseExpiresAtUtc
-            ? this with { State = new InterruptedSourceBuildLog(now), Revision = checked(Revision + 1) }
-            : this;
+        } :
+        State is OpenSourceBuildLog open && now >= open.LeaseExpiresAtUtc ? this with
+        {
+            State = new InterruptedSourceBuildLog(now), Revision = checked(Revision + 1)
+        } : this;
 
     private void EnsureOpen(DateTime now)
     {

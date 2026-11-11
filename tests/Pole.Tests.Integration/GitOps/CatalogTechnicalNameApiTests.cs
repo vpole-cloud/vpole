@@ -39,12 +39,13 @@ public sealed class CatalogTechnicalNameApiTests(
     private static string Root(string catalog) => $"/api/v1/platform/{catalog}/";
 
 
+    // The object cast gives the heterogeneous conditional a type for serializer overload inference.
     internal static JsonObject Body(
         string catalog,
         string? name,
         string targetId = TestData.DefaultDeploymentTargetId) => JsonSerializer.SerializeToNode(
         catalog == "compute-profiles"
-            ? new CreateComputeProfileRequestBody(
+            ? (object)new CreateComputeProfileRequestBody(
                 name!,
                 "General purpose",
                 "Profile",

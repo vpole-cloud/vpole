@@ -59,6 +59,12 @@ Docker is required for `tests/Pole.Tests.Integration`. Aspire E2E and live Kuber
 
 Use `$pole-test-runner` for focused development checks. Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr`: every selected test must pass without filters or skips. Run `--profile full` locally before broad changes and through manual CI. Infrastructure unavailability and pre-existing failures block publication. See [agent delivery](docs/agent-delivery.md) for canonical implementations, early slice review and evidence commands.
 
+Standalone C# formatting uses the pinned CleanupCode tool: run `dotnet tool restore` once,
+then `python3 scripts/quality_gate.py check-format` or `format`. The shared `Pole Safe Cleanup`
+profile enables only C# formatting; the gate checks temporary copies and does not rewrite
+sources. CleanupCode needs a .NET 10 runtime in addition to the pinned .NET 11 SDK.
+Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
+
 ## Engineering rules
 
 - Preserve feature ownership: synchronous cross-feature access uses provider-owned Contracts; asynchronous integration uses provider-owned Events.

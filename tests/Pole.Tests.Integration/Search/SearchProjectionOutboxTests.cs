@@ -50,8 +50,7 @@ public sealed class SearchProjectionOutboxTests(
         var messages = envelopes.Select(row =>
                 JsonSerializer.Deserialize<SearchProjectionChangedEvent>(
                     row.PayloadJson,
-                    EventExtensions.SerializerOptions)
-                !)
+                    EventExtensions.SerializerOptions) !)
             .ToArray();
         Assert.All(
             messages,

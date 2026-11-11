@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import os
 import re
@@ -17,6 +18,24 @@ SPEC.loader.exec_module(gate)
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_format_failure_reports_evidence_without_dumping_every_source_argument(self):
+        command = ["formatter", "a-very-long-source-list.cs"]
+        with patch.object(gate.sys, "argv", ["quality_gate.py", "check-format"]), \
+                patch.object(gate, "format_command", return_value=command), \
+                patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess(command, 1)), \
+                patch.object(gate.sys, "stderr", new_callable=io.StringIO) as errors:
+            self.assertEqual(1, gate.main())
+        self.assertIn("CleanupCode formatting failed", errors.getvalue())
+        self.assertNotIn("a-very-long-source-list.cs", errors.getvalue())
+
+    def test_format_commands_use_safe_wrapper_without_losing_source_paths(self):
+        paths = ["file with spaces.cs", "-leading.cs"]
+        with patch.object(gate, "changed_csharp", return_value=paths):
+            check = gate.format_command("origin/master")
+            write = gate.format_command("origin/master", fix=True)
+        self.assertEqual([gate.sys.executable, "scripts/cleanupcode.py", "--check", "--", *paths], check)
+        self.assertEqual([gate.sys.executable, "scripts/cleanupcode.py", "--write", "--", *paths], write)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

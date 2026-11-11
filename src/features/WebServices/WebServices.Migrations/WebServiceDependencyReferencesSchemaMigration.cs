@@ -29,12 +29,11 @@ public sealed class WebServiceDependencyReferencesSchemaMigration : IMigration
             Reference(
                 ["SecretId", "Key"],
                 ("SecretId", ObjectIdString()),
-                ("Key",
-                    new BsonDocument
-                    {
-                        ["bsonType"] = "string", ["minLength"] = 1, ["maxLength"] = 253,
-                        ["pattern"] = "^[A-Za-z0-9._-]+$",
-                    })));
+                ("Key", new BsonDocument
+                {
+                    ["bsonType"] = "string", ["minLength"] = 1, ["maxLength"] = 253,
+                    ["pattern"] = "^[A-Za-z0-9._-]+$",
+                })));
         await context.RunCommandAsync<BsonDocument>(
             new BsonDocument
             {

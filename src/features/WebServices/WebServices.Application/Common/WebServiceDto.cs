@@ -1,4 +1,5 @@
 // ReSharper disable MemberCanBePrivate.Global
+
 using System.Collections.Immutable;
 using MongoDB.Bson;
 using Pole.Features.GitOps.Contracts;
