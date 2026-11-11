@@ -246,6 +246,26 @@ class ReducedReceiptTests(unittest.TestCase):
             self.assertEqual("failed", json.loads(gate.RECEIPT.read_text())["status"])
         full.assert_not_called()
 
+    def test_format_only_report_cannot_admit_complete_template_receipt(self):
+        path = self.root / "templates/feature/code.tpl"
+        path.parent.mkdir(parents=True)
+        path.write_text("semantic template input")
+        def execute(name, command, *args):
+            if name == "feature-template":
+                self.assertNotIn("--format-only", command)
+                output = Path(command[command.index("--results-directory") + 1])
+                output.mkdir(parents=True)
+                (output / "result.json").write_text(json.dumps({"status": "passed", "mode": "format-only",
+                    "tests": {}, "fingerprint": scope.fingerprint(scope.working_tree(self.root))}))
+        with self.context(), patch.object(gate, "execute", side_effect=execute):
+            with self.assertRaisesRegex(ValueError, "mode"):
+                gate.run_selected(self.base)
+            receipt = json.loads(gate.RECEIPT.read_text())
+            self.assertEqual("failed", receipt["status"])
+            self.assertFalse(receipt["validated"].get("template"))
+            with self.assertRaises(gate.GateError):
+                gate.require_current_receipt()
+
     def test_behavioral_delta_cannot_verify_a_docs_receipt(self):
         (self.root / "README.md").write_text("docs only")
         with self.context(), patch.object(gate, "execute"):
@@ -281,7 +301,7 @@ class ReducedReceiptTests(unittest.TestCase):
                 self.assertIn("--format-only", command)
                 output = Path(command[command.index("--results-directory") + 1])
                 output.mkdir(parents=True)
-                (output / "result.json").write_text(json.dumps({"status": "passed", "tests": {},
+                (output / "result.json").write_text(json.dumps({"status": "passed", "mode": "format-only", "tests": {},
                     "fingerprint": scope.fingerprint(scope.working_tree(self.root))}))
         with self.context(), patch.object(gate, "execute", side_effect=execute), \
                 patch.object(gate, "run_full") as full, patch.object(gate, "selected_projects", return_value=[]):

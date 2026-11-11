@@ -154,6 +154,11 @@ commands and agent authority manually; a link or frontmatter check does not vali
 Kubernetes audits are required only for selected Kubernetes lanes; do not start a lab for docs or
 metadata-template Mongo tests.
 
+Complete generated evidence requires the requested mode and exactly three distinct suites
+(unit, architecture, integration), with successful nonzero integer counters and no skips. The
+checker validates its project inventory before building; local receipt admission and the CI job
+validate the produced report independently. Formatting-only reports cannot satisfy complete mode.
+
 Every **selected** suite runs without filters and must have zero failures/skips. Missing prerequisites,
 expected failures and baseline failures block the selected lane. The `pr` behavioral profile proves
 Fast, Services and frontend; it does not prove live Kubernetes/E2E behavior.

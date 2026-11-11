@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 import check_feature_template as validator
+from template_evidence import expected_projects
 
 
 class FeatureTemplateValidationTests(unittest.TestCase):
@@ -72,7 +73,8 @@ class FeatureTemplateValidationTests(unittest.TestCase):
                 raise validator.GateError("controlled build stop")
 
         with patch.object(validator, "source_fingerprint", return_value="current"), \
-                patch.object(validator, "snapshot_sources"), patch.object(validator, "wire_snapshot"), \
+                patch.object(validator, "snapshot_sources"), \
+                patch.object(validator, "wire_snapshot", side_effect=expected_projects), \
                 patch.object(validator, "validation_environment", return_value={
                     "POLE_TEST_WORKTREE_ID": "worktree", "POLE_TEST_RUN_ID": "run"}), \
                 patch.object(validator, "execute", side_effect=stop_after_build) as execute:
@@ -102,3 +104,16 @@ class FeatureTemplateValidationTests(unittest.TestCase):
         self.assertEqual("format-only", result["mode"])
         self.assertEqual("passed", result["status"])
         self.assertEqual({}, result["tests"])
+
+    def test_complete_mode_rejects_missing_and_duplicate_project_inventory_before_build(self):
+        for index, inventory in enumerate((lambda root: [],
+                                            lambda root: [expected_projects(root)[0]] * 3)):
+            output = self.root / f"invalid-inventory-{index}"
+            with patch.object(validator, "source_fingerprint", return_value="current"), \
+                    patch.object(validator, "snapshot_sources"), \
+                    patch.object(validator, "wire_snapshot", side_effect=inventory), \
+                    patch.object(validator, "execute") as execute:
+                with self.assertRaisesRegex(ValueError, "exactly"):
+                    validator.check(output)
+            execute.assert_not_called()
+            self.assertEqual("failed", json.loads((output / "result.json").read_text())["status"])
