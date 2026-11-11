@@ -16,6 +16,7 @@ import time
 import xml.etree.ElementTree as ET
 
 import verification_scope as scope
+from template_evidence import load_report as load_template_report
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / ".artifacts" / "quality"
@@ -466,6 +467,8 @@ def run_full(base, profile="full", config=None):
         template_directory = ROOT / ".artifacts/feature-template" / directory.name
         execute("feature-template", [sys.executable, "scripts/check_feature_template.py",
                 "--results-directory", str(template_directory)], directory, steps)
+        generated = load_template_report(template_directory / "result.json", "complete", receipt["fingerprint"])
+        receipt["generated_tests"] = generated["tests"]
         run_backend(directory, steps, receipt["tests"], profile,
                     {group: settings[group] for group in GROUPS}, settings["integrationMaxParallelThreads"])
         frontend_report = directory / "frontend.json"
@@ -549,6 +552,8 @@ def run_selected(base, profile="pr", config=None):
         receipt["profile"] = previous["profile"]
         for key in ("tests", "projects", "validated"):
             receipt[key] = previous[key]
+        if "generated_tests" in previous:
+            receipt["generated_tests"] = previous["generated_tests"]
         receipt["reused"] = {"from_head": previous["tested_head"], "from_fingerprint": previous["fingerprint"],
                              "to_head": receipt["tested_head"], "delta": reuse["files"]}
     save_receipt(receipt)
@@ -566,11 +571,10 @@ def run_selected(base, profile="pr", config=None):
             if reuse is not None or not selection["template"]:
                 command.append("--format-only")
             execute("feature-template", command, directory, receipt["steps"])
-            generated = json.loads((output / "result.json").read_text())
-            if generated["status"] != "passed" or generated["fingerprint"] != receipt["fingerprint"]:
-                raise GateError("Generated evidence does not match the current source")
-            if "--format-only" not in command:
-                receipt["tests"]["generated"] = generated["tests"]
+            mode = "format-only" if "--format-only" in command else "complete"
+            generated = load_template_report(output / "result.json", mode, receipt["fingerprint"])
+            if mode == "complete":
+                receipt["generated_tests"] = generated["tests"]
                 receipt["validated"]["template"] = True
         if source_fingerprint() != receipt["fingerprint"]:
             raise GateError("Inputs changed during selected verification")
@@ -611,6 +615,9 @@ def main():
     backend = commands.add_parser("check-backend-reports")
     backend.add_argument("--directory", type=Path, required=True)
     backend.add_argument("--profile", choices=PROFILES, default="full")
+    template = commands.add_parser("check-template-report")
+    template.add_argument("--report", type=Path, required=True)
+    template.add_argument("--mode", choices=("complete", "format-only"), required=True)
     frontend = commands.add_parser("check-frontend-report")
     frontend.add_argument("--report", type=Path, required=True)
     coverage = commands.add_parser("coverage-settings")
@@ -672,6 +679,9 @@ def main():
                     raise GateError("CleanupCode formatting failed; inspect the output and .artifacts/cleanupcode/")
         elif args.command == "check-backend-reports":
             check_backend_reports(args.directory, profile=args.profile)
+        elif args.command == "check-template-report":
+            report = load_template_report(args.report, args.mode, source_fingerprint())
+            print(f"Validated generated {report['mode']} evidence for the current source.")
         elif args.command == "check-frontend-report":
             print(read_vitest(args.report))
         elif args.command == "record-review":

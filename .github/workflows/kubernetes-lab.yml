@@ -77,8 +77,10 @@ jobs:
           FORMAT_ONLY: ${{ needs.selection.outputs.template_format }}
         run: |
           flags=()
-          if [[ "$FORMAT_ONLY" == true ]]; then flags=(--format-only); fi
+          mode=complete
+          if [[ "$FORMAT_ONLY" == true ]]; then flags=(--format-only); mode=format-only; fi
           python3 scripts/check_feature_template.py --results-directory .artifacts/feature-template/ci "${flags[@]}"
+          python3 scripts/quality_gate.py check-template-report --report .artifacts/feature-template/ci/result.json --mode "$mode"
       - name: Upload bounded template validation result
         if: always()
         uses: actions/upload-artifact@v4

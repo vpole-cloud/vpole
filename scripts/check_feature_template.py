@@ -14,9 +14,9 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from create_feature import create_feature
+from template_evidence import FEATURE, validate_projects, validate_report
 from quality_gate import GateError, MSBUILD, ROOT, read_coverage_reports, read_trx, source_fingerprint
 
-FEATURE = "FeatureTemplateProbe"
 RESOURCE = "TemplateEntry"
 
 
@@ -100,6 +100,8 @@ def check(directory, format_only=False):
     try:
         snapshot_sources(root)
         projects = wire_snapshot(root)
+        if not format_only:
+            validate_projects(projects, root)
         environment = validation_environment()
         report["worktree_id"] = environment["POLE_TEST_WORKTREE_ID"]
         report["run_id"] = environment["POLE_TEST_RUN_ID"]
@@ -132,6 +134,7 @@ def check(directory, format_only=False):
         if fingerprint != source_fingerprint():
             raise GateError("Template or repository inputs changed during validation.")
         report["status"] = "passed"
+        validate_report(report, "format-only" if format_only else "complete", fingerprint)
     except BaseException:
         report["status"] = "failed"
         raise

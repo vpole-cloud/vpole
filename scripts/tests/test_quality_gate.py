@@ -11,6 +11,8 @@ import unittest
 import xml.etree.ElementTree as ET
 from unittest.mock import patch
 
+from test_template_evidence import complete_report
+
 
 SPEC = importlib.util.spec_from_file_location("quality_gate", Path(__file__).parents[1] / "quality_gate.py")
 gate = importlib.util.module_from_spec(SPEC)
@@ -385,7 +387,8 @@ class EvidenceTests(unittest.TestCase):
                 patch.object(gate, "test_projects", return_value=["tests/A.csproj"]), patch.object(gate, "capture_headroom"), \
                 patch.object(gate, "execute") as execute, patch.object(gate, "format_command", return_value=None), \
                 patch.object(gate, "read_vitest", return_value={"total": 1, "passed": 1}), patch("builtins.print"), \
-                patch.object(gate, "run_backend"):
+                patch.object(gate, "run_backend"), \
+                patch.object(gate, "load_template_report", return_value=complete_report()):
             gate.run_full("origin/master", "pr")
         names = [call.args[0] for call in execute.call_args_list]
         self.assertNotIn("lab-verify", names)
@@ -424,6 +427,9 @@ class EvidenceTests(unittest.TestCase):
                 output = Path(command[-1])
                 output.mkdir(parents=True)
                 (output / "results.trx").write_text("generated feature evidence")
+                report = complete_report()
+                report["fingerprint"] = "unchanged"
+                (output / "result.json").write_text(json.dumps(report))
 
         with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \
                 patch.object(gate, "RECEIPT", self.root / "receipt.json"), \
