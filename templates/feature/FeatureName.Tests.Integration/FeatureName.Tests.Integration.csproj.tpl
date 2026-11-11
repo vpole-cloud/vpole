@@ -1,19 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net11.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <AssemblyName>Pole.Features.FeatureName.Tests.Integration</AssemblyName>
-    <RootNamespace>Pole.Features.FeatureName.Tests.Integration</RootNamespace>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
-    <ProjectReference Include="../FeatureName.Application/FeatureName.Application.csproj" />
-    <ProjectReference Include="../FeatureName.Migrations/FeatureName.Migrations.csproj" />
-    <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj" />
-    <ProjectReference Include="../../ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj" />
-    <ProjectReference Include="../../Outbox/Outbox.Domain/Outbox.Domain.csproj" />
-  </ItemGroup>
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.FeatureName.Tests.Integration</AssemblyName>
+        <RootNamespace>Pole.Features.FeatureName.Tests.Integration</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all"/>
+        <ProjectReference Include="../FeatureName.Application/FeatureName.Application.csproj"/>
+        <ProjectReference Include="../FeatureName.Migrations/FeatureName.Migrations.csproj"/>
+        <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj"/>
+        <ProjectReference Include="../../ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj"/>
+        <ProjectReference Include="../../Outbox/Outbox.Domain/Outbox.Domain.csproj"/>
+    </ItemGroup>
 </Project>
