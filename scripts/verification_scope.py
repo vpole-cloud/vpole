@@ -81,6 +81,9 @@ def documentation(name):
 
 
 def xml_shape(data):
+    text = data.decode("utf-8-sig")
+    if "\0" in text:
+        raise ValueError("Only UTF-8 XML has a supported formatting proof")
     if any(marker in data for marker in (b"<!DOCTYPE", b"<![CDATA[", b"xml:space")):
         raise ValueError("Whitespace-sensitive XML requires normal verification")
     parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True, insert_pis=True))
@@ -112,12 +115,15 @@ def simple_format(name, before, after):
 def csharp_equivalent(pairs, root=ROOT):
     if not pairs:
         return []
+    try:
+        decoded = [{"Before": a.decode("utf-8-sig"), "After": b.decode("utf-8-sig")} for a, b in pairs]
+    except UnicodeError:
+        return [False] * len(pairs)
     output = root / ".artifacts/change-proof"
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output) as temporary:
         request = Path(temporary) / "input.json"
-        request.write_text(json.dumps([{"Before": a.decode("utf-8-sig"), "After": b.decode("utf-8-sig")}
-                                      for a, b in pairs]))
+        request.write_text(json.dumps(decoded))
         log = output / "build.log"
         project = ROOT / "scripts/ChangeProof/ChangeProof.csproj"
         with log.open("w") as stream:

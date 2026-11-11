@@ -62,6 +62,16 @@ class ScopeTests(unittest.TestCase):
                      '<Project xml:space="preserve"> </Project>']:
             self.assertTrue(self.classify(text, text + '\n', "a.props")["behavioral"])
 
+    def test_utf16_cannot_bypass_xml_space_rejection(self):
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            before = '<Project xml:space="preserve"><Group><A/></Group></Project>'.encode(encoding)
+            after = '<Project xml:space="preserve">\n <Group><A/></Group>\n</Project>'.encode(encoding)
+            result = scope.classify_trees({"a.props": ("100644", before)}, {"a.props": ("100644", after)},
+                                          proof=lambda _: [])
+            self.assertTrue(result["behavioral"])
+        self.assertEqual([False], scope.csharp_equivalent([("class A{}".encode("utf-16"),
+                                                          "class A { }".encode("utf-16"))]))
+
     def test_json_literals_and_key_order_are_preserved(self):
         self.assertFalse(self.classify('{"a":1}', '{\n  "a": 1\n}', "settings.json")["behavioral"])
         for after in ['{"a":2}', '{"a":" "}', '{"b":2,"a":1}']:
