@@ -140,7 +140,9 @@ Formatting proof is deliberately narrow. C# uses the pinned SDK's preview parser
 exact tokens plus non-whitespace trivia, retaining literals, comments, directives and inactive
 branches. Syntax errors, import/member rearrangement and semantic cleanup are not formatting.
 UTF-8 MSBuild/solution XML retains element order, attributes, property text, comments and processing
-instructions; DTD, CDATA and xml:space are unsupported. JSON retains lexical literals and key
+instructions and namespace declarations. Nested XML property/metadata values, custom task payloads,
+ProjectExtensions, DTD, CDATA and xml:space are unsupported and require behavioral verification.
+JSON retains lexical literals and key
 order. F#, YAML, JavaScript/TypeScript/JSX, other formats, new/deleted code and renames have no
 automatic formatting exemption. A whitespace-only Git diff is not a proof. Formatter/settings
 changes receive normal behavioral verification, not a filename-based waiver.

@@ -1,6 +1,7 @@
 """Conservative diff classification shared by local receipts and CI selection."""
 
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -91,13 +92,32 @@ def xml_shape(data):
     if any(marker in data for marker in (b"<!DOCTYPE", b"<![CDATA[", b"xml:space")):
         raise ValueError("Whitespace-sensitive XML requires normal verification")
     parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True, insert_pis=True))
+    root = ET.fromstring(data, parser=parser)
+    local = lambda node: node.tag.rsplit("}", 1)[-1] if isinstance(node.tag, str) else ""
+    if local(root) not in {"Project", "Solution"}:
+        raise ValueError("Unknown XML document requires normal verification")
+
+    def validate(node, parent=None, grandparent=None):
+        tag, owner, group = local(node), local(parent) if parent is not None else "", local(grandparent) if grandparent is not None else ""
+        scalar = owner == "PropertyGroup" or group in {"ItemGroup", "ItemDefinitionGroup"} or tag == "Property"
+        opaque = tag == "ProjectExtensions" or (tag == "Task" and owner == "UsingTask")
+        if len(node) and (scalar or opaque):
+            raise ValueError("Nested XML string/task payload requires normal verification")
+        if "{http://www.w3.org/XML/1998/namespace}space" in node.attrib:
+            raise ValueError("Whitespace-sensitive XML requires normal verification")
+        for child in node:
+            validate(child, node, parent)
+
+    validate(root)
+    namespaces = [binding for _, binding in ET.iterparse(io.BytesIO(data), events=("start-ns",))]
+
     def shape(node):
         text = node.text or ""
         if len(node) and text.isspace():
             text = ""
         return (str(node.tag), sorted(node.attrib.items()), text,
                 [(shape(child), "" if (child.tail or "").isspace() else child.tail or "") for child in node])
-    return (re.findall(rb"<!--.*?-->|<\?.*?\?>", data, re.S), shape(ET.fromstring(data, parser=parser)))
+    return (re.findall(rb"<!--.*?-->|<\?.*?\?>", data, re.S), namespaces, shape(root))
 
 
 def simple_format(name, before, after):
