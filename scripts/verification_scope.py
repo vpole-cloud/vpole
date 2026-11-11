@@ -70,14 +70,18 @@ def fingerprint(tree):
 
 def documentation(name):
     path = Path(name)
+    if any(part.casefold() in {"fixtures", "testdata", "snapshots", "__snapshots__"}
+           or ".tests" in part.casefold() for part in path.parts):
+        return False
     if name == "templates/feature/README.md.tpl":
         return True
     if path.suffix != ".md":
         return False
+    module_readme = path.name == "README.md" and name.startswith(
+        ("src/", "infrastructure/", "tests/", "examples/", ".github/"))
     return (name in {"AGENTS.md", "README.md", "templates/feature/README.md"}
-            or name.startswith(("docs/", ".codex/skills/"))
-            or (name.startswith("src/features/") and len(path.parts) >= 4
-                and (path.parts[3] == "docs" or (len(path.parts) == 4 and path.name == "README.md"))))
+            or module_readme or name.startswith(("docs/", ".codex/skills/"))
+            or (name.startswith("src/features/") and len(path.parts) >= 4 and path.parts[3] == "docs"))
 
 
 def xml_shape(data):

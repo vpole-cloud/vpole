@@ -145,7 +145,8 @@ order. F#, YAML, JavaScript/TypeScript/JSX, other formats, new/deleted code and 
 automatic formatting exemption. A whitespace-only Git diff is not a proof. Formatter/settings
 changes receive normal behavioral verification, not a filename-based waiver.
 
-Documentation classification applies to canonical docs, feature README/docs and skill Markdown,
+Documentation classification applies to canonical docs, feature docs, module/package README files
+(including frontend, shared libraries, infrastructure and SDKs) and skill Markdown,
 not arbitrary `.md` fixtures/assets. Generated README text is documentation. Review changed
 commands and agent authority manually; a link or frontmatter check does not validate their intent.
 Kubernetes audits are required only for selected Kubernetes lanes; do not start a lab for docs or
