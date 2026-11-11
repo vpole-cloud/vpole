@@ -21,11 +21,11 @@ For independent review, use the supplied request or issue, approved plan when pr
 2. Inspect the diff stat, complete changed-file list, and relevant diff slices against the supplied base.
 3. Read the [review checklist](../../../docs/review-checklist.md) and its canonical engineering/module rules. For code changes, inspect the owning feature and related callers, serialization, alternate write paths and tests. For documentation, skills, or agent guidance, inspect the governing source and affected references. Honor any explicitly requested repository-wide audit without adding unrelated refactoring.
 4. Identify the changed areas and load the matching focused skills only when relevant:
-   - `$pole-tenant-scoping` for tenant-owned resources, auth, headers, Mongo filters, search tenant data, or frontend tenant flow.
-   - `$pole-events-outbox` for events, outbox, consumers, trace/correlation, DNS reservation messages, or transaction boundaries.
-   - `$pole-kubernetes-resource` for namespace, manifest, resource manager, storage, ingress, or live cluster behavior.
-   - `$pole-frontend-api` for SPA API calls, hooks, tenant selection, forms, pages, or TypeScript types.
-   - `$pole-test-runner` for deciding missing or insufficient validation.
+    - `$pole-tenant-scoping` for tenant-owned resources, auth, headers, Mongo filters, search tenant data, or frontend tenant flow.
+    - `$pole-events-outbox` for events, outbox, consumers, trace/correlation, DNS reservation messages, or transaction boundaries.
+    - `$pole-kubernetes-resource` for namespace, manifest, resource manager, storage, ingress, or live cluster behavior.
+    - `$pole-frontend-api` for SPA API calls, hooks, tenant selection, forms, pages, or TypeScript types.
+    - `$pole-test-runner` for deciding missing or insufficient validation.
 
 ## Review Priorities
 
@@ -70,6 +70,6 @@ Do not edit files, commit, push, publish, or spawn more agents. Provide findings
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md`. Focused checks are development feedback; before opening any PR, run `python3 scripts/quality_gate.py run` on the final source tree. Every local backend, frontend, automation, and infrastructure test must pass with zero skips, including for documentation or tooling PRs. Missing prerequisites and pre-existing failures block publication; draft PRs are not an exception. Use the recorded full-run evidence and review required by AGENTS.md with the publication wrapper described there.
+Follow `docs/agent-delivery.md`. Before opening a PR, run `python3 scripts/quality_gate.py run --profile pr` on the final source tree. For broad changes, also run `--profile full`, including Kubernetes and E2E. Every selected test must pass with zero skips; missing prerequisites and pre-existing failures block publication. A passing PR profile proves only its selected groups. Use `record-review`, `verify` and the publication wrapper with current evidence as described in AGENTS.md.
 
 If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable infrastructure as a blocker, never as a passed test.

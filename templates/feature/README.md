@@ -47,9 +47,9 @@ production role is weakened for a template.
 
 1. Add the generated projects to the solution:
 
-   ```bash
-   dotnet sln Pole.slnx add src/features/Bookmarks/*/*.csproj
-   ```
+    ```bash
+    dotnet sln Pole.slnx add src/features/Bookmarks/*/*.csproj
+    ```
 
 2. Classify the feature explicitly in `ModuleBoundaryArchitectureTests.FeatureRoles`. Choose its
    real platform, built-in or service-provider role; this example is plain platform metadata.
@@ -72,6 +72,7 @@ leaves these decisions visible for review.
 - **Create:** normalize name/description through Domain, generate the ID server-side, set revision
   and UTC audit values in the factory, then commit root and event in one transaction.
 - **Get:** combine accepted tenant context with resource ID and return not-found for another tenant.
+  The Domain root implements dependency-leaf `ITenantOwned`; filters use the shared typed `ForTenant`.
 - **Update:** require a positive expected revision, read current state in the transaction, run the
   domain transition and conditionally replace the matching revision. A name conflict or stale
   revision returns its own typed HTTP problem. A normalized no-op changes no timestamps, revision
@@ -87,11 +88,11 @@ Update accepts the same cohesive details and an explicit precondition:
 
 ```json
 {
-  "expectedRevision": 1,
-  "details": {
-    "name": "Documentation",
-    "description": "Updated reference links"
-  }
+    "expectedRevision": 1,
+    "details": {
+        "name": "Documentation",
+        "description": "Updated reference links"
+    }
 }
 ```
 
@@ -107,8 +108,8 @@ is actually needed; do not create empty projects preemptively.
 
 ## Validate changes to the starter
 
-A Docker-compatible runtime and the pinned SDK are required; no Kubernetes cluster or registry
-is needed for this lane:
+A Docker-compatible runtime, the pinned SDK and a .NET 10 runtime for CleanupCode are required;
+no Kubernetes cluster or registry is needed for this lane:
 
 ```bash
 python3 scripts/run_script_tests.py
@@ -117,9 +118,14 @@ python3 scripts/check_feature_template.py
 
 The checker snapshots current repository inputs into an owned `.artifacts/feature-template` run,
 materializes a normally named feature, explicitly classifies it and includes its projects in that
-snapshot's solution. It builds with the real production analyzers, checks formatting, and runs the
+snapshot's solution. It restores and builds the whole solution so semantic architecture checks
+have every project's evaluated role and reference assemblies. It retains the production analyzers,
+restores the pinned tools,
+checks generated C# using `Pole Safe Cleanup` and the current EditorConfig, and runs the
 full existing architecture suite, generated unit tests and generated Mongo/API suite with coverage
 and zero skipped tests. It never changes the working repository's feature registry or solution.
+Coverage uses the gate's evaluated product-assembly inventory, excluding test support and vendor
+assemblies while retaining migrations and child-process collection.
 
 The integration suite reuses `Pole.Testing.FeatureTestHost` and `MongoReplicaSetFixture`; it does
 not copy infrastructure or reference Pole.Server. Its test composition registers ResourceConnections
