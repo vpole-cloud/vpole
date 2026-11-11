@@ -199,6 +199,7 @@ public sealed class LifecycleEvidenceTests
         {
             await using var collector = new LifecycleEvidence(directory);
             collector.Start(Read(live: false), Read(live: true));
+            // Keep the typed null so InspectCode counts every argument in this params logging call.
             logger.GetLogger("pole-server")
                 .LogInformation(
                     "RuntimeCell deletion work started: TenantId={TenantId}, RuntimeCellId={RuntimeCellId}, Generation={Generation}, CheckSequence={CheckSequence}, NotBeforeUtc={NotBeforeUtc:O}, StartedAtUtc={StartedAtUtc:O}",
@@ -206,7 +207,7 @@ public sealed class LifecycleEvidenceTests
                     Resource,
                     2,
                     0,
-                    null,
+                    (DateTime?)null,
                     RecordedAt.UtcDateTime);
             await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await collector.DisposeAsync();
