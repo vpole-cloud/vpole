@@ -146,7 +146,7 @@ public sealed class DeclarativeResourcePlannerTests
         public Task<GitResourceStatus?> StatusAsync(LoadGitResourceStatusRequest request, CancellationToken ct)
         {
             Assert.Equal("tenant", request.TenantId);
-            return Task.FromResult<GitResourceStatus?>(
+            return Task.FromResult(
                 scenario == "adopt"
                     ? null
                     : new GitResourceStatus(scenario == "foreign" ? "other" : "source", "url", null, false, true));
