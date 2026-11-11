@@ -27,6 +27,12 @@ class ScopeTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertTrue(self.classify("before", "after", name)["behavioral"])
 
+    def test_executable_markdown_is_never_documentation_even_when_added_or_deleted(self):
+        script = self.item("#!/bin/sh\nexit 0\n", "100755")
+        for before, after in [({}, {"docs/tool.md": script}), ({"docs/tool.md": script}, {}),
+                              ({"docs/tool.md": script}, {"docs/tool.md": self.item("#!/bin/sh\nexit 1\n", "100755")})]:
+            self.assertTrue(scope.classify_trees(before, after, proof=lambda _: [])["behavioral"])
+
     def test_mixed_change_keeps_all_obligations_even_when_the_latest_edit_is_documentation(self):
         old = {"src/main.fs": self.item("let x = 1"), "docs/note.md": self.item("old")}
         new = {"src/main.fs": self.item("let x = 2"), "docs/note.md": self.item("new")}

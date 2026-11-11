@@ -141,7 +141,8 @@ def classify_trees(before, after, proof=csharp_equivalent):
         item = {"path": name, "kind": "behavioral", "proof": "unproven change"}
         entries.append(item)
         regular = all(value is None or value[0] in {"100644", "100755"} for value in (old, new))
-        if not regular or (old and new and old[0] != new[0]):
+        executable_document = documentation(name) and any(value and value[0] == "100755" for value in (old, new))
+        if not regular or executable_document or (old and new and old[0] != new[0]):
             item["proof"] = "identity or executable mode changed"
             continue
         if documentation(name):
