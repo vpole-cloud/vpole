@@ -11,10 +11,9 @@ type PostgresBootstrapCredential =
       SourceSecretId: string
       SourceKey: string
       [<BsonRepresentation(BsonType.ObjectId)>]
-      CredentialId: string
-      Username: string }
+      CredentialId: string }
 
-    static member Create(sourceSecretId: string, sourceKey: string, credentialId: string, username: string) =
+    static member Create(sourceSecretId: string, sourceKey: string, credentialId: string) =
         if not (ObjectId.TryParse sourceSecretId |> fst) then
             invalidArg (nameof sourceSecretId) "A bootstrap Secret identity is required."
 
@@ -24,13 +23,9 @@ type PostgresBootstrapCredential =
         if String.IsNullOrWhiteSpace sourceKey then
             invalidArg (nameof sourceKey) "A bootstrap key is required."
 
-        if String.IsNullOrWhiteSpace username then
-            invalidArg (nameof username) "A PostgreSQL username is required."
-
         { SourceSecretId = sourceSecretId
           SourceKey = sourceKey
-          CredentialId = credentialId
-          Username = username }
+          CredentialId = credentialId }
 
 [<AbstractClass>]
 [<BsonDiscriminator(RootClass = true)>]

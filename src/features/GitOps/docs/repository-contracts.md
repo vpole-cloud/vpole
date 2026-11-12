@@ -80,7 +80,7 @@ lifecycle decisions of stage 7; they never imply silent adoption or replacement.
 | SecretBinding / Secrets                  | Implemented: secret, consumer kind/name, usage, keyMappings                                                                                      | Secret/consumer/usage immutable; scope admission; Runtime for WebService/FunctionApp, Bootstrap for PostgreSQL                       | Native projections and retained rollout pins; Bind                                                                        |
 | WebService / WebServices                 | Implemented: image, environment, logical secrets, ports, probes, tags, exposure, fixed replicas or autoscaling, pinned compute                   | Group/scope/target immutable; Secret grants required                                                                                 | Connection environment references, registry credentials, generated hostnames, releases, observations; Prepare → Configure |
 | RedisService / RedisServices             | Implemented: tags, pinned compute; storage size/profile and placement on creation                                                                | Group/scope/target and storage profile/revision/size immutable                                                                       | Runtime, timestamps; Prepare → Configure                                                                                  |
-| PostgresCluster / Postgres               | Implemented: version, instances, storage size, username/bootstrap reference, pinned compute/storage, placement                                   | Version, username, bootstrap identity, group/scope/target and storage profile/revision immutable; capacity updates retain mode rules | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
+| PostgresCluster / Postgres               | Implemented: version, instances, storage size, bootstrap reference, pinned compute/storage, placement                                   | Version, bootstrap identity, group/scope/target and storage profile/revision immutable; CNPG capacity supports growth | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
 | FunctionApp / Functions                  | Implemented: functionRoute, image, environment, logical secrets, resources, scaling, handlers/triggers, tags, pinned compute, explicit placement | Route/group/scope/target immutable; runtime Secret grants required                                                                   | Protocol/runtime data, invocations, generated trigger IDs and schedule versions; Prepare → Configure                      |
 | ResourceConnection / ResourceConnections | Implemented: named source, destination, endpoint                                                                                                 | Accepted endpoint IDs and target compatibility; identities immutable                                                                 | Runtime network observations, credentials; Bind after source Prepare and destination Configure                            |
 | DomainZone / Domains                     | Implemented: technical name, target, DNS label                                                                                                   | Target and label immutable; current managed target reservation policy                                                                | Computed DNS name and generated zones; Prepare                                                                            |
@@ -269,10 +269,9 @@ are checked again. Discovery still validates storage-class availability and retu
 Transactional fences cover current policy and the pinned snapshot; history cannot bypass revocation.
 
 `storage.profile: { name, revision }` and the selected class are immutable after workload creation.
-Redis additionally fixes `storage.sizeGb`. PostgreSQL allows only its existing supported resize path:
-StatefulSet mode requires one instance and rejects resize; Operator mode permits supported instance
-changes and growth, rejects shrink and unsupported compute runtime classes. Deployment mode is server
-configuration, never YAML. Version, username and the accepted bootstrap Secret/key remain immutable.
+Redis additionally fixes `storage.sizeGb`. PostgreSQL uses CloudNativePG and permits supported instance
+changes and storage growth, rejects shrink and unsupported compute runtime classes. The administrative
+role is `postgres`. Version and the accepted bootstrap Secret/key remain immutable.
 Compute changes use each owner's admission, quota and revision workflows.
 
 ### Grants, phases and updates
@@ -423,8 +422,8 @@ Rename is an explicit old-resource/new-address selection, never inferred. The re
 closure may change same-source dependents, but manual or foreign ownership blocks it.
 Replacement uses normal delete then create workflows; it may lose data and does not migrate it.
 Preview reports provider retention, identity loss and downtime. Owners contribute read-only
-consequence codes: Redis deletes PVCs through StatefulSet `WhenDeleted=Delete`; PostgreSQL StatefulSet
-explicitly removes its data claim, while Operator delegates cleanup to CNPG policy. Actual volume data
+consequence codes: Redis deletes PVCs through StatefulSet `WhenDeleted=Delete`; PostgreSQL
+delegates cleanup to CNPG policy. Actual volume data
 retention also depends on the storage class reclaim policy. Secret removal deletes stored versions; replacement
 requires new Secret values and PostgreSQL bootstrap. These warnings describe current owner workflows
 and do not change storage policies. Secret values and credentials are never copied into plans or

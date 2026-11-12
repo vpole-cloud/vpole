@@ -69,7 +69,6 @@ type PostgresDeclarationLifecycle
                    BootstrapSecretId = bootstrap |> Option.map _.SourceSecretId |> Option.defaultValue null
                    BootstrapKey = bootstrap |> Option.map _.SourceKey |> Option.defaultValue null
                    CredentialId = bootstrap |> Option.map _.CredentialId |> Option.defaultValue null
-                   Username = bootstrap |> Option.map _.Username |> Option.defaultValue null
                    ResourceGroupId = item.ResourceGroupId
                    IsolationScopeId = item.IsolationScopeId
                    DeploymentTargetId = item.DeploymentTargetId

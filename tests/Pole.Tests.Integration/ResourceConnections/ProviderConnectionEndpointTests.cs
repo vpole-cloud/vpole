@@ -134,17 +134,14 @@ public sealed class ProviderConnectionEndpointTests(
         await session.AbortTransactionAsync();
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    public async Task PostgresCatalog_PublishesOnlyReadWriteEndpoint_ForBothProviders(PostgresDeploymentMode mode)
+    [Fact]
+    public async Task PostgresCatalog_PublishesOnlyReadWriteEndpoint()
     {
         var postgres = PostgresCluster.Create(
             Data.TenantId,
             "database",
             Id(),
             17,
-            mode,
             Id(),
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 5));
         var collection = Fixture.Database.GetCollection<PostgresCluster>("Postgres");

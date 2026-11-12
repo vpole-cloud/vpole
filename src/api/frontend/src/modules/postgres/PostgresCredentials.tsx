@@ -126,7 +126,7 @@ export function PostgresCredentials({
       )}
       {copyError && <Notice tone="error">{copyError}</Notice>}
       {reveal.error instanceof Error && <Notice tone="error">{reveal.error.message}</Notice>}
-      {cluster.spec.deploymentMode === 'Operator' ? (
+      {
         <form
           className="database-form"
           onSubmit={(event) => {
@@ -158,12 +158,7 @@ export function PostgresCredentials({
           </Button>
           {rotate.error instanceof Error && <Notice tone="error">{rotate.error.message}</Notice>}
         </form>
-      ) : (
-        <Notice>
-          Password rotation is unavailable for native StatefulSet databases. Changing only the
-          Secret does not change an initialized database password.
-        </Notice>
-      )}
+      }
       {confirming && (
         <ConfirmationDialog
           title={`Rotate password for ${cluster.name}?`}

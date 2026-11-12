@@ -40,7 +40,7 @@ module PostgresBootstrapRequests =
             request.Placement,
             bootstrap.CredentialId,
             PostgresManagedSecret.name cluster.Id,
-            bootstrap.Username
+            PostgresManagedSecret.administrator
         )
 
 type PostgresBootstrapInitializer(read: ReadBootstrapSecret, create: CreateBootstrapSecret) =

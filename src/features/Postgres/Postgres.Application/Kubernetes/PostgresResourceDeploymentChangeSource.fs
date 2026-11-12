@@ -135,126 +135,72 @@ type PostgresResourceDeploymentChangeSource
                 let project meta owned =
                     KubernetesOwnedWatchItem.FromMetadata(meta, owned)
 
-                let operator = cluster.Spec.DeploymentMode = PostgresDeploymentMode.Operator
-
-                let ownerKind, ownerApi =
-                    if operator then
-                        "Cluster", "postgresql.cnpg.io/v1"
-                    else
-                        "StatefulSet", "apps/v1"
+                let ownerKind, ownerApi = "Cluster", "postgresql.cnpg.io/v1"
 
                 let controller =
-                    if operator then
-                        this.Interest<obj>(
-                            "controller",
-                            true,
-                            Func<_, _, _>(fun continuation token ->
-                                task {
-                                    let! page =
-                                        this.ReadAsync(
-                                            context,
-                                            (fun client token ->
-                                                client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>(
-                                                    "postgresql.cnpg.io",
-                                                    "v1",
-                                                    ns,
-                                                    "clusters",
-                                                    fieldSelector = $"metadata.name={name}",
-                                                    labelSelector = selector,
-                                                    limit = 100,
-                                                    continueParameter = continuation,
-                                                    cancellationToken = token
-                                                )),
-                                            token
-                                        )
+                    this.Interest<obj>(
+                        "controller",
+                        true,
+                        Func<_, _, _>(fun continuation token ->
+                            task {
+                                let! page =
+                                    this.ReadAsync(
+                                        context,
+                                        (fun client token ->
+                                            client.CustomObjects.ListNamespacedCustomObjectAsync<JsonElement>(
+                                                "postgresql.cnpg.io",
+                                                "v1",
+                                                ns,
+                                                "clusters",
+                                                fieldSelector = $"metadata.name={name}",
+                                                labelSelector = selector,
+                                                limit = 100,
+                                                continueParameter = continuation,
+                                                cancellationToken = token
+                                            )),
+                                        token
+                                    )
 
-                                    let meta =
-                                        KubernetesJson.Deserialize<V1ListMeta>(
-                                            page.GetProperty("metadata").GetRawText()
-                                        )
+                                let meta =
+                                    KubernetesJson.Deserialize<V1ListMeta>(
+                                        page.GetProperty("metadata").GetRawText()
+                                    )
 
-                                    return
-                                        KubernetesListPage<obj>(
-                                            page
-                                                .GetProperty("items")
-                                                .EnumerateArray()
-                                                .Select(fun item -> box (item.Clone()))
-                                                .ToArray(),
-                                            meta.ResourceVersion,
-                                            meta.ContinueProperty
-                                        )
-                                }),
-                            Func<_, _, _, _>(fun version error token ->
-                                this.WatchNative(
-                                    context,
-                                    token,
-                                    Func<_, _>(fun client ->
-                                        client.CustomObjects.WatchListNamespacedCustomObjectAsync(
-                                            "postgresql.cnpg.io",
-                                            "v1",
-                                            ns,
-                                            "clusters",
-                                            allowWatchBookmarks = true,
-                                            fieldSelector = $"metadata.name={name}",
-                                            labelSelector = selector,
-                                            resourceVersion = version,
-                                            timeoutSeconds = 300,
-                                            onError = error,
-                                            cancellationToken = token
-                                        ))
-                                )),
-                            Func<_, _>(PostgresClusterObservation.metadata),
-                            Func<_, _>(fun item ->
-                                let meta = PostgresClusterObservation.metadata item in
-                                project meta (owns meta (Some name)))
-                        )
-                    else
-                        this.Interest<V1StatefulSet>(
-                            "controller",
-                            true,
-                            Func<_, _, _>(fun continuation token ->
-                                task {
-                                    let! page =
-                                        this.ReadAsync(
-                                            context,
-                                            (fun client token ->
-                                                client.AppsV1.ListNamespacedStatefulSetAsync(
-                                                    ns,
-                                                    fieldSelector = $"metadata.name={name}",
-                                                    labelSelector = selector,
-                                                    limit = 100,
-                                                    continueParameter = continuation,
-                                                    cancellationToken = token
-                                                )),
-                                            token
-                                        )
-
-                                    return
-                                        KubernetesListPage<V1StatefulSet>(
-                                            page.Items.ToArray(),
-                                            page.Metadata.ResourceVersion,
-                                            page.Metadata.ContinueProperty
-                                        )
-                                }),
-                            Func<_, _, _, _>(fun version error token ->
-                                this.WatchNative(
-                                    context,
-                                    token,
-                                    Func<_, _>(fun client ->
-                                        client.AppsV1.WatchListNamespacedStatefulSetAsync(
-                                            ns,
-                                            allowWatchBookmarks = true,
-                                            fieldSelector = $"metadata.name={name}",
-                                            labelSelector = selector,
-                                            resourceVersion = version,
-                                            timeoutSeconds = 300,
-                                            onError = error,
-                                            cancellationToken = token
-                                        ))
-                                )),
-                            Func<_, _>(fun item -> item.Metadata),
-                            Func<_, _>(fun item -> project item.Metadata (owns item.Metadata (Some name)))
-                        )
+                                return
+                                    KubernetesListPage<obj>(
+                                        page
+                                            .GetProperty("items")
+                                            .EnumerateArray()
+                                            .Select(fun item -> box (item.Clone()))
+                                            .ToArray(),
+                                        meta.ResourceVersion,
+                                        meta.ContinueProperty
+                                    )
+                            }),
+                        Func<_, _, _, _>(fun version error token ->
+                            this.WatchNative(
+                                context,
+                                token,
+                                Func<_, _>(fun client ->
+                                    client.CustomObjects.WatchListNamespacedCustomObjectAsync(
+                                        "postgresql.cnpg.io",
+                                        "v1",
+                                        ns,
+                                        "clusters",
+                                        allowWatchBookmarks = true,
+                                        fieldSelector = $"metadata.name={name}",
+                                        labelSelector = selector,
+                                        resourceVersion = version,
+                                        timeoutSeconds = 300,
+                                        onError = error,
+                                        cancellationToken = token
+                                    ))
+                            )),
+                        Func<_, _>(PostgresClusterObservation.metadata),
+                        Func<_, _>(fun item ->
+                            let meta = PostgresClusterObservation.metadata item in
+                            project meta (owns meta (Some name)))
+                    )
 
                 let dependents binding (graph: IReadOnlyDictionary<string, IReadOnlyList<KubernetesOwnedWatchItem>>) =
                     let items key =
@@ -320,30 +266,82 @@ type PostgresResourceDeploymentChangeSource
                         )
                     )
 
-                    let services =
-                        if operator then
-                            [ PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id ]
-                        else
-                            [ PostgresStatefulSetKubernetesBuilder.buildHeadlessServiceName cluster.Id
-                              PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id ]
+                    let serviceName = PostgresClusterKubernetesBuilder.buildReadWriteServiceName cluster.Id
+                    let serviceKey = "service:" + serviceName
 
-                    for serviceName in services do
-                        let serviceKey = "service:" + serviceName
+                    result.Add(
+                        this.Interest<V1Service>(
+                            serviceKey,
+                            true,
+                            Func<_, _, _>(fun continuation token ->
+                                task {
+                                    let! page =
+                                        this.ReadAsync(
+                                            context,
+                                            (fun client token ->
+                                                client.CoreV1.ListNamespacedServiceAsync(
+                                                    ns,
+                                                    fieldSelector = $"metadata.name={serviceName}",
+                                                    labelSelector = selector,
+                                                    limit = 100,
+                                                    continueParameter = continuation,
+                                                    cancellationToken = token
+                                                )),
+                                            token
+                                        )
 
+                                    return
+                                        KubernetesListPage<V1Service>(
+                                            page.Items.ToArray(),
+                                            page.Metadata.ResourceVersion,
+                                            page.Metadata.ContinueProperty
+                                        )
+                                }),
+                            Func<_, _, _, _>(fun version error token ->
+                                this.WatchNative(
+                                    context,
+                                    token,
+                                    Func<_, _>(fun client ->
+                                        client.CoreV1.WatchListNamespacedServiceAsync(
+                                            ns,
+                                            allowWatchBookmarks = true,
+                                            fieldSelector = $"metadata.name={serviceName}",
+                                            labelSelector = selector,
+                                            resourceVersion = version,
+                                            timeoutSeconds = 300,
+                                            onError = error,
+                                            cancellationToken = token
+                                        ))
+                                )),
+                            Func<_, _>(fun item -> item.Metadata),
+                            Func<_, _>(fun item ->
+                                project
+                                    item.Metadata
+                                    (owns item.Metadata (Some serviceName)
+                                     && KubernetesOwnedWatchItem.ControlledBy(
+                                             item.Metadata,
+                                             binding,
+                                             "Cluster",
+                                             "postgresql.cnpg.io/v1"
+                                         )))
+                        )
+                    )
+
+                    for service in items serviceKey do
                         result.Add(
-                            this.Interest<V1Service>(
-                                serviceKey,
-                                true,
+                            this.Interest<V1EndpointSlice>(
+                                "slice:" + service.Uid,
+                                false,
                                 Func<_, _, _>(fun continuation token ->
                                     task {
                                         let! page =
                                             this.ReadAsync(
                                                 context,
                                                 (fun client token ->
-                                                    client.CoreV1.ListNamespacedServiceAsync(
+                                                    client.DiscoveryV1.ListNamespacedEndpointSliceAsync(
                                                         ns,
-                                                        fieldSelector = $"metadata.name={serviceName}",
-                                                        labelSelector = selector,
+                                                        labelSelector =
+                                                            $"kubernetes.io/service-name={serviceName}",
                                                         limit = 100,
                                                         continueParameter = continuation,
                                                         cancellationToken = token
@@ -352,7 +350,7 @@ type PostgresResourceDeploymentChangeSource
                                             )
 
                                         return
-                                            KubernetesListPage<V1Service>(
+                                            KubernetesListPage<V1EndpointSlice>(
                                                 page.Items.ToArray(),
                                                 page.Metadata.ResourceVersion,
                                                 page.Metadata.ContinueProperty
@@ -363,11 +361,10 @@ type PostgresResourceDeploymentChangeSource
                                         context,
                                         token,
                                         Func<_, _>(fun client ->
-                                            client.CoreV1.WatchListNamespacedServiceAsync(
+                                            client.DiscoveryV1.WatchListNamespacedEndpointSliceAsync(
                                                 ns,
                                                 allowWatchBookmarks = true,
-                                                fieldSelector = $"metadata.name={serviceName}",
-                                                labelSelector = selector,
+                                                labelSelector = $"kubernetes.io/service-name={serviceName}",
                                                 resourceVersion = version,
                                                 timeoutSeconds = 300,
                                                 onError = error,
@@ -376,86 +373,27 @@ type PostgresResourceDeploymentChangeSource
                                     )),
                                 Func<_, _>(fun item -> item.Metadata),
                                 Func<_, _>(fun item ->
+                                    let mutable serviceLabel = null
+
                                     project
                                         item.Metadata
-                                        (owns item.Metadata (Some serviceName)
-                                         && (not operator
-                                             || KubernetesOwnedWatchItem.ControlledBy(
-                                                 item.Metadata,
-                                                 binding,
-                                                 "Cluster",
-                                                 "postgresql.cnpg.io/v1"
-                                             ))))
+                                        (not (isNull item.Metadata)
+                                         && item.Metadata.NamespaceProperty = ns
+                                         && not (String.IsNullOrEmpty(item.Metadata.Uid))
+                                         && not (isNull item.Metadata.Labels)
+                                         && item.Metadata.Labels.TryGetValue(
+                                             "kubernetes.io/service-name",
+                                             &serviceLabel
+                                         )
+                                         && serviceLabel = serviceName
+                                         && KubernetesOwnedWatchItem.ControlledBy(
+                                             item.Metadata,
+                                             service.Uid,
+                                             "Service",
+                                             "v1"
+                                         )))
                             )
                         )
-
-                        for service in items serviceKey do
-                            result.Add(
-                                this.Interest<V1EndpointSlice>(
-                                    "slice:" + service.Uid,
-                                    false,
-                                    Func<_, _, _>(fun continuation token ->
-                                        task {
-                                            let! page =
-                                                this.ReadAsync(
-                                                    context,
-                                                    (fun client token ->
-                                                        client.DiscoveryV1.ListNamespacedEndpointSliceAsync(
-                                                            ns,
-                                                            labelSelector =
-                                                                $"kubernetes.io/service-name={serviceName}",
-                                                            limit = 100,
-                                                            continueParameter = continuation,
-                                                            cancellationToken = token
-                                                        )),
-                                                    token
-                                                )
-
-                                            return
-                                                KubernetesListPage<V1EndpointSlice>(
-                                                    page.Items.ToArray(),
-                                                    page.Metadata.ResourceVersion,
-                                                    page.Metadata.ContinueProperty
-                                                )
-                                        }),
-                                    Func<_, _, _, _>(fun version error token ->
-                                        this.WatchNative(
-                                            context,
-                                            token,
-                                            Func<_, _>(fun client ->
-                                                client.DiscoveryV1.WatchListNamespacedEndpointSliceAsync(
-                                                    ns,
-                                                    allowWatchBookmarks = true,
-                                                    labelSelector = $"kubernetes.io/service-name={serviceName}",
-                                                    resourceVersion = version,
-                                                    timeoutSeconds = 300,
-                                                    onError = error,
-                                                    cancellationToken = token
-                                                ))
-                                        )),
-                                    Func<_, _>(fun item -> item.Metadata),
-                                    Func<_, _>(fun item ->
-                                        let mutable serviceLabel = null
-
-                                        project
-                                            item.Metadata
-                                            (not (isNull item.Metadata)
-                                             && item.Metadata.NamespaceProperty = ns
-                                             && not (String.IsNullOrEmpty(item.Metadata.Uid))
-                                             && not (isNull item.Metadata.Labels)
-                                             && item.Metadata.Labels.TryGetValue(
-                                                 "kubernetes.io/service-name",
-                                                 &serviceLabel
-                                             )
-                                             && serviceLabel = serviceName
-                                             && KubernetesOwnedWatchItem.ControlledBy(
-                                                 item.Metadata,
-                                                 service.Uid,
-                                                 "Service",
-                                                 "v1"
-                                             )))
-                                )
-                            )
 
                     let uids =
                         Seq.append

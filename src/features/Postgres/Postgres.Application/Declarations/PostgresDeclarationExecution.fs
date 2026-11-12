@@ -57,7 +57,6 @@ type PostgresDeclarationExecution
                     operation.Declaration.Address.Name,
                     catalog.Scope.ResourceGroupId,
                     spec.Version,
-                    data.DeploymentMode,
                     catalog.Storage.Storage.ProfileId,
                     { Id = Some operation.ResourceId
                       Instances = PostgresDeclarations.instances spec
@@ -65,8 +64,7 @@ type PostgresDeclarationExecution
                     PostgresBootstrapCredential.Create(
                         data.BootstrapSecretId,
                         spec.BootstrapPassword.Key,
-                        ObjectId.GenerateNewId().ToString(),
-                        spec.Username
+                        ObjectId.GenerateNewId().ToString()
                     )
                 )
 

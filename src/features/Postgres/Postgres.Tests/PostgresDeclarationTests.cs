@@ -16,7 +16,7 @@ public sealed class PostgresDeclarationTests
           "resourceGroup":"data",
           "placement":{"deploymentTarget":"lab","computeProfile":{"name":"small","revision":2}},
           "storage":{"sizeGb":10,"profile":{"name":"persistent","revision":3}},
-          "version":16,"username":"application",
+          "version":16,
           "bootstrapPassword":{"secret":"database-password","key":"password"}
         }
         """)!.AsObject();
@@ -42,7 +42,7 @@ public sealed class PostgresDeclarationTests
 
     [Theory]
     [InlineData("password", "private-value")]
-    [InlineData("deploymentMode", "StatefulSet")]
+    [InlineData("username", "application")]
     [InlineData("tags", "not-managed")]
     public void RejectsInlineCredentialsAndServerOwnedOrUndeclaredFields(string field, string value)
     {

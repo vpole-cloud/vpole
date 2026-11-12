@@ -19,11 +19,9 @@ namespace Pole.Features.Postgres.Tests;
 public sealed class PostgresObservationTests
 {
     [Theory]
-    [InlineData(PostgresDeploymentMode.Operator, true)]
-    [InlineData(PostgresDeploymentMode.Operator, false)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, true)]
+    [InlineData(true)]
+    [InlineData(false)]
     public async Task Provider_reads_exact_owned_target_and_requires_current_operator_condition(
-        PostgresDeploymentMode mode,
         bool currentCondition)
     {
         var cluster = PostgresCluster.Create(
@@ -31,7 +29,6 @@ public sealed class PostgresObservationTests
             "health-database",
             ObjectId.GenerateNewId().ToString(),
             17,
-            mode,
             TestData.DefaultStorageProfileId,
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 1));
         var targetId = TestData.DefaultDeploymentTargetId;
@@ -63,8 +60,8 @@ public sealed class PostgresObservationTests
                 [
                     new V1OwnerReference
                     {
-                        ApiVersion = mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1",
-                        Kind = mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
+                        ApiVersion = "postgresql.cnpg.io/v1",
+                        Kind = "Cluster",
                         Name = controllerMetadata.Name, Uid = "controller", Controller = true,
                     },
                 ],
@@ -86,44 +83,27 @@ public sealed class PostgresObservationTests
                 return KubernetesJson.Serialize(new V1PodList { Metadata = new V1ListMeta(), Items = [pod] });
             if (request.RequestUri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal))
                 return "{\"kind\":\"EventList\",\"apiVersion\":\"v1\",\"metadata\":{},\"items\":[]}";
-            if (mode == PostgresDeploymentMode.Operator)
-            {
-                Assert.Contains(
-                    "/postgresql.cnpg.io/v1/namespaces/owned/clusters/pg-",
-                    request.RequestUri.AbsolutePath);
-                return KubernetesJson.Serialize(
-                    new
+            Assert.Contains(
+                "/postgresql.cnpg.io/v1/namespaces/owned/clusters/pg-",
+                request.RequestUri.AbsolutePath);
+            return KubernetesJson.Serialize(
+                new
+                {
+                    apiVersion = "postgresql.cnpg.io/v1",
+                    kind = "Cluster",
+                    metadata = controllerMetadata,
+                    spec = new { instances = 1 },
+                    status = new
                     {
-                        apiVersion = "postgresql.cnpg.io/v1",
-                        kind = "Cluster",
-                        metadata = controllerMetadata,
-                        spec = new { instances = 1 },
-                        status = new
+                        instances = 1, readyInstances = 1,
+                        conditions = new[]
                         {
-                            instances = 1, readyInstances = 1,
-                            conditions = new[]
+                            new
                             {
-                                new
-                                {
-                                    type = "Ready", status = "True", observedGeneration = currentCondition ? 3 : 2,
-                                    message = "secret-canary-native-message",
-                                },
+                                type = "Ready", status = "True", observedGeneration = currentCondition ? 3 : 2,
+                                message = "secret-canary-native-message",
                             },
                         },
-                    });
-            }
-
-            Assert.Contains("/apps/v1/namespaces/owned/statefulsets/pg-", request.RequestUri.AbsolutePath);
-            return KubernetesJson.Serialize(
-                new V1StatefulSet
-                {
-                    Metadata = controllerMetadata,
-                    Spec = new V1StatefulSetSpec
-                        { Replicas = 1, Template = new V1PodTemplateSpec { Metadata = controllerMetadata } },
-                    Status = new V1StatefulSetStatus
-                    {
-                        ObservedGeneration = 3, Replicas = 1, UpdatedReplicas = 1, ReadyReplicas = 1,
-                        AvailableReplicas = 1, CurrentRevision = "current", UpdateRevision = "current",
                     },
                 });
         });

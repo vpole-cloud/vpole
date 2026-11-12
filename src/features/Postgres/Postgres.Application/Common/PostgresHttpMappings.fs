@@ -45,18 +45,6 @@ module PostgresHttpMappings =
                 "postgres.update-unavailable"
                 "PostgreSQL cluster cannot be updated in its current lifecycle"
                 clusterId
-        | PostgresClusterStatefulSetInstancesUnsupported clusterId ->
-            problem
-                HttpStatusCode.UnprocessableEntity
-                "postgres.instances.stateful-set-unsupported"
-                "StatefulSet PostgreSQL supports exactly one instance"
-                clusterId
-        | PostgresClusterStatefulSetStorageResizeUnsupported clusterId ->
-            problem
-                HttpStatusCode.UnprocessableEntity
-                "postgres.storage.stateful-set-resize-unsupported"
-                "Native PostgreSQL storage size is fixed after creation"
-                clusterId
         | UpdatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported clusterId ->
             problem
                 HttpStatusCode.UnprocessableEntity
@@ -73,12 +61,6 @@ module PostgresHttpMappings =
                 HttpStatusCode.Conflict
                 "postgres.password.rotation-unavailable"
                 "Credentials cannot be rotated while the PostgreSQL cluster is being deleted"
-                clusterId
-        | PostgresClusterPasswordRotationUnsupported clusterId ->
-            problem
-                HttpStatusCode.Conflict
-                "postgres.password.rotation-unsupported"
-                "Password rotation is not supported for StatefulSet PostgreSQL deployments"
                 clusterId
 
     let private mapDeleteState (error: DeletePostgresClusterStateError) =

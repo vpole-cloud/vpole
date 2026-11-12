@@ -10,21 +10,15 @@ type PostgresClusterCredentials =
     override _.ToString() =
         "PostgresClusterCredentials([REDACTED])"
 
-type PostgresProjectedCredentials =
-    | OperatorCredentials of username: string * projection: SecretProjectionReference
-    | StatefulSetCredentials of projection: SecretProjectionReference
-
-    member this.Projection =
-        match this with
-        | OperatorCredentials(_, projection) -> projection
-        | StatefulSetCredentials projection -> projection
-
 [<RequireQualifiedAccess>]
 module PostgresManagedSecret =
     let owner clusterId =
         ManagedSecretOwner(PostgresResourceDeployment.ResourceType.Value, clusterId)
 
     let name clusterId = $"postgres-{clusterId}-credentials"
+    [<Literal>]
+    let administrator = "postgres"
+
     let usernameKey = "username"
     let passwordKey = "password"
 

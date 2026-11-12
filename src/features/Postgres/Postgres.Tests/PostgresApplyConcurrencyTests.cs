@@ -173,7 +173,6 @@ public sealed class PostgresApplyConcurrencyTests
             "test",
             "507f1f77bcf86cd799439012",
             17,
-            PostgresDeploymentMode.Operator,
             TestData.DefaultStorageProfileId,
             new CreatePostgresClusterOptions(FSharpOption<string>.Some("507f1f77bcf86cd799439013"), 1, 20));
         IPostgresClusterDeploymentManager manager = new PostgresClusterDeploymentManager(
@@ -184,9 +183,7 @@ public sealed class PostgresApplyConcurrencyTests
         return manager.ApplyAsync(
             client,
             cluster,
-            PostgresProjectedCredentials.NewOperatorCredentials(
-                "test-user",
-                new SecretProjectionReference("secret", "projection", 2)),
+            new SecretProjectionReference("secret", "projection", 2),
             "pole-data",
             "standard",
             new KubernetesComputeConfiguration(

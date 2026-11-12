@@ -6,18 +6,11 @@ open Pole.Features.Postgres.Events
 
 [<RequireQualifiedAccess>]
 module PostgresClusterEvents =
-    let private toSnapshotDeploymentMode mode =
-        match mode with
-        | PostgresDeploymentMode.Operator -> PostgresDeploymentModeSnapshot.Operator
-        | PostgresDeploymentMode.StatefulSet -> PostgresDeploymentModeSnapshot.StatefulSet
-        | _ -> invalidArg (nameof mode) $"Unsupported PostgreSQL deployment mode '{mode}'."
-
     let private toSnapshotSpec (spec: PostgresClusterSpec) : PostgresClusterSpecSnapshot =
         { Instances = spec.Instances
           Storage = spec.Storage
           StorageProfileId = spec.StorageProfileId
-          Version = spec.Version
-          DeploymentMode = toSnapshotDeploymentMode spec.DeploymentMode }
+          Version = spec.Version }
 
     let created (cluster: PostgresCluster) : PostgresClusterCreatedEvent =
         { EventCore = EventCore.Create(cluster.TenantId)

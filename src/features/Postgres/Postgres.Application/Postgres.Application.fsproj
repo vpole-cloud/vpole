@@ -52,7 +52,6 @@
         <Compile Include="Declarations\DeclarativePostgresProvider.fs"/>
         <Compile Include="PostgresPersistenceRegistration.fs"/>
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs"/>
-        <Compile Include="Kubernetes\PostgresStatefulSetKubernetesBuilder.fs"/>
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs"/>
         <Compile Include="Kubernetes\PostgresResourceDeploymentAdapter.fs"/>
         <Compile Include="Endpoints\PostgresEndpointErrors.fs"/>

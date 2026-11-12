@@ -61,7 +61,6 @@ module PostgresPersistenceGuards =
         if
             current.GroupId <> replacement.GroupId
             || current.Spec.Version <> replacement.Spec.Version
-            || current.Spec.DeploymentMode <> replacement.Spec.DeploymentMode
             || current.Spec.StorageProfileId <> replacement.Spec.StorageProfileId
         then
             invalidOp "A PostgreSQL cluster replacement must preserve group, version, mode, and storage identity."

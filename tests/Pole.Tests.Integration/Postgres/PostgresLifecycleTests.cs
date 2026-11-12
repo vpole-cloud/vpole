@@ -172,7 +172,7 @@ public sealed class PostgresLifecycleTests(
                     owner,
                     "existing-credential",
                     1,
-                    new Dictionary<string, string> { ["username"] = "application", ["password"] = "retained-password" },
+                    new Dictionary<string, string> { ["username"] = "postgres", ["password"] = "retained-password" },
                     ManagedSecretKubernetesType.BasicAuthentication),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
@@ -196,7 +196,6 @@ public sealed class PostgresLifecycleTests(
                     storage = new { sizeGb = 10, profile = new { name = storage.TechnicalName, revision = 1 } },
                     version = 17,
                     instances = 1,
-                    username = "application",
                     bootstrapPassword = new { secret = source.Name, key = "password" },
                 }),
             "hash",
@@ -481,19 +480,13 @@ public sealed class PostgresLifecycleTests(
     }
 
     [Theory]
-    [InlineData(PostgresDeploymentMode.Operator, GitLifecycleAction.Remove)]
-    [InlineData(PostgresDeploymentMode.Operator, GitLifecycleAction.Replace)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, GitLifecycleAction.Remove)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, GitLifecycleAction.Replace)]
-    public async Task Lifecycle_warnings_follow_the_stored_deployment_mode_and_bootstrap_policy(
-        PostgresDeploymentMode mode,
+    [InlineData(GitLifecycleAction.Remove)]
+    [InlineData(GitLifecycleAction.Replace)]
+    public async Task Lifecycle_warnings_identify_operator_storage_cleanup_and_bootstrap_policy(
         GitLifecycleAction action)
     {
         var resource = await Seed("PostgresCluster");
         var collection = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
-        await collection.UpdateOneAsync(
-            item => item.Id == resource.ResourceId,
-            Builders<PostgresCluster>.Update.Set(item => item.Spec.DeploymentMode, mode));
         var before = await collection.Find(item => item.Id == resource.ResourceId).SingleAsync();
         var provider = Assert.IsAssignableFrom<IDeclarativeLifecycleWarningProvider>(
             Services.GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "PostgresCluster"));
@@ -502,9 +495,7 @@ public sealed class PostgresLifecycleTests(
         var request = new ReadLifecycleWarningsRequest(before.TenantId, before.Id, action);
         var codes = await provider.ReadLifecycleWarningsAsync(request, session, default);
         Assert.Contains(
-            mode == PostgresDeploymentMode.Operator
-                ? "PostgresOperatorManagesStorageCleanup"
-                : "PostgresStatefulSetDataClaimDeleted",
+            "PostgresOperatorManagesStorageCleanup",
             codes);
         Assert.Contains("PersistentVolumeReclaimPolicyDeterminesDataRetention", codes);
         Assert.Equal(action == GitLifecycleAction.Replace, codes.Contains("PostgresReplacementRequiresBootstrap"));
@@ -542,7 +533,6 @@ public sealed class PostgresLifecycleTests(
                     "lifecycle-workload",
                     group.Id,
                     17,
-                    PostgresDeploymentMode.Operator,
                     TestData.DefaultStorageProfileId,
                     new CreatePostgresClusterOptions(FSharpOption<string>.Some(id), 1, 10)));
         using var session = await Fixture.Client.StartSessionAsync();

@@ -297,7 +297,6 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
         api.WithEnvironment("Outbox__ProcessingTriggerInterval", "00:00:01");
         // Browser scenarios explicitly exercise native provisioning. Operator-specific manifests
         // and credential projections have separate owning feature tests in the full lab.
-        api.WithEnvironment("Postgres__DefaultDeploymentMode", "StatefulSet");
         var githubStub = appHost
             .AddProject(
                 "github-stub",
@@ -1496,7 +1495,11 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
                 "traefik")
             .WithEnvironment(
                 $"DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__{DeploymentTargetNetworkSourcesDto.PublicIngressName}__PodLabels__app.kubernetes.io/instance",
-                "traefik-kube-system");
+                "traefik-kube-system")
+            .WithEnvironment("DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__Namespace",
+                "pole-lab-cnpg")
+            .WithEnvironment("DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__PodLabels__app.kubernetes.io/instance",
+                "pole-lab-cnpg");
     }
 
     internal static async Task WaitForStartupAsync(

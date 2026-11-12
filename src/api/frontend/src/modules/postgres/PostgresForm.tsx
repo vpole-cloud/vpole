@@ -63,7 +63,6 @@ export function NewPostgresView({
   const selectedVersion = version ?? capabilities.resource?.to ?? 0
   const [instances, setInstances] = useState(1)
   const [size, setSize] = useState(1)
-  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [validation, setValidation] = useState('')
   const [submitted, setSubmitted] = useState(false)
@@ -73,7 +72,6 @@ export function NewPostgresView({
     !submitted &&
     Boolean(
       name ||
-      username ||
       password ||
       groupId ||
       isolationScopeId ||
@@ -94,7 +92,6 @@ export function NewPostgresView({
     if (!active)
       queueMicrotask(() => {
         setPassword('')
-        setUsername('')
       })
   }, [active])
   const fieldError = (field: string) => validationMessage(mutation.error, field)
@@ -105,7 +102,6 @@ export function NewPostgresView({
         (_, index) => capabilities.resource!.from + index,
       )
     : []
-  const native = capabilities.resource?.defaultDeploymentMode === 'StatefulSet'
   return (
     <section className="panel">
       <header className="ui-page-header">
@@ -115,9 +111,7 @@ export function NewPostgresView({
           <p>
             {capabilities.status !== 'success'
               ? 'Loading provisioning options…'
-              : native
-                ? 'Native StatefulSet · one instance. Password rotation is unavailable for an initialized native database.'
-                : 'CloudNativePG manages replication and password rotation. The target needs a configured PostgreSQL operator.'}
+              : 'CloudNativePG manages replication and password rotation. The target needs a configured PostgreSQL operator.'}
           </p>
         </div>
       </header>
@@ -129,7 +123,6 @@ export function NewPostgresView({
           if (
             !allowed ||
             !name.trim() ||
-            !username.trim() ||
             !password ||
             !Number.isInteger(size) ||
             size < 1 ||
@@ -149,11 +142,10 @@ export function NewPostgresView({
                     name: name.trim(),
                     groupId: group,
                     version: selectedVersion,
-                    instances: native ? 1 : instances,
+                    instances,
                     storage: size,
                     storageProfileId: storageProfile,
                     computeProfileId: computeProfile,
-                    username: username.trim(),
                     password,
                     placement: { isolationScopeId: isolation, deploymentTargetId: target },
                   },
@@ -172,7 +164,6 @@ export function NewPostgresView({
               (cluster) => {
                 if (!origin.isCurrent()) return
                 setPassword('')
-                setUsername('')
                 setSubmitted(true)
                 actions.created(cluster.id, cluster.name)
               },
@@ -288,8 +279,7 @@ export function NewPostgresView({
                 type="number"
                 min="1"
                 step="1"
-                value={native ? 1 : instances}
-                disabled={native}
+                value={instances}
                 onChange={(event) => setInstances(Number(event.target.value))}
               />
               {fieldError('Instances') && (
@@ -355,18 +345,7 @@ export function NewPostgresView({
             Values remain only in this active form. Closing or leaving this tab clears them.
           </p>
           <div className="form-grid">
-            <Field label="Database username">
-              <input
-                className="field__control"
-                autoComplete="off"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                required
-              />
-              {fieldError('Username') && (
-                <span className="field-error">{fieldError('Username')}</span>
-              )}
-            </Field>
+            <p>Administrator · postgres</p>
             <Field label="Database password">
               <input
                 className="field__control"

@@ -109,15 +109,8 @@ type DeclarativePostgresProvider
                     if isNull (box current) then
                         return Array.empty<string> :> IReadOnlyList<string>
                     else
-                        // StatefulSet deletion explicitly removes its data claim; Operator mode deletes the CNPG CR.
-                        let storage =
-                            match current.Spec.DeploymentMode with
-                            | PostgresDeploymentMode.StatefulSet -> "PostgresStatefulSetDataClaimDeleted"
-                            | PostgresDeploymentMode.Operator -> "PostgresOperatorManagesStorageCleanup"
-                            | mode -> invalidOp $"Unsupported PostgreSQL deployment mode '{mode}'."
-
                         return
-                            [| storage
+                            [| "PostgresOperatorManagesStorageCleanup"
                                "PersistentVolumeReclaimPolicyDeterminesDataRetention"
                                if request.Action = GitLifecycleAction.Replace then
                                    "PostgresReplacementRequiresBootstrap" |]

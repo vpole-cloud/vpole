@@ -84,13 +84,6 @@ module private UpdatePostgresClusterPasswordWorkflow =
                             PasswordState(PostgresClusterPasswordRotationUnavailable cluster.Id)
                         )
                     )
-            | Some cluster when cluster.Spec.DeploymentMode = PostgresDeploymentMode.StatefulSet ->
-                return
-                    Completed(
-                        UpdatePostgresClusterPasswordRejected(
-                            PasswordState(PostgresClusterPasswordRotationUnsupported cluster.Id)
-                        )
-                    )
             | Some cluster ->
                 let! currentComputeResult =
                     loadDeploymentCompute.Invoke(

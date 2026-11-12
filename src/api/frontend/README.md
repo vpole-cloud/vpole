@@ -134,19 +134,14 @@ transport. Test fixtures use `strictFetch` and verify unexpected requests after 
 ## Resource workspaces
 
 PostgreSQL contributes its own catalog/create/resource workspace (`pole/postgresql`) and scoped
-command. Overview, Configuration and privileged Credentials sections use a single deployment.
-Creation reads the supported-version range and server-selected provisioning mode, named group
-scopes, eligible targets and compute/storage profiles. Storage profiles are filtered by their
-target mappings. Native StatefulSet mode supports one instance and cannot rotate an initialized
-database password; CloudNativePG supports the existing managed-secret rotation API.
-Name, version, group, target and storage profile are fixed after creation. Updates preserve the
-current resolved compute profile unless the user explicitly selects an eligible replacement.
-Native storage is fixed after creation; operator-managed storage can grow.
-Lifecycle, reconciliation generation and failure codes are shown without inferring DB readiness.
-Group tags are metadata of the group; the database API has no separate editable tags.
+inventory, connection-string and password-rotation requests. CloudNativePG provides the workload.
+The owner receives the administrative connection to the `postgres` database as `postgres` and
+manages application databases and roles. Name, version, group, target and storage profile are fixed
+after creation. Operator-managed storage can grow; updates preserve the resolved compute profile
+unless the user selects a replacement. Readiness comes from the current deployment generation.
 
 PostgreSQL workspace persistence saves only identities and sections under
-`pole.postgres.workspace.v1.<user-id>.<tenant-id>`. Initial username/password clear when creation
+`pole.postgres.workspace.v1.<user-id>.<tenant-id>`. Initial passwords clear when creation
 becomes inactive. Revealed connection strings and rotation passwords clear on section/resource,
 tenant/role changes or browser blur. Credential reads use `no-store`, require write access and
 wait for the current deployment generation to be applied. Values never enter URLs or storage.

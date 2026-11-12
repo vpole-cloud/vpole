@@ -20,7 +20,6 @@ public static class PostgresTestData
         string resourceGroupId,
         string name = "postgres-main",
         int version = 17,
-        string username = "postgres",
         string password = "postgres-secret",
         string? tenantId = null) => new(
         new CreatePostgresClusterRequestBody(
@@ -31,7 +30,6 @@ public static class PostgresTestData
             FSharpOption<int>.Some(10),
             DefaultStorageProfileId,
             FSharpOption<string>.None,
-            username,
             password,
             FSharpOption<PlacementRequest>.None),
         tenantId ?? TenantId);

@@ -34,7 +34,6 @@ type CreatePostgresClusterRequestBody =
       Storage: int option
       StorageProfileId: string
       ComputeProfileId: string option
-      Username: string
       Password: string
       Placement: PlacementRequest option }
 
@@ -135,10 +134,7 @@ module private CreatePostgresClusterWorkflow =
 
                 match TypedResultInterop.computeProfile computeProfileResult with
                 | Error error -> return Completed(CreatePostgresClusterRejected(CreateCompute error))
-                | Ok computeProfile when
-                    settings.DefaultDeploymentMode = PostgresDeploymentMode.Operator
-                    && not (String.IsNullOrWhiteSpace computeProfile.RuntimeClassName)
-                    ->
+                | Ok computeProfile when not (String.IsNullOrWhiteSpace computeProfile.RuntimeClassName) ->
                     return
                         Completed(
                             CreatePostgresClusterRejected(
@@ -173,7 +169,6 @@ module private CreatePostgresClusterWorkflow =
                                 request.Body.Name,
                                 request.Body.GroupId,
                                 request.Body.Version,
-                                settings.DefaultDeploymentMode,
                                 request.Body.StorageProfileId,
                                 { Id = Some(ObjectId.GenerateNewId().ToString())
                                   Instances = defaultArg request.Body.Instances PostgresCluster.DefaultInstances
@@ -184,7 +179,6 @@ module private CreatePostgresClusterWorkflow =
                             createCredential.Invoke(
                                 cluster.TenantId,
                                 cluster.Id,
-                                request.Body.Username,
                                 request.Body.Password,
                                 cancellationToken
                             )
@@ -369,16 +363,13 @@ type CreatePostgresClusterValidator(settings: PostgresSettings) as this =
             .MongoObjectId("Storage profile ID")
         |> ignore
 
-        this.RuleFor(_.Body.Username).NotEmpty().WithMessage("Username is required.")
-        |> ignore
-
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.")
         |> ignore
 
         this
             .RuleFor(_.Body)
             .Must(fun body ->
-                PostgresManagedSecret.totalValueBytes [ body.Username; body.Password ]
+                PostgresManagedSecret.totalValueBytes [ PostgresManagedSecret.administrator; body.Password ]
                 <= PostgresManagedSecret.maximumValueBytes)
             .WithMessage("The combined UTF-8 credential values must not exceed 64 KiB.")
         |> ignore
@@ -407,14 +398,6 @@ type CreatePostgresClusterValidator(settings: PostgresSettings) as this =
             .WithMessage(
                 $"Supported PostgreSQL versions are from {settings.SupportedVersions.From} to {settings.SupportedVersions.``To``}."
             )
-        |> ignore
-
-        this
-            .RuleFor(_.Body.Instances)
-            .Must(fun instances ->
-                settings.DefaultDeploymentMode <> PostgresDeploymentMode.StatefulSet
-                || defaultArg instances PostgresCluster.DefaultInstances = 1)
-            .WithMessage("StatefulSet PostgreSQL supports exactly one instance.")
         |> ignore
 
         this.When(

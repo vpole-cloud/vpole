@@ -43,7 +43,6 @@ public sealed class PostgresDomainTests
         "postgres-domain",
         ObjectId.GenerateNewId().ToString(),
         17,
-        PostgresDeploymentMode.Operator,
         TestData.DefaultStorageProfileId,
         new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 10));
 }

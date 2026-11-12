@@ -78,7 +78,6 @@ public sealed class DependencyBrowserE2ETests(
                     instances = 1,
                     storage = 1,
                     storageProfileId = profileId,
-                    username = "application",
                     password = $"test-{Guid.NewGuid():N}",
                 },
                 ct);

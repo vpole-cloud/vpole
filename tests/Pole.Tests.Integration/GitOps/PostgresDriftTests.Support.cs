@@ -14,16 +14,10 @@ public abstract partial class DeclarativePipelineTestBase
     private protected IMongoCollection<PostgresCluster> PostgresResources =>
         Fixture.Database.GetCollection<PostgresCluster>("Postgres");
 
-    private protected async Task SeedPostgresPlanningCatalog(
-        PostgresDeploymentMode mode = PostgresDeploymentMode.StatefulSet)
-    {
-        Services.GetRequiredService<PostgresSettings>().DefaultDeploymentMode = mode;
-        await Fixture.PrepareNamedCatalogAsync();
-    }
+    private protected Task SeedPostgresPlanningCatalog() => Fixture.PrepareNamedCatalogAsync();
 
     private protected static ManifestFile[] PostgresSnapshot(
         int version = 16,
-        string username = "application",
         int size = 4,
         int instances = 1,
         string? scope = "private-data",
@@ -47,7 +41,6 @@ public abstract partial class DeclarativePipelineTestBase
                   profile: { name: postgres-storage, revision: {{storageRevision}} }
                 version: {{version}}
                 instances: {{instances}}
-                username: {{username}}
                 bootstrapPassword: { secret: database-auth, key: password }
               ---
               apiVersion: pole.io/v1alpha1

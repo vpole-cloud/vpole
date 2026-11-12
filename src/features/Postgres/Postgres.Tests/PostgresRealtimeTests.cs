@@ -29,8 +29,7 @@ public sealed class PostgresRealtimeTests
             1,
             7,
             "private-storage-profile",
-            17,
-            PostgresDeploymentModeSnapshot.StatefulSet);
+            17);
         var core = EventCore.Create(Tenant);
         await (operation switch
         {

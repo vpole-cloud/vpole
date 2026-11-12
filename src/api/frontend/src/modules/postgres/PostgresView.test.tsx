@@ -32,7 +32,6 @@ const initial: PostgresCluster = {
     instances: 1,
     storage: 1,
     storageProfileId: 'disk',
-    deploymentMode: 'Operator',
   },
   placement: {
     deploymentId: 'deployment',
@@ -59,7 +58,6 @@ const initial: PostgresCluster = {
 let root: Root
 let container: HTMLDivElement
 let cluster: PostgresCluster
-let mode: 'Operator' | 'StatefulSet'
 let failUpdate: boolean
 let conflictUpdate: boolean
 let acceptedWithoutRefresh: boolean
@@ -101,7 +99,6 @@ beforeEach(() => {
   document.body.append(container)
   root = createRoot(container)
   cluster = structuredClone(initial)
-  mode = 'Operator'
   failUpdate = false
   conflictUpdate = false
   acceptedWithoutRefresh = false
@@ -111,8 +108,7 @@ beforeEach(() => {
   requests.reset()
   fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), 'http://localhost')
-    if (url.pathname.endsWith('/supported-versions'))
-      return json({ from: 16, to: 17, defaultDeploymentMode: mode })
+    if (url.pathname.endsWith('/supported-versions')) return json({ from: 16, to: 17 })
     if (url.pathname.endsWith('/connection-string'))
       return pendingReveal ?? json({ connectionString: 'ephemeral-credential' })
     if (url.pathname.endsWith('/password'))
@@ -310,31 +306,14 @@ it('registers typed resource routing, pages the catalog and discovers PostgreSQL
     )
   }
   await fill('Name', 'new-database')
-  await fill('Database username', 'app')
   await fill('Database password', 'write-only-test-value')
   expect(localStorage.getItem('pole.postgres.workspace.v1.user.alpha')).not.toContain(
     'write-only-test-value',
   )
   await tab('All databases')
   await tab('New PostgreSQL')
-  expect(field('Database username').value).toBe('')
   expect(field('Database password').value).toBe('')
   expect(field('Name').value).toBe('new-database')
-})
-
-it('uses the native server mode and forbids multiple instances and password rotation', async () => {
-  mode = 'StatefulSet'
-  cluster.spec.deploymentMode = 'StatefulSet'
-  await render()
-  await click('New PostgreSQL')
-  expect(field('Instances').disabled).toBe(true)
-  await tab('All databases')
-  await click('orders')
-  await tab('Configuration')
-  expect(field('Storage per instance (GiB)').disabled).toBe(true)
-  await tab('Credentials')
-  expect(text()).toContain('Password rotation is unavailable for native StatefulSet databases.')
-  expect([...container.querySelectorAll('input[type=password]')].filter(visible)).toHaveLength(0)
 })
 
 it('preserves configuration drafts through sections and refresh, confirms dirty close and maps field errors', async () => {
@@ -612,7 +591,6 @@ it('keeps passwords and revealed connections outside both query and mutation cac
   await render()
   await click('New PostgreSQL')
   await fill('Name', 'new-database')
-  await fill('Database username', 'app')
   await fill('Database password', 'write-only-test-value')
   await act(async () =>
     field('Name')

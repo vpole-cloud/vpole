@@ -30,8 +30,7 @@ public sealed class PostgresSearchTests(
                     1,
                     10,
                     PostgresTestData.DefaultStorageProfileId,
-                    17,
-                    PostgresDeploymentModeSnapshot.StatefulSet)),
+                    17)),
             CancellationToken.None);
 
         var sources = await Fixture.Database

@@ -21,20 +21,11 @@ public sealed class PostgresManifestTests
     private const string ProjectionName = "pole-secret-projection-deployment-a";
 
     [Fact]
-    public void PreparedClustersCannotProduceOperatorOrStatefulSetManifests()
+    public void PreparedClustersCannotProduceOperatorManifests()
     {
         var prepared = PostgresProvisioningTests.Prepared();
         Assert.Throws<InvalidOperationException>(() => PostgresClusterKubernetesBuilder.buildCluster(
             prepared,
-            ProjectedCredentials(),
-            "pole-data",
-            "fast-db",
-            MinimalCompute(),
-            Metadata(),
-            CreateSettings()));
-        var stateful = PostgresProvisioningTests.Prepared(PostgresDeploymentMode.StatefulSet);
-        Assert.Throws<InvalidOperationException>(() => PostgresStatefulSetKubernetesBuilder.buildStatefulSet(
-            stateful,
             Projection(),
             "pole-data",
             "fast-db",
@@ -51,7 +42,7 @@ public sealed class PostgresManifestTests
         var clusterManifest = JsonSerializer.SerializeToNode(
             PostgresClusterKubernetesBuilder.buildCluster(
                 cluster,
-                ProjectedCredentials(),
+                Projection(),
                 "pole-data",
                 "fast-db",
                 Compute(),
@@ -59,12 +50,14 @@ public sealed class PostgresManifestTests
                 settings))!.AsObject();
         var metadata = clusterManifest["metadata"]!.AsObject();
         var spec = clusterManifest["spec"]!.AsObject();
+        Assert.True(spec["enableSuperuserAccess"]!.GetValue<bool>());
+        Assert.Null(spec["bootstrap"]);
         var inheritedMetadata = spec["inheritedMetadata"]!.AsObject();
         var storage = spec["storage"]!.AsObject();
         var resources = spec["resources"]!.AsObject();
         var requests = resources["requests"]!.AsObject();
         var limits = resources["limits"]!.AsObject();
-        var secret = spec["secret"]!.AsObject();
+        var secret = spec["superuserSecret"]!.AsObject();
 
         Assert.Equal("Cluster", clusterManifest["kind"]!.GetValue<string>());
         Assert.Equal(
@@ -83,8 +76,6 @@ public sealed class PostgresManifestTests
             inheritedMetadata["labels"]!["pole.io/resource-deployment-id"]!.GetValue<string>());
         Assert.Equal("pole/postgresql", inheritedMetadata["annotations"]!["pole.io/resource-type"]!.GetValue<string>());
         Assert.Equal(2, spec["instances"]!.GetValue<int>());
-        var bootstrap = spec["bootstrap"]!.AsObject()["initdb"]!.AsObject();
-        var bootstrapSecret = bootstrap["secret"]!.AsObject();
 
         Assert.Equal("20Gi", storage["size"]!.GetValue<string>());
         Assert.Equal("fast-db", storage["storageClass"]!.GetValue<string>());
@@ -105,9 +96,6 @@ public sealed class PostgresManifestTests
         Assert.Equal("NoSchedule", toleration["effect"]!.GetValue<string>());
         Assert.Equal(ProjectionName, secret["name"]!.GetValue<string>());
         Assert.Equal("ghcr.io/cloudnative-pg/postgresql:17", spec["imageName"]!.GetValue<string>());
-        Assert.Equal(cluster.Id, bootstrap["database"]!.GetValue<string>());
-        Assert.Equal("app_user", bootstrap["owner"]!.GetValue<string>());
-        Assert.Equal(ProjectionName, bootstrapSecret["name"]!.GetValue<string>());
         Assert.Equal(
             TestData.DefaultDeploymentTargetId,
             metadata["labels"]!["pole.io/deployment-target-id"]!.GetValue<string>());
@@ -119,7 +107,7 @@ public sealed class PostgresManifestTests
         var (cluster, settings) = CreateOperatorSubject();
         var manifest = PostgresClusterKubernetesBuilder.buildCluster(
             cluster,
-            ProjectedCredentials(),
+            Projection(),
             "pole-data",
             "fast-db",
             MinimalCompute(),
@@ -129,7 +117,7 @@ public sealed class PostgresManifestTests
         Assert.Contains(ProjectionName, json);
         Assert.DoesNotContain("password", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(
-            typeof(PostgresProjectedCredentials).GetProperties(),
+            typeof(SecretProjectionReference).GetProperties(),
             property => property.Name == "Password");
     }
 
@@ -141,7 +129,7 @@ public sealed class PostgresManifestTests
         var manifest = JsonSerializer.SerializeToNode(
             PostgresClusterKubernetesBuilder.buildCluster(
                 cluster,
-                ProjectedCredentials(),
+                Projection(),
                 "pole-data",
                 "fast-db",
                 MinimalCompute(),
@@ -149,96 +137,6 @@ public sealed class PostgresManifestTests
                 settings))!.AsObject();
 
         Assert.False(manifest["spec"]!.AsObject().ContainsKey("affinity"));
-    }
-
-    [Fact]
-    public void BuildStatefulSet_UsesConfiguredImageAndSecretBackedEnvironment()
-    {
-        var (cluster, settings) = CreateStatefulSetSubject();
-        var placementMetadata = Metadata();
-
-        var statefulSet = PostgresStatefulSetKubernetesBuilder.buildStatefulSet(
-            cluster,
-            Projection(),
-            "pole-data",
-            "fast-db",
-            Compute(runtimeClassName: "kata"),
-            placementMetadata,
-            settings);
-
-        Assert.Equal("apps/v1", statefulSet.ApiVersion);
-        Assert.Equal("StatefulSet", statefulSet.Kind);
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id), statefulSet.Metadata.Name);
-        Assert.Equal("pole-data", statefulSet.Metadata.NamespaceProperty);
-        Assert.Equal("Postgres", statefulSet.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal(
-            8,
-            statefulSet.Spec.Template.Metadata.Labels.Keys.Count(key =>
-                key.StartsWith("pole.io/") && key != "pole.io/resource-name" &&
-                key != "pole.io/deployment-generation"));
-        Assert.Single(statefulSet.Spec.Selector.MatchLabels);
-        Assert.Equal(
-            statefulSet.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"],
-            statefulSet.Spec.Selector.MatchLabels["pole.io/resource-deployment-id"]);
-        Assert.Equal(TestData.TenantId, statefulSet.Spec.Template.Metadata.Labels["pole.io/tenant-id"]);
-        Assert.Equal(
-            placementMetadata.RuntimeCellId,
-            statefulSet.Spec.Template.Metadata.Labels["pole.io/runtime-cell-id"]);
-        Assert.Equal(
-            placementMetadata.DeploymentId,
-            statefulSet.Spec.Template.Metadata.Labels["pole.io/resource-deployment-id"]);
-        Assert.Equal("pole/postgresql", statefulSet.Metadata.Annotations["pole.io/resource-type"]);
-        Assert.Equal("pole/postgresql", statefulSet.Spec.Template.Metadata.Annotations["pole.io/resource-type"]);
-        Assert.Equal("docker.io/postgres:17", statefulSet.Spec.Template.Spec.Containers.Single().Image);
-        Assert.Equal(
-            PostgresStatefulSetKubernetesBuilder.buildHeadlessServiceName(cluster.Id),
-            statefulSet.Spec.ServiceName);
-
-        var env = statefulSet.Spec.Template.Spec.Containers.Single().Env.ToDictionary(x => x.Name);
-        var resources = statefulSet.Spec.Template.Spec.Containers.Single().Resources;
-        Assert.Equal("750m", resources.Requests["cpu"].ToString());
-        Assert.Equal("768Mi", resources.Requests["memory"].ToString());
-        Assert.Equal("2", resources.Limits["cpu"].ToString());
-        Assert.Equal("2Gi", resources.Limits["memory"].ToString());
-        Assert.Equal("1", resources.Requests["nvidia.com/gpu"].ToString());
-        Assert.Equal("linux", statefulSet.Spec.Template.Spec.NodeSelector["kubernetes.io/os"]);
-        Assert.Equal("arm64", statefulSet.Spec.Template.Spec.NodeSelector["kubernetes.io/arch"]);
-        Assert.Equal("kata", statefulSet.Spec.Template.Spec.RuntimeClassName);
-        Assert.NotNull(statefulSet.Spec.Template.Spec.Affinity.NodeAffinity);
-        Assert.Single(statefulSet.Spec.Template.Spec.Tolerations);
-        Assert.Equal(ProjectionName, env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Name);
-        Assert.Equal("username", env["POSTGRES_USER"].ValueFrom.SecretKeyRef.Key);
-        Assert.Equal(ProjectionName, env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Name);
-        Assert.Equal("password", env["POSTGRES_PASSWORD"].ValueFrom.SecretKeyRef.Key);
-        Assert.Equal(cluster.Id, env["POSTGRES_DB"].Value);
-        var volumeClaim = statefulSet.Spec.VolumeClaimTemplates.Single();
-        Assert.Equal("20Gi", volumeClaim.Spec.Resources.Requests["storage"].ToString());
-        Assert.Equal("fast-db", volumeClaim.Spec.StorageClassName);
-        Assert.Equal(TestData.TenantId, volumeClaim.Metadata.Labels["pole.io/tenant-id"]);
-        Assert.Equal("Postgres", volumeClaim.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal("pole/postgresql", volumeClaim.Metadata.Annotations["pole.io/resource-type"]);
-    }
-
-    [Fact]
-    public void BuildStatefulSetServices_UseStableNames()
-    {
-        var (cluster, _) = CreateStatefulSetSubject();
-
-        var headless = PostgresStatefulSetKubernetesBuilder.buildHeadlessService(cluster, "pole-data", Metadata());
-        var readWrite = PostgresStatefulSetKubernetesBuilder.buildReadWriteService(cluster, "pole-data", Metadata());
-
-        Assert.Equal(PostgresStatefulSetKubernetesBuilder.buildHeadlessServiceName(cluster.Id), headless.Metadata.Name);
-        Assert.Equal(PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id), readWrite.Metadata.Name);
-        Assert.Matches("^[a-z]([-a-z0-9]*[a-z0-9])?$", headless.Metadata.Name);
-        Assert.Matches("^[a-z]([-a-z0-9]*[a-z0-9])?$", readWrite.Metadata.Name);
-        Assert.InRange(headless.Metadata.Name.Length, 1, 63);
-        Assert.InRange(readWrite.Metadata.Name.Length, 1, 63);
-        Assert.Equal("None", headless.Spec.ClusterIP);
-        Assert.Null(readWrite.Spec.ClusterIP);
-        Assert.Equal("Postgres", headless.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal("pole/postgresql", headless.Metadata.Annotations["pole.io/resource-type"]);
-        Assert.Equal("Postgres", readWrite.Metadata.Labels["pole.io/resource-type"]);
-        Assert.Equal("pole/postgresql", readWrite.Metadata.Annotations["pole.io/resource-type"]);
     }
 
     [Theory]
@@ -255,9 +153,6 @@ public sealed class PostgresManifestTests
 
     private static SecretProjectionReference Projection() => new("managed-secret", ProjectionName, 7);
 
-    private static PostgresProjectedCredentials ProjectedCredentials() =>
-        PostgresProjectedCredentials.NewOperatorCredentials("app_user", Projection());
-
     private static (PostgresCluster cluster, PostgresSettings settings) CreateOperatorSubject()
     {
         var cluster = PostgresCluster.Create(
@@ -265,22 +160,8 @@ public sealed class PostgresManifestTests
             "analytics",
             ObjectId.GenerateNewId().ToString(),
             17,
-            PostgresDeploymentMode.Operator,
             TestData.DefaultStorageProfileId,
             new CreatePostgresClusterOptions(FSharpOption<string>.Some("0123456789abcdef01234567"), 2, 20));
-        return (cluster, CreateSettings());
-    }
-
-    private static (PostgresCluster cluster, PostgresSettings settings) CreateStatefulSetSubject()
-    {
-        var cluster = PostgresCluster.Create(
-            TestData.TenantId,
-            "analytics",
-            ObjectId.GenerateNewId().ToString(),
-            17,
-            PostgresDeploymentMode.StatefulSet,
-            TestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some("0123456789abcdef01234567"), 1, 20));
         return (cluster, CreateSettings());
     }
 
@@ -337,7 +218,6 @@ public sealed class PostgresManifestTests
     private static PostgresSettings CreateSettings() => new()
     {
         OperatorImage = new PostgresImageSettings { Server = "ghcr.io", Name = "cloudnative-pg/postgresql" },
-        StatefulSetImage = new PostgresImageSettings { Server = "docker.io", Name = "postgres" },
     };
 
     private static PostgresResourceDeploymentMetadata Metadata() => new(

@@ -94,12 +94,10 @@ public sealed class DatabaseBrowserE2ETests(
             }
 
             Assert.True(
-                await content.GetByLabel("Instances", new LocatorGetByLabelOptions { Exact = true }).IsDisabledAsync());
+                await content.GetByLabel("Instances", new LocatorGetByLabelOptions { Exact = true }).IsEnabledAsync());
             await content.GetByLabel("Name", new LocatorGetByLabelOptions { Exact = true }).FillAsync(name);
-            // Capture before entering either credential, including the username.
+            // Capture before entering the administrator password.
             await CaptureAsync(page, "postgres", "create", "create", "Create PostgreSQL database");
-            await content.GetByLabel("Database username", new LocatorGetByLabelOptions { Exact = true })
-                .FillAsync("app");
             await content.GetByLabel("Database password", new LocatorGetByLabelOptions { Exact = true })
                 .FillAsync($"test-{Guid.NewGuid():N}");
             var accepted = await page.RunAndWaitForResponseAsync(
@@ -127,7 +125,7 @@ public sealed class DatabaseBrowserE2ETests(
                 .ClickAsync();
             Assert.True(
                 await content.GetByLabel("Storage per instance (GiB)", new LocatorGetByLabelOptions { Exact = true })
-                    .IsDisabledAsync());
+                    .IsEnabledAsync());
             var compute = content.GetByLabel("Compute profile");
             // Select our known non-default profile rather than relying on option order.
             using (var currentRead = fixture.CreateAuthenticatedRequest(
@@ -197,8 +195,8 @@ public sealed class DatabaseBrowserE2ETests(
             await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Credentials", Exact = true })
                 .ClickAsync();
             await CaptureAsync(page, "postgres", "credentials", id, name);
-            // Native rotation is unsupported, independent of deployment reconciliation.
-            Assert.Equal(0, await content.Locator("input[type=password]:visible").CountAsync());
+            // The owner can rotate the administrator credential.
+            Assert.Equal(1, await content.Locator("input[type=password]:visible").CountAsync());
             await content.GetByRole(AriaRole.Tab, new LocatorGetByRoleOptions { Name = "Overview", Exact = true })
                 .ClickAsync();
         });

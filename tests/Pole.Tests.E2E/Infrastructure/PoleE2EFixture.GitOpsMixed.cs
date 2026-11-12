@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Aspire.Hosting.Testing;
 using k8s;
 using k8s.Autorest;
@@ -142,21 +143,22 @@ public sealed partial class PoleE2EFixture
         var ns = await GitOpsNamespaceAsync(placement, ct);
         VerifyOwnedNamespace(await _kubernetes.CoreV1.ReadNamespaceAsync(ns, cancellationToken: ct));
         var name = $"pg-{clusterId}";
-        V1StatefulSet? statefulSet = null;
+        string? secretName = null;
         await TestWait.UntilAsync(
             async phase =>
             {
                 try
                 {
-                    statefulSet = await _kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
-                        name,
-                        ns,
-                        cancellationToken: phase);
+                    var cluster = await _kubernetes.CustomObjects.GetNamespacedCustomObjectAsync<JsonElement>(
+                        "postgresql.cnpg.io", "v1", ns, "clusters", name, cancellationToken: phase);
+                    secretName = cluster.GetProperty("spec").GetProperty("superuserSecret").GetProperty("name").GetString();
+                    if (!cluster.TryGetProperty("status", out var status) || !status.TryGetProperty("currentPrimary", out var primary))
+                        return false;
                     var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(
                         ns,
                         labelSelector: $"pole.io/resource-deployment-id={placement["_id"].AsObjectId}",
                         cancellationToken: phase);
-                    var pod = pods.Items.SingleOrDefault(item => item.Metadata.Name == name + "-0");
+                    var pod = pods.Items.SingleOrDefault(item => item.Metadata.Name == primary.GetString());
                     if (pod?.Status?.Phase != "Running" || string.IsNullOrWhiteSpace(pod.Status.PodIP))
                         return false;
 
@@ -179,19 +181,12 @@ public sealed partial class PoleE2EFixture
             ct,
             TimeSpan.FromSeconds(2));
 
-        var reference = statefulSet!.Spec
-            .Template
-            .Spec
-            .Containers
-            .Single(container => container.Name == "postgres")
-            .Env
-            .Single(variable => variable.Name == "POSTGRES_PASSWORD")
-            .ValueFrom
-            .SecretKeyRef;
-        var secret = await _kubernetes.CoreV1.ReadNamespacedSecretAsync(reference.Name, ns, cancellationToken: ct);
+        Assert.False(string.IsNullOrEmpty(secretName));
+        var secret = await _kubernetes.CoreV1.ReadNamespacedSecretAsync(secretName, ns, cancellationToken: ct);
+        Assert.Equal("postgres", Encoding.UTF8.GetString(secret.Data["username"]));
         Assert.True(
             CryptographicOperations.FixedTimeEquals(
-                SHA256.HashData(secret.Data[reference.Key]),
+                SHA256.HashData(secret.Data["password"]),
                 SHA256.HashData(Encoding.UTF8.GetBytes(expectedPassword))),
             "The native credential does not match bootstrap.");
     }
@@ -217,9 +212,9 @@ public sealed partial class PoleE2EFixture
             process.StartInfo.ArgumentList.Add(argument);
         foreach (var argument in new[]
                  {
-                     "exec", "-i", "-n", probe.Namespace, probe.Pod, "--", "sh", "-c",
+                     "exec", "-i", "-n", probe.Namespace, probe.Pod, "-c", "postgres", "--", "sh", "-c",
                      "IFS= read -r PGPASSWORD; export PGPASSWORD; " +
-                     "exec psql -h \"$1\" -U app -d postgres -tAc 'select current_user'",
+                     "exec psql -h \"$1\" -U postgres -d postgres -tAc 'select current_user'",
                      "bootstrap-check", probe.Host,
                  })
             process.StartInfo.ArgumentList.Add(argument);
@@ -233,7 +228,7 @@ public sealed partial class PoleE2EFixture
             process.StandardInput.Close();
             await process.WaitForExitAsync(ct);
             var error = await errors;
-            if (process.ExitCode == 0 && (await output).Trim() == "app")
+            if (process.ExitCode == 0 && (await output).Trim() == "postgres")
                 return PostgresLoginResult.Authenticated;
 
             return error.Contains("password authentication failed", StringComparison.Ordinal)

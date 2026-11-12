@@ -12,7 +12,6 @@ export interface PostgresCluster {
     storage: number
     storageProfileId: string
     version: number
-    deploymentMode: 'Operator' | 'StatefulSet'
   }
   placement: ResourcePlacement
   gitOps?: GitOpsStatus | null
@@ -21,7 +20,6 @@ export interface PostgresCluster {
 export interface PostgresCapabilities {
   from: number
   to: number
-  defaultDeploymentMode: 'Operator' | 'StatefulSet'
 }
 
 export interface PostgresInput {
@@ -32,7 +30,6 @@ export interface PostgresInput {
   storage: number
   storageProfileId: string
   computeProfileId?: string
-  username: string
   password: string
   placement: { isolationScopeId?: string; deploymentTargetId: string }
 }

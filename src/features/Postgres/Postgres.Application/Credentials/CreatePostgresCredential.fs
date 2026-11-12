@@ -12,16 +12,15 @@ type CreatePostgresCredential =
     delegate of
         tenantId: string *
         clusterId: string *
-        username: string *
         password: string *
         cancellationToken: CancellationToken ->
             Task<PostgresOutcome<PreparedManagedSecret, PostgresCredentialError>>
 
 type PostgresCredentialCreator(prepareSecret: PrepareManagedSecret) =
-    member _.InvokeAsync(tenantId, clusterId, username, password, cancellationToken: CancellationToken) =
+    member _.InvokeAsync(tenantId, clusterId, password, cancellationToken: CancellationToken) =
         task {
             let values = Dictionary<string, string>()
-            values[PostgresManagedSecret.usernameKey] <- username
+            values[PostgresManagedSecret.usernameKey] <- PostgresManagedSecret.administrator
             values[PostgresManagedSecret.passwordKey] <- password
 
             let! prepared =

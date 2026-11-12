@@ -30,7 +30,6 @@ type PostgresDeclaration =
       Storage: PostgresDeclarationStorage
       Version: int
       Instances: Nullable<int>
-      Username: string
       BootstrapPassword: PostgresDeclaredBootstrap }
 
 type PostgresDeclarationError =
@@ -50,8 +49,6 @@ type PostgresDeclarationError =
     | BootstrapCredentialUnavailable = 13
     | BootstrapProtectionUnavailable = 14
     | BootstrapValuesTooLarge = 15
-    | StatefulSetInstancesUnsupported = 16
-    | StatefulSetStorageResizeUnsupported = 17
     | StorageShrinkUnsupported = 18
     | ComputeRuntimeClassUnsupported = 19
 
@@ -70,10 +67,8 @@ type PostgresManagedIdentity =
       IsolationScopeId: string
       DeploymentTargetId: string
       Version: int
-      DeploymentMode: PostgresDeploymentMode
       BootstrapSecretId: string
       BootstrapKey: string
-      Username: string
       StorageProfileId: string
       Storage: ResourceDeploymentStorageConfiguration }
 
@@ -135,13 +130,6 @@ module PostgresDeclarations =
         DeclarationJson.Require(validProfile value.Storage.Profile, DeclarationFieldPaths.StorageProfile)
         DeclarationJson.Require(PostgresSettings.isSupportedVersion settings value.Version, "spec.version")
         DeclarationJson.Require(instances value > 0, "spec.instances")
-
-        DeclarationJson.Require(
-            not (String.IsNullOrWhiteSpace value.Username)
-            && PostgresManagedSecret.totalValueBytes [ value.Username ]
-               <= PostgresManagedSecret.maximumValueBytes,
-            "spec.username"
-        )
 
         DeclarationJson.Require(not (isNull (box value.BootstrapPassword)), BootstrapPasswordField)
         DeclarationJson.Require(DeclarationNames.Valid value.BootstrapPassword.Secret, "spec.bootstrapPassword.secret")

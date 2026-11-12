@@ -33,12 +33,9 @@ type PostgresFeatureRegistration =
                 Func<PostgresSettings, bool>(fun settings ->
                     settings.SupportedVersions.From > 0
                     && settings.SupportedVersions.``To`` >= settings.SupportedVersions.From
-                    && Enum.IsDefined(typeof<PostgresDeploymentMode>, box settings.DefaultDeploymentMode)
                     && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Server))
-                    && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name))
-                    && not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Server))
-                    && not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Name))),
-                "PostgreSQL requires a valid deployment mode, ordered positive version bounds, and nonblank image server/name values."
+                    && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name))),
+                "PostgreSQL requires ordered positive version bounds, and nonblank image server/name values."
             )
             .ValidateOnStart()
         |> ignore

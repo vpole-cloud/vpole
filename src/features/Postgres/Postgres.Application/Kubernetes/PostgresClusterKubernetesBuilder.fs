@@ -4,6 +4,7 @@ open System.Collections.Generic
 open Pole.Features.Core.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.Postgres.Application.Common
+open Pole.Features.Secrets.Contracts
 open Pole.Features.Postgres.Application.Connections
 open Pole.Features.StorageProfiles.Contracts
 open k8s.Models
@@ -21,8 +22,6 @@ module PostgresClusterKubernetesBuilder =
 
     let buildReadWriteServiceName (clusterId: string) =
         PostgresConnectionEndpoints.buildReadWriteServiceName clusterId
-
-    let buildDatabaseName (clusterId: string) = clusterId
 
     let buildLabels (cluster: PostgresCluster) (metadata: PostgresResourceDeploymentMetadata) =
         dict
@@ -77,7 +76,7 @@ module PostgresClusterKubernetesBuilder =
 
     let buildCluster
         (cluster: PostgresCluster)
-        (credentials: PostgresProjectedCredentials)
+        (projection: SecretProjectionReference)
         (namespaceName: string)
         (storageClassName: string)
         (compute: KubernetesComputeConfiguration)
@@ -85,12 +84,7 @@ module PostgresClusterKubernetesBuilder =
         (settings: PostgresSettings)
         =
         cluster.EnsureConfigured()
-        let clusterSecretName = credentials.Projection.KubernetesName
-
-        let username =
-            match credentials with
-            | OperatorCredentials(username, _) -> username
-            | StatefulSetCredentials _ -> invalidArg "credentials" "Operator bootstrap requires its managed username."
+        let clusterSecretName = projection.KubernetesName
 
         let image =
             PostgresSettings.buildImageReference settings.OperatorImage cluster.Spec.Version
@@ -108,18 +102,13 @@ module PostgresClusterKubernetesBuilder =
         | Some affinity -> spec["affinity"] <- affinity
         | None -> ()
 
-        spec["secret"] <- {| name = clusterSecretName |}
+        spec["enableSuperuserAccess"] <- true
+        spec["superuserSecret"] <- {| name = clusterSecretName |}
         spec["imageName"] <- image
 
         spec["inheritedMetadata"] <-
             {| labels = buildLabels cluster metadata
                annotations = buildAnnotations () |}
-
-        spec["bootstrap"] <-
-            {| initdb =
-                {| database = buildDatabaseName cluster.Id
-                   owner = username
-                   secret = {| name = clusterSecretName |} |} |}
 
         {| apiVersion = "postgresql.cnpg.io/v1"
            kind = "Cluster"
