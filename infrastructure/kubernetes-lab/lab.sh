@@ -1153,6 +1153,12 @@ install_cnpg_overlay() {
         oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg \
         --version "${CNPG_CHART_VERSION}" \
         --namespace pole-lab-cnpg --create-namespace --wait --timeout 5m
+    if target_has_overlay "${index}" cert-manager; then
+        run_helm_for_target "${index}" upgrade --install plugin-barman-cloud \
+            oci://ghcr.io/cloudnative-pg/charts/plugin-barman-cloud \
+            --version "${BARMAN_CHART_VERSION}" \
+            --namespace pole-lab-cnpg --wait --timeout 5m
+    fi
 }
 
 install_harbor_overlay() {
@@ -1612,6 +1618,12 @@ verify_lab() {
                     ;;
                 cnpg)
                     "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" --namespace pole-lab-cnpg rollout status deployment/pole-lab-cnpg-cloudnative-pg --timeout=90s >/dev/null
+                    if target_has_overlay "${index}" cert-manager; then
+                        "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" \
+                            wait --for=condition=Established crd/objectstores.barmancloud.cnpg.io --timeout=90s >/dev/null
+                        "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" --namespace pole-lab-cnpg \
+                            rollout status deployment/plugin-barman-cloud --timeout=90s >/dev/null
+                    fi
                     ;;
                 harbor)
                     "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" --namespace pole-lab-harbor wait --for=condition=Available deployment --all --timeout=180s >/dev/null

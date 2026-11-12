@@ -25,7 +25,7 @@ Testcontainers, and Aspire variables remain overrides.
 
 The default `full` profile contains:
 
-- a topology-capable `default` cluster with monitoring CRDs, cert-manager, CloudNativePG, Harbor,
+- a topology-capable `default` cluster with monitoring CRDs, cert-manager, CloudNativePG with the Barman Cloud plugin, Harbor,
   and BuildKit;
 - `workload-a` and `workload-b` clusters with monitoring CRDs for multi-target tests;
 - a shared local registry and pinned k3d, kubectl, Helm, and buildctl clients.
@@ -102,6 +102,24 @@ accepts no overlay flags.
 ./infrastructure/kubernetes-lab/lab.sh up minimal --overlay monitoring
 ./infrastructure/kubernetes-lab/lab.sh reset multi --overlay monitoring
 ```
+
+When both `cnpg` and `cert-manager` are selected, `up` also installs the pinned Barman Cloud plugin
+in the CNPG operator namespace. Re-run `up` to apply this addition to an existing lab.
+
+Run the backup/recovery acceptance scenario against that lab:
+
+```bash
+bash infrastructure/kubernetes-lab/tests/backup-recovery.sh
+```
+
+The scenario creates its own namespace and S3-compatible RustFS pod, signs S3 requests from the host
+through a loopback port forward, and takes two physical backups. It verifies that the workload can
+back up with the host route down and that the host can still read the catalog when a NetworkPolicy
+isolates workload access to S3. After deleting the source cluster and its administrator Secret it lists
+the two copies, restores the older one by ID and restores the other test cluster to an intermediate
+timestamp. Each restore uses a fresh password and checks the recovered rows over TCP. Teardown checks
+the namespace UID and ownership labels before deletion. The script requires curl with AWS SigV4 support,
+Python 3, OpenSSL, jq, and the same runtime and tooling as `lab.sh`.
 
 Plain `dotnet test` expects the full profile. Use project or trait filters when deliberately working
 with a smaller profile.
