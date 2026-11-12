@@ -8,6 +8,9 @@ Create a tenant Secret containing the S3 access key ID and secret access key. Us
 
 Creating the destination through the API binds the selected keys to that destination with `BackupStorage` usage in the same transaction. For GitOps, declare a `SecretBinding` with `usage: BackupStorage`, the matching `BackupDestination` consumer, and mappings for its credential keys. The purpose-specific grant permits the control plane to use these keys for that destination. Workload access uses a Secrets-managed Kubernetes projection on the source target. Both paths resolve the currently authorized Secret version. Rotate values through the existing Secret version operation. A failed catalog read, revoked grant or unreadable metadata produces an error on the affected source. A successful empty list means no completed copies were found.
 
+Workload credential rotation is asynchronous: Secret projection and Barman's short credential cache
+must converge. WAL status reflects the new credentials after a subsequent archive attempt.
+
 Create one policy per source service, selecting an authorized destination, a five-field UTC cron schedule and the provider's retention setting. PostgreSQL expresses retention in days. CNPG runs scheduled base backups even during Pole downtime. Pausing the schedule leaves WAL archiving, manual copies and active retention running. Setting a new destination on the policy creates a separate archive; previously completed copies remain selectable through their original archive. After source deletion or destination replacement the owner manages cleanup of retired archives.
 
 Day fields follow Pole's shared cron semantics. A field covering every possible day is unrestricted;

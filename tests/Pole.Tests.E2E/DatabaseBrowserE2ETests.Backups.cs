@@ -259,16 +259,9 @@ public sealed partial class DatabaseBrowserE2ETests
             fixture.Alpha.DefaultTenantId);
         using var denied = await fixture.Api.SendAsync(request, ct);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, denied.StatusCode);
-        await fixture.BackupSqlAsync(
-            group,
-            sourceId,
-            password,
-            "postgres",
-            "SELECT pg_create_restore_point('test_rotated_credential'); SELECT pg_switch_wal();",
-            ct);
-        await fixture.WaitForWalArchiveHealthAsync(group, sourceId, healthy: false, ct);
+        await fixture.WaitForWalArchiveHealthAsync(group, sourceId, password, healthy: false, ct);
         await RotateAsync(invalid, s3.SecretKey);
-        await fixture.WaitForWalArchiveHealthAsync(group, sourceId, healthy: true, ct);
+        await fixture.WaitForWalArchiveHealthAsync(group, sourceId, password, healthy: true, ct);
         var entries = await BackupApiAsync(HttpMethod.Get, catalogPath, null, ct);
         Assert.NotEmpty(entries.EnumerateArray());
     }

@@ -256,12 +256,28 @@ public sealed partial class PoleE2EFixture
     public async Task WaitForWalArchiveHealthAsync(
         string group,
         string sourceId,
+        string password,
         bool healthy,
         CancellationToken ct)
     {
+        var nextWalWrite = DateTimeOffset.MinValue;
         await TestWait.UntilAsync(
             async token =>
             {
+                // Barman caches Secret reads briefly. Keep creating WAL until an archive command
+                // observes the rotated version, rather than relying on a single switch within that cache window.
+                if (DateTimeOffset.UtcNow >= nextWalWrite)
+                {
+                    await BackupSqlAsync(
+                        group,
+                        sourceId,
+                        password,
+                        "postgres",
+                        "SELECT pg_create_restore_point('test_credential_rotation_probe'); SELECT pg_switch_wal();",
+                        token);
+                    nextWalWrite = DateTimeOffset.UtcNow.AddSeconds(15);
+                }
+
                 var source = await ReadKubectlJsonAsync(
                     ["get", "cluster", "pg-" + sourceId, "-n", GetNamespaceName(group), "-o", "json"],
                     token);
