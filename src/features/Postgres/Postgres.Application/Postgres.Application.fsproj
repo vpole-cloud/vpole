@@ -69,6 +69,10 @@
         <Compile Include="Kubernetes/PostgresOperatorReadiness.fs"/>
         <Compile Include="Kubernetes/PostgresResourceDeploymentChangeSource.fs"/>
         <Compile Include="Kubernetes/PostgresResourceDeploymentObserver.fs"/>
+        <Compile Include="Backups/BarmanCatalog.fs"/>
+        <Compile Include="Backups/PostgresBackupManifests.fs"/>
+        <Compile Include="Backups/PostgresBackupKubernetes.fs"/>
+        <Compile Include="Backups/PostgresBackupProvider.fs"/>
         <Compile Include="PostgresFeatureRegistration.fs"/>
     </ItemGroup>
 
@@ -82,8 +86,10 @@
     <ItemGroup>
         <PackageReference Include="FluentValidation"/>
         <PackageReference Include="KubernetesClient"/>
+        <PackageReference Include="AWSSDK.S3"/>
     </ItemGroup>
     <ItemGroup>
+        <ProjectReference Include="../../Backups/Backups.Contracts/Backups.Contracts.csproj"/>
         <ProjectReference Include="../../ResourceConnections/ResourceConnections.Contracts/ResourceConnections.Contracts.csproj"/>
         <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts\DeploymentTargets.Contracts.csproj"/>
         <ProjectReference Include="..\..\DeploymentTargets\DeploymentTargets.Contracts.HttpMapping\DeploymentTargets.Contracts.HttpMapping.csproj"/>

@@ -25,7 +25,8 @@ public sealed class MigrationRegistrationTests
         Assert.Equal(
             new[]
                 {
-                    "ComputeProfiles", "ContainerRegistries", "DeploymentTargets", "Domains", "Functions", "GitOps",
+                    "Backups", "ComputeProfiles", "ContainerRegistries", "DeploymentTargets", "Domains", "Functions",
+                    "GitOps",
                     "GitProviders", "Outbox", "PrivateAccess", "Quotas", "ResourceConnections", "ResourceDeployments",
                     "ResourceGroups", "Search", "Secrets", "SourceBuilds", "StorageProfiles", "WebServices",
                 }.Select(feature => $"Pole.Features.{feature}.Migrations")

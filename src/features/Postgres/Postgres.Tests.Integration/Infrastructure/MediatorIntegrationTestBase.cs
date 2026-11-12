@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Pole.Features.Backups.Contracts;
 using Pole.Database;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Postgres.Application;
@@ -60,6 +61,9 @@ public abstract class MediatorIntegrationTestBase(
             [typeof(PostgresClusterCreatedEvent).Assembly],
             []);
         services.AddPostgresFeature(configuration);
+        services.AddSingleton<RecordRestoreTargetCreation>((
+            _, _,
+            _) => Task.FromResult(RestoreTargetCreationDecision.OperationUnavailable));
         services.AddFeatureMigrations("pole.postgres", typeof(PostgresNameIndexesMigration).Assembly);
         services.AddResourceConnectionsFeature();
         services.AddTestDeploymentTargets();

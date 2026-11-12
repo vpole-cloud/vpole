@@ -212,6 +212,16 @@ for backup_id in "${first_id}" "${second_id}"; do
 done
 info 'Both completed base backups were listed directly from S3 after deleting the source.'
 
+restored_sql() {
+    local name="$1" statement="$2" primary
+    primary="$(k get cluster "${name}" -o jsonpath='{.status.currentPrimary}')"
+    [[ -n "${primary}" ]] || return 1
+    k exec -i "${primary}" -c postgres -- sh -c '
+        PGPASSWORD=$(cat); export PGPASSWORD
+        exec psql -XAtq --set=ON_ERROR_STOP=1 -h "$1" -U postgres -d postgres -c "$2"' \
+        sh "${name}-rw" "${statement}" <"${work}/password"
+}
+
 restore() {
     local name="$1" target="$2" expected="$3"
     admin_secret "${name}-admin"
@@ -236,12 +246,16 @@ spec:
         parameters: {barmanObjectName: archive, serverName: origin}
 YAML
     k wait --for=condition=Ready "cluster/${name}" --timeout=10m >/dev/null
-    local primary rows
-    primary="$(k get cluster "${name}" -o jsonpath='{.status.currentPrimary}')"
-    rows="$(k exec -i "${primary}" -c postgres -- sh -c '
-        PGPASSWORD=$(cat); export PGPASSWORD
-        exec psql -XAtq --set=ON_ERROR_STOP=1 -h "$1" -U postgres -d postgres -c "$2"' \
-        sh "${name}-rw" "SELECT string_agg(id::text, ',' ORDER BY id) FROM markers" <"${work}/password")"
+    local rows attempt login_ready=false
+    for attempt in {1..90}; do
+        if restored_sql "${name}" 'SELECT 1' >/dev/null 2>&1; then
+            login_ready=true
+            break
+        fi
+        sleep 2
+    done
+    [[ "${login_ready}" == true ]] || die "Administrative SQL login for ${name} did not become ready."
+    rows="$(restored_sql "${name}" "SELECT string_agg(id::text, ',' ORDER BY id) FROM markers")"
     [[ "${rows}" == "${expected}" ]] || die "Unexpected rows after restoring ${name}."
     info "${name} recovered rows ${expected}."
 }

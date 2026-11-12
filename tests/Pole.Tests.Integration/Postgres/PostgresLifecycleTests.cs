@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Backups.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.GitOps.Contracts;
@@ -494,9 +495,7 @@ public sealed class PostgresLifecycleTests(
         session.StartTransaction();
         var request = new ReadLifecycleWarningsRequest(before.TenantId, before.Id, action);
         var codes = await provider.ReadLifecycleWarningsAsync(request, session, default);
-        Assert.Contains(
-            "PostgresOperatorManagesStorageCleanup",
-            codes);
+        Assert.Contains("PostgresOperatorManagesStorageCleanup", codes);
         Assert.Contains("PersistentVolumeReclaimPolicyDeterminesDataRetention", codes);
         Assert.Equal(action == GitLifecycleAction.Replace, codes.Contains("PostgresReplacementRequiresBootstrap"));
         Assert.Equal(action == GitLifecycleAction.Replace ? 3 : 2, codes.Count);
@@ -506,6 +505,55 @@ public sealed class PostgresLifecycleTests(
         Assert.Equal(
             before.ToBsonDocument(),
             (await collection.Find(item => item.Id == before.Id).SingleAsync()).ToBsonDocument());
+    }
+
+    [Fact]
+    public async Task A_recorded_restore_cannot_recreate_a_deleted_cluster_or_issue_another_secret()
+    {
+        var original = await Seed("PostgresCluster");
+        var clusters = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
+        var source = await clusters.Find(item => item.Id == original.ResourceId).SingleAsync();
+        var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
+        var secretCount = await secrets.CountDocumentsAsync(_ => true);
+        var eventCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        var targetId = Id();
+        var origin = new PostgresRecoveryOrigin(Id(), Id(), "source", "20261012T130001", null);
+        var request = new CreatePostgresClusterRequest(
+            new CreatePostgresClusterRequestBody(
+                "restored",
+                source.GroupId,
+                17,
+                1,
+                10,
+                TestData.DefaultStorageProfileId,
+                TestData.DefaultComputeProfileId,
+                "restore-password",
+                new PlacementRequest(null, TestData.DefaultDeploymentTargetId)),
+            source.TenantId);
+        var creationAttempts = 0;
+        RecordRestoreTargetCreation receipt = async (
+            record, session,
+            ct) =>
+        {
+            Assert.Equal(
+                new RecordRestoreTargetCreationRequest(source.TenantId, origin.OperationId, origin.ArchiveId, targetId),
+                record);
+            Assert.True(session.IsInTransaction);
+            Assert.True(await clusters.Find(session, item => item.Id == targetId).AnyAsync(ct));
+            Assert.True(await secrets.CountDocumentsAsync(session, _ => true, cancellationToken: ct) > secretCount);
+            creationAttempts++;
+            return RestoreTargetCreationDecision.AlreadyRecorded;
+        };
+
+        var outcome = await Services.GetRequiredService<PostgresClusterCreator>()
+            .CreateAsync(request, targetId, origin, null, receipt, default);
+        var error = Assert.IsType<CreatePostgresClusterOutcome.CreatePostgresClusterRejected>(outcome).Item;
+        var reason = Assert.IsType<CreatePostgresClusterError.CreateState>(error).Item;
+        Assert.True(reason.IsPostgresClusterRestoreTargetAlreadyCreated);
+        Assert.True(creationAttempts > 0);
+        Assert.False(await clusters.Find(item => item.Id == targetId).AnyAsync());
+        Assert.Equal(secretCount, await secrets.CountDocumentsAsync(_ => true));
+        Assert.Equal(eventCount, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
     }
 
     private async Task<GitLifecycleResourceReference> Seed(string kind)

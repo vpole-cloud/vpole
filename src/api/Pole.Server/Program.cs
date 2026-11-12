@@ -1,3 +1,5 @@
+using Pole.Features.Backups.Application;
+using Pole.Features.Backups.Events;
 using System.Reflection;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.ContainerRegistries.Application;
@@ -37,6 +39,7 @@ Assembly[] serviceAssemblies =
 [
     typeof(WebServiceEndpoints).Assembly, typeof(FunctionAppFeature).Assembly,
     typeof(FunctionRuntimeFeature).Assembly,
+    typeof(BackupsFeature).Assembly,
     typeof(RedisServicesFeatureRegistration).Assembly,
     typeof(ResourceConnectionsFeature).Assembly,
     typeof(PostgresFeatureRegistration).Assembly,
@@ -45,6 +48,7 @@ Assembly[] serviceEventAssemblies =
 [
     typeof(WebServiceCreatedEvent).Assembly,
     typeof(FunctionAppCreatedEvent).Assembly,
+    typeof(BackupConfigurationChangedEvent).Assembly,
     typeof(RedisServiceCreatedEvent).Assembly,
     typeof(ResourceConnectionCreatedEvent).Assembly,
     typeof(PostgresClusterCreatedEvent).Assembly,
@@ -69,6 +73,7 @@ builder.Services
     .AddFunctionRuntimeFeature(configuration)
     .AddPrivateAccessRuntime(configuration)
     .AddWebServicesFeature()
+    .AddBackupsFeature()
     .AddRedisServicesFeature()
     .AddResourceConnectionsFeature()
     .AddPostgresFeature(configuration)

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Backups.Domain</AssemblyName>
+        <RootNamespace>Pole.Features.Backups.Domain</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="MongoDB.Driver"/>
+        <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
+    </ItemGroup>
+</Project>

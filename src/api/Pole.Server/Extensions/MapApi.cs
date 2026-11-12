@@ -1,3 +1,4 @@
+using Pole.Features.Backups.Application;
 using Pole.ASP.Helpers;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
@@ -18,6 +19,7 @@ public static class MapApi
             .RequireAuthorization()
             .MapFunctionAppEndpoints()
             .MapWebServiceEndpoints()
+            .MapBackupsEndpoints()
             .MapRedisServiceEndpoints()
             .MapResourceConnectionEndpoints()
             .MapPostgresClusterEndpoints();

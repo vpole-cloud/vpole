@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace Pole.Tests.E2E;
 
 [Collection(PoleE2ECollection.Name)]
-public sealed class DatabaseBrowserE2ETests(
+public sealed partial class DatabaseBrowserE2ETests(
     PoleE2EFixture fixture,
     ITestOutputHelper output
 )

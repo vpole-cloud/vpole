@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -137,6 +138,70 @@ public sealed class PostgresManifestTests
                 settings))!.AsObject();
 
         Assert.False(manifest["spec"]!.AsObject().ContainsKey("affinity"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RestoredCluster_BsonRoundTripAndCapacityReconciliationPreserveExactTarget(bool byTime)
+    {
+        var (source, settings) = CreateOperatorSubject();
+        var target = DateTime.Parse("2026-11-12T17:24:15.123456Z").ToUniversalTime();
+        var origin = new PostgresRecoveryOrigin(
+            "operation",
+            "archive",
+            "original-server",
+            byTime ? null : "20261112T131500",
+            byTime ? target : null);
+        var spec = new PostgresClusterSpec(
+            source.Spec.Instances,
+            source.Spec.Storage,
+            source.Spec.StorageProfileId,
+            source.Spec.Version,
+            origin);
+        var cluster = new PostgresCluster(
+            source.Id,
+            source.TenantId,
+            source.Name,
+            source.GroupId,
+            spec,
+            source.Revision,
+            source.Lifecycle,
+            source.Provisioning,
+            source.PlanningFence);
+        var restored = BsonSerializer.Deserialize<PostgresCluster>(cluster.ToBsonDocument()).UpdateDesiredState(3, 40);
+        Assert.Equal(origin.OperationId, restored.Spec.Recovery.OperationId);
+        Assert.Equal(origin.TargetTimeUtc, restored.Spec.Recovery.TargetTimeUtc);
+        var specNode = JsonSerializer.SerializeToNode(
+            PostgresClusterKubernetesBuilder.buildCluster(
+                restored,
+                Projection(),
+                "pole-data",
+                "fast-db",
+                MinimalCompute(),
+                Metadata(),
+                settings))!["spec"]!;
+        var recovery = specNode["bootstrap"]!["recovery"]!;
+        Assert.Equal("origin", recovery["source"]!.GetValue<string>());
+        var selection = recovery["recoveryTarget"]!.AsObject();
+        if (byTime)
+        {
+            Assert.Single(selection);
+            Assert.Equal(target.ToString("O"), selection["targetTime"]!.GetValue<string>());
+        }
+        else
+        {
+            Assert.Equal("20261112T131500", selection["backupID"]!.GetValue<string>());
+            Assert.True(selection["targetImmediate"]!.GetValue<bool>());
+            Assert.Null(selection["targetTime"]);
+        }
+
+        var parameters = specNode["externalClusters"]![0]!["plugin"]!["parameters"]!;
+        Assert.Equal("original-server", parameters["serverName"]!.GetValue<string>());
+        Assert.Equal("archive-archive", parameters["barmanObjectName"]!.GetValue<string>());
+        Assert.True(specNode["enableSuperuserAccess"]!.GetValue<bool>());
+        Assert.Equal(ProjectionName, specNode["superuserSecret"]!["name"]!.GetValue<string>());
+        Assert.Null(specNode["plugins"]);
     }
 
     [Theory]

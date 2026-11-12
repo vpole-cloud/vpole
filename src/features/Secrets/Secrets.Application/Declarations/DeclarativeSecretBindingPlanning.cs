@@ -145,8 +145,9 @@ internal sealed class SecretBindingPlanning(
         if (await fencePlanningScope(dependencies.Scope, session, cancellationToken) is
             IsolationScopePlanningFenceRejected)
             return new DeclarationPreconditionsChanged();
-        if (await fencePlanningPlacements(dependencies.Placements, session, cancellationToken) is
-            ResourceDeploymentPlanningFenceRejected)
+        if (dependencies.Placements.Items.Count != 0 &&
+            await fencePlanningPlacements(dependencies.Placements, session, cancellationToken) is
+                ResourceDeploymentPlanningFenceRejected)
             return new DeclarationPreconditionsChanged();
         if (!await planningFence.FenceAsync(dependencies.Secret, session, cancellationToken))
             return new DeclarationPreconditionsChanged();
@@ -192,6 +193,13 @@ internal sealed class SecretBindingPlanning(
             new ResourceDeploymentPlanningRequest(operation.Context.TenantId, ConsumerType(spec), consumerId),
             session,
             ct);
+        if (placements is ResourceDeploymentPlanningUnavailable &&
+            spec.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.BackupStorage)
+            placements = new ResourceDeploymentPlanningSnapshot(
+                operation.Context.TenantId,
+                ConsumerType(spec),
+                consumerId,
+                []);
         if (scope is not IsolationScopePlanningSnapshot owned ||
             placements is not ResourceDeploymentPlanningSnapshot placed || placed.Items.Any(item =>
                 item.ResourceGroupId != secret.ResourceGroupId || item.IsolationScopeId != secret.IsolationScopeId ||

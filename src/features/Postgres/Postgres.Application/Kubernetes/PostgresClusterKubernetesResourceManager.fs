@@ -83,6 +83,11 @@ module private PostgresKubernetesApply =
             if isNull desiredMetadata[key] && not (isNull currentMetadata[key]) then
                 desiredMetadata[key] <- currentMetadata[key].DeepClone()
 
+        // Backup policy reconciliation owns the CNPG-I plugins independently of compute and storage.
+        let plugins = current["spec"]["plugins"]
+        if not (isNull plugins) then
+            replacement["spec"]["plugins"] <- plugins.DeepClone()
+
         desiredMetadata["resourceVersion"] <- currentMetadata["resourceVersion"].DeepClone()
         replacement
 

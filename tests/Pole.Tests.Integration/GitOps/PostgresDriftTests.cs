@@ -114,8 +114,7 @@ public sealed class PostgresDriftTests(
                     new ManagedSecretOwner("pole/postgresql", resource.Id),
                     ownerCredential.Name,
                     ownerCredential.CurrentVersion + 1,
-                    new Dictionary<string, string>
-                        { ["username"] = "postgres", ["password"] = "rotated-owner" },
+                    new Dictionary<string, string> { ["username"] = "postgres", ["password"] = "rotated-owner" },
                     ManagedSecretKubernetesType.BasicAuthentication),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();

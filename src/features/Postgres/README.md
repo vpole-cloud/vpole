@@ -11,6 +11,27 @@ the reusable lab described in `docs/testing.md`.
 
 Pole provisions each logical PostgreSQL cluster through CloudNativePG.
 
+## Backup and recovery
+
+The [Backups feature](../Backups/README.md) owns tenant policies, S3 destinations and operation history.
+The PostgreSQL provider configures a Barman Cloud `ObjectStore`, the WAL archiver plugin on the
+source CNPG `Cluster`, and a `ScheduledBackup`. Its six-field cron starts with zero seconds.
+CloudNativePG 1.30 schedules backups in the operator's local time zone. Run the operator in UTC
+(the stock image default) to execute Pole's UTC schedules. Suspending the schedule keeps WAL archiving,
+retention and manual copies available. Each manual operation uses its ID in the CNPG `Backup` name, so another worker can resume
+observing the same object. Kubernetes resource versions and policy revision annotations fence delayed
+writes. Superseded schedules remain suspended until Kubernetes garbage-collects them with the source.
+
+The control plane reads each catalog directly from the tenant's S3 endpoint. The list contains completed
+Barman backup IDs and their completion times. Failed requests and unreadable catalog entries produce
+an error. The endpoint must be reachable from the control plane as well as from the workload cluster.
+
+Recovery creates a new manually managed PostgreSQL resource in the original RuntimeCell. Its persisted
+bootstrap selects either the exact backup ID and immediate consistency target, or the requested UTC
+timestamp. CNPG replays the available WAL and reports a failed recovery if it cannot reach that target.
+The new cluster receives its own administrator password. Its bootstrap keeps using the source archive
+as a recovery input. A separate backup policy can enable WAL archiving for the new cluster.
+
 ## Workload model
 
 `PostgresCluster` stores the logical database configuration, version, topology, storage choice,

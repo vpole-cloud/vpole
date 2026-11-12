@@ -42,6 +42,17 @@ public sealed class PostgresApplyConcurrencyTests
         Assert.Equal("operator-finalizer", api.Updates[1]["metadata"]!["finalizers"]![0]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task Normal_resource_reconciliation_preserves_independent_backup_policy_plugins()
+    {
+        var plugins = JsonNode.Parse(
+            """[{"name":"barman-cloud.cloudnative-pg.io","isWALArchiver":true,"parameters":{"barmanObjectName":"archive-test"}}]""");
+        using var api = new ClusterApi { RemainingConflicts = 0, ExistingPlugins = plugins };
+        using var client = Client(api);
+        await ApplyAsync(client);
+        Assert.True(JsonNode.DeepEquals(plugins, Assert.Single(api.Updates)["spec"]!["plugins"]));
+    }
+
     [Theory]
     [InlineData("uid")]
     [InlineData("spec")]
@@ -209,6 +220,7 @@ public sealed class PostgresApplyConcurrencyTests
     {
         private int _conflicts;
         private JsonObject _current = null!;
+        public JsonNode? ExistingPlugins { get; init; }
         public int Creates { get; private set; }
         public int Reads { get; private set; }
         public List<JsonObject> Updates { get; } = [];
@@ -237,6 +249,8 @@ public sealed class PostgresApplyConcurrencyTests
             {
                 Creates++;
                 _current = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken))!.AsObject();
+                if (ExistingPlugins is not null)
+                    _current["spec"]!["plugins"] = ExistingPlugins.DeepClone();
                 _current["metadata"]!["uid"] = NativeUid;
                 _current["metadata"]!["generation"] = 1;
                 _current["metadata"]!["resourceVersion"] = "1";

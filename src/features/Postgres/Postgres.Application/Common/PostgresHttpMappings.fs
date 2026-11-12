@@ -23,6 +23,14 @@ module PostgresHttpMappings =
 
     let private mapCreateState (error: CreatePostgresClusterStateError) =
         match error with
+        | PostgresClusterRestoreTargetAlreadyCreated ->
+            problem HttpStatusCode.Conflict "postgres.restore-target-already-created" "The restore target was already created" null
+        | PostgresClusterRestoreOperationUnavailable ->
+            problem HttpStatusCode.Conflict "postgres.restore-operation-unavailable" "The restore operation is unavailable" null
+        | PostgresClusterRestorePlacementChanged ->
+            problem HttpStatusCode.Conflict "postgres.restore-placement-changed" "Restore placement revision changed" null
+        | PostgresClusterRestoreProfileChanged ->
+            problem HttpStatusCode.Conflict "postgres.restore-profile-changed" "Restore profile revision changed" null
         | CreatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported targetId ->
             let extensions = Dictionary<string, obj>()
             extensions.Add("deploymentTargetId", targetId)

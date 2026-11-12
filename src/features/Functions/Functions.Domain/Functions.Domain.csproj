@@ -13,6 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../../../shared/Workloads/Workloads.csproj"/>
         <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
     </ItemGroup>
 </Project>

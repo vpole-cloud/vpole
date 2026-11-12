@@ -1,3 +1,5 @@
+using Pole.Features.Backups.Migrations;
+using Pole.Features.Backups.Application;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +58,7 @@ public static class TestServiceProviderFactory
     private static readonly Assembly[] Assemblies =
     [
         typeof(GitOpsFeature).Assembly,
+        typeof(BackupsFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
         typeof(ComputeProfileApplicationRegistration).Assembly,
@@ -111,6 +114,7 @@ public static class TestServiceProviderFactory
         services.AddResourceGroupsFeature(configuration);
         services.AddRedisServicesFeature();
         services.AddPostgresFeature(configuration);
+        services.AddBackupsFeature();
         services.AddResourceConnectionsFeature();
         services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ => (request, cancellationToken) =>
             Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(new RuntimeCellIngressBaselineReady()));
@@ -151,6 +155,7 @@ public static class TestServiceProviderFactory
             typeof(WebServiceSchemaValidationMigration).Assembly,
             typeof(FunctionAppsInitialMigration).Assembly,
             typeof(ResourceConnectionIndexesMigration).Assembly,
+            typeof(BackupsSchemaMigration).Assembly,
         ]);
         services.AddSingleton(new SearchSourceType(ResourceTypeId.Create("third-party/widget"), "Widget", 3));
         services.AddSearchFeature();

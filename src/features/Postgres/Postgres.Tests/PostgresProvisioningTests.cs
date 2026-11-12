@@ -193,16 +193,15 @@ public sealed class PostgresProvisioningTests
         Assert.False(bson.Contains("IsPrepared"));
     }
 
-    internal static PostgresCluster Prepared() =>
-        PostgresCluster.CreatePrepared(
-            TestData.TenantId,
-            "declarative-postgres",
+    internal static PostgresCluster Prepared() => PostgresCluster.CreatePrepared(
+        TestData.TenantId,
+        "declarative-postgres",
+        ObjectId.GenerateNewId().ToString(),
+        17,
+        TestData.DefaultStorageProfileId,
+        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 20),
+        PostgresBootstrapCredential.Create(
             ObjectId.GenerateNewId().ToString(),
-            17,
-            TestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 20),
-            PostgresBootstrapCredential.Create(
-                ObjectId.GenerateNewId().ToString(),
-                "password",
-                ObjectId.GenerateNewId().ToString()));
+            "password",
+            ObjectId.GenerateNewId().ToString()));
 }

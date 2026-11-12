@@ -150,9 +150,18 @@ public sealed partial class PoleE2EFixture
                 try
                 {
                     var cluster = await _kubernetes.CustomObjects.GetNamespacedCustomObjectAsync<JsonElement>(
-                        "postgresql.cnpg.io", "v1", ns, "clusters", name, cancellationToken: phase);
-                    secretName = cluster.GetProperty("spec").GetProperty("superuserSecret").GetProperty("name").GetString();
-                    if (!cluster.TryGetProperty("status", out var status) || !status.TryGetProperty("currentPrimary", out var primary))
+                        "postgresql.cnpg.io",
+                        "v1",
+                        ns,
+                        "clusters",
+                        name,
+                        cancellationToken: phase);
+                    secretName = cluster.GetProperty("spec")
+                        .GetProperty("superuserSecret")
+                        .GetProperty("name")
+                        .GetString();
+                    if (!cluster.TryGetProperty("status", out var status) ||
+                        !status.TryGetProperty("currentPrimary", out var primary))
                         return false;
                     var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(
                         ns,

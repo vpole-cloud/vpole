@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Backups.Application</AssemblyName>
+        <RootNamespace>Pole.Features.Backups.Application</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <PackageReference Include="FluentValidation"/>
+        <ProjectReference Include="../Backups.Contracts/Backups.Contracts.csproj"/>
+        <ProjectReference Include="../Backups.Domain/Backups.Domain.csproj"/>
+        <ProjectReference Include="../Backups.Events/Backups.Events.csproj"/>
+        <ProjectReference Include="../../../shared/Database/Database.csproj"/>
+        <ProjectReference Include="../../../shared/Mediator/Mediator.csproj"/>
+        <ProjectReference Include="../../../shared/helpers/ASP/ASP.csproj"/>
+        <ProjectReference Include="../../../shared/Validation/Validation.csproj"/>
+        <ProjectReference Include="../../Outbox/Outbox.Contracts/Outbox.Contracts.csproj"/>
+        <ProjectReference Include="../../ResourceGroups/ResourceGroups.Contracts/ResourceGroups.Contracts.csproj"/>
+        <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Contracts/ResourceDeployments.Contracts.csproj"/>
+        <ProjectReference Include="../../Secrets/Secrets.Contracts/Secrets.Contracts.csproj"/>
+        <ProjectReference Include="../../GitOps/GitOps.Contracts/GitOps.Contracts.csproj"/>
+        <ProjectReference Include="../../ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj"/>
+        <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Events/ResourceDeployments.Events.csproj"/>
+        <InternalsVisibleTo Include="Pole.Features.Backups.Tests"/>
+    </ItemGroup>
+</Project>

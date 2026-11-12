@@ -71,6 +71,8 @@
         <ProjectReference Include="../Pole.Platform.Hosting/Pole.Platform.Hosting.csproj"/>
     </ItemGroup>
     <ItemGroup>
+        <ProjectReference Include="../../features/Backups/Backups.Application/Backups.Application.csproj"/>
+        <ProjectReference Include="../../features/Backups/Backups.Migrations/Backups.Migrations.csproj"/>
         <ProjectReference Include="../../features/RedisServices/RedisServices.Migrations/RedisServices.Migrations.csproj"/>
     </ItemGroup>
     <ItemGroup>

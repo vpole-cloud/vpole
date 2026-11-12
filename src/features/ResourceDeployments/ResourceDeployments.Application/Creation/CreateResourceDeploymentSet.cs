@@ -22,10 +22,20 @@ internal sealed class MongoCreateResourceDeploymentSet(
     ResourceDeploymentIsolationProjection isolation
 )
 {
-    public async Task<CreateResourceDeploymentSetOutcome> InvokeAsync(
+    public Task<CreateResourceDeploymentSetOutcome> InvokeAsync(
         CreateResourceDeploymentSetRequest request,
         IClientSessionHandle session,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => PersistSetAsync(
+        request,
+        session,
+        cancellationToken,
+        computeAuthority: null);
+
+    internal async Task<CreateResourceDeploymentSetOutcome> PersistSetAsync(
+        CreateResourceDeploymentSetRequest request,
+        IClientSessionHandle session,
+        CancellationToken cancellationToken,
+        Pole.Workloads.ResourceTypeId? computeAuthority)
     {
         ResourceDeploymentPersistenceGuards.EnsureActiveTransaction(session, "Resource deployment creation");
         ArgumentNullException.ThrowIfNull(request);
@@ -92,7 +102,7 @@ internal sealed class MongoCreateResourceDeploymentSet(
                 item.Compute.ComputeProfileRevision,
                 item.Compute.DeploymentTargetId,
                 item.TenantId,
-                item.ResourceType,
+                computeAuthority ?? item.ResourceType,
                 item.PinnedCompute))
             .Distinct()
             .ToArray();

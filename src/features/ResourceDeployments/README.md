@@ -7,7 +7,6 @@ transactional state/outbox writes, recovery scheduling and adapter/observer cata
 providers own logical configuration and native object selection. RuntimeCells owns namespaces;
 DeploymentTargets owns clients and admission. This feature does not store credentials or audit history.
 
-
 ## Tenant operations and runtime observation
 
 `GET /resource-deployments/operations` pages current persisted placements in the active tenant,
@@ -21,7 +20,7 @@ state and are displayed separately in the WebService Operations section.
 `GET /resource-deployments/{deploymentId}/observation` resolves only that tenant-owned persisted
 placement. Providers contribute `IResourceDeploymentObserver` through a validated descriptor
 catalog; the platform never switches on built-in resource types. WebServices select Deployments,
-Redis StatefulSets, and PostgreSQL its configured StatefulSet or CloudNativePG Cluster.
+Redis StatefulSets, and PostgreSQL its CloudNativePG Cluster.
 The operator signal combines Ready with provider-owned evidence for the current native generation.
 CloudNativePG 1.30 Ready conditions can omit `observedGeneration`, as shown by its
 [pinned status writer](https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.30.0/pkg/resources/status/transactions.go);
@@ -88,7 +87,6 @@ The shared [observation infrastructure](../../shared/Observation/README.md) owns
 source/sampling lifecycle, timing and the Mongo demand/lease/snapshot protocol. This feature retains
 its provider catalog, tenant/placement/context fences, sanitized workload BSON mapping and events.
 StorageProfiles uses the same execution/storage mechanisms through its own target-scoped adapters.
-
 
 Realtime interest creates expiring durable demand for a tenant-owned physical deployment.
 Registered provider change sources establish bounded native LIST/WATCH ownership before the

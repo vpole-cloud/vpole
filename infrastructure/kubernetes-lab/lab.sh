@@ -587,16 +587,23 @@ configure_harbor_registry_resolution() {
         kubeconfig_path="$(kubeconfig_path_for "${cluster_name}")"
         local context
         context="$(expected_context_for "${cluster_name}")"
-        local node_hosts
-        node_hosts="$("${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" \
-            --namespace kube-system get configmap coredns --output jsonpath='{.data.NodeHosts}')"
-        node_hosts="$(awk -v host="${registry_host}" '$2 != host' <<<"${node_hosts}")"
-        node_hosts="${node_hosts}"$'\n'"${default_server_ip} ${registry_host}"$'\n'
-        local patch
-        patch="$(jq --null-input --compact-output --arg nodeHosts "${node_hosts}" \
-            '{data: {NodeHosts: $nodeHosts}}')"
+        # K3s regenerates coredns/NodeHosts. Its supported custom server import gives pods
+        # the shared node address while leaving the host's loopback resolution intact.
         "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" \
-            --namespace kube-system patch configmap coredns --type merge --patch "${patch}" >/dev/null
+            --namespace kube-system apply --server-side --field-manager=pole-lab-dns --filename=- >/dev/null <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+data:
+  pole-lab-harbor.server: |
+    ${registry_host}:53 {
+        hosts {
+            ${default_server_ip} ${registry_host}
+            no_reverse
+        }
+    }
+EOF
     done
 }
 

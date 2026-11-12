@@ -1,0 +1,236 @@
+using System.Net;
+using System.Text;
+using System.Text.Json.Nodes;
+using k8s;
+using Pole.Features.Backups.Contracts;
+using Pole.Features.DeploymentTargets.Contracts;
+using Pole.Features.Postgres.Application.Backups;
+using Pole.Features.Postgres.Application.Common;
+using Xunit;
+
+namespace Pole.Features.Postgres.Tests;
+
+public sealed class PostgresBackupReconciliationTests
+{
+    private static readonly BackupArchiveContext Archive = new(
+        "archive-a",
+        new("tenant", "pole/postgresql", "service"),
+        new("17", 10, 1, 1),
+        new("group", "scope", "target", "cell", "ns", "deployment", "storage", 1, "compute", 1),
+        "https://s3.invalid",
+        "bucket",
+        "p",
+        "server",
+        "projection",
+        "access",
+        "secret");
+
+    private static readonly BackupSchedule Daily = new("5 2 * * *", false, 7);
+
+    [Fact]
+    public async Task Late_worker_cannot_reenable_a_retired_schedule_or_overwrite_a_newer_revision()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        var second = Archive with { ArchiveId = "archive-b", ServerName = "second" };
+        await Applied(new("policy", Archive, Daily, 1));
+        await Applied(new("policy", second, Daily with { RetentionDays = 14 }, 2));
+        var old = api.Get("scheduledbackups", "schedule-archive-a");
+        Assert.True(old["spec"]!["suspend"]!.GetValue<bool>());
+        var writes = api.Writes;
+        await Applied(new("policy", second, Daily with { RetentionDays = 14 }, 2));
+        Assert.Equal(writes, api.Writes);
+        Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
+            await provider.ApplyScheduleAsync(new("policy", Archive, Daily, 1), default));
+        Assert.Equal(writes, api.Writes);
+        await Applied(new("policy", second, null, 3));
+        Assert.Empty(api.Get("clusters", "pg-service")["spec"]!["plugins"]!.AsArray());
+        var third = Archive with { ArchiveId = "archive-c" };
+        await Applied(new("replacement", third, Daily, 1));
+        writes = api.Writes;
+        Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
+            await provider.ApplyScheduleAsync(new("policy", second, Daily, 2), default));
+        Assert.Equal(writes, api.Writes);
+
+        async Task Applied(ApplyBackupScheduleRequest request) =>
+            Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+                await provider.ApplyScheduleAsync(request, default));
+    }
+
+    [Fact]
+    public async Task Manual_run_observes_the_original_native_backup_after_provider_restart()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        await Provider(client).ApplyScheduleAsync(new("policy", Archive, Daily with { Suspended = true }, 1), default);
+        var operation = new BackupCopyRequest("operation", Archive);
+        var pending = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+            await Provider(client).RunAsync(operation, default));
+        Assert.Equal(BackupProviderPhase.Running, pending.Value.Phase);
+        var backup = api.Get("backups", "backup-operation");
+        backup["status"] = JsonNode.Parse("""{"phase":"completed","backupId":"20261112T140000"}""");
+        var writes = api.Writes;
+        var done = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+            await Provider(client).RunAsync(operation, default));
+        Assert.Equal(BackupProviderPhase.Succeeded, done.Value.Phase);
+        Assert.Equal("20261112T140000", done.Value.ProviderBackupId);
+        Assert.Equal(writes, api.Writes);
+    }
+
+    [Fact]
+    public async Task Schedules_and_manual_copies_wait_for_the_Barman_sidecar_on_all_ready_instances()
+    {
+        using var api = new NativeApi { StandbyHasSidecar = false };
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        var desired = new ApplyBackupScheduleRequest("policy", Archive, Daily, 1);
+        var operation = new BackupCopyRequest("operation", Archive);
+        var waiting = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+            await provider.ApplyScheduleAsync(desired, default));
+        Assert.Equal(BackupProviderPhase.Running, waiting.Value.Phase);
+        Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        var writes = api.Writes;
+        var retry = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
+            await provider.RunAsync(operation, default));
+        Assert.Equal("backup-plugin-not-ready", retry.Code);
+        Assert.True(retry.Retryable);
+        Assert.Equal(writes, api.Writes);
+
+        api.StandbyHasSidecar = true;
+        var applied = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+            await provider.ApplyScheduleAsync(desired, default));
+        Assert.Equal(BackupProviderPhase.Succeeded, applied.Value.Phase);
+        Assert.False(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        await provider.RunAsync(operation, default);
+        var native = api.Get("backups", "backup-operation");
+        native["status"] = JsonNode.Parse("""{"phase":"walArchivingFailing"}""");
+        Assert.Equal(
+            BackupProviderPhase.Running,
+            Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+                    await provider.RunAsync(operation, default))
+                .Value.Phase);
+        native["status"]
+            = JsonNode.Parse("""{"phase":"failed","error":"requested plugin is not available: details"}""");
+        var failure = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
+            await provider.RunAsync(operation, default));
+        Assert.Equal("backup-plugin-unavailable", failure.Code);
+        Assert.False(failure.Retryable);
+    }
+
+    private static IBackupProvider Provider(IKubernetes client) => new PostgresBackupProvider(
+        new Clients(client),
+        null!,
+        null!,
+        null!,
+        new PostgresSettings(),
+        null!);
+
+    private sealed class Clients(
+        IKubernetes client
+    ) : IKubernetesClientProvider
+    {
+        public Task<IKubernetes> GetAsync(string id, CancellationToken ct = default)
+        {
+            Assert.Equal(Archive.Placement.DeploymentTargetId, id);
+            return Task.FromResult(client);
+        }
+
+        public Task<IKubernetes> GetForCleanupAsync(string id, CancellationToken ct = default) => GetAsync(id, ct);
+        public Task<IKubernetes> GetDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class NativeApi : DelegatingHandler
+    {
+        private readonly Dictionary<(string Plural, string Name), JsonNode> objects = [];
+        private int version = 1;
+        public int Writes { get; private set; }
+        public bool StandbyHasSidecar { get; set; } = true;
+
+        public NativeApi()
+        {
+            var source = JsonNode.Parse(
+                """
+                {"metadata":{"name":"pg-service","uid":"source-uid","resourceVersion":"1","labels":{}},
+                 "spec":{"instances":2},"status":{"currentPrimary":"pg-service-1","conditions":[{"type":"Ready","status":"True"},{"type":"ContinuousArchiving","status":"True"}],
+                 "pluginStatus":[{"name":"barman-cloud.cloudnative-pg.io"}]}}
+                """)!;
+            foreach (var pair in PostgresBackupManifests.sourceLabels(Archive))
+                source["metadata"]!["labels"]![pair.Item1] = pair.Item2;
+            objects[("clusters", "pg-service")] = source;
+        }
+
+        public JsonNode Get(string plural, string name) => objects[(plural, name)];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var path = request.RequestUri!.AbsolutePath.Split('/');
+            if (request.RequestUri.AbsolutePath == "/api/v1/namespaces/ns/pods")
+            {
+                Assert.Equal(HttpMethod.Get, request.Method);
+                var list = JsonNode.Parse("""{"apiVersion":"v1","kind":"PodList","metadata":{},"items":[]}""")!;
+                list["items"]!.AsArray().Add(Instance("pg-service-1", true));
+                list["items"]!.AsArray().Add(Instance("pg-service-2", StandbyHasSidecar));
+                return Reply(request, HttpStatusCode.OK, list);
+            }
+
+            var collection = path[6];
+            if (request.Method == HttpMethod.Get)
+                return objects.TryGetValue((collection, path[7]), out var found)
+                    ? Reply(request, HttpStatusCode.OK, found)
+                    : Reply(request, HttpStatusCode.NotFound, JsonNode.Parse("""{"kind":"Status","code":404}""")!);
+
+            var body = JsonNode.Parse(await request.Content!.ReadAsStringAsync(ct))!;
+            if (request.Method == HttpMethod.Post)
+            {
+                var metadata = body["metadata"]!;
+                var name = metadata["name"]!.GetValue<string>();
+                Assert.True(objects.TryAdd((collection, name), body));
+                metadata["uid"] = "uid-" + name;
+            }
+            else
+            {
+                Assert.Equal(HttpMethod.Patch, request.Method);
+                var current = Get(collection, path[7]);
+                Assert.Equal(
+                    current["metadata"]!["resourceVersion"]!.GetValue<string>(),
+                    body["metadata"]!["resourceVersion"]!.GetValue<string>());
+                foreach (var key in new[] { "metadata", "spec" })
+                foreach (var item in body[key]!.AsObject())
+                    current[key]![item.Key] = item.Value?.DeepClone();
+                body = current;
+            }
+
+            body["metadata"]!["resourceVersion"] = (++version).ToString();
+            Writes++;
+            return Reply(request, HttpStatusCode.OK, body);
+        }
+
+        private static JsonNode Instance(string name, bool sidecarReady)
+        {
+            var pod = JsonNode.Parse(
+                """
+                {"metadata":{"ownerReferences":[{"apiVersion":"postgresql.cnpg.io/v1","kind":"Cluster","name":"pg-service","uid":"source-uid"}]},
+                 "status":{"conditions":[{"type":"Ready","status":"True"}],"initContainerStatuses":[]}}
+                """)!;
+            pod["metadata"]!["name"] = name;
+            if (sidecarReady)
+                pod["status"]!["initContainerStatuses"]!.AsArray()
+                    .Add(
+                        JsonNode.Parse(
+                            """
+                            {"name":"plugin-barman-cloud","image":"test","imageID":"test","ready":true,"restartCount":0,"state":{"running":{}}}
+                            """));
+            return pod;
+        }
+
+        private static HttpResponseMessage Reply(
+            HttpRequestMessage request,
+            HttpStatusCode code,
+            JsonNode response) => new(code)
+        {
+            RequestMessage = request,
+            Content = new StringContent(response.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+    }
+}

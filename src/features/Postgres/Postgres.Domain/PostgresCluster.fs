@@ -5,11 +5,24 @@ open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
 open Pole.Multitenancy.Primitives
 
+[<AllowNullLiteral>]
+type PostgresRecoveryOrigin(operationId: string, archiveId: string, serverName: string, backupId: string, targetTimeUtc: Nullable<DateTime>) =
+    do
+        if String.IsNullOrEmpty backupId = not targetTimeUtc.HasValue then
+            invalidArg "target" "Exactly one backup ID or target time is required."
+    member _.OperationId = operationId
+    member _.ArchiveId = archiveId
+    member _.ServerName = serverName
+    member _.BackupId = backupId
+    [<BsonDateTimeOptions(Representation = BsonType.Document)>]
+    member _.TargetTimeUtc = targetTimeUtc
+
 type PostgresClusterSpec =
     { Instances: int
       Storage: int
       StorageProfileId: string
-      Version: int }
+      Version: int
+      Recovery: PostgresRecoveryOrigin }
 
 [<AbstractClass>]
 [<BsonDiscriminator(RootClass = true)>]
@@ -65,7 +78,8 @@ type PostgresCluster =
             { Instances = options.Instances
               Storage = options.Storage
               StorageProfileId = storageProfileId
-              Version = version }
+              Version = version
+              Recovery = null }
           Revision = 1L
           Lifecycle = ActivePostgresClusterLifecycle()
           Provisioning = DirectPostgresProvisioning()

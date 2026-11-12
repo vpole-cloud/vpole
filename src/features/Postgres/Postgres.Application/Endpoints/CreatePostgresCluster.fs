@@ -9,6 +9,7 @@ open Microsoft.AspNetCore.Mvc
 open Microsoft.AspNetCore.Routing
 open MongoDB.Bson
 open Pole.ASP.Helpers
+open Pole.Features.Backups.Contracts
 open Pole.Features.ComputeProfiles.Contracts
 open Pole.Features.Core.Multitenancy
 open Pole.Features.DeploymentTargets.Contracts
@@ -99,7 +100,8 @@ module private CreatePostgresClusterWorkflow =
         (resolveComputeProfile: ResolveComputeProfile)
         (resolveStorageProfile: ResolveStorageProfile)
         (createCredential: CreatePostgresCredential)
-        (settings: PostgresSettings)
+        (resourceId: string)
+        (origin: PostgresRecoveryOrigin)
         (request: CreatePostgresClusterRequest)
         cancellationToken
         =
@@ -170,10 +172,12 @@ module private CreatePostgresClusterWorkflow =
                                 request.Body.GroupId,
                                 request.Body.Version,
                                 request.Body.StorageProfileId,
-                                { Id = Some(ObjectId.GenerateNewId().ToString())
+                                { Id = Some resourceId
                                   Instances = defaultArg request.Body.Instances PostgresCluster.DefaultInstances
                                   Storage = requestedStorage }
                             )
+
+                        let cluster = { cluster with Spec = { cluster.Spec with Recovery = origin } }
 
                         let! credentialResult =
                             createCredential.Invoke(
@@ -211,6 +215,8 @@ module private CreatePostgresClusterWorkflow =
         (resourceRegistrar: IResourceRegistrar)
         (createResourceDeployment: CreateResourceDeployment)
         (createBoundSecret: CreateBoundManagedSecret)
+        (recordRestoreTarget: RecordRestoreTargetCreation option)
+        (expectedCell: string option)
         (plan: CreatePostgresClusterPlan)
         cancellationToken
         =
@@ -268,6 +274,8 @@ module private CreatePostgresClusterWorkflow =
                                 match TypedResultInterop.createResourceDeployment deploymentResult with
                                 | Error error ->
                                     return transaction.Abort(CreatePostgresClusterRejected(CreateDeployment error))
+                                | Ok deployment when expectedCell |> Option.exists (fun cell -> deployment.RuntimeCellId <> cell) ->
+                                    return transaction.Abort(CreatePostgresClusterRejected(CreateState PostgresClusterRestorePlacementChanged))
                                 | Ok deployment ->
                                     let! secretResult =
                                         createBoundSecret.Invoke(
@@ -292,24 +300,33 @@ module private CreatePostgresClusterWorkflow =
                                                 )
                                             )
                                     | :? ManagedSecretMutationSucceeded ->
-                                        return
-                                            transaction.Commit(
-                                                PostgresClusterDto.create plan.Cluster deployment null
-                                                |> PostgresClusterCreated
-                                            )
+                                        let! creation =
+                                            match recordRestoreTarget with
+                                            | None -> System.Threading.Tasks.Task.FromResult(RestoreTargetCreationDecision.Recorded)
+                                            | Some record ->
+                                                let origin = plan.Cluster.Spec.Recovery
+                                                let receipt = RecordRestoreTargetCreationRequest(plan.Cluster.TenantId,origin.OperationId,origin.ArchiveId,plan.Cluster.Id)
+                                                record.Invoke(receipt,transaction.Session,ct)
+                                        match creation with
+                                        | RestoreTargetCreationDecision.Recorded ->
+                                            return transaction.Commit(PostgresClusterCreated(PostgresClusterDto.create plan.Cluster deployment null))
+                                        | RestoreTargetCreationDecision.AlreadyRecorded ->
+                                            return transaction.Abort(CreatePostgresClusterRejected(CreateState PostgresClusterRestoreTargetAlreadyCreated))
+                                        | RestoreTargetCreationDecision.OperationUnavailable ->
+                                            return transaction.Abort(CreatePostgresClusterRejected(CreateState PostgresClusterRestoreOperationUnavailable))
+                                        | _ -> return invalidOp "Unexpected restore target creation decision."
                                     | _ -> return invalidOp "Unexpected managed Secret creation outcome."
                     })
             ),
             cancellationToken
         )
 
-type CreatePostgresClusterHandler
+type PostgresClusterCreator
     (
         persistCreatedCluster: PersistCreatedPostgresCluster,
         resourceRegistrar: IResourceRegistrar,
         resolveStorageProfile: ResolveStorageProfile,
         createCredential: CreatePostgresCredential,
-        settings: PostgresSettings,
         quotaAdmissionExecutor: IQuotaAdmissionExecutor,
         admitDeploymentTarget: AdmitDeploymentTargetForNewWorkload,
         resolveComputeProfile: ResolveComputeProfile,
@@ -317,32 +334,42 @@ type CreatePostgresClusterHandler
         createBoundSecret: CreateBoundManagedSecret
     ) =
 
+    member _.CreateAsync(request, resourceId, origin, expectedPlacement: (string * int64 * int64) option, recordRestoreTarget, cancellationToken) =
+        task {
+            let! preparation =
+                CreatePostgresClusterWorkflow.prepare
+                    admitDeploymentTarget
+                    resolveComputeProfile
+                    resolveStorageProfile
+                    createCredential
+                    resourceId
+                    origin
+                    request
+                    cancellationToken
+
+            match preparation with
+            | Completed outcome -> return outcome
+            | ReadyToCreate plan when
+                expectedPlacement |> Option.exists (fun (_,compute,storage) -> plan.Compute.ComputeProfileRevision <> compute || plan.Storage.StorageProfileRevision <> storage) ->
+                return CreatePostgresClusterRejected(CreateState PostgresClusterRestoreProfileChanged)
+            | ReadyToCreate plan ->
+                return!
+                    CreatePostgresClusterWorkflow.execute
+                        quotaAdmissionExecutor
+                        persistCreatedCluster
+                        resourceRegistrar
+                        createResourceDeployment
+                        createBoundSecret
+                        recordRestoreTarget
+                        (expectedPlacement |> Option.map (fun (cell,_,_) -> cell))
+                        plan
+                        cancellationToken
+        }
+
+type CreatePostgresClusterHandler(creator: PostgresClusterCreator) =
     interface IMediatorOutcomeHandler<CreatePostgresClusterRequest, CreatePostgresClusterOutcome> with
         member _.HandleAsync(request, cancellationToken) =
-            task {
-                let! preparation =
-                    CreatePostgresClusterWorkflow.prepare
-                        admitDeploymentTarget
-                        resolveComputeProfile
-                        resolveStorageProfile
-                        createCredential
-                        settings
-                        request
-                        cancellationToken
-
-                match preparation with
-                | Completed outcome -> return outcome
-                | ReadyToCreate plan ->
-                    return!
-                        CreatePostgresClusterWorkflow.execute
-                            quotaAdmissionExecutor
-                            persistCreatedCluster
-                            resourceRegistrar
-                            createResourceDeployment
-                            createBoundSecret
-                            plan
-                            cancellationToken
-            }
+            creator.CreateAsync(request, ObjectId.GenerateNewId().ToString(), null, None, None, cancellationToken)
 
 type CreatePostgresClusterValidator(settings: PostgresSettings) as this =
     inherit AbstractValidator<CreatePostgresClusterRequest>()

@@ -170,11 +170,7 @@ public sealed class PostgresKubernetesTests(
             Compute(),
             Metadata(),
             CancellationToken.None);
-        await manager.DeleteAsync(
-            Kubernetes,
-            cluster.Id,
-            NamespaceName,
-            CancellationToken.None);
+        await manager.DeleteAsync(Kubernetes, cluster.Id, NamespaceName, CancellationToken.None);
 
         Assert.NotNull(
             await Kubernetes.CoreV1.ReadNamespacedSecretAsync(projection.Projection.KubernetesName, NamespaceName));

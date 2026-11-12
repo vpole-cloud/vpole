@@ -36,7 +36,7 @@ internal sealed class ConsumerSecretPlanningSnapshots(
             var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id))
                 .FirstOrDefaultAsync(ct);
             var binding = current?.Bindings.SingleOrDefault(item =>
-                item.Usage == SecretBindingUsage.Runtime && item.Consumer.ResourceType == request.ConsumerType.Value &&
+                item.GrantsRuntimeProjection() && item.Consumer.ResourceType == request.ConsumerType.Value &&
                 item.Consumer.ResourceId == request.ConsumerId);
             if (desired.Length > 0)
             {
@@ -51,7 +51,8 @@ internal sealed class ConsumerSecretPlanningSnapshots(
                     return new ConsumerSecretReferenceUnavailable(
                         id,
                         ConsumerSecretReferenceError.SecretKeyUnavailable);
-                if (request.DeploymentIds.Count == 0 || request.DeploymentIds.Any(deployment =>
+                if (request.DeploymentIds.Count == 0 && (binding.Usage != SecretBindingUsage.BackupStorage ||
+                        binding.Selection is not AllSecretDeployments) || request.DeploymentIds.Any(deployment =>
                         !SecretProjectionAuthority.IncludesDeployment(binding.Selection, deployment)))
                     return new ConsumerSecretReferenceUnavailable(
                         id,

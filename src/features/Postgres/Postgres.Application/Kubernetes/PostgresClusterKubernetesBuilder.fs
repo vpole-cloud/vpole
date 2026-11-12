@@ -106,6 +106,21 @@ module PostgresClusterKubernetesBuilder =
         spec["superuserSecret"] <- {| name = clusterSecretName |}
         spec["imageName"] <- image
 
+        let origin = cluster.Spec.Recovery
+        if not (isNull origin) then
+            let target = Dictionary<string, obj>()
+            if origin.TargetTimeUtc.HasValue then
+                target["targetTime"] <- origin.TargetTimeUtc.Value.ToUniversalTime().ToString("O")
+            else
+                target["backupID"] <- origin.BackupId
+                target["targetImmediate"] <- true
+            spec["bootstrap"] <- {| recovery = {| source = "origin"; recoveryTarget = target |} |}
+            spec["externalClusters"] <-
+                [| {| name = "origin"
+                      plugin =
+                        {| name = "barman-cloud.cloudnative-pg.io"
+                           parameters = {| barmanObjectName = "archive-" + origin.ArchiveId; serverName = origin.ServerName |} |} |} |]
+
         spec["inheritedMetadata"] <-
             {| labels = buildLabels cluster metadata
                annotations = buildAnnotations () |}

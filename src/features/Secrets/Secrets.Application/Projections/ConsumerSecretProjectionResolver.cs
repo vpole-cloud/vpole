@@ -107,7 +107,7 @@ internal sealed class ConsumerSecretProjectionResolver(
         Secret? secret,
         ResourceTypeId type,
         string id) => secret?.Bindings.SingleOrDefault(binding =>
-        binding.Usage == SecretBindingUsage.Runtime && binding.Consumer.ResourceType == type.Value &&
+        binding.GrantsRuntimeProjection() && binding.Consumer.ResourceType == type.Value &&
         binding.Consumer.ResourceId == id);
 
     private static bool IsAuthorized(

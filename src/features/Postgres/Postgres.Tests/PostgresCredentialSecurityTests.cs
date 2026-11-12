@@ -39,11 +39,7 @@ public sealed class PostgresCredentialSecurityTests
                     request.KubernetesType));
         });
 
-        var result = await creator.InvokeAsync(
-            TestData.TenantId,
-            ClusterId,
-            "private-password",
-            default);
+        var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "private-password", default);
 
         Assert.True(result.IsPostgresSuccess);
     }
@@ -83,11 +79,7 @@ public sealed class PostgresCredentialSecurityTests
     {
         var creator = new PostgresCredentialCreator((request, _) =>
             Task.FromResult<PrepareManagedSecretOutcome>(new ManagedSecretEncryptionUnavailable()));
-        var result = await creator.InvokeAsync(
-            TestData.TenantId,
-            ClusterId,
-            "private-password",
-            default);
+        var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "private-password", default);
         Assert.True(result.IsPostgresError);
         Assert.DoesNotContain("private-password", result.ToString());
     }

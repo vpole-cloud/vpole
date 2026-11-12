@@ -169,8 +169,7 @@ public sealed class PostgresNativeObservationKubernetesTests(
                     foreach (var condition in conditions.EnumerateArray().Take(16))
                     {
                         var type = condition.GetProperty("type").GetString();
-                        if (type is not ("Ready" or "Initialized" or "ContinuousArchiving"
-                            or "LastBackupSucceeded"))
+                        if (type is not ("Ready" or "Initialized" or "ContinuousArchiving" or "LastBackupSucceeded"))
                             type = "Other";
                         var state = condition.GetProperty("status").GetString();
                         if (state is not ("True" or "False" or "Unknown"))
@@ -183,7 +182,6 @@ public sealed class PostgresNativeObservationKubernetesTests(
                         output.WriteLine("Condition: {0}/{1}/observedGeneration={2}", type, state, generation);
                     }
             }
-
         }
 
         Assert.True(ready?.Observation is ObservedWorkload { Ready: true });
@@ -194,12 +192,7 @@ public sealed class PostgresNativeObservationKubernetesTests(
             cancellationToken: deadline.Token);
         Assert.Equal(instance.Uid, pod.Metadata.Uid);
         AssertOwned(pod.Metadata, identity);
-        Assert.True(
-            KubernetesOwnedWatchItem.ControlledBy(
-                pod.Metadata,
-                binding,
-                "Cluster",
-                "postgresql.cnpg.io/v1"));
+        Assert.True(KubernetesOwnedWatchItem.ControlledBy(pod.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
         var service = await client.CoreV1.ReadNamespacedServiceAsync(
             PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id),
             NamespaceName,
@@ -242,11 +235,7 @@ public sealed class PostgresNativeObservationKubernetesTests(
             Assert.Equal(instance.Uid, freshPod.Metadata.Uid);
             AssertOwned(freshPod.Metadata, identity);
             Assert.True(
-                KubernetesOwnedWatchItem.ControlledBy(
-                    freshPod.Metadata,
-                    binding,
-                    "Cluster",
-                    "postgresql.cnpg.io/v1"));
+                KubernetesOwnedWatchItem.ControlledBy(freshPod.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
             var latency = Stopwatch.StartNew();
             await client.CoreV1.DeleteNamespacedPodAsync(
                 instance.Name,

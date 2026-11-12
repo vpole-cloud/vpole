@@ -5,6 +5,8 @@ open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.DependencyInjection.Extensions
 open Microsoft.Extensions.Options
+open Pole.Features.Backups.Contracts
+open Pole.Features.Postgres.Application.Backups
 open Pole.Database
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Endpoints
@@ -76,6 +78,8 @@ type PostgresFeatureRegistration =
         )
         |> ignore
 
+        services.AddScoped<IBackupProvider, PostgresBackupProvider>() |> ignore
+        services.TryAddScoped<PostgresClusterCreator>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentObserver>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentChangeSource>() |> ignore

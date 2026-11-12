@@ -10,7 +10,12 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.StorageProfiles.Contracts
 
-type CreatePostgresClusterStateError = PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId: string
+type CreatePostgresClusterStateError =
+    | PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId: string
+    | PostgresClusterRestorePlacementChanged
+    | PostgresClusterRestoreProfileChanged
+    | PostgresClusterRestoreTargetAlreadyCreated
+    | PostgresClusterRestoreOperationUnavailable
 
 type CreatePostgresClusterError =
     | CreateState of CreatePostgresClusterStateError

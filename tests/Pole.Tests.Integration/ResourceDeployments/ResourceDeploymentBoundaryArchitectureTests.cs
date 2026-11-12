@@ -72,6 +72,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
         [
             typeof(MongoCreateResourceDeployment),
             typeof(MongoCreateResourceDeploymentSet),
+            typeof(MongoRetainProjectionPlacement),
             typeof(MongoRequestResourceDeploymentApply),
             typeof(MongoRequestResourceDeploymentDeletion),
             typeof(MongoRequestExactResourceDeploymentApply),
@@ -120,6 +121,7 @@ public sealed class ResourceDeploymentBoundaryArchitectureTests
 
         Type[] providerStrategies =
         [
+            typeof(IProjectionOnlyPlacementAdapter),
             typeof(IResourceDeploymentAdapter), typeof(IResourceDeploymentObserver),
             typeof(IResourceDeploymentDiagnosticsProvider),
             typeof(IResourceDeploymentObservationChangeSource), typeof(IResourceDeploymentBoundObserver),

@@ -142,8 +142,8 @@ before deleting lab infrastructure.
 Harbor credentials are generated locally in a mode-`0600` ignored file and are referenced by path
 from state; secrets are never written into `state.json`. Harbor is HTTP-only and reachable solely
 through the lab's loopback mapping from the host. The test-only `harbor.pole.localhost` name maps
-to loopback on the host and to the default server only inside owned lab nodes and CoreDNS. It is not
-a production trust or registry configuration.
+to loopback on the host and to the default server inside owned lab nodes and pods. For pod DNS,
+`lab.sh up` manages the `pole-lab-harbor.server` entry in the K3s `coredns-custom` ConfigMap.
 
 For rootless Podman, the user service must delegate `cpu`, `cpuset`, `io`, `memory`, and `pids` on
 cgroup v2. If the lab reports a missing `cpuset` controller, stop an active
@@ -175,6 +175,7 @@ Infrastructure-free recovery regression tests:
 
 ```bash
 bash infrastructure/kubernetes-lab/tests/recovery.sh
+bash infrastructure/kubernetes-lab/tests/harbor-dns.sh
 bash infrastructure/kubernetes-lab/tests/verification-port-forward.sh
 ```
 

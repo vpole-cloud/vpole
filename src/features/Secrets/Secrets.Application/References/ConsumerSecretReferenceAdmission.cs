@@ -47,7 +47,7 @@ internal sealed class ConsumerSecretReferenceAdmission(
             var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id))
                 .FirstOrDefaultAsync(ct);
             var binding = current?.Bindings.SingleOrDefault(item =>
-                item.Usage == SecretBindingUsage.Runtime && item.Consumer.ResourceType == request.ConsumerType.Value &&
+                item.GrantsRuntimeProjection() && item.Consumer.ResourceType == request.ConsumerType.Value &&
                 item.Consumer.ResourceId == request.ConsumerId);
             if (requireAvailable && desired.Length > 0)
             {

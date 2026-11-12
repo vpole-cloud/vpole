@@ -33,9 +33,7 @@ public sealed class PostgresNativeObservationTests
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
-        Assert.Equal(
-            6,
-            api.Requests.Count(NativeWatchTestClient.IsWatch));
+        Assert.Equal(6, api.Requests.Count(NativeWatchTestClient.IsWatch));
         Assert.All(api.Streams, stream => Assert.Equal(0, stream.FramesWritten));
         Assert.DoesNotContain(
             api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
@@ -141,8 +139,7 @@ public sealed class PostgresNativeObservationTests
     [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
-    public async Task Exact_bound_sample_rejects_UID_replacement_around_health_and_runtime_sampling(
-        int replacement)
+    public async Task Exact_bound_sample_rejects_UID_replacement_around_health_and_runtime_sampling(int replacement)
     {
         using var api = new PostgresNativeTestApi() { ReplaceAtRead = replacement };
         using var client = NativeWatchTestClient.Create(api);
@@ -670,8 +667,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                 {
                     Uid = parent, Name = "parent",
                     Kind = parent == "bootstrap-job" ? "Job" : "Cluster",
-                    ApiVersion
-                        = parent == "bootstrap-job" ? "batch/v1" : "postgresql.cnpg.io/v1",
+                    ApiVersion = parent == "bootstrap-job" ? "batch/v1" : "postgresql.cnpg.io/v1",
                     Controller = true,
                 },
             ],

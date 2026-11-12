@@ -326,6 +326,17 @@ plain text, and limits its tail to 256 KiB/512 entries with an explicit discarde
 Changing session, tenant, service or job aborts old reads and clears the buffer. Token renewal preserves the in-memory buffer and cursor. Logs stay on the
 server until their snapshotted retention deadline; output and cursor are not saved in browser storage.
 
+## Backup workflows
+
+The Backups view connects tenant-owned S3 destinations through existing Secret references, configures
+UTC schedules and recovery-window retention, and observes backup/restore operations. Destinations
+inherit the selected Secret's resource group and isolation scope. PostgreSQL lists current completed
+copies on demand and supports either restoring a selected copy or choosing a recovery time. The
+browser converts local recovery time to an explicit UTC instant before requesting confirmation.
+The new cluster is manually managed on the source deployment target. Archive selection, restore
+inputs and pending commands belong to the current authenticated tenant. Metadata stays in scoped
+queries, while operational commands use stable idempotency keys across an uncertain retry.
+
 ## Realtime query ownership
 
 One account-scoped cookie connection follows the authenticated query session independently of

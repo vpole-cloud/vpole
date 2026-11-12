@@ -21,8 +21,7 @@ public sealed class PostgresObservationTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Provider_reads_exact_owned_target_and_requires_current_operator_condition(
-        bool currentCondition)
+    public async Task Provider_reads_exact_owned_target_and_requires_current_operator_condition(bool currentCondition)
     {
         var cluster = PostgresCluster.Create(
             TestData.TenantId,
@@ -83,9 +82,7 @@ public sealed class PostgresObservationTests
                 return KubernetesJson.Serialize(new V1PodList { Metadata = new V1ListMeta(), Items = [pod] });
             if (request.RequestUri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal))
                 return "{\"kind\":\"EventList\",\"apiVersion\":\"v1\",\"metadata\":{},\"items\":[]}";
-            Assert.Contains(
-                "/postgresql.cnpg.io/v1/namespaces/owned/clusters/pg-",
-                request.RequestUri.AbsolutePath);
+            Assert.Contains("/postgresql.cnpg.io/v1/namespaces/owned/clusters/pg-", request.RequestUri.AbsolutePath);
             return KubernetesJson.Serialize(
                 new
                 {

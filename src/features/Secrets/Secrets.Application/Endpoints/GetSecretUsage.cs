@@ -68,8 +68,7 @@ public sealed class GetSecretUsageHandler(
                             ct: cancellationToken),
                     },
                     deployments.Where(x =>
-                            binding.Usage == SecretBindingUsage.Runtime &&
-                            x.IsolationScopeId == secret.IsolationScopeId &&
+                            binding.GrantsRuntimeProjection() && x.IsolationScopeId == secret.IsolationScopeId &&
                             x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
                             (binding.Selection is AllSecretDeployments ||
                                 (binding.Selection is SelectedSecretDeployments selected &&

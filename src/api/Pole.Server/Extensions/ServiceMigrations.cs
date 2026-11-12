@@ -1,3 +1,4 @@
+using Pole.Features.Backups.Migrations;
 using System.Reflection;
 using Pole.Features.Functions.Migrations;
 using Pole.Features.Postgres.Migrations;
@@ -16,6 +17,7 @@ public static class ServiceMigrations
         typeof(WebServiceSchemaValidationMigration).Assembly,
         typeof(FunctionAppsInitialMigration).Assembly,
         typeof(ResourceConnectionIndexesMigration).Assembly,
+        typeof(BackupsSchemaMigration).Assembly,
     ];
 
     public static IServiceCollection AddServiceMigrations(this IServiceCollection services) => services

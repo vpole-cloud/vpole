@@ -26,11 +26,7 @@ public sealed class PostgresSearchTests(
                 "database",
                 resourceGroupId,
                 1,
-                new PostgresClusterSpecSnapshot(
-                    1,
-                    10,
-                    PostgresTestData.DefaultStorageProfileId,
-                    17)),
+                new PostgresClusterSpecSnapshot(1, 10, PostgresTestData.DefaultStorageProfileId, 17)),
             CancellationToken.None);
 
         var sources = await Fixture.Database

@@ -71,6 +71,9 @@ internal static class SecretPersistenceRegistration
         services.AddScoped<PersistCreatedSecret>(sp => sp.GetRequiredService<MongoPersistCreatedSecret>().InvokeAsync);
         services.AddScoped<MongoPersistRotatedSecret>();
         services.AddScoped<PersistRotatedSecret>(sp => sp.GetRequiredService<MongoPersistRotatedSecret>().InvokeAsync);
+        services.AddScoped<BackupStorageSecrets>();
+        services.AddScoped<GrantBackupStorageSecret>(sp => sp.GetRequiredService<BackupStorageSecrets>().GrantAsync);
+        services.AddScoped<ReadBackupStorageSecret>(sp => sp.GetRequiredService<BackupStorageSecrets>().ReadAsync);
         services.AddScoped<MongoPersistSecretBinding>();
         services.AddScoped<PersistSecretBinding>(sp => sp.GetRequiredService<MongoPersistSecretBinding>().InvokeAsync);
         services.AddScoped<MongoRemoveSecretBinding>();

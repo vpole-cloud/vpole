@@ -1496,9 +1496,11 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             .WithEnvironment(
                 $"DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__{DeploymentTargetNetworkSourcesDto.PublicIngressName}__PodLabels__app.kubernetes.io/instance",
                 "traefik-kube-system")
-            .WithEnvironment("DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__Namespace",
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__Namespace",
                 "pole-lab-cnpg")
-            .WithEnvironment("DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__PodLabels__app.kubernetes.io/instance",
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__PodLabels__app.kubernetes.io/instance",
                 "pole-lab-cnpg");
     }
 

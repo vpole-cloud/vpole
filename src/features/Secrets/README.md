@@ -209,9 +209,8 @@ resource-unregistered cleanup also clears management when it removes an owner bi
 ordinary Secret rather than leaving an uneditable credential if an owner uses that fallback path.
 
 Projection readiness means that Kubernetes accepted the desired Secret version. It does not mean a
-running database has adopted that password. PostgreSQL StatefulSet password rotation remains rejected;
-changing an environment-backed native Secret does not rotate a database on an existing volume. The
-owning PostgreSQL workflow defines operator-mode behavior; generic Secret writes cannot bypass it.
+running database has adopted that password. The owning PostgreSQL workflow rotates its managed
+administrator Secret through CloudNativePG; generic Secret writes cannot bypass the owner workflow.
 
 ## Verification
 

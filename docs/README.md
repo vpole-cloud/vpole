@@ -59,6 +59,7 @@ requirement when adding or changing one feature.
 - [Directed resource connections](../src/features/ResourceConnections/README.md)
 - [Pole Functions](../src/features/Functions/README.md)
 - [Compute profiles](../src/features/ComputeProfiles/README.md)
+- [Service backups and PostgreSQL restore](../src/features/Backups/README.md)
 - [PostgreSQL clusters](../src/features/Postgres/README.md)
 - [Redis services](../src/features/RedisServices/README.md)
 - [Tenant secrets](../src/features/Secrets/README.md)

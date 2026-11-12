@@ -28,6 +28,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ["ResourceConnections"] = FeatureRole.Platform,
             ["ResourceDeployments"] = FeatureRole.Platform,
             ["ResourceGroups"] = FeatureRole.Platform,
+            ["Backups"] = FeatureRole.Platform,
             ["Search"] = FeatureRole.Platform,
             ["Secrets"] = FeatureRole.Platform,
             ["StorageProfiles"] = FeatureRole.Platform,

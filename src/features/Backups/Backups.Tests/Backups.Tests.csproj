@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.Backups.Tests</AssemblyName>
+        <RootNamespace>Pole.Features.Backups.Tests</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all"/>
+        <ProjectReference Include="../Backups.Domain/Backups.Domain.csproj"/>
+        <ProjectReference Include="../Backups.Events/Backups.Events.csproj"/>
+        <ProjectReference Include="../Backups.Application/Backups.Application.csproj"/>
+    </ItemGroup>
+</Project>

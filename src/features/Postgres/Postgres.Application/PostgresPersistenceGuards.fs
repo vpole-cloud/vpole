@@ -47,6 +47,10 @@ module PostgresPersistenceGuards =
         if pageSize < 1 then
             invalidArg "pageSize" "Page size must be greater than zero."
 
+    let private originIdentity (origin: PostgresRecoveryOrigin) =
+        Option.ofObj origin |> Option.map (fun value ->
+            value.OperationId, value.ArchiveId, value.ServerName, value.BackupId, value.TargetTimeUtc)
+
     let sameIdentity (current: PostgresCluster) (replacement: PostgresCluster) =
         cluster current
         cluster replacement
@@ -60,10 +64,11 @@ module PostgresPersistenceGuards =
 
         if
             current.GroupId <> replacement.GroupId
+            || originIdentity current.Spec.Recovery <> originIdentity replacement.Spec.Recovery
             || current.Spec.Version <> replacement.Spec.Version
             || current.Spec.StorageProfileId <> replacement.Spec.StorageProfileId
         then
-            invalidOp "A PostgreSQL cluster replacement must preserve group, version, mode, and storage identity."
+            invalidOp "A PostgreSQL cluster replacement must preserve group, version, recovery source, and storage identity."
 
         if current.PlanningFence <> replacement.PlanningFence then
             invalidOp "Only a planning fence operation may change the PostgreSQL planning fence."
