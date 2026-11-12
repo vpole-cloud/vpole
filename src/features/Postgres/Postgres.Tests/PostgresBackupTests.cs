@@ -5,6 +5,7 @@ using Amazon.S3.Model;
 using Microsoft.FSharp.Core;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Postgres.Application.Backups;
+using Pole.Workloads;
 using Xunit;
 
 namespace Pole.Features.Postgres.Tests;
@@ -40,6 +41,29 @@ public sealed class PostgresBackupTests
         var plugin = PostgresBackupManifests.walPlugin(Archive);
         Assert.True(plugin["isWALArchiver"]!.GetValue<bool>());
         Assert.Equal("origin", plugin["parameters"]!["serverName"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("0 1 * * 7", "0 0 1 * * 0", "2026-11-15T01:00:00Z")]
+    [InlineData("0 1 * * 5-7", "0 0 1 * * 0,5,6", "2026-11-13T01:00:00Z")]
+    [InlineData("0 1 1 * */2", "0 0 1 1 * 0,2,4,6", "2026-11-12T01:00:00Z")]
+    [InlineData("0 1 */2 * 1", "0 0 1 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * 1", "2026-11-13T01:00:00Z")]
+    [InlineData("0 1 1 * 0-7", "0 0 1 1 * *", "2026-12-01T01:00:00Z")]
+    [InlineData("0 1 1 * 0-6", "0 0 1 1 * *", "2026-12-01T01:00:00Z")]
+    [InlineData("0 1 */1 * 1", "0 0 1 * * 1", "2026-11-16T01:00:00Z")]
+    [InlineData("0 1 1-31 * 1", "0 0 1 * * 1", "2026-11-16T01:00:00Z")]
+    public void SchedulePreservesPoleDaySemanticsForCnpg(
+        string expression,
+        string expectedNative,
+        string expectedNext)
+    {
+        var schedule = PostgresBackupManifests.schedule(Archive, new(expression, false, 14), "source-uid");
+        var native = schedule["spec"]!["schedule"]!.GetValue<string>();
+        Assert.Equal(expectedNative, native);
+        var after = DateTimeOffset.Parse("2026-11-12T00:00:00Z");
+        var next = DateTimeOffset.Parse(expectedNext);
+        Assert.Equal(next, UtcCronSchedule.Parse(expression).GetNextOccurrence(after));
+        Assert.Equal(next, UtcCronSchedule.Parse(native[2..]).GetNextOccurrence(after));
     }
 
     [Theory]

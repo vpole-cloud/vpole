@@ -36,6 +36,18 @@ public sealed class UtcCronSchedule
 
     public string Expression { get; }
 
+    /// <summary>
+    ///     Expands fields into numeric values, using * for complete fields and 0 for Sunday.
+    ///     This preserves day matching when a provider treats syntactic wildcards specially.
+    /// </summary>
+    public string ToCanonicalExpression() => string.Join(
+        ' ',
+        _minutes.ToExpression(),
+        _hours.ToExpression(),
+        _daysOfMonth.ToExpression(),
+        _months.ToExpression(),
+        _daysOfWeek.ToExpression());
+
     public static UtcCronSchedule Parse(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
@@ -146,6 +158,8 @@ public sealed class UtcCronSchedule
         public bool IsUnrestricted { get; }
 
         public bool Contains(int value) => _lookup.Contains(value);
+
+        public string ToExpression() => IsUnrestricted ? "*" : string.Join(',', Values);
 
         public static CronField Parse(
             string expression,

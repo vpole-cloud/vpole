@@ -5,6 +5,7 @@ open System.Text.Json.Nodes
 open Pole.Features.Backups.Contracts
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.StorageProfiles.Contracts
+open Pole.Workloads
 
 [<RequireQualifiedAccess>]
 module PostgresBackupManifests =
@@ -62,7 +63,7 @@ module PostgresBackupManifests =
 
     let schedule (archive: BackupArchiveContext) (policy: BackupSchedule) (clusterUid: string) =
         let spec = backupSpec archive
-        spec["schedule"] <- node ("0 " + policy.CronUtc)
+        spec["schedule"] <- node ("0 " + UtcCronSchedule.Parse(policy.CronUtc).ToCanonicalExpression())
         spec["suspend"] <- node policy.Suspended
         spec["backupOwnerReference"] <- node "self"
         withOwner (resource group "ScheduledBackup" (scheduleName archive.ArchiveId) archive spec) archive clusterUid

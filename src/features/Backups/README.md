@@ -10,6 +10,11 @@ Creating the destination through the API binds the selected keys to that destina
 
 Create one policy per source service, selecting an authorized destination, a five-field UTC cron schedule and the provider's retention setting. PostgreSQL expresses retention in days. CNPG runs scheduled base backups even during Pole downtime. Pausing the schedule leaves WAL archiving, manual copies and active retention running. Setting a new destination on the policy creates a separate archive; previously completed copies remain selectable through their original archive. After source deletion or destination replacement the owner manages cleanup of retired archives.
 
+Day fields follow Pole's shared cron semantics. A field covering every possible day is unrestricted;
+when both day-of-month and day-of-week are restricted, either match schedules the run. The PostgreSQL
+provider expands these fields and normalizes Sunday to `0` before adding CNPG's seconds field. This
+preserves the same schedule despite the operator parser's different treatment of wildcard syntax.
+
 ## Tenant API
 
 Routes are under `/api/v1/backups` and require an authenticated tenant selection through `X-Pole-Tenant-ID`.
