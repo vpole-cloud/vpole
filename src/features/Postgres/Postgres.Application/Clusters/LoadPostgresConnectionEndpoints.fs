@@ -25,7 +25,8 @@ type MongoLoadPostgresConnectionEndpoints(clusters: IMongoCollection<PostgresClu
                 DisplayName = "PostgreSQL read/write",
                 Protocol = "postgresql",
                 Configuration =
-                    ImmutableList.Create(ResourceConnectionConfigurationField("database", "Database", resource.Id))
+                    ImmutableList.Create(
+                        ResourceConnectionConfigurationField("database", "Database", PostgresManagedSecret.administrator))
             )
 
         ResourceConnectionEndpointsFound(ImmutableList.Create(endpoint))

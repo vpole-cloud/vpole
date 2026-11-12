@@ -107,7 +107,7 @@ public sealed class DependencyBrowserE2ETests(
             {
                 ["PGHOST"] = Text(pgEndpoint, "host"),
                 ["PGPORT"] = pgEndpoint.GetProperty("port").GetInt32().ToString(),
-                ["PGDATABASE"] = pgId,
+                ["PGDATABASE"] = "postgres",
                 ["REDISHOST"] = Text(redisEndpoint, "host"),
                 ["REDISPORT"] = redisEndpoint.GetProperty("port").GetInt32().ToString(),
                 ["REDISDB"] = "0",

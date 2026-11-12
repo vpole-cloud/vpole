@@ -135,7 +135,7 @@ public sealed class ProviderConnectionEndpointTests(
     }
 
     [Fact]
-    public async Task PostgresCatalog_PublishesOnlyReadWriteEndpoint()
+    public async Task PostgresCatalog_PublishesAdministratorDatabaseAndOnlyReadWriteEndpoint()
     {
         var postgres = PostgresCluster.Create(
             Data.TenantId,
@@ -159,7 +159,11 @@ public sealed class ProviderConnectionEndpointTests(
         Assert.Equal(5432, endpoint.ServicePort.Value);
         Assert.Equal(5432, endpoint.TargetPort.Value);
         Assert.Equal("postgresql", endpoint.Protocol);
-        Assert.Equal(postgres.Id, Assert.Single(endpoint.Configuration).Value);
+        var database = Assert.Single(endpoint.Configuration);
+        Assert.Equal("database", database.Key);
+        Assert.Equal("postgres", database.Value);
+        var advisory = await lookup.LoadAvailableAsync(postgres.TenantId, [postgres.Id]);
+        Assert.Equal("postgres", Assert.Single(Assert.Single(advisory[postgres.Id].Endpoints).Configuration).Value);
         Assert.IsType<ResourceConnectionDestinationMissing>(
             (await lookup.LoadAsync(
                 new LoadResourceConnectionDestinationRequest(TenantId: Id(), ResourceId: postgres.Id),
