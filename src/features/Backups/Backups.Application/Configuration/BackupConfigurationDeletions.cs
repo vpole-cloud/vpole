@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Features.Backups.Application.Common;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Backups.Domain;
@@ -13,7 +14,6 @@ public sealed class BackupConfigurationDeletions(
     IMongoCollection<BackupDestination> destinations,
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupArchive> archives,
-    BackupConfigurationWriter writer,
     StoreOutboxWrites outbox,
     IResourceRegistrar registrar,
     GetResourceDeploymentFinalizationReadiness readiness,
@@ -75,7 +75,7 @@ public sealed class BackupConfigurationDeletions(
                 ct) is not ResourceUnregistered)
             return new BackupWriteResult<bool>.Rejected("registration-conflict");
         await destinations.DeleteOneAsync(session, filter, cancellationToken: ct);
-        await writer.Changed(session, current, BackupDeclarationKinds.Destination, current.Revision + 1, ct);
+        await outbox(session, [BackupConfigurationNotifications.DestinationRemoved(current)], ct);
         return new BackupWriteResult<bool>.Saved(true);
     }
 }

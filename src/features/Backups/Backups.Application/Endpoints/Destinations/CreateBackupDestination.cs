@@ -6,13 +6,13 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
-using Pole.Features.Backups.Contracts;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Secrets.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupDestinationHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Destinations;
 
@@ -45,7 +45,12 @@ public sealed record CreateBackupDestinationRequest(
     [FromBody] CreateBackupDestinationBody Body
 ) : IMediatorRequest<CreateBackupDestinationOutcome>, ITenantCreateOperation;
 
-public union CreateBackupDestinationOutcome(BackupDestinationDto, BackupRequestRejected);
+public union CreateBackupDestinationOutcome(
+    BackupDestinationDto,
+    BackupDestinationNameAlreadyExists,
+    BackupDestinationScopeUnavailable,
+    BackupDestinationRegistrationConflict,
+    BackupDestinationCredentialGrantDenied);
 
 public sealed class CreateBackupDestinationValidator : AbstractValidator<CreateBackupDestinationRequest>
 {
@@ -86,7 +91,7 @@ public sealed class CreateBackupDestinationValidator : AbstractValidator<CreateB
 }
 
 public sealed class CreateBackupDestinationHandler(
-    ManualBackupConfiguration configuration
+    BackupDestinationWrites writes
 ) : IMediatorOutcomeHandler<CreateBackupDestinationRequest, CreateBackupDestinationOutcome>
 {
     public async Task<CreateBackupDestinationOutcome> HandleAsync(
@@ -94,13 +99,14 @@ public sealed class CreateBackupDestinationHandler(
         CancellationToken ct = default)
     {
         var input = request.Body.ToInput();
-        var answer = await configuration.SaveDestinationAsync(
-            new(request.TenantId, ObjectId.GenerateNewId().ToString(), 0, input),
-            ct);
+        var answer = await writes.CreateAsync(new(request.TenantId, ObjectId.GenerateNewId().ToString(), input), ct);
         return answer switch
         {
-            BackupWriteResult<BackupDestination>.Saved ok => BackupDestinationDto.From(ok.Value),
-            BackupWriteResult<BackupDestination>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupDestination destination => BackupDestinationDto.From(destination),
+            BackupDestinationNameAlreadyExists error => error,
+            BackupDestinationScopeUnavailable error => error,
+            BackupDestinationRegistrationConflict error => error,
+            BackupDestinationCredentialGrantDenied error => error,
         };
     }
 }
@@ -116,7 +122,10 @@ public static class CreateBackupDestinationEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupDestinationDto value => Results.Created($"/api/v1/backups/destinations/{value.Id}", value),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupDestinationNameAlreadyExists error => MapDestinationNameExists(error),
+                    BackupDestinationScopeUnavailable error => MapDestinationScopeUnavailable(error),
+                    BackupDestinationRegistrationConflict error => MapDestinationRegistrationConflict(error),
+                    BackupDestinationCredentialGrantDenied error => MapDestinationCredentialGrantDenied(error),
                 }))
             .WithName("Backups.CreateBackupDestination");
         return endpoints;

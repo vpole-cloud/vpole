@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Declarations;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Application.Endpoints;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Jobs;
@@ -30,7 +31,7 @@ public static class BackupsFeature
         services.AddBackupDeclarations();
         services.AddScoped<IIsolationScopeReferenceGuard, BackupDestinationScopeGuard>();
         services.AddScoped<BackupProviderCatalog>();
-        services.AddScoped<BackupConfigurationWriter>();
+        services.AddScoped<BackupDestinationWrites>();
         services.AddScoped<BackupConfigurationDeletions>();
         services.AddScoped<ManualBackupConfiguration>();
         services.AddScoped<CreateBackupArchive>();

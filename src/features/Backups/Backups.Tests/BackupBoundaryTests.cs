@@ -18,7 +18,7 @@ public sealed class BackupBoundaryTests
     [InlineData("https://storage.test/buckets?key=unsafe", false)]
     public void Destination_accepts_only_an_explicit_storage_origin(string endpoint, bool expected) => Assert.Equal(
         expected,
-        BackupInputRules.ValidStorageLocation(endpoint, "tenant-bucket", "archive"));
+        BackupInputRules.ValidEndpoint(endpoint));
 
     [Fact]
     public void Next_run_follows_the_applied_UTC_schedule_if_operator_status_is_stale()

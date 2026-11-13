@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupDestinationHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Destinations;
 
@@ -16,8 +18,6 @@ public sealed record GetBackupDestinationRequest(
     [FromTenantHeader] string TenantId,
     [FromRoute] string Id
 ) : IMediatorRequest<GetBackupDestinationOutcome>, ITenantReadOperation;
-
-public sealed record BackupDestinationMissing;
 
 public union GetBackupDestinationOutcome(BackupDestinationDto, BackupDestinationMissing);
 
@@ -50,7 +50,7 @@ public static class GetBackupDestinationEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupDestinationDto item => Results.Ok(item),
-                    BackupDestinationMissing => BackupHttpProblems.From(new("not-found"))
+                    BackupDestinationMissing error => MapDestinationMissing(error)
                 }))
             .WithName("Backups.GetBackupDestination");
         return endpoints;

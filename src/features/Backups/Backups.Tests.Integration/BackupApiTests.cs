@@ -11,6 +11,7 @@ using Pole.Database;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Application.Consumers;
 using Pole.Features.Backups.Application.Endpoints.Operations;
 using Pole.Features.Backups.Application.Execution;
@@ -526,10 +527,11 @@ public sealed class BackupApiTests(
         using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
         var input = await BackupTestSetup.StorageAsync(client);
         await using var scope = host.Services.CreateAsyncScope();
-        var save = scope.ServiceProvider.GetRequiredService<ManualBackupConfiguration>();
+        var save = scope.ServiceProvider.GetRequiredService<BackupDestinationWrites>();
         var id = ObjectId.GenerateNewId().ToString();
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            save.SaveDestinationAsync(new(TestPlatformDefaults.TenantId, id, 0, input), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => save.CreateAsync(
+            new(TestPlatformDefaults.TenantId, id, input),
+            default));
         Assert.Equal(
             0,
             await mongo.Database

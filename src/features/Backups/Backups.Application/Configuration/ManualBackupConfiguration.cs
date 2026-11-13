@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Backups.Domain;
 using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.Backups.Application.Configuration;
@@ -8,19 +7,9 @@ namespace Pole.Features.Backups.Application.Configuration;
 public sealed class ManualBackupConfiguration(
     MongoRunTransaction transactions,
     IGitOpsMutations git,
-    BackupConfigurationWriter writer,
     BackupConfigurationDeletions deletions
 )
 {
-    public Task<BackupWriteResult<BackupDestination>> SaveDestinationAsync(
-        BackupConfigurationWrite<BackupDestinationInput> write,
-        CancellationToken ct) => MutateAsync(
-        write.TenantId,
-        BackupDeclarationKinds.Destination,
-        write.Id,
-        (s, t) => writer.SaveDestinationAsync(write, s, t, BackupCredentialGrantPolicy.GrantSelectedKeys),
-        ct);
-
     public Task<BackupWriteResult<bool>> DeleteAsync(
         string tenantId,
         string kind,

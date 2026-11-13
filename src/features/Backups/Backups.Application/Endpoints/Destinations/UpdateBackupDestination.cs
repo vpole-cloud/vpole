@@ -3,16 +3,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
-using Pole.Features.Backups.Contracts;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Secrets.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupDestinationHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Destinations;
 
@@ -47,7 +46,12 @@ public sealed record UpdateBackupDestinationRequest(
     [FromBody] UpdateBackupDestinationBody Body
 ) : IMediatorRequest<UpdateBackupDestinationOutcome>, ITenantWriteOperation;
 
-public union UpdateBackupDestinationOutcome(BackupDestinationDto, BackupRequestRejected);
+public union UpdateBackupDestinationOutcome(
+    BackupDestinationDto,
+    BackupDestinationMissing,
+    BackupDestinationRevisionConflict,
+    BackupDestinationIdentityImmutable,
+    BackupDestinationGitOwned);
 
 public sealed class UpdateBackupDestinationValidator : AbstractValidator<UpdateBackupDestinationRequest>
 {
@@ -90,7 +94,7 @@ public sealed class UpdateBackupDestinationValidator : AbstractValidator<UpdateB
 }
 
 public sealed class UpdateBackupDestinationHandler(
-    ManualBackupConfiguration configuration
+    BackupDestinationWrites writes
 ) : IMediatorOutcomeHandler<UpdateBackupDestinationRequest, UpdateBackupDestinationOutcome>
 {
     public async Task<UpdateBackupDestinationOutcome> HandleAsync(
@@ -98,13 +102,16 @@ public sealed class UpdateBackupDestinationHandler(
         CancellationToken ct = default)
     {
         var input = request.Body.ToInput();
-        var answer = await configuration.SaveDestinationAsync(
+        var answer = await writes.UpdateAsync(
             new(request.TenantId, request.Id, request.Body.ExpectedRevision, input),
             ct);
         return answer switch
         {
-            BackupWriteResult<BackupDestination>.Saved ok => BackupDestinationDto.From(ok.Value),
-            BackupWriteResult<BackupDestination>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupDestination destination => BackupDestinationDto.From(destination),
+            BackupDestinationMissing error => error,
+            BackupDestinationRevisionConflict error => error,
+            BackupDestinationIdentityImmutable error => error,
+            BackupDestinationGitOwned error => error,
         };
     }
 }
@@ -120,7 +127,10 @@ public static class UpdateBackupDestinationEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupDestinationDto value => Results.Ok(value),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupDestinationMissing error => MapDestinationMissing(error),
+                    BackupDestinationRevisionConflict error => MapDestinationRevisionConflict(error),
+                    BackupDestinationIdentityImmutable error => MapDestinationIdentityImmutable(error),
+                    BackupDestinationGitOwned error => MapDestinationGitOwned(error),
                 }))
             .WithName("Backups.UpdateBackupDestination");
         return endpoints;

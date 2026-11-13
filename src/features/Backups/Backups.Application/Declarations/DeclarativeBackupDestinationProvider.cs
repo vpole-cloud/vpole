@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Configuration;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Domain;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
@@ -28,7 +29,7 @@ internal sealed record BackupDestinationDeclaration(
 internal sealed class DeclarativeBackupDestinationProvider(
     IMongoCollection<BackupDestination> destinations,
     IGitOpsMutations git,
-    BackupConfigurationWriter writer,
+    BackupDestinationWrites writes,
     BackupConfigurationDeletions deletions,
     LoadIsolationScopePlanningSnapshot loadScope,
     FenceIsolationScopePlanningSnapshot fenceScope,
@@ -178,20 +179,36 @@ internal sealed class DeclarativeBackupDestinationProvider(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var result = await writer.SaveDestinationAsync(
-            write,
-            session,
-            ct,
-            BackupCredentialGrantPolicy.DeclaredSeparately);
-        return result switch
+        if (write.ExpectedRevision == 0)
         {
-            BackupWriteResult<BackupDestination>.Saved saved => new GitOperationResult(
-                saved.Value.Id,
-                Changed: saved.Value.Revision != write.ExpectedRevision),
-            BackupWriteResult<BackupDestination>.Rejected rejected => new GitOperationResult(
-                write.Id,
-                new BackupDeclarationRejected(rejected.Code)),
+            var created = await writes.CreateAcceptedAsync(
+                new(write.TenantId, write.Id, write.Input),
+                BackupCredentialGrantPolicy.DeclaredSeparately,
+                session,
+                ct);
+            return created switch
+            {
+                BackupDestination destination => new GitOperationResult(destination.Id, Changed: true),
+                BackupDestinationNameAlreadyExists => Rejected("destination-name-exists"),
+                BackupDestinationScopeUnavailable => Rejected("scope-unavailable"),
+                BackupDestinationRegistrationConflict => Rejected("registration-conflict"),
+                BackupDestinationCredentialGrantDenied => Rejected("credential-grant-denied"),
+            };
+        }
+
+        var updated = await writes.UpdateAcceptedAsync(
+            new(write.TenantId, write.Id, write.ExpectedRevision, write.Input),
+            session,
+            ct);
+        return updated switch
+        {
+            BackupDestination destination => new GitOperationResult(destination.Id, Changed: false),
+            BackupDestinationMissing => Rejected("not-found"),
+            BackupDestinationRevisionConflict => Rejected("revision-conflict"),
+            BackupDestinationIdentityImmutable => Rejected("destination-identity-immutable"),
         };
+
+        GitOperationResult Rejected(string code) => new(write.Id, new BackupDeclarationRejected(code));
     }
 
     protected override async Task<RemoveLifecycleResourceOutcome> RemoveAcceptedAsync(

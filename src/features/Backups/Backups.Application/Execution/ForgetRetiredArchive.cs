@@ -1,11 +1,12 @@
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Archives;
-using Pole.Features.Backups.Application.Configuration;
+using Pole.Features.Backups.Application.Common;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
@@ -39,7 +40,7 @@ public sealed class ForgetRetiredArchive(
     RequestExactResourceDeploymentDeletion requestDeletion,
     LoadRegisteredResource loadSource,
     BackupProviderCatalog providers,
-    BackupConfigurationWriter writer
+    StoreOutboxWrites outbox
 )
 {
     public async Task<ForgetRetiredArchiveOutcome> ExecuteAsync(
@@ -122,7 +123,7 @@ public sealed class ForgetRetiredArchive(
                         return tx.Abort(new ForgetRetiredArchiveOutcome(new ArchivePlacementConflict()));
                 }
 
-                await writer.Changed(tx.Session, archive, "BackupArchive", archive.ReferenceFence + 1, token);
+                await outbox(tx.Session, [BackupConfigurationNotifications.ArchiveForgotten(archive)], token);
                 return tx.Commit(new ForgetRetiredArchiveOutcome(new BackupArchiveForgotten()));
             },
             ct);
