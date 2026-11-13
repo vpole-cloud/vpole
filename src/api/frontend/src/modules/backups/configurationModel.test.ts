@@ -15,6 +15,7 @@ const policy: BackupPolicy = {
   destinationId: 'destination',
   schedule: '0 2 * * *',
   suspended: false,
+  deleting: false,
   retentionDays: 30,
 }
 

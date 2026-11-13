@@ -10,6 +10,7 @@ import type {
   BackupDestination,
   BackupDestinationInput,
   BackupOperation,
+  BackupOperationPage,
   BackupPolicy,
   BackupPolicyInput,
   BackupRestoreInput,
@@ -40,7 +41,11 @@ export function backupApi(
     destinations: (signal: AbortSignal) => read<BackupDestination[]>('destinations', signal),
     policies: (signal: AbortSignal) => read<BackupPolicy[]>('policies', signal),
     archives: (signal: AbortSignal) => read<BackupArchive[]>('archives', signal),
-    operations: (signal: AbortSignal) => read<BackupOperation[]>('operations', signal),
+    operations: (signal: AbortSignal, after?: string) =>
+      read<BackupOperationPage>(
+        `operations?pageSize=50${after ? `&after=${encodeURIComponent(after)}` : ''}`,
+        signal,
+      ),
     forgetArchive: (id: string, signal: AbortSignal) =>
       sendWithoutResponse(url(`archives/${encodeURIComponent(id)}?confirmed=true`), {
         method: 'DELETE',

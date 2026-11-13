@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Domain;
 
 namespace Pole.Features.Backups.Application.Mongo;
@@ -129,4 +130,17 @@ internal static class BackupDispatchFilters
 
     internal static FilterDefinition<BackupArchive> DestinationArchives(string tenant, string id) =>
         BackupsFilters<BackupArchive>.Tenant(tenant) & Builders<BackupArchive>.Filter.Eq(x => x.DestinationId, id);
+}
+
+internal static class BackupHistoryFilters
+{
+    internal static FilterDefinition<BackupOperation> Page(BackupOperationHistoryQuery query)
+    {
+        var filter = BackupsFilters<BackupOperation>.Tenant(query.TenantId);
+        if (query.After is { } after)
+            filter &= Builders<BackupOperation>.Filter.Lt(operation => operation.CreatedAt, after.CreatedAtUtc) |
+                (Builders<BackupOperation>.Filter.Eq(operation => operation.CreatedAt, after.CreatedAtUtc) &
+                    Builders<BackupOperation>.Filter.Lt(operation => operation.Id, after.Id));
+        return filter;
+    }
 }

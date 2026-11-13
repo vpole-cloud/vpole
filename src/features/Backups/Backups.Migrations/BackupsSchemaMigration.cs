@@ -54,7 +54,7 @@ public sealed class BackupsSchemaMigration : IMigration
             "BackupOperations",
             "IX_BackupOperations_Tenant_Created",
             false,
-            keys.Ascending("TenantId").Descending("CreatedAt"));
+            keys.Ascending("TenantId").Descending("CreatedAt").Descending("_id"));
 
         Task IndexAsync(
             string collection,

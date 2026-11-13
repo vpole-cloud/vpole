@@ -32,7 +32,7 @@ export interface BackupPolicy extends BackupPolicyInput {
   gitOps?: GitOpsStatus | null
   id: string
   revision: number
-  deleting?: boolean
+  deleting: boolean
   nextScheduledAt?: string | null
   failureCode?: string | null
   lastSuccessfulBackupAt?: string | null
@@ -49,7 +49,7 @@ export interface BackupArchive {
   active: boolean
   createdAt: string
   supportsPointInTimeRecovery: boolean
-  storageGiB?: number
+  storageGiB: number
 }
 
 export interface BackupCatalogEntry {
@@ -60,14 +60,19 @@ export interface BackupCatalogEntry {
 export interface BackupOperation {
   id: string
   archiveId: string
-  kind: string
-  state: string
+  kind: 'Backup' | 'Restore' | 'ScheduledBackup'
+  state: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Interrupted'
   createdAt: string
   updatedAt: string
   failureCode?: string | null
   newResourceId?: string | null
   backupId?: string | null
   targetTime?: string | null
+}
+
+export interface BackupOperationPage {
+  items: BackupOperation[]
+  nextCursor: string | null
 }
 
 export type BackupRestoreSelection =

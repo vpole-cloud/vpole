@@ -7,6 +7,7 @@ using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Declarations;
 using Pole.Features.Backups.Application.Endpoints;
 using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -36,6 +37,7 @@ public static class BackupsFeature
         services.AddScoped<RecordRestoreTargetCreation>(sp =>
             sp.GetRequiredService<RestoreTargetCreations>().RecordAsync);
         services.AddScoped<BackupReads>();
+        services.AddScoped<LoadBackupOperationHistory>();
         services.AddScoped<BackupDispatcher>();
         services.AddScoped<BackupSourceLifecycle>();
         services.AddScoped<ForgetRetiredArchive>();

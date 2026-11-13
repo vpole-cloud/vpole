@@ -18,6 +18,7 @@ let restoreAttempts: Record<string, unknown>[] = []
 let rejectNextRestore = false
 let failArchiveRefresh = false
 let failRefreshAfterRestore = false
+let pagedHistory = false
 const services = (tenantId: string, role: 'Owner' | 'Member' = 'Owner'): AppServices => ({
   api: { baseUrl: 'https://api.test', tenantId, token: 'current' },
   auth: {
@@ -71,6 +72,7 @@ beforeEach(() => {
   rejectNextRestore = false
   failArchiveRefresh = false
   failRefreshAfterRestore = false
+  pagedHistory = false
   app = createTestApp()
   requests.reset()
   vi.stubGlobal('fetch', requests.fetch)
@@ -79,6 +81,27 @@ beforeEach(() => {
     if (path === '/api/v1/backups/policies/policy' && init?.method === 'PUT') {
       submittedRevision = JSON.parse(String(init.body)).expectedRevision
       return Promise.resolve(Response.json({ id: 'policy', revision: 3 }))
+    }
+    if (path === '/api/v1/backups/operations') {
+      const older = new URL(String(input)).searchParams.get('after')
+      return Promise.resolve(
+        Response.json(
+          pagedHistory
+            ? {
+                items: [
+                  {
+                    id: older ? 'old-operation' : 'new-operation',
+                    archiveId: 'archive',
+                    kind: 'Backup',
+                    state: 'Succeeded',
+                    createdAt: '2026-11-13T00:00:00Z',
+                  },
+                ],
+                nextCursor: older ? null : 'opaque-older-page',
+              }
+            : { items: [], nextCursor: null },
+        ),
+      )
     }
     if (path === '/api/v1/backups/policies')
       return Promise.resolve(
@@ -385,4 +408,33 @@ it('does not repeat an accepted restore when refreshing metadata fails', async (
   expect(app.container.textContent).toContain('Archive refresh unavailable')
   await clickButton('Refresh')
   expect(restoreAttempts).toHaveLength(1)
+})
+
+it('loads only the selected operations page and keeps tenant headers on every page', async () => {
+  pagedHistory = true
+  await render()
+  expect(
+    app.container.querySelector('[data-testid="backup-operation-new-operation"]'),
+  ).not.toBeNull()
+  await clickButton('Older operations')
+  expect(app.container.querySelector('[data-testid="backup-operation-new-operation"]')).toBeNull()
+  expect(
+    app.container.querySelector('[data-testid="backup-operation-old-operation"]'),
+  ).not.toBeNull()
+  await clickButton('Newer operations')
+  expect(
+    app.container.querySelector('[data-testid="backup-operation-new-operation"]'),
+  ).not.toBeNull()
+  const historyRequests = requests.fetch.mock.calls.filter(([url]) =>
+    String(url).includes('/backups/operations'),
+  )
+  expect(
+    historyRequests.some(
+      ([url]) => new URL(String(url)).searchParams.get('after') === 'opaque-older-page',
+    ),
+  ).toBe(true)
+  for (const [, request] of historyRequests) {
+    expect(new Headers(request?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
+    expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer current')
+  }
 })

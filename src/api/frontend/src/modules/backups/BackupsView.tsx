@@ -47,11 +47,13 @@ function BackupWorkspace() {
   })
   const policies = useScopedQuery({ scope, key: ['backups', 'policies'], load: client.policies })
   const archives = useScopedQuery({ scope, key: ['backups', 'archives'], load: client.archives })
+  const [historyCursors, setHistoryCursors] = useState<string[]>([])
+  const historyCursor = historyCursors.at(-1)
   const operations = useScopedQuery({
     scope,
-    key: ['backups', 'operations'],
+    key: ['backups', 'operations', historyCursor],
     interval: 10000,
-    load: client.operations,
+    load: (signal) => client.operations(signal, historyCursor),
   })
   const [archiveId, setArchiveId] = useState('')
   const archive = archives.resource?.find((item) => item.id === archiveId)
@@ -102,6 +104,7 @@ function BackupWorkspace() {
       .run(action, async () => {
         if (!origin.isCurrent()) return
         done?.()
+        setHistoryCursors([])
         notifications.publish('Request accepted.')
         await refresh()
       })
@@ -227,7 +230,11 @@ function BackupWorkspace() {
               tenant.canManage && (
                 <div className="row-actions">
                   <Button
-                    disabled={mutation.busy || !hasHealthyCurrentQueryData(destinations) || Boolean(item.gitOps)}
+                    disabled={
+                      mutation.busy ||
+                      !hasHealthyCurrentQueryData(destinations) ||
+                      Boolean(item.gitOps)
+                    }
                     onClick={() =>
                       setConfirmation({
                         kind: 'disconnect',
@@ -329,7 +336,11 @@ function BackupWorkspace() {
                     Edit
                   </Button>
                   <Button
-                    disabled={mutation.busy || !hasHealthyCurrentQueryData(policies) || Boolean(item.deleting)}
+                    disabled={
+                      mutation.busy ||
+                      !hasHealthyCurrentQueryData(policies) ||
+                      Boolean(item.deleting)
+                    }
                     onClick={() => {
                       const id = manualKeys.current.get(item.id) ?? crypto.randomUUID()
                       manualKeys.current.set(item.id, id)
@@ -437,7 +448,7 @@ function BackupWorkspace() {
               <input
                 className="field__control"
                 type="number"
-                min={archive.storageGiB ?? 1}
+                min={archive.storageGiB}
                 step="1"
                 value={restoreStorage}
                 onChange={(event) => setRestoreStorage(event.target.value)}
@@ -513,7 +524,7 @@ function BackupWorkspace() {
       <DataTable
         label="Backup and restore operations"
         rowTestId={(item) => `backup-operation-${item.id}`}
-        items={operations.resource ?? []}
+        items={operations.resource?.items ?? []}
         itemKey={(item) => item.id}
         columns={[
           { id: 'kind', label: 'Operation', render: (item) => item.kind },
@@ -542,6 +553,23 @@ function BackupWorkspace() {
           },
         ]}
       />
+      <div className="row-actions">
+        <Button
+          disabled={historyCursors.length === 0}
+          onClick={() => setHistoryCursors((current) => current.slice(0, -1))}
+        >
+          Newer operations
+        </Button>
+        <Button
+          disabled={!hasHealthyCurrentQueryData(operations) || !operations.resource.nextCursor}
+          onClick={() => {
+            const next = operations.resource?.nextCursor
+            if (next) setHistoryCursors((current) => [...current, next])
+          }}
+        >
+          Older operations
+        </Button>
+      </div>
       {pendingEditor && (
         <ConfirmationDialog
           title="Discard unsaved changes?"

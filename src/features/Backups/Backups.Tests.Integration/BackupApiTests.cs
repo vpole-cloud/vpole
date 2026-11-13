@@ -11,6 +11,7 @@ using Pole.Database;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
+using Pole.Features.Backups.Application.Endpoints.Operations;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
@@ -49,6 +50,70 @@ public sealed class BackupApiTests(
     private const string Route = "/api/v1/backups";
     public Task InitializeAsync() => mongo.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task History_pages_are_bounded_tenant_scoped_and_stable_when_timestamps_match()
+    {
+        await using var host = await StartAsync();
+        using var client = Client(host, TestPlatformDefaults.TenantId);
+        var timestamp = new DateTime(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc);
+        var rows = Enumerable.Range(0, 53)
+            .Select(index => BackupOperation.RequestCopy(
+                ObjectId.GenerateNewId().ToString(),
+                TestPlatformDefaults.TenantId,
+                $"history-{index}",
+                ObjectId.GenerateNewId().ToString(),
+                ObjectId.GenerateNewId().ToString(),
+                timestamp))
+            .ToArray();
+        var otherTenant = ObjectId.GenerateNewId().ToString();
+        await host.SeedTenantAsync(otherTenant);
+        var foreign = BackupOperation.RequestCopy(
+            ObjectId.GenerateNewId().ToString(),
+            otherTenant,
+            "foreign",
+            ObjectId.GenerateNewId().ToString(),
+            ObjectId.GenerateNewId().ToString(),
+            timestamp.AddDays(1));
+        var operations = mongo.Database.GetCollection<BackupOperation>("BackupOperations");
+        await operations.InsertManyAsync([.. rows, foreign]);
+
+        var initial = (await client.GetFromJsonAsync<BackupOperationPage>(Route + "/operations"))!;
+        Assert.Equal(50, initial.Items.Length);
+        Assert.NotNull(initial.NextCursor);
+        var seen = initial.Items.Select(item => item.Id).ToList();
+        var newer = BackupOperation.RequestCopy(
+            ObjectId.GenerateNewId().ToString(),
+            TestPlatformDefaults.TenantId,
+            "newer",
+            rows[0].PolicyId,
+            rows[0].ArchiveId,
+            timestamp.AddSeconds(1));
+        await operations.InsertOneAsync(newer);
+        var next = (await client.GetFromJsonAsync<BackupOperationPage>(
+            Route + "/operations?after=" + Uri.EscapeDataString(initial.NextCursor)))!;
+        Assert.Equal(3, next.Items.Length);
+        Assert.Null(next.NextCursor);
+        seen.AddRange(next.Items.Select(item => item.Id));
+        Assert.Equal(rows.Select(item => item.Id).OrderDescending(), seen);
+        Assert.Equal(53, seen.Distinct().Count());
+        var small = (await client.GetFromJsonAsync<BackupOperationPage>(Route + "/operations?pageSize=2"))!;
+        Assert.Equal(2, small.Items.Length);
+        Assert.Equal(newer.Id, small.Items[0].Id);
+
+        using var other = Client(host, otherTenant);
+        Assert.Equal(
+            foreign.Id,
+            Assert.Single((await other.GetFromJsonAsync<BackupOperationPage>(Route + "/operations"))!.Items).Id);
+        Assert.Empty(
+            (await other.GetFromJsonAsync<BackupOperationPage>(
+                Route + "/operations?after=" + Uri.EscapeDataString(initial.NextCursor)))!.Items);
+        foreach (var query in new[] { "after=invalid", "pageSize=201" })
+        {
+            using var rejected = await client.GetAsync(Route + "/operations?" + query);
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+    }
 
     [Fact]
     public async Task A_second_registered_consumer_reads_only_its_granted_keys_without_a_live_deployment()
@@ -313,7 +378,7 @@ public sealed class BackupApiTests(
         var archiveRoute = Route + "/archives/" + saved.ArchiveId;
         using var activeForget = await client.DeleteAsync(archiveRoute + "?confirmed=true");
         Assert.Equal(HttpStatusCode.Conflict, activeForget.StatusCode);
-        var schedule = await client.GetFromJsonAsync<BackupOperationDto[]>(Route + "/operations");
+        var schedule = (await client.GetFromJsonAsync<BackupOperationPage>(Route + "/operations"))!.Items;
         Assert.All(schedule!, row => Assert.Equal("ScheduledBackup", row.Kind));
         var unfinished = Assert.Single(schedule!, row => row.State == "Running");
         var finished = Assert.Single(schedule!, row => row.State == "Succeeded");

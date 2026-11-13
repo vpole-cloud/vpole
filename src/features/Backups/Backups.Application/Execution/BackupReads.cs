@@ -71,7 +71,9 @@ public sealed class BackupReads(
         var rows = await policies.Find(BackupsFilters<BackupPolicy>.Tenant(tenant)).SortBy(p => p.Name).ToListAsync(ct);
         var ownership = await git.StatusesAsync(new(tenant, "BackupPolicy", rows.Select(p => p.Id).ToArray()), ct);
         var now = clock.GetUtcNow();
-        return rows.Select(p => BackupViews.From(p, p.ReportSchedule(now)) with { GitOps = ownership.GetValueOrDefault(p.Id) }).ToArray();
+        return rows.Select(p =>
+                BackupViews.From(p, p.ReportSchedule(now)) with { GitOps = ownership.GetValueOrDefault(p.Id) })
+            .ToArray();
     }
 
     public async Task<BackupArchiveDto[]> ArchivesAsync(string tenant, CancellationToken ct) =>
@@ -80,12 +82,6 @@ public sealed class BackupReads(
             .ToListAsync(ct)).Select(a => BackupViews.From(
             a,
             providers.Find(a.ResourceType)?.SupportsPointInTimeRecovery == true))
-        .ToArray();
-
-    public async Task<BackupOperationDto[]> OperationsAsync(string tenant, CancellationToken ct) =>
-        (await operations.Find(BackupsFilters<BackupOperation>.Tenant(tenant))
-            .SortByDescending(o => o.CreatedAt)
-            .ToListAsync(ct)).Select(BackupViews.From)
         .ToArray();
 
     public async Task<BackupWriteResult<BackupCatalogEntry[]>> CatalogAsync(

@@ -35,7 +35,10 @@ Routes are under `/api/v1/backups` and require an authenticated tenant selection
 | POST             | `/archives/{id}/restores`         | Confirm a restore from a selected copy or to a timestamp                                                         |
 | GET              | `/operations`, `/operations/{id}` | Inspect durable execution history and progress                                                                   |
 
-Writes to existing configuration include `expectedRevision`, in the query string for deletes. Manual backup and restore commands include an `idempotencyKey`. Retrying the same command returns its original operation. Reusing a key with different parameters produces a conflict. Runtime history and manual operations do not participate in GitOps drift detection. The console distinguishes last successful base-backup time, WAL archiving health and the next scheduled execution.
+Writes to existing configuration include `expectedRevision`, in the query string for deletes. Manual backup and restore commands include an `idempotencyKey`. Retrying the same command returns its original operation. Reusing a key with different parameters produces a conflict. Runtime history and manual operations do not participate in GitOps drift detection.
+The operations list returns `items` and `nextCursor`, ordered newest first by creation time and ID.
+Use `after` for the next page and `pageSize` (default50, maximum200). Each page remains tenant-scoped;
+new operations do not shift older pages. The console distinguishes last successful base-backup time, WAL archiving health and the next scheduled execution.
 When an applied schedule has no future timestamp from the operator, Pole calculates its expected next run
 from the UTC cron expression. Retiring an archive marks still-running scheduled history entries as
 `Interrupted` when final operator status was unobserved. The live catalog remains authoritative for completed copies.
