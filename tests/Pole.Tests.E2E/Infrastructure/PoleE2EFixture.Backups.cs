@@ -150,13 +150,14 @@ public sealed partial class PoleE2EFixture
             { SecretKeyRef = new V1SecretKeySelector { Name = "archive-access", Key = key } },
     };
 
-    public async Task FinishUnreachableRecoveryAfterPostgresFailureAsync(
+    public async Task WaitForUnreachableRecoveryFailureAsync(
         string group,
         string resourceId,
         CancellationToken ct)
     {
         var ns = GetNamespaceName(group);
         var name = "pg-" + resourceId;
+        var rejectedJobs = new HashSet<string>(StringComparer.Ordinal);
         await TestWait.UntilAsync(
             async token =>
             {
@@ -180,42 +181,38 @@ public sealed partial class PoleE2EFixture
                     owner.Kind == "Cluster" && owner.Name == name && owner.Uid == clusterUid) == true);
                 if (job is null)
                     return false;
-                var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(
-                    ns,
-                    labelSelector: "batch.kubernetes.io/controller-uid=" + job.Metadata.Uid,
-                    cancellationToken: token);
-                foreach (var pod in pods.Items.Where(p =>
-                             p.Status.Phase == "Failed" && p.Metadata.OwnerReferences?.Any(owner =>
-                                 owner.Kind == "Job" && owner.Uid == job.Metadata.Uid) == true))
+                if (!rejectedJobs.Contains(job.Metadata.Uid))
                 {
-                    using var logs = await _kubernetes.CoreV1.ReadNamespacedPodLogAsync(
-                        pod.Metadata.Name,
+                    var pods = await _kubernetes.CoreV1.ListNamespacedPodAsync(
                         ns,
-                        container: pod.Spec.Containers.Single().Name,
-                        limitBytes: 524288,
+                        labelSelector: "batch.kubernetes.io/controller-uid=" + job.Metadata.Uid,
                         cancellationToken: token);
-                    using var reader = new StreamReader(logs);
-                    if (!(await reader.ReadToEndAsync(token)).Contains(
-                            "recovery ended before configured recovery target was reached",
-                            StringComparison.Ordinal))
-                        continue;
+                    foreach (var pod in pods.Items.Where(p =>
+                                 p.Status.Phase == "Failed" && p.Metadata.OwnerReferences?.Any(owner =>
+                                     owner.Kind == "Job" && owner.Uid == job.Metadata.Uid) == true))
+                    {
+                        using var logs = await _kubernetes.CoreV1.ReadNamespacedPodLogAsync(
+                            pod.Metadata.Name,
+                            ns,
+                            container: pod.Spec.Containers.Single().Name,
+                            limitBytes: 524288,
+                            cancellationToken: token);
+                        using var reader = new StreamReader(logs);
+                        if (!(await reader.ReadToEndAsync(token)).Contains(
+                                "recovery ended before configured recovery target was reached",
+                                StringComparison.Ordinal))
+                            continue;
 
-                    // PostgreSQL has rejected the chosen time. Let Kubernetes finish this test-owned Job after
-                    // its first genuine failure instead of retrying the same deleted source's immutable archive.
-                    var body = JsonSerializer.Serialize(
-                        new { metadata = new { uid = job.Metadata.Uid }, spec = new { backoffLimit = 0 } });
-                    await _kubernetes.BatchV1.PatchNamespacedJobAsync(
-                        new V1Patch(body, V1Patch.PatchType.MergePatch),
-                        job.Metadata.Name,
-                        ns,
-                        cancellationToken: token);
-                    return true;
+                        rejectedJobs.Add(job.Metadata.Uid);
+                        break;
+                    }
                 }
 
-                return false;
+                return rejectedJobs.Contains(job.Metadata.Uid) && job.Status?.Conditions?.Any(condition =>
+                    condition.Status == "True" && condition.Type is "Failed" or "FailureTarget") == true;
             },
-            TimeSpan.FromMinutes(4),
-            "PostgreSQL did not report an unreachable target in the recovery Job.",
+            TimeSpan.FromMinutes(15),
+            "The native recovery Job did not finish its default retry lifecycle after PostgreSQL rejected the target.",
             ct,
             TimeSpan.FromSeconds(3));
     }

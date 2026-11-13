@@ -218,7 +218,7 @@ public sealed partial class DatabaseBrowserE2ETests
             resources.Defer(
                 "delete failed recovery cluster",
                 token => DeleteDatabaseAsync("postgres", incomplete, token));
-            await fixture.FinishUnreachableRecoveryAfterPostgresFailureAsync(group, incomplete, ct);
+            await fixture.WaitForUnreachableRecoveryFailureAsync(group, incomplete, ct);
             var failed = await WaitForBackupOperationAsync(impossible, ct, expectedState: "Failed");
             Assert.Equal("restore-recovery-failed", failed.GetProperty("failureCode").GetString());
         });
