@@ -13,9 +13,10 @@ public interface IBackupProvider
 
     Task<ReadBackupCatalogOutcome> ListAsync(ListBackupCatalogRequest request, CancellationToken ct);
 
-    Task<BackupProviderResult<BackupRuntimeObservation>> ObserveAsync(
-        BackupArchiveContext archive,
-        CancellationToken ct);
+    Task<ObserveBackupRuntimeOutcome> ObserveAsync(BackupArchiveContext archive, CancellationToken ct);
+
+    Task<ReadBackupHistoryOutcome> ReadHistoryAsync(ReadBackupHistoryRequest request, CancellationToken ct);
+    Task<SuspendBackupArchiveOutcome> SuspendArchiveAsync(SuspendBackupArchiveRequest request, CancellationToken ct);
 
     Task<RunBackupCopyOutcome> RunAsync(BackupCopyRequest request, CancellationToken ct);
     Task<ObserveBackupCopyOutcome> ObserveCopyAsync(ObserveBackupCopyRequest request, CancellationToken ct);

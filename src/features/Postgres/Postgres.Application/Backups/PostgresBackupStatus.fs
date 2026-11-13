@@ -15,6 +15,13 @@ module internal PostgresBackupStatus =
 
     type State = Running | Completed of string | Failed of Failure
 
+    let code = function
+        | PluginUnavailable -> "backup-plugin-unavailable"
+        | StorageAccessDenied -> "backup-storage-access-denied"
+        | StorageUnreachable -> "backup-storage-unreachable"
+        | DefinitionInvalid -> "backup-definition-invalid"
+        | ExecutionFailed -> "backup-execution-failed"
+
     let private failure native =
         // CNPG exposes plugin errors as unstructured text. Classify known causes here;
         // never return the native message, which may contain storage credentials.

@@ -16,3 +16,10 @@ public sealed record BackupOperationWorkRequestedEvent(
     DateTime NotBeforeUtc,
     EventCore EventCore
 ) : IPoleEvent;
+
+[EntityName("pole.backups/v1/history-work-requested")]
+public sealed record BackupHistoryWorkRequestedEvent(
+    string ArchiveId,
+    DateTime NotBeforeUtc,
+    EventCore EventCore
+) : IPoleEvent;

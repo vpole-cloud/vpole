@@ -9,6 +9,7 @@ namespace Pole.Features.Backups.Application.Reconciliation;
 public sealed class BackupRecoveryScanner(
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupOperation> operations,
+    IMongoCollection<BackupArchive> archives,
     MongoRunTransaction transactions,
     StoreOutboxWrites outbox,
     TimeProvider clock
@@ -28,8 +29,13 @@ public sealed class BackupRecoveryScanner(
                 .SortBy(operation => operation.CreatedAt)
                 .Limit(BatchSize)
                 .ToListAsync(token);
+            var dueHistories = await archives.Find(tx.Session, BackupHistoryFilters.Due(now))
+                .SortBy(archive => ((MonitoringBackupHistory)archive.History).Dispatch.NextAttemptAtUtc)
+                .Limit(BatchSize)
+                .ToListAsync(token);
             var requests = duePolicies.Select(BackupWorkRequests.Policy)
                 .Concat(dueOperations.Select(BackupWorkRequests.Operation))
+                .Concat(dueHistories.Select(BackupWorkRequests.History))
                 .ToArray();
             if (requests.Length == 0)
                 return tx.Abort(false);

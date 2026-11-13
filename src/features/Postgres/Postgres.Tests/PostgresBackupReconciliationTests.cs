@@ -37,33 +37,124 @@ public sealed class PostgresBackupReconciliationTests
         {
             Location = Archive.Location with { ArchiveId = "archive-b", ServerName = "second" }
         };
-        await Applied(new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1));
         await Applied(
-            new("policy", second, new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection), 2));
+            new(
+                "policy",
+                Archive,
+                new ConfigureBackupPolicy(Daily, Projection),
+                1,
+                new UnconfirmedBackupArchiveDrain()));
+        await Applied(
+            new(
+                "policy",
+                second,
+                new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection),
+                2,
+                new UnconfirmedBackupArchiveDrain()));
         var old = api.Get("scheduledbackups", "schedule-archive-a");
         Assert.True(old["spec"]!["suspend"]!.GetValue<bool>());
         var writes = api.Writes;
         await Applied(
-            new("policy", second, new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection), 2));
+            new(
+                "policy",
+                second,
+                new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection),
+                2,
+                new UnconfirmedBackupArchiveDrain()));
         Assert.Equal(writes, api.Writes);
         Assert.IsType<BackupPolicySuperseded>(
             (await provider.ApplyScheduleAsync(
-                new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
+                new(
+                    "policy",
+                    Archive,
+                    new ConfigureBackupPolicy(Daily, Projection),
+                    1,
+                    new UnconfirmedBackupArchiveDrain()),
                 default)).Value);
         Assert.Equal(writes, api.Writes);
-        await Applied(new("policy", second, new StopBackupPolicy(), 3));
+        await Applied(new("policy", second, new StopBackupPolicy(), 3, new UnconfirmedBackupArchiveDrain()));
         Assert.Empty(api.Get("clusters", "pg-service")["spec"]!["plugins"]!.AsArray());
         var third = Archive with { Location = Archive.Location with { ArchiveId = "archive-c" } };
-        await Applied(new("replacement", third, new ConfigureBackupPolicy(Daily, Projection), 1));
+        await Applied(
+            new(
+                "replacement",
+                third,
+                new ConfigureBackupPolicy(Daily, Projection),
+                1,
+                new UnconfirmedBackupArchiveDrain()));
         writes = api.Writes;
         Assert.IsType<BackupPolicyAlreadyActive>(
             (await provider.ApplyScheduleAsync(
-                new("policy", second, new ConfigureBackupPolicy(Daily, Projection), 2),
+                new(
+                    "policy",
+                    second,
+                    new ConfigureBackupPolicy(Daily, Projection),
+                    2,
+                    new UnconfirmedBackupArchiveDrain()),
                 default)).Value);
         Assert.Equal(writes, api.Writes);
 
-        async Task Applied(ApplyBackupScheduleRequest request) =>
-            Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(request, default)).Value);
+        async Task Applied(ApplyBackupScheduleRequest request)
+        {
+            var result = await provider.ApplyScheduleAsync(request, default);
+            if (result is BackupPolicyDrainRequired drain)
+            {
+                Assert.True(
+                    api.Get("scheduledbackups", "schedule-" + drain.ArchiveId)["spec"]!["suspend"]!.GetValue<bool>());
+                result = await provider.ApplyScheduleAsync(
+                    request with
+                    {
+                        Drain = new ConfirmedBackupArchiveDrain(drain.ArchiveId, drain.Suspension)
+                    },
+                    default);
+            }
+
+            Assert.IsType<BackupPolicyApplied>(result.Value);
+        }
+    }
+
+    [Fact]
+    public async Task Switching_the_Barman_plugin_requires_the_matching_post_pause_drain_authority()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        var initial = new ApplyBackupScheduleRequest(
+            "policy",
+            Archive,
+            new ConfigureBackupPolicy(Daily, Projection),
+            1,
+            new UnconfirmedBackupArchiveDrain());
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(initial, default)).Value);
+        await provider.RunAsync(new("running", Archive, Projection), default);
+        var next = initial with
+        {
+            Archive = Archive with { Location = Archive.Location with { ArchiveId = "archive-b" } }, Revision = 2
+        };
+        var required
+            = Assert.IsType<BackupPolicyDrainRequired>((await provider.ApplyScheduleAsync(next, default)).Value);
+        Assert.Equal(Archive.Location.ArchiveId, required.ArchiveId);
+        Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        AssertOldPlugin();
+        var stale = next with
+        {
+            Drain = new ConfirmedBackupArchiveDrain(
+                required.ArchiveId,
+                required.Suspension with { PublisherId = "foreign" })
+        };
+        Assert.IsType<BackupPolicyDrainRequired>((await provider.ApplyScheduleAsync(stale, default)).Value);
+        AssertOldPlugin();
+        var confirmed = next with { Drain = new ConfirmedBackupArchiveDrain(required.ArchiveId, required.Suspension) };
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(confirmed, default)).Value);
+        Assert.Equal(
+            "archive-archive-b",
+            api.Get("clusters", "pg-service")["spec"]!["plugins"]![0]!["parameters"]!["barmanObjectName"]!
+                .GetValue<string>());
+
+        void AssertOldPlugin() => Assert.Equal(
+            "archive-archive-a",
+            api.Get("clusters", "pg-service")["spec"]!["plugins"]![0]!["parameters"]!["barmanObjectName"]!
+                .GetValue<string>());
     }
 
     [Fact]
@@ -73,7 +164,12 @@ public sealed class PostgresBackupReconciliationTests
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
         await Provider(client)
             .ApplyScheduleAsync(
-                new("policy", Archive, new ConfigureBackupPolicy(Daily with { Suspended = true }, Projection), 1),
+                new(
+                    "policy",
+                    Archive,
+                    new ConfigureBackupPolicy(Daily with { Suspended = true }, Projection),
+                    1,
+                    new UnconfirmedBackupArchiveDrain()),
                 default);
         var operation = new BackupCopyRequest("operation", Archive, Projection);
         Assert.IsType<BackupCopyInProgress>((await Provider(client).RunAsync(operation, default)).Value);
@@ -95,7 +191,8 @@ public sealed class PostgresBackupReconciliationTests
             "policy",
             Archive,
             new ConfigureBackupPolicy(Daily, Projection),
-            1);
+            1,
+            new UnconfirmedBackupArchiveDrain());
         var operation = new BackupCopyRequest("operation", Archive, Projection);
         Assert.IsType<BackupPolicyPending>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
@@ -125,7 +222,12 @@ public sealed class PostgresBackupReconciliationTests
         Assert.IsType<BackupCopyMissing>((await provider.ObserveCopyAsync(observed, default)).Value);
         Assert.Equal(0, api.Writes);
         await provider.ApplyScheduleAsync(
-            new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
+            new(
+                "policy",
+                Archive,
+                new ConfigureBackupPolicy(Daily, Projection),
+                1,
+                new UnconfirmedBackupArchiveDrain()),
             default);
         Assert.IsType<BackupCopyInProgress>(
             (await provider.RunAsync(new("operation", Archive, Projection), default)).Value);
@@ -150,7 +252,12 @@ public sealed class PostgresBackupReconciliationTests
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
         var provider = Provider(client);
         await provider.ApplyScheduleAsync(
-            new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
+            new(
+                "policy",
+                Archive,
+                new ConfigureBackupPolicy(Daily, Projection),
+                1,
+                new UnconfirmedBackupArchiveDrain()),
             default);
         await provider.RunAsync(new("operation", Archive, Projection), default);
         var backup = api.Get("backups", "backup-operation");
@@ -195,7 +302,14 @@ public sealed class PostgresBackupReconciliationTests
         }
 
         var result = await Provider(client)
-            .ApplyScheduleAsync(new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1), default);
+            .ApplyScheduleAsync(
+                new(
+                    "policy",
+                    Archive,
+                    new ConfigureBackupPolicy(Daily, Projection),
+                    1,
+                    new UnconfirmedBackupArchiveDrain()),
+                default);
         Assert.IsType(expected, result.Value);
         Assert.Equal(0, api.Writes);
     }
@@ -210,7 +324,8 @@ public sealed class PostgresBackupReconciliationTests
             "policy",
             Archive,
             new ConfigureBackupPolicy(Daily, Projection),
-            1);
+            1,
+            new UnconfirmedBackupArchiveDrain());
         Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
         api.Get("objectstores", "archive-archive-a")["metadata"]!["labels"]!["pole.io/tenant-id"] = "another-tenant";
         var writes = api.Writes;
@@ -229,7 +344,8 @@ public sealed class PostgresBackupReconciliationTests
             "policy",
             Archive,
             new ConfigureBackupPolicy(Daily, Projection),
-            1);
+            1,
+            new UnconfirmedBackupArchiveDrain());
         Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
         var store = api.Get("objectstores", "archive-archive-a");
         var uid = store["metadata"]!["uid"]!.GetValue<string>();
@@ -260,7 +376,8 @@ public sealed class PostgresBackupReconciliationTests
             "policy",
             Archive,
             new ConfigureBackupPolicy(Daily, Projection),
-            1);
+            1,
+            new UnconfirmedBackupArchiveDrain());
         var provider = Provider(client);
         Assert.IsType<BackupPolicyPending>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
@@ -283,7 +400,8 @@ public sealed class PostgresBackupReconciliationTests
             "policy",
             Archive,
             new ConfigureBackupPolicy(Daily, Projection),
-            1);
+            1,
+            new UnconfirmedBackupArchiveDrain());
         await Assert.ThrowsAsync<HttpOperationException>(() => Provider(client).ApplyScheduleAsync(desired, default));
         api.ReadFailure = null;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>

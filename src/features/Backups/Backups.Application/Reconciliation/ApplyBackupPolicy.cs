@@ -106,11 +106,17 @@ public sealed class ApplyBackupPolicy(
             var observed = await provider.ObserveAsync(BackupArchiveAccess.Context(archive), attempt);
             switch (observed)
             {
-                case BackupProviderResult<BackupRuntimeObservation>.Success success:
-                    observation = success.Value;
+                case BackupRuntimeObservation value:
+                    observation = value;
                     break;
-                case BackupProviderResult<BackupRuntimeObservation>.Failure failure:
-                    failureCode = failure.Code;
+                case BackupSourceUnavailable:
+                    failureCode = "backup-source-unavailable";
+                    break;
+                case BackupNativeOwnershipConflict:
+                    failureCode = "backup-resource-ownership-conflict";
+                    break;
+                case BackupNativeIdentityUnavailable:
+                    failureCode = "backup-native-identity-missing";
                     break;
             }
         }
@@ -120,12 +126,18 @@ public sealed class ApplyBackupPolicy(
             BackupPolicyConfiguration configuration)
         {
             var result = await implementation.ApplyScheduleAsync(
-                new(policy.Id, BackupArchiveAccess.Context(archive), configuration, policy.Revision),
+                new(
+                    policy.Id,
+                    BackupArchiveAccess.Context(archive),
+                    configuration,
+                    policy.Revision,
+                    await DrainAuthorizationAsync(policy, attempt)),
                 attempt);
             return result switch
             {
                 BackupPolicyApplied value => value,
                 BackupPolicyPending value => value,
+                BackupPolicyDrainRequired value => value,
                 BackupSourceUnavailable error => error,
                 BackupNativeOwnershipConflict error => error,
                 BackupNativeIdentityUnavailable error => error,
@@ -207,13 +219,48 @@ public sealed class ApplyBackupPolicy(
                             p => p.Observation,
                             previous with { WalArchivingStatus = "Unknown", NextScheduledAt = null });
 
+                    if (effect is BackupPolicyDrainRequired drain)
+                    {
+                        var previous = await archives.Find(
+                                tx.Session,
+                                BackupsFilters<BackupArchive>.ById(policy.TenantId, drain.ArchiveId))
+                            .SingleAsync(token);
+                        if (previous.PolicyId != policy.Id || previous.ResourceId != archive.ResourceId ||
+                            previous.ResourceType != archive.ResourceType || drain.Suspension.PolicyId != policy.Id ||
+                            drain.Suspension.PolicyRevision != policy.Revision)
+                            throw new InvalidOperationException(
+                                "The provider returned a different archive or policy fence.");
+                        var fence = new BackupScheduleSuspension(
+                            drain.Suspension.PolicyId,
+                            drain.Suspension.PolicyRevision,
+                            drain.Suspension.PublisherId);
+                        if (previous.History is not StoppedBackupHistory)
+                        {
+                            var history = previous.History.RequestDrain(
+                                fence,
+                                new(ObjectId.GenerateNewId().ToString(), policy.Dispatch.Origin),
+                                clock.GetUtcNow().UtcDateTime);
+                            await archives.UpdateOneAsync(
+                                tx.Session,
+                                BackupHistoryFilters.AtRevision(previous),
+                                Builders<BackupArchive>.Update.Set(a => a.History, history),
+                                cancellationToken: token);
+                            if (history is MonitoringBackupHistory)
+                                await outbox(
+                                    tx.Session,
+                                    [BackupWorkRequests.History(previous with { History = history })],
+                                    token);
+                        }
+
+                        update = update.Set(p => p.Application, new DrainingBackupPolicy(previous.Id, fence));
+                    }
+
                     if (succeeded)
-                        update = update.Set(p => p.AppliedRevision, policy.Revision);
+                        update = update.Set(p => p.AppliedRevision, policy.Revision)
+                            .Set(p => p.Application, new ApplyingBackupPolicy());
                     var applied = await policies.UpdateOneAsync(tx.Session, guard, update, cancellationToken: token);
                     if (applied.MatchedCount != 1)
                         return tx.Abort(false);
-                    if (observation is not null)
-                        await RecordSchedulesAsync(policy, archive, observation.Runs, tx.Session, token);
                     var released = await policies.Find(
                             tx.Session,
                             BackupsFilters<BackupPolicy>.ById(policy.TenantId, policy.Id))
@@ -230,6 +277,7 @@ public sealed class ApplyBackupPolicy(
     {
         BackupPolicyApplied => null,
         BackupPolicyPending => null,
+        BackupPolicyDrainRequired => null,
         BackupSourceUnsupported => "unsupported-provider",
         BackupArchiveProjectionUnavailable => "workload-credential-unavailable",
         BackupSourceUnavailable => "backup-source-unavailable",
@@ -242,50 +290,28 @@ public sealed class ApplyBackupPolicy(
         BackupPluginConflict => "backup-existing-plugin-conflict",
     };
 
-    private async Task RecordSchedulesAsync(
+    private async Task<BackupArchiveDrainAuthorization> DrainAuthorizationAsync(
         BackupPolicy policy,
-        BackupArchive archive,
-        IReadOnlyList<BackupObservedRun> runs,
-        IClientSessionHandle session,
         CancellationToken ct)
     {
-        foreach (var run in runs)
-        {
-            var key = BackupOperationKeys.Scheduled(archive.Id, run.NativeUid);
-            var filter = BackupDispatchFilters.Idempotency(archive.TenantId, key);
-            var previous = await operations.Find(session, filter).SingleOrDefaultAsync(ct);
-            ScheduledBackupExecution execution = run.State switch
-            {
-                BackupObservedRunState.Running => new RunningScheduledBackup(),
-                BackupObservedRunState.Succeeded => new CompletedScheduledBackup(
-                    run.BackupId ??
-                    throw new InvalidOperationException("A completed native backup must report its identity.")),
-                BackupObservedRunState.Failed => new FailedScheduledBackup(run.FailureCode ?? "backup-failed"),
-                _ => throw new ArgumentOutOfRangeException(nameof(run)),
-            };
-            if (previous?.Work is ScheduledBackupWork recorded && recorded.Execution == execution)
-                continue;
-            var op = BackupOperation.ObserveScheduled(
-                previous?.Id ?? ObjectId.GenerateNewId().ToString(),
-                archive.TenantId,
-                key,
-                policy.Id,
-                archive.Id,
-                run.NativeUid,
-                policy.Revision,
-                execution,
-                run.StartedAt.UtcDateTime,
-                (run.FinishedAt ?? run.StartedAt).UtcDateTime,
-                policy.Dispatch.Origin);
-            await operations.ReplaceOneAsync(session, filter, op, new ReplaceOptions { IsUpsert = true }, ct);
-            await outbox(session, [BackupWorkRequests.OperationChanged(op)], ct);
-        }
+        if (policy.Application is not DrainingBackupPolicy drain)
+            return new UnconfirmedBackupArchiveDrain();
+        var previous = await archives.Find(BackupsFilters<BackupArchive>.ById(policy.TenantId, drain.ArchiveId))
+            .SingleOrDefaultAsync(ct);
+        if (previous?.History is not QuiescentBackupHistory observed || observed.Suspension != drain.Suspension ||
+            await operations.Find(BackupDispatchFilters.UnfinishedCopies(policy.TenantId, drain.ArchiveId))
+                .AnyAsync(ct))
+            return new UnconfirmedBackupArchiveDrain();
+        return new ConfirmedBackupArchiveDrain(
+            drain.ArchiveId,
+            new(drain.Suspension.PolicyId, drain.Suspension.PolicyRevision, drain.Suspension.PublisherId));
     }
 }
 
 internal union BackupPolicyApplicationOutcome(
     BackupPolicyApplied,
     BackupPolicyPending,
+    BackupPolicyDrainRequired,
     BackupSourceUnsupported,
     BackupArchiveProjectionUnavailable,
     BackupSourceUnavailable,

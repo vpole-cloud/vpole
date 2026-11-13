@@ -19,7 +19,7 @@ module internal PostgresBackupPolicy =
         | PolicySuperseded
         | PluginConflict
 
-    type Progress = Applied | Pending
+    type Progress = Applied | Pending | DrainRequired of string * NativeBackupScheduleSuspension
     type PolicyDisposition = Active | Retired
 
     // This annotation group belongs to this provider. Ordinary Cluster updates preserve it.
@@ -82,7 +82,37 @@ module internal PostgresBackupPolicy =
             let tombstone = M.schedule retired (BackupSchedule("0 0 1 1 *", true, 1)) clusterUid
             let! result =
                 applyOwned client PostgresBackupNames.Group retired "scheduledbackups" tombstone request Retired ct
-            return result |> Result.map ignore
+            return result
+        }
+
+    let observedRevision current =
+        match Int64.TryParse(annotation current revisionKey) with
+        | true, revision when revision > 0L -> Some revision
+        | _ -> None
+
+    let suspension policyId current =
+        match identity current, observedRevision current with
+        | Some identity, Some revision
+            when annotation current policyKey = policyId && annotation current retiredKey = "true"
+                 && String.Equals(value current ["spec"; "suspend"], "true", StringComparison.OrdinalIgnoreCase) ->
+            Some(NativeBackupScheduleSuspension(policyId, revision, identity.Uid))
+        | _ -> None
+
+    let private awaitDrain client (request: ApplyBackupScheduleRequest) archiveId clusterUid ct =
+        task {
+            let! parked = parkSchedule client request archiveId clusterUid ct
+            match parked with
+            | Error failure -> return Error failure
+            | Ok schedule ->
+                match suspension request.PolicyId schedule with
+                | None -> return Error NativeIdentityUnavailable
+                | Some fence ->
+                    match request.Drain with
+                    | :? ConfirmedBackupArchiveDrain as confirmed
+                        when confirmed.ArchiveId = archiveId && confirmed.Suspension = fence -> return Ok None
+                    | :? ConfirmedBackupArchiveDrain
+                    | :? UnconfirmedBackupArchiveDrain -> return Ok(Some(DrainRequired(archiveId, fence)))
+                    | _ -> return invalidOp "Unsupported archive drain authorization."
         }
 
     let private writePlugins client (request: ApplyBackupScheduleRequest) current identity disposition ct =
@@ -114,27 +144,30 @@ module internal PostgresBackupPolicy =
             elif store = PostgresBackupNames.objectStore request.Archive.Location.ArchiveId then Ok None
             else Ok(Some(store.Substring(PostgresBackupNames.ArchivePrefix.Length)))
 
-    let private parkPrevious client request cluster identity ct =
+    let private drainPrevious client request cluster identity ct =
         task {
             match previousArchive request cluster with
             | Error failure -> return Error failure
-            | Ok None -> return Ok()
-            | Ok(Some archiveId) -> return! parkSchedule client request archiveId identity.Uid ct
+            | Ok None -> return Ok None
+            | Ok(Some archiveId) -> return! awaitDrain client request archiveId identity.Uid ct
         }
 
     let private stop client (request: ApplyBackupScheduleRequest) cluster identity ct =
         task {
-            let! parked = parkSchedule client request request.Archive.Location.ArchiveId identity.Uid ct
-            match parked with
+            let attached = annotation cluster policyKey
+            let actual =
+                match previousArchive request cluster with
+                | Ok(Some previous) when attached = request.PolicyId -> Ok previous
+                | Ok _ -> Ok request.Archive.Location.ArchiveId
+                | Error failure -> Error failure
+            match actual with
             | Error failure -> return Error failure
-            | Ok() ->
-                let attached = annotation cluster policyKey
-                let! previous =
-                    if attached = request.PolicyId then parkPrevious client request cluster identity ct
-                    else System.Threading.Tasks.Task.FromResult(Ok())
-                match previous with
+            | Ok archiveId ->
+                let! drained = awaitDrain client request archiveId identity.Uid ct
+                match drained with
                 | Error failure -> return Error failure
-                | Ok() ->
+                | Ok(Some progress) -> return Ok progress
+                | Ok None ->
                     if attached = request.PolicyId || (isNull attached && (plugin cluster).IsNone) then
                         let! _ = writePlugins client request cluster identity Retired ct
                         ()
@@ -172,10 +205,11 @@ module internal PostgresBackupPolicy =
                 if (plugin cluster).IsSome && annotation cluster policyKey <> request.PolicyId then
                     return Error PluginConflict
                 else
-                    let! parked = parkPrevious client request cluster identity ct
+                    let! parked = drainPrevious client request cluster identity ct
                     match parked with
                     | Error failure -> return Error failure
-                    | Ok() -> return! configureSchedule client request configuration cluster identity ct
+                    | Ok(Some progress) -> return Ok progress
+                    | Ok None -> return! configureSchedule client request configuration cluster identity ct
         }
 
     let private configure
@@ -217,6 +251,7 @@ module internal PostgresBackupPolicy =
     let outcome = function
         | Ok Applied -> ApplyBackupScheduleOutcome(BackupPolicyApplied())
         | Ok Pending -> ApplyBackupScheduleOutcome(BackupPolicyPending())
+        | Ok(DrainRequired(archiveId, fence)) -> ApplyBackupScheduleOutcome(BackupPolicyDrainRequired(archiveId, fence))
         | Error SourceMissing -> ApplyBackupScheduleOutcome(BackupSourceUnavailable())
         | Error NativeOwnershipConflict -> ApplyBackupScheduleOutcome(BackupNativeOwnershipConflict())
         | Error NativeIdentityUnavailable -> ApplyBackupScheduleOutcome(BackupNativeIdentityUnavailable())
@@ -224,3 +259,40 @@ module internal PostgresBackupPolicy =
         | Error PolicyRevisionUnreadable -> ApplyBackupScheduleOutcome(BackupPolicyRevisionUnreadable())
         | Error PolicySuperseded -> ApplyBackupScheduleOutcome(BackupPolicySuperseded())
         | Error PluginConflict -> ApplyBackupScheduleOutcome(BackupPluginConflict())
+
+    let suspend client (request: SuspendBackupArchiveRequest) ct =
+        task {
+            let! loaded = source client request.Archive ct
+            match loaded with
+            | Error SourceUnavailable -> return SuspendBackupArchiveOutcome(BackupSourceUnavailable())
+            | Error SourceOwnershipConflict -> return SuspendBackupArchiveOutcome(BackupNativeOwnershipConflict())
+            | Error SourceIdentityUnavailable -> return SuspendBackupArchiveOutcome(BackupNativeIdentityUnavailable())
+            | Ok(_, identity) ->
+                let command = ApplyBackupScheduleRequest(
+                    request.PolicyId, request.Archive, StopBackupPolicy(), request.PolicyRevision,
+                    UnconfirmedBackupArchiveDrain())
+                let manifest = M.schedule request.Archive (BackupSchedule("0 0 1 1 *", true, 1)) identity.Uid
+                let! existing = loadOwned client PostgresBackupNames.Group request.Archive "scheduledbackups" manifest ct
+                let! parked =
+                    match existing with
+                    | Error failure -> System.Threading.Tasks.Task.FromResult(Error(objectFailure failure))
+                    | Ok(Existing(current, _)) ->
+                        match suspension request.PolicyId current with
+                        | Some fence when fence.PolicyRevision >= request.PolicyRevision ->
+                            System.Threading.Tasks.Task.FromResult(Ok current)
+                        | _ -> parkSchedule client command request.Archive.Location.ArchiveId identity.Uid ct
+                    | Ok Missing -> parkSchedule client command request.Archive.Location.ArchiveId identity.Uid ct
+                return
+                    match parked with
+                    | Ok schedule ->
+                        match suspension request.PolicyId schedule with
+                        | Some fence -> SuspendBackupArchiveOutcome(BackupArchiveSuspended(fence))
+                        | None -> SuspendBackupArchiveOutcome(BackupNativeIdentityUnavailable())
+                    | Error NativeOwnershipConflict -> SuspendBackupArchiveOutcome(BackupNativeOwnershipConflict())
+                    | Error NativeIdentityUnavailable -> SuspendBackupArchiveOutcome(BackupNativeIdentityUnavailable())
+                    | Error PolicyRevisionUnreadable -> SuspendBackupArchiveOutcome(BackupPolicyRevisionUnreadable())
+                    | Error PolicySuperseded -> SuspendBackupArchiveOutcome(BackupPolicySuperseded())
+                    | Error PolicyAlreadyActive -> SuspendBackupArchiveOutcome(BackupNativeOwnershipConflict())
+                    | Error SourceMissing | Error PluginConflict ->
+                        invalidOp "Suspending a schedule must not mutate a Cluster plugin."
+        }

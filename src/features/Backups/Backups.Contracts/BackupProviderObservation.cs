@@ -1,32 +1,14 @@
 namespace Pole.Features.Backups.Contracts;
 
-public closed record BackupProviderResult<T>
-{
-    public sealed record Success(
-        T Value
-    ) : BackupProviderResult<T>;
-
-    public sealed record Failure(
-        string Code,
-        bool Retryable
-    ) : BackupProviderResult<T>;
-}
-
-public enum BackupObservedRunState { Running, Succeeded, Failed }
-
-public sealed record BackupObservedRun(
-    string NativeUid,
-    string? BackupId,
-    BackupObservedRunState State,
-    DateTimeOffset StartedAt,
-    DateTimeOffset? FinishedAt,
-    string? FailureCode
-);
-
 public sealed record BackupRuntimeObservation(
     string WalArchivingState,
     DateTimeOffset? WalStatusChangedAt,
     DateTimeOffset? LastSuccessfulBackupAt,
-    DateTimeOffset? NextScheduledBackupAt,
-    IReadOnlyList<BackupObservedRun> Runs
+    DateTimeOffset? NextScheduledBackupAt
 );
+
+public union ObserveBackupRuntimeOutcome(
+    BackupRuntimeObservation,
+    BackupSourceUnavailable,
+    BackupNativeOwnershipConflict,
+    BackupNativeIdentityUnavailable);

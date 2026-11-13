@@ -114,7 +114,8 @@ internal sealed class BackupTestSetup(
     internal async Task<FeatureTestHost> StartAsync(
         bool failDestination = false,
         bool failOperation = false,
-        bool failPolicy = false)
+        bool failPolicy = false,
+        Func<bool>? failHistoryContinuation = null)
     {
         var host = await FeatureTestHost.StartAsync(
             new ConfigurationBuilder().Build(),
@@ -150,7 +151,7 @@ internal sealed class BackupTestSetup(
                 services.AddSingleton(mongo.Client);
                 services.AddSingleton(mongo.Database);
                 services.AddFeatureMigrations("pole.backups", typeof(BackupsSchemaMigration).Assembly);
-                if (failDestination || failOperation || failPolicy)
+                if (failDestination || failOperation || failPolicy || failHistoryContinuation is not null)
                 {
                     services.RemoveAll<StoreOutboxWrites>();
                     services.AddSingleton<StoreOutboxWrites>(_ => async (
@@ -160,7 +161,9 @@ internal sealed class BackupTestSetup(
                         await mongo.StoreOutboxWrites(session, writes, ct);
                         if (writes.Any(w => failDestination && w.Event is BackupConfigurationChangedEvent ||
                                 failOperation && w.Event is BackupOperationWorkRequestedEvent ||
-                                failPolicy && w.Event is BackupPolicyWorkRequestedEvent))
+                                failPolicy && w.Event is BackupPolicyWorkRequestedEvent ||
+                                failHistoryContinuation?.Invoke() == true &&
+                                w.Event is BackupHistoryWorkRequestedEvent))
                             throw new InvalidOperationException("Injected transactional outbox failure.");
                     });
                 }

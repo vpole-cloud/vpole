@@ -54,6 +54,8 @@ public static class BackupsFeature
         services.AddScoped<ExecuteBackupCopy>();
         services.AddScoped<ExecuteBackupRestore>();
         services.AddScoped<BackupRecoveryScanner>();
+        services.AddScoped<ObserveBackupArchiveHistory>();
+        services.AddScoped<BackupArchiveHistoryJob>();
         services.AddScoped<BackupPolicyJob>();
         services.AddScoped<BackupOperationJob>();
         services.AddScoped<BackupRecoveryJob>();

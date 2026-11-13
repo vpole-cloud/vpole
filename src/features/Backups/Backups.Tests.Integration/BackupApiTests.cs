@@ -612,6 +612,10 @@ public sealed class BackupApiTests(
         var archiveRoute = Route + "/archives/" + saved.ArchiveId;
         using var activeForget = await client.DeleteAsync(archiveRoute + "?confirmed=true");
         Assert.Equal(HttpStatusCode.Conflict, activeForget.StatusCode);
+        Assert.True(
+            await scope.ServiceProvider
+                .GetRequiredService<ObserveBackupArchiveHistory>()
+                .ExecuteAsync(TestPlatformDefaults.TenantId, saved.ArchiveId, default));
         var schedule = (await client.GetFromJsonAsync<BackupOperationPage>(Route + "/operations"))!.Items;
         Assert.All(schedule!, row => Assert.Equal("ScheduledBackup", row.Kind));
         var unfinished = Assert.Single(schedule!, row => row.State == "Running");
@@ -640,6 +644,18 @@ public sealed class BackupApiTests(
         Assert.True(await dispatch.ExecuteAsync(TestPlatformDefaults.TenantId, saved.Id, default));
         var storedArchive = Assert.Single((await client.GetFromJsonAsync<BackupArchiveDto[]>(Route + "/archives"))!);
         Assert.False(storedArchive.Active);
+        var historyRows = mongo.Database.GetCollection<BackupArchive>("BackupArchives");
+        var historyArchive = await historyRows.Find(a => a.Id == saved.ArchiveId).SingleAsync();
+        await historyRows.ReplaceOneAsync(
+            a => a.Id == historyArchive.Id,
+            historyArchive with
+            {
+                History = historyArchive.History.Retry(DateTime.UtcNow.AddSeconds(-1), TimeSpan.Zero, "source-removed")
+            });
+        Assert.True(
+            await scope.ServiceProvider
+                .GetRequiredService<ObserveBackupArchiveHistory>()
+                .ExecuteAsync(TestPlatformDefaults.TenantId, saved.ArchiveId, default));
         var interrupted = await client.GetFromJsonAsync<BackupOperationDto>(Route + "/operations/" + unfinished.Id);
         Assert.Equal("Interrupted", interrupted!.State);
         Assert.Equal("source-removed-before-final-observation", interrupted.FailureCode);

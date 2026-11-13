@@ -148,9 +148,16 @@ public class BackupDeclarationTests
         public Task<ReadBackupCatalogOutcome> ListAsync(ListBackupCatalogRequest request, CancellationToken ct) =>
             throw new NotSupportedException();
 
-        public Task<BackupProviderResult<BackupRuntimeObservation>> ObserveAsync(
-            BackupArchiveContext archive,
+        public Task<ReadBackupHistoryOutcome>
+            ReadHistoryAsync(ReadBackupHistoryRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<SuspendBackupArchiveOutcome> SuspendArchiveAsync(
+            SuspendBackupArchiveRequest request,
             CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<ObserveBackupRuntimeOutcome> ObserveAsync(BackupArchiveContext archive, CancellationToken ct) =>
+            throw new NotSupportedException();
 
         public Task<ObserveBackupCopyOutcome> ObserveCopyAsync(
             ObserveBackupCopyRequest request,

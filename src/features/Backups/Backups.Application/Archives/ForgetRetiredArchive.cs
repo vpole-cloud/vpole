@@ -2,13 +2,10 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Common;
 using Pole.Features.Backups.Application.Mongo;
-using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
-using Pole.Features.ResourceGroups.Contracts;
-using Pole.Workloads;
 
 namespace Pole.Features.Backups.Application.Archives;
 
@@ -20,14 +17,11 @@ public sealed record BackupArchiveInUse;
 
 public sealed record ArchivePlacementConflict;
 
-public sealed record ArchiveObservationUnavailable;
-
 public union ForgetRetiredArchiveOutcome(
     BackupArchiveForgotten,
     BackupArchiveMissing,
     BackupArchiveInUse,
-    ArchivePlacementConflict,
-    ArchiveObservationUnavailable);
+    ArchivePlacementConflict);
 
 public sealed class ForgetRetiredArchive(
     IMongoCollection<BackupArchive> archives,
@@ -37,8 +31,6 @@ public sealed class ForgetRetiredArchive(
     MongoRunTransaction transactions,
     LoadResourceDeploymentPlanningSnapshot placements,
     RequestExactResourceDeploymentDeletion requestDeletion,
-    LoadRegisteredResource loadSource,
-    BackupProviderCatalog providers,
     StoreOutboxWrites outbox
 )
 {
@@ -57,20 +49,6 @@ public sealed class ForgetRetiredArchive(
             .SingleOrDefaultAsync(ct);
         if (StillApplying(current, id))
             return new BackupArchiveInUse();
-        // The operator can finish pre-existing base backups after its schedule is suspended.
-        // Detect such work on the target before releasing its credentials. No S3 access is required.
-        if (await loadSource(
-                new(tenantId, ResourceTypeId.Create(selected.ResourceType), selected.ResourceId),
-                ct) is not null)
-        {
-            var provider = providers.Find(selected.ResourceType);
-            if (provider is null ||
-                await provider.ObserveAsync(BackupArchiveAccess.Context(selected), ct) is not
-                    BackupProviderResult<BackupRuntimeObservation>.Success observation)
-                return new ArchiveObservationUnavailable();
-            if (observation.Value.Runs.Any(run => run.State == BackupObservedRunState.Running))
-                return new BackupArchiveInUse();
-        }
 
         return await transactions.InvokeOutcomeAsync<ForgetRetiredArchiveOutcome>(
             async (tx, token) =>
@@ -78,7 +56,7 @@ public sealed class ForgetRetiredArchive(
                 var archive = await archives.Find(tx.Session, filter).SingleOrDefaultAsync(token);
                 if (archive is null)
                     return tx.Abort(new ForgetRetiredArchiveOutcome(new BackupArchiveMissing()));
-                if (archive.Active || await operations.Find(
+                if (archive.Active || archive.History is MonitoringBackupHistory || await operations.Find(
                             tx.Session,
                             BackupDispatchFilters.UnfinishedCommands(tenantId, id))
                         .AnyAsync(token))

@@ -24,7 +24,6 @@ public union ForgetBackupArchiveOutcome(
     BackupArchiveMissing,
     BackupArchiveInUse,
     ArchivePlacementConflict,
-    ArchiveObservationUnavailable,
     BackupAdministrationRequired);
 
 public sealed class ForgetBackupArchiveValidator : AbstractValidator<ForgetBackupArchiveRequest>
@@ -52,7 +51,6 @@ public sealed class ForgetBackupArchiveHandler(
             BackupArchiveForgotten forgotten => forgotten,
             BackupArchiveMissing missing => missing,
             BackupArchiveInUse used => used,
-            ArchiveObservationUnavailable unavailable => unavailable,
             ArchivePlacementConflict conflict => conflict
         };
     }
@@ -71,7 +69,6 @@ public static class ForgetBackupArchiveEndpoint
                     BackupArchiveForgotten => Results.NoContent(),
                     BackupArchiveMissing error => MapArchiveMissing(error),
                     BackupArchiveInUse error => MapArchiveInUse(error),
-                    ArchiveObservationUnavailable error => MapArchiveObservationUnavailable(error),
                     ArchivePlacementConflict error => MapArchivePlacementConflict(error),
                     BackupAdministrationRequired error => MapAdministrationRequired(error)
                 }))

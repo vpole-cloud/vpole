@@ -19,7 +19,22 @@ public sealed record ApplyBackupScheduleRequest(
     string PolicyId,
     BackupArchiveContext Archive,
     BackupPolicyConfiguration Configuration,
-    long Revision
+    long Revision,
+    BackupArchiveDrainAuthorization Drain
+);
+
+public closed record BackupArchiveDrainAuthorization;
+
+public sealed record UnconfirmedBackupArchiveDrain : BackupArchiveDrainAuthorization;
+
+public sealed record ConfirmedBackupArchiveDrain(
+    string ArchiveId,
+    NativeBackupScheduleSuspension Suspension
+) : BackupArchiveDrainAuthorization;
+
+public sealed record BackupPolicyDrainRequired(
+    string ArchiveId,
+    NativeBackupScheduleSuspension Suspension
 );
 
 public sealed record BackupPolicyApplied;
@@ -43,6 +58,7 @@ public sealed record BackupPluginConflict;
 public union ApplyBackupScheduleOutcome(
     BackupPolicyApplied,
     BackupPolicyPending,
+    BackupPolicyDrainRequired,
     BackupSourceUnavailable,
     BackupNativeOwnershipConflict,
     BackupNativeIdentityUnavailable,

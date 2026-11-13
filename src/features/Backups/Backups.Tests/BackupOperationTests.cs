@@ -77,6 +77,7 @@ public sealed class BackupOperationTests
             "archive",
             "native",
             2,
+            "scan",
             new RunningScheduledBackup(),
             Now,
             Now,

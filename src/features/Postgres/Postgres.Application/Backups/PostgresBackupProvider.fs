@@ -2,9 +2,6 @@ namespace Pole.Features.Postgres.Application.Backups
 
 open System
 open System.Net
-open System.Net.Http
-open System.Threading
-open System.Threading.Tasks
 open k8s.Autorest
 open Pole.Features.Backups.Contracts
 open Pole.Features.DeploymentTargets.Contracts
@@ -12,24 +9,6 @@ open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Postgres.Domain
-
-module private ProviderResult =
-    let protect (work: unit -> Task<'t>) (ct: CancellationToken) =
-        task {
-            try
-                let! value = work()
-                return BackupProviderResult<'t>.Success(value) :> BackupProviderResult<'t>
-            with
-            | PostgresBackupFailure(code,retry) -> return BackupProviderResult<'t>.Failure(code,retry) :> _
-            | :? DeploymentTargetUnavailableException -> return BackupProviderResult<'t>.Failure("backup-target-unavailable",true) :> _
-            | :? HttpOperationException as e ->
-                let denied = e.Response.StatusCode = HttpStatusCode.Forbidden || e.Response.StatusCode = HttpStatusCode.Unauthorized
-                let code = if denied then "backup-kubernetes-access-denied" else "backup-kubernetes-unavailable"
-                return BackupProviderResult<'t>.Failure(code,true) :> _
-            | :? HttpRequestException -> return BackupProviderResult<'t>.Failure("backup-target-unavailable",true) :> _
-            | :? OperationCanceledException when not ct.IsCancellationRequested ->
-                return BackupProviderResult<'t>.Failure("backup-target-timeout",true) :> _
-        }
 
 type PostgresBackupProvider
     (clients: IKubernetesClientProvider, load: LoadPostgresClusterById, recovery: PostgresBackupRecovery) =
@@ -78,10 +57,27 @@ type PostgresBackupProvider
                     return ApplyBackupScheduleOutcome(BackupNativeWriteConflict())
             }
 
-        member _.ObserveAsync(archive,ct) =
-            ProviderResult.protect (fun () -> task {
+        member _.ObserveAsync(archive, ct) =
+            task {
                 let! client = clientFor archive ct
-                return! BackupNative.observe client archive ct }) ct
+                return! PostgresBackupRuntime.observe client archive ct
+            }
+
+        member _.ReadHistoryAsync(request, ct) =
+            task {
+                let! client = clientFor request.Archive ct
+                return! PostgresBackupHistory.read client request (TimeSpan.FromSeconds(15.0)) ct
+            }
+
+        member _.SuspendArchiveAsync(request, ct) =
+            task {
+                let! client = clients.GetForCleanupAsync(request.Archive.Placement.DeploymentTargetId, ct)
+                try
+                    return! PostgresBackupPolicy.suspend client request ct
+                with
+                | :? HttpOperationException as error when error.Response.StatusCode = HttpStatusCode.Conflict ->
+                    return SuspendBackupArchiveOutcome(BackupNativeWriteConflict())
+            }
 
         member _.RunAsync(request, ct) =
             task {

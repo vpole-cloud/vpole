@@ -7,6 +7,14 @@ namespace Pole.Features.Backups.Application.Reconciliation;
 
 internal static class BackupWorkRequests
 {
+    internal static OutboxWrite History(BackupArchive archive) => OutboxWrite.Create(
+        new BackupHistoryWorkRequestedEvent(
+            archive.Id,
+            (archive.History as MonitoringBackupHistory ??
+                throw new InvalidOperationException("Only monitoring archives can request work.")).Dispatch
+            .NextAttemptAtUtc,
+            Core(archive.TenantId, archive.History.ExecutionOrigin)));
+
     internal static OutboxWrite Policy(BackupPolicy policy) => OutboxWrite.Create(
         new BackupPolicyWorkRequestedEvent(
             policy.Id,

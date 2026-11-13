@@ -23,11 +23,6 @@ public static class BackupArchiveHttpMappings
         "backups.placement-conflict",
         "Backup credential placement changed");
 
-    public static HttpProblem MapArchiveObservationUnavailable(ArchiveObservationUnavailable _) => Problem(
-        503,
-        "backups.archive-observation-unavailable",
-        "Native backup state could not be checked");
-
     public static HttpProblem MapAdministrationRequired(BackupAdministrationRequired _) => Problem(
         403,
         "backups.admin-required",

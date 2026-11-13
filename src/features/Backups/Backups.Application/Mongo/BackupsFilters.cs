@@ -179,6 +179,9 @@ internal static class BackupDispatchFilters
         Builders<BackupOperation>.Filter.OfType<ScheduledBackupExecution, RunningScheduledBackup>(o =>
             ((ScheduledBackupWork)o.Work).Execution);
 
+    internal static FilterDefinition<BackupOperation> UnfinishedCopies(string tenant, string archiveId) =>
+        UnfinishedCommands(tenant, archiveId) & Manual();
+
     internal static FilterDefinition<BackupOperation> UnfinishedCommands(string tenant, string archiveId) =>
         BackupsFilters<BackupOperation>.Tenant(tenant) &
         Builders<BackupOperation>.Filter.Eq(o => o.ArchiveId, archiveId) & ActiveCommands();
@@ -195,6 +198,43 @@ internal static class BackupDispatchFilters
 
 internal static class BackupHistoryFilters
 {
+    internal static FilterDefinition<BackupOperation> ByKeys(string tenantId, IReadOnlyList<string> keys) =>
+        BackupsFilters<BackupOperation>.Tenant(tenantId) &
+        Builders<BackupOperation>.Filter.In(o => o.IdempotencyKey, keys);
+
+    internal static FilterDefinition<BackupArchive> Due(DateTime now) =>
+        Builders<BackupArchive>.Filter.OfType<BackupArchiveHistory, MonitoringBackupHistory>(a => a.History) &
+        Builders<BackupArchive>.Filter.Lte(a => ((MonitoringBackupHistory)a.History).Dispatch.NextAttemptAtUtc, now) &
+        (Builders<BackupArchive>.Filter.OfType<BackupDispatch, AvailableBackupDispatch>(a =>
+                ((MonitoringBackupHistory)a.History).Dispatch) |
+            (Builders<BackupArchive>.Filter.OfType<BackupDispatch, ClaimedBackupDispatch>(a =>
+                ((MonitoringBackupHistory)a.History).Dispatch) & Builders<BackupArchive>.Filter.Lte(
+                a => ((ClaimedBackupDispatch)((MonitoringBackupHistory)a.History).Dispatch).Lease.ExpiresAtUtc,
+                now)));
+
+    internal static FilterDefinition<BackupArchive> AtRevision(BackupArchive archive) =>
+        BackupsFilters<BackupArchive>.ById(archive.TenantId, archive.Id) &
+        Builders<BackupArchive>.Filter.Eq(a => a.History.Revision, archive.History.Revision);
+
+    internal static FilterDefinition<BackupArchive> Claimed(
+        BackupArchive archive,
+        string leaseId,
+        DateTime now) => AtRevision(archive) &
+        Builders<BackupArchive>.Filter.OfType<BackupArchiveHistory, MonitoringBackupHistory>(a => a.History) &
+        Builders<BackupArchive>.Filter.OfType<BackupDispatch, ClaimedBackupDispatch>(a =>
+            ((MonitoringBackupHistory)a.History).Dispatch) &
+        Builders<BackupArchive>.Filter.Eq(
+            a => ((ClaimedBackupDispatch)((MonitoringBackupHistory)a.History).Dispatch).Lease.Id,
+            leaseId) & Builders<BackupArchive>.Filter.Gt(
+            a => ((ClaimedBackupDispatch)((MonitoringBackupHistory)a.History).Dispatch).Lease.ExpiresAtUtc,
+            now);
+
+    internal static FilterDefinition<BackupOperation> Unseen(
+        string tenantId,
+        string archiveId,
+        string scanId) => BackupDispatchFilters.RunningScheduled(tenantId, archiveId) &
+        Builders<BackupOperation>.Filter.Ne(o => ((ScheduledBackupWork)o.Work).ScanId, scanId);
+
     internal static FilterDefinition<BackupOperation> Page(BackupOperationHistoryQuery query)
     {
         var filter = BackupsFilters<BackupOperation>.Tenant(query.TenantId);

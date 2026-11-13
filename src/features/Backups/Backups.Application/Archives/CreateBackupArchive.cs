@@ -1,8 +1,10 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Providers;
+using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
@@ -40,7 +42,8 @@ public sealed class CreateBackupArchive(
     FenceResourceDeploymentPlanningSnapshot fencePlacement,
     LoadResourceDeploymentConnectionPlacements namespaces,
     RetainProjectionPlacement retainPlacement,
-    TimeProvider clock
+    TimeProvider clock,
+    StoreOutboxWrites outbox
 )
 {
     internal async Task<CreateBackupArchiveOutcome> CreateAsync(
@@ -146,6 +149,7 @@ public sealed class CreateBackupArchive(
                 new BackupHistoryStart(id, request.Origin),
                 clock.GetUtcNow().UtcDateTime);
             await archives.InsertOneAsync(session, archive, cancellationToken: ct);
+            await outbox(session, [BackupWorkRequests.History(archive)], ct);
             return archive;
         }
     }

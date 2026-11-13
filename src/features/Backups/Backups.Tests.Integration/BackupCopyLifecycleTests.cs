@@ -138,6 +138,9 @@ public sealed class BackupCopyLifecycleTests(
         using var busy = await client.DeleteAsync(archiveRoute + "?confirmed=true");
         Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
 
+        var histories = scope.ServiceProvider.GetRequiredService<ObserveBackupArchiveHistory>();
+        Assert.True(await histories.ExecuteAsync(TestPlatformDefaults.TenantId, policy.ArchiveId, default));
+        Assert.True(await histories.ExecuteAsync(TestPlatformDefaults.TenantId, policy.ArchiveId, default));
         provider.CopyObservation = new BackupCopyCompleted("copy-id");
         await RunNow();
         using var forgotten = await client.DeleteAsync(archiveRoute + "?confirmed=true");

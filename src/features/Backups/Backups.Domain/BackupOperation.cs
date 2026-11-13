@@ -118,7 +118,8 @@ public sealed record ManualBackupWork(
 
 public sealed record ScheduledBackupWork(
     string NativeUid,
-    long PolicyRevision,
+    long ObservedPolicyRevision,
+    string ScanId,
     ScheduledBackupExecution Execution
 ) : BackupOperationWork;
 
@@ -265,7 +266,8 @@ public sealed record BackupOperation(
         string policy,
         string archive,
         string nativeUid,
-        long policyRevision,
+        long observedPolicyRevision,
+        string scanId,
         ScheduledBackupExecution execution,
         DateTime startedAt,
         DateTime updatedAt,
@@ -293,7 +295,7 @@ public sealed record BackupOperation(
             key,
             policy,
             archive,
-            new ScheduledBackupWork(nativeUid, policyRevision, execution),
+            new ScheduledBackupWork(nativeUid, observedPolicyRevision, scanId, execution),
             origin,
             startedAt,
             updatedAt,

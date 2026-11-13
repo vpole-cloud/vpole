@@ -39,7 +39,8 @@ public static class BackupPolicyFactory
             new ActiveBackupPolicy(),
             new AvailableBackupDispatch(utcNow, origin),
             0,
-            null);
+            null,
+            new ApplyingBackupPolicy());
     }
 
     internal static void ValidateSchedule(

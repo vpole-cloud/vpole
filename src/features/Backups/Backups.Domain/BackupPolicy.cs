@@ -11,6 +11,17 @@ public sealed record ActiveBackupPolicy : BackupPolicyLifecycle;
 
 public sealed record StoppingBackupPolicy : BackupPolicyLifecycle;
 
+[BsonDiscriminator(RootClass = true)]
+[BsonKnownTypes(typeof(ApplyingBackupPolicy), typeof(DrainingBackupPolicy))]
+public closed record BackupPolicyApplication;
+
+public sealed record ApplyingBackupPolicy : BackupPolicyApplication;
+
+public sealed record DrainingBackupPolicy(
+    string ArchiveId,
+    BackupScheduleSuspension Suspension
+) : BackupPolicyApplication;
+
 public sealed record BackupPolicyScheduleReport(
     DateTime? NextScheduledAt,
     DateTime? LastSuccessfulBackupAt,
@@ -34,7 +45,8 @@ public sealed record BackupPolicy(
     BackupPolicyLifecycle Lifecycle,
     BackupDispatch Dispatch,
     long PlanningFence,
-    BackupObservation? Observation
+    BackupObservation? Observation,
+    BackupPolicyApplication Application
 ) : IBackupConfigurationDocument
 {
     [BsonIgnore] public bool Deleting => Lifecycle is StoppingBackupPolicy;
@@ -80,6 +92,7 @@ public sealed record BackupPolicy(
             FailureCode = null,
             Dispatch = new AvailableBackupDispatch(utcNow, origin),
             Observation = ArchiveId == archiveId ? Observation : null,
+            Application = new ApplyingBackupPolicy(),
         };
     }
 
@@ -91,6 +104,7 @@ public sealed record BackupPolicy(
             Revision = checked(Revision + 1),
             FailureCode = null,
             Dispatch = new AvailableBackupDispatch(utcNow, origin),
+            Application = new ApplyingBackupPolicy(),
         },
         StoppingBackupPolicy => this,
     };

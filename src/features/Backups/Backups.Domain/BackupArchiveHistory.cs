@@ -18,7 +18,8 @@ public sealed record BackupScheduleSuspension(
 [BsonKnownTypes(
     typeof(InitialBackupHistoryPosition),
     typeof(PagedBackupHistoryPosition),
-    typeof(FollowingBackupHistoryPosition))]
+    typeof(FollowingBackupHistoryPosition),
+    typeof(FinishingBackupHistoryPosition))]
 public closed record BackupHistoryPosition;
 
 public sealed record InitialBackupHistoryPosition : BackupHistoryPosition;
@@ -28,15 +29,23 @@ public sealed record PagedBackupHistoryPosition(
     string Continuation
 ) : BackupHistoryPosition;
 
+public sealed record FinishingBackupHistoryPosition(
+    BackupHistoryStream Stream
+) : BackupHistoryPosition;
+
 public sealed record FollowingBackupHistoryPosition(
     BackupHistoryStream Stream
 ) : BackupHistoryPosition;
 
 [BsonDiscriminator(RootClass = true)]
-[BsonKnownTypes(typeof(LiveBackupHistory), typeof(DrainingBackupHistory))]
+[BsonKnownTypes(typeof(LiveBackupHistory), typeof(PreparingBackupHistoryDrain), typeof(DrainingBackupHistory))]
 public closed record BackupHistoryMode;
 
 public sealed record LiveBackupHistory : BackupHistoryMode;
+
+public sealed record PreparingBackupHistoryDrain(
+    long PolicyRevision
+) : BackupHistoryMode;
 
 public sealed record DrainingBackupHistory(
     BackupScheduleSuspension Suspension
@@ -79,6 +88,32 @@ public closed record BackupArchiveHistory(
         InitialCheckpoint(start.ScanId),
         new AvailableBackupDispatch(utcNow, start.Origin),
         null);
+
+    public BackupArchiveHistory PrepareDrain(
+        long policyRevision,
+        BackupHistoryStart start,
+        DateTime utcNow) => this switch
+    {
+        MonitoringBackupHistory { Mode: LiveBackupHistory } => new MonitoringBackupHistory(
+            Revision + 1,
+            new PreparingBackupHistoryDrain(policyRevision),
+            InitialCheckpoint(start.ScanId),
+            new AvailableBackupDispatch(utcNow, start.Origin),
+            null),
+        MonitoringBackupHistory or QuiescentBackupHistory or StoppedBackupHistory => this,
+    };
+
+    public BackupArchiveHistory RecheckDrain(DateTime utcNow) => this switch
+    {
+        MonitoringBackupHistory { Mode: DrainingBackupHistory drain } monitoring => monitoring with
+        {
+            Revision = Revision + 1,
+            Mode = new PreparingBackupHistoryDrain(drain.Suspension.PolicyRevision),
+            Dispatch = new AvailableBackupDispatch(utcNow, ExecutionOrigin),
+        },
+        MonitoringBackupHistory or QuiescentBackupHistory or StoppedBackupHistory =>
+            throw new InvalidOperationException("Only a native drain can recheck its suspension."),
+    };
 
     public BackupArchiveHistory RequestDrain(
         BackupScheduleSuspension suspension,
@@ -149,11 +184,14 @@ public closed record BackupArchiveHistory(
     {
         if (this is not MonitoringBackupHistory monitoring)
             throw new InvalidOperationException("Terminal history cannot accept another batch.");
+        if (monitoring.Mode is PreparingBackupHistoryDrain)
+            throw new InvalidOperationException("A drain must suspend its schedule before accepting history.");
         if (position is InitialBackupHistoryPosition)
             throw new ArgumentException("An accepted batch must report its position.", nameof(position));
         var nextStream = position switch
         {
             PagedBackupHistoryPosition page => page.Stream,
+            FinishingBackupHistoryPosition finishing => finishing.Stream,
             FollowingBackupHistoryPosition followed => followed.Stream,
             InitialBackupHistoryPosition => throw new ArgumentException(
                 "An accepted batch must report its stream.",

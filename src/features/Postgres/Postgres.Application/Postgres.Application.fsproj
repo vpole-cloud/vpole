@@ -79,7 +79,8 @@
         <Compile Include="Backups/PostgresBackupPolicy.fs"/>
         <Compile Include="Backups/PostgresBackupStatus.fs"/>
         <Compile Include="Backups/PostgresBackupCopy.fs"/>
-        <Compile Include="Backups/PostgresBackupKubernetes.fs"/>
+        <Compile Include="Backups/PostgresBackupRuntime.fs"/>
+        <Compile Include="Backups/PostgresBackupHistory.fs"/>
         <Compile Include="Backups/PostgresBackupRecovery.fs"/>
         <Compile Include="Backups/PostgresBackupProvider.fs"/>
         <Compile Include="PostgresFeatureRegistration.fs"/>
