@@ -128,6 +128,43 @@ public class BackupDeclarationTests
                     restoreTo = "now",
                 })));
 
+    [Fact]
+    public void Concrete_declaration_failures_preserve_the_existing_wire_diagnostics_and_reject_foreign_failures()
+    {
+        var destination = Destination();
+        var policy = Policy();
+        (IDeclarativeResourceProvider Provider, IDeclarationFailure Failure, string Code)[] cases =
+        [
+            (destination, new BackupDeclarationReferenceUnavailable(), "backup-declaration-reference-unavailable"),
+            (destination, new BackupDeclarationDestinationNameExists(), "destination-name-exists"),
+            (destination, new BackupDeclarationScopeUnavailable(), "scope-unavailable"),
+            (destination, new BackupDeclarationRegistrationConflict(), "registration-conflict"),
+            (destination, new BackupDeclarationCredentialGrantDenied(), "credential-grant-denied"),
+            (destination, new BackupDeclarationResourceMissing(), "not-found"),
+            (destination, new BackupDeclarationRevisionConflict(), "revision-conflict"),
+            (destination, new BackupDeclarationDestinationIdentityImmutable(), "destination-identity-immutable"),
+            (destination, new BackupDeclarationDestinationInUse(), "destination-in-use"),
+            (destination, new BackupDeclarationDestinationCleanupPending(), "destination-cleanup-pending"),
+            (policy, new BackupDeclarationSourceUnavailable(), "source-unavailable"),
+            (policy, new BackupDeclarationSourceUnsupported(), "unsupported-provider"),
+            (policy, new BackupDeclarationSourcePlacementUnavailable(), "placement-unavailable"),
+            (policy, new BackupDeclarationSourceRevisionChanged(), "source-revision-changed"),
+            (policy, new BackupDeclarationDestinationPlacementUnavailable(), "destination-placement-unavailable"),
+            (policy, new BackupDeclarationRetentionInvalid(), "backup-positive-retention-required"),
+            (policy, new BackupDeclarationDestinationUnavailable(), "destination-unavailable"),
+            (policy, new BackupDeclarationPolicyNameExists(), "policy-name-exists"),
+            (policy, new BackupDeclarationSourcePolicyExists(), "source-policy-exists"),
+            (policy, new BackupDeclarationPolicyIdentityImmutable(), "policy-identity-immutable"),
+            (policy, new BackupDeclarationPolicyStopping(), "policy-stopping"),
+        ];
+        foreach (var (provider, failure, code) in cases)
+            Assert.Equal(code, provider.DescribeFailure(failure));
+        Assert.Throws<ArgumentException>(() => destination.DescribeFailure(new ForeignDeclarationFailure()));
+        Assert.Throws<ArgumentException>(() => policy.DescribeFailure(new ForeignDeclarationFailure()));
+    }
+
+    private sealed record ForeignDeclarationFailure : IDeclarationFailure;
+
     private sealed class SampleProvider : IBackupProvider
     {
         public string DeclarationKind => "OtherService";

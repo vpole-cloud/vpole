@@ -189,10 +189,18 @@ internal sealed class DeclarativeBackupDestinationProvider(
             return created switch
             {
                 BackupDestination destination => new GitOperationResult(destination.Id, Changed: true),
-                BackupDestinationNameAlreadyExists => Rejected("destination-name-exists"),
-                BackupDestinationScopeUnavailable => Rejected("scope-unavailable"),
-                BackupDestinationRegistrationConflict => Rejected("registration-conflict"),
-                BackupDestinationCredentialGrantDenied => Rejected("credential-grant-denied"),
+                BackupDestinationNameAlreadyExists => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationDestinationNameExists()),
+                BackupDestinationScopeUnavailable => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationScopeUnavailable()),
+                BackupDestinationRegistrationConflict => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationRegistrationConflict()),
+                BackupDestinationCredentialGrantDenied => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationCredentialGrantDenied()),
             };
         }
 
@@ -203,12 +211,14 @@ internal sealed class DeclarativeBackupDestinationProvider(
         return updated switch
         {
             BackupDestination destination => new GitOperationResult(destination.Id, Changed: false),
-            BackupDestinationMissing => Rejected("not-found"),
-            BackupDestinationRevisionConflict => Rejected("revision-conflict"),
-            BackupDestinationIdentityImmutable => Rejected("destination-identity-immutable"),
+            BackupDestinationMissing => new GitOperationResult(write.Id, new BackupDeclarationResourceMissing()),
+            BackupDestinationRevisionConflict => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationRevisionConflict()),
+            BackupDestinationIdentityImmutable => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationDestinationIdentityImmutable()),
         };
-
-        GitOperationResult Rejected(string code) => new(write.Id, new BackupDeclarationRejected(code));
     }
 
     protected override async Task<RemoveLifecycleResourceOutcome> RemoveAcceptedAsync(
@@ -222,14 +232,13 @@ internal sealed class DeclarativeBackupDestinationProvider(
         return result switch
         {
             BackupDestinationDeleted => new GitLifecycleResourceRemoved(),
-            BackupDestinationMissing => new DeclarationReadBlocked(new BackupDeclarationRejected("not-found")),
-            BackupDestinationRevisionConflict => new DeclarationReadBlocked(
-                new BackupDeclarationRejected("revision-conflict")),
-            BackupDestinationInUse => new DeclarationReadBlocked(new BackupDeclarationRejected("destination-in-use")),
+            BackupDestinationMissing => new DeclarationReadBlocked(new BackupDeclarationResourceMissing()),
+            BackupDestinationRevisionConflict => new DeclarationReadBlocked(new BackupDeclarationRevisionConflict()),
+            BackupDestinationInUse => new DeclarationReadBlocked(new BackupDeclarationDestinationInUse()),
             BackupDestinationCleanupPending => new DeclarationReadBlocked(
-                new BackupDeclarationRejected("destination-cleanup-pending")),
+                new BackupDeclarationDestinationCleanupPending()),
             BackupDestinationRegistrationConflict => new DeclarationReadBlocked(
-                new BackupDeclarationRejected("registration-conflict")),
+                new BackupDeclarationRegistrationConflict()),
         };
     }
 }

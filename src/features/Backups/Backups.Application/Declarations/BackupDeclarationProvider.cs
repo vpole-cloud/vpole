@@ -36,10 +36,6 @@ internal sealed record ResolvedBackupDeclaration<T>(
     DeclarationProjection Projection
 );
 
-internal sealed record BackupDeclarationRejected(
-    string Reason
-) : IDeclarationFailure;
-
 internal abstract class BackupDeclarationProvider<T, TInput>(
     IMongoCollection<T> documents,
     IGitOpsMutations git
@@ -80,9 +76,35 @@ internal abstract class BackupDeclarationProvider<T, TInput>(
         IClientSessionHandle session,
         CancellationToken ct) => documents.Find(session, BackupsFilters<T>.ById(tenant, id)).SingleOrDefaultAsync(ct)!;
 
-    public string DescribeFailure(IDeclarationFailure failure) => failure is BackupDeclarationRejected rejected
-        ? rejected.Reason
-        : throw new ArgumentException("Unknown backup declaration failure.", nameof(failure));
+    public string DescribeFailure(IDeclarationFailure failure)
+    {
+        if (failure is not BackupDeclarationFailure declared)
+            throw new ArgumentException("The failure belongs to another declaration provider.", nameof(failure));
+        return declared switch
+        {
+            BackupDeclarationReferenceUnavailable => "backup-declaration-reference-unavailable",
+            BackupDeclarationDestinationNameExists => "destination-name-exists",
+            BackupDeclarationScopeUnavailable => "scope-unavailable",
+            BackupDeclarationRegistrationConflict => "registration-conflict",
+            BackupDeclarationCredentialGrantDenied => "credential-grant-denied",
+            BackupDeclarationResourceMissing => "not-found",
+            BackupDeclarationRevisionConflict => "revision-conflict",
+            BackupDeclarationDestinationIdentityImmutable => "destination-identity-immutable",
+            BackupDeclarationDestinationInUse => "destination-in-use",
+            BackupDeclarationDestinationCleanupPending => "destination-cleanup-pending",
+            BackupDeclarationSourceUnavailable => "source-unavailable",
+            BackupDeclarationSourceUnsupported => "unsupported-provider",
+            BackupDeclarationSourcePlacementUnavailable => "placement-unavailable",
+            BackupDeclarationSourceRevisionChanged => "source-revision-changed",
+            BackupDeclarationDestinationPlacementUnavailable => "destination-placement-unavailable",
+            BackupDeclarationRetentionInvalid => "backup-positive-retention-required",
+            BackupDeclarationDestinationUnavailable => "destination-unavailable",
+            BackupDeclarationPolicyNameExists => "policy-name-exists",
+            BackupDeclarationSourcePolicyExists => "source-policy-exists",
+            BackupDeclarationPolicyIdentityImmutable => "policy-identity-immutable",
+            BackupDeclarationPolicyStopping => "policy-stopping",
+        };
+    }
 
     public async Task<string?> ResolveAsync(
         ResolveDeclaredResourceRequest request,
@@ -242,6 +264,5 @@ internal abstract class BackupDeclarationProvider<T, TInput>(
             ct);
     }
 
-    private static DeclarationReadBlocked Unavailable() =>
-        new(new BackupDeclarationRejected("backup-declaration-reference-unavailable"));
+    private static DeclarationReadBlocked Unavailable() => new(new BackupDeclarationReferenceUnavailable());
 }

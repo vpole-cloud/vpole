@@ -189,15 +189,27 @@ internal sealed class DeclarativeBackupPolicyProvider(
             return result switch
             {
                 BackupPolicy policy => new GitOperationResult(policy.Id, Changed: true),
-                BackupSourceUnavailable => Rejected("source-unavailable"),
-                BackupSourceUnsupported => Rejected("unsupported-provider"),
-                BackupSourcePlacementUnavailable => Rejected("placement-unavailable"),
-                BackupSourceRevisionChanged => Rejected("source-revision-changed"),
-                BackupDestinationPlacementUnavailable => Rejected("destination-placement-unavailable"),
-                BackupRetentionInvalid => Rejected("backup-positive-retention-required"),
-                BackupPolicyDestinationUnavailable => Rejected("destination-unavailable"),
-                BackupPolicyNameAlreadyExists => Rejected("policy-name-exists"),
-                BackupPolicySourceAlreadyBound => Rejected("source-policy-exists"),
+                BackupSourceUnavailable => new GitOperationResult(write.Id, new BackupDeclarationSourceUnavailable()),
+                BackupSourceUnsupported => new GitOperationResult(write.Id, new BackupDeclarationSourceUnsupported()),
+                BackupSourcePlacementUnavailable => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationSourcePlacementUnavailable()),
+                BackupSourceRevisionChanged => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationSourceRevisionChanged()),
+                BackupDestinationPlacementUnavailable => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationDestinationPlacementUnavailable()),
+                BackupRetentionInvalid => new GitOperationResult(write.Id, new BackupDeclarationRetentionInvalid()),
+                BackupPolicyDestinationUnavailable => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationDestinationUnavailable()),
+                BackupPolicyNameAlreadyExists => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationPolicyNameExists()),
+                BackupPolicySourceAlreadyBound => new GitOperationResult(
+                    write.Id,
+                    new BackupDeclarationSourcePolicyExists()),
             };
         }
 
@@ -210,20 +222,28 @@ internal sealed class DeclarativeBackupPolicyProvider(
             BackupPolicy policy => new GitOperationResult(
                 policy.Id,
                 Changed: policy.Revision != write.ExpectedRevision),
-            BackupSourceUnavailable => Rejected("source-unavailable"),
-            BackupSourceUnsupported => Rejected("unsupported-provider"),
-            BackupSourcePlacementUnavailable => Rejected("placement-unavailable"),
-            BackupSourceRevisionChanged => Rejected("source-revision-changed"),
-            BackupDestinationPlacementUnavailable => Rejected("destination-placement-unavailable"),
-            BackupRetentionInvalid => Rejected("backup-positive-retention-required"),
-            BackupPolicyDestinationUnavailable => Rejected("destination-unavailable"),
-            BackupPolicyMissing => Rejected("not-found"),
-            BackupPolicyRevisionConflict => Rejected("revision-conflict"),
-            BackupPolicyIdentityImmutable => Rejected("policy-identity-immutable"),
-            BackupPolicyStopping => Rejected("policy-stopping"),
+            BackupSourceUnavailable => new GitOperationResult(write.Id, new BackupDeclarationSourceUnavailable()),
+            BackupSourceUnsupported => new GitOperationResult(write.Id, new BackupDeclarationSourceUnsupported()),
+            BackupSourcePlacementUnavailable => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationSourcePlacementUnavailable()),
+            BackupSourceRevisionChanged => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationSourceRevisionChanged()),
+            BackupDestinationPlacementUnavailable => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationDestinationPlacementUnavailable()),
+            BackupRetentionInvalid => new GitOperationResult(write.Id, new BackupDeclarationRetentionInvalid()),
+            BackupPolicyDestinationUnavailable => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationDestinationUnavailable()),
+            BackupPolicyMissing => new GitOperationResult(write.Id, new BackupDeclarationResourceMissing()),
+            BackupPolicyRevisionConflict => new GitOperationResult(write.Id, new BackupDeclarationRevisionConflict()),
+            BackupPolicyIdentityImmutable => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationPolicyIdentityImmutable()),
+            BackupPolicyStopping => new GitOperationResult(write.Id, new BackupDeclarationPolicyStopping()),
         };
-
-        GitOperationResult Rejected(string diagnostic) => new(write.Id, new BackupDeclarationRejected(diagnostic));
     }
 
     protected override async Task<RemoveLifecycleResourceOutcome> RemoveAcceptedAsync(
@@ -237,9 +257,8 @@ internal sealed class DeclarativeBackupPolicyProvider(
         return result switch
         {
             BackupPolicyDeletionRequested => new GitLifecycleRemovalRequested(),
-            BackupPolicyMissing => new DeclarationReadBlocked(new BackupDeclarationRejected("not-found")),
-            BackupPolicyRevisionConflict => new DeclarationReadBlocked(
-                new BackupDeclarationRejected("revision-conflict")),
+            BackupPolicyMissing => new DeclarationReadBlocked(new BackupDeclarationResourceMissing()),
+            BackupPolicyRevisionConflict => new DeclarationReadBlocked(new BackupDeclarationRevisionConflict()),
         };
     }
 }
