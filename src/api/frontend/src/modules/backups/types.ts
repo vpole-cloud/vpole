@@ -70,11 +70,12 @@ export interface BackupOperation {
   targetTime?: string | null
 }
 
-export interface BackupRestoreInput {
+export type BackupRestoreSelection =
+  { backupId: string; targetTime?: never } | { targetTime: string; backupId?: never }
+
+export type BackupRestoreInput = BackupRestoreSelection & {
   idempotencyKey: string
   name: string
-  backupId?: string
-  targetTime?: string
   confirmed: boolean
   storageGiB?: number
 }

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { hasHealthyCurrentQueryData } from '../../data/hasHealthyCurrentQueryData'
+import { canConfirmBackup, backupConfirmationText } from './confirmations'
+import type { BackupConfirmation } from './confirmations'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useApiScope } from '../../data/useApiScope'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -18,6 +21,7 @@ import type {
   BackupPolicy,
   BackupPolicyInput,
   BackupRestoreInput,
+  BackupRestoreSelection,
 } from './types'
 
 type BackupEditor = { kind: 'destination' } | { kind: 'policy'; policyId: string | null } | null
@@ -59,11 +63,8 @@ function BackupWorkspace() {
   })
   const mutation = useScopedMutation(origin.identity)
   const manualKeys = useRef(new Map<string, string>())
-  const [confirmation, setConfirmation] = useState<{
-    title: string
-    description: string
-    execute: (signal: AbortSignal) => Promise<unknown>
-  } | null>(null)
+  const [confirmation, setConfirmation] = useState<BackupConfirmation | null>(null)
+  const restoreKeys = useRef(new Map<string, string>())
   const [newName, setNewName] = useState('')
   const [targetTime, setTargetTime] = useState('')
   const [restoreStorage, setRestoreStorage] = useState('')
@@ -106,24 +107,69 @@ function BackupWorkspace() {
       })
       .catch(() => {})
   }
-  const restore = (
-    source: BackupArchive,
-    selection: Pick<BackupRestoreInput, 'backupId' | 'targetTime'>,
-  ) => {
+  const restore = (source: BackupArchive, selection: BackupRestoreSelection) => {
     if (!newName.trim()) return
-    const body = {
+    const body: BackupRestoreInput = {
       ...selection,
       name: newName.trim(),
       confirmed: true,
       idempotencyKey: crypto.randomUUID(),
       ...(restoreStorage && { storageGiB: Number(restoreStorage) }),
     }
-    setConfirmation({
-      title: `Restore ${source.resourceName}?`,
-      description: `Create ${body.name} from ${selection.backupId ?? selection.targetTime} on the source deployment target.`,
-      execute: (signal) => client.restore(source.id, body, signal),
-    })
+    const key = JSON.stringify([
+      source.id,
+      body.name,
+      body.backupId,
+      body.targetTime,
+      body.storageGiB,
+    ])
+    body.idempotencyKey = restoreKeys.current.get(key) ?? body.idempotencyKey
+    restoreKeys.current.set(key, body.idempotencyKey)
+    if (body.backupId !== undefined) {
+      const copy = catalog.resource?.find((item) => item.backupId === body.backupId)
+      if (copy) setConfirmation({ kind: 'restoreCopy', archive: source, command: body, copy })
+    } else setConfirmation({ kind: 'restoreTime', archive: source, command: body })
   }
+  const confirmationAllowed =
+    confirmation &&
+    origin.isCurrent() &&
+    canConfirmBackup(confirmation, {
+      canManage: tenant.canManage,
+      canRestore,
+      archiveId,
+      destinations: hasHealthyCurrentQueryData(destinations) ? destinations.resource : null,
+      policies: hasHealthyCurrentQueryData(policies) ? policies.resource : null,
+      archives: hasHealthyCurrentQueryData(archives) ? archives.resource : null,
+      catalog: hasHealthyCurrentQueryData(catalog) ? catalog.resource : null,
+    })
+  const confirm = () => {
+    if (!confirmation || !confirmationAllowed || mutation.busy) return
+    const selected = confirmation
+    run(
+      (signal) => {
+        switch (selected.kind) {
+          case 'disconnect':
+            return client.deleteDestination(selected.destination, signal)
+          case 'deletePolicy':
+            return client.deletePolicy(selected.policy, signal)
+          case 'forgetArchive':
+            return client.forgetArchive(selected.archive.id, signal)
+          case 'restoreCopy':
+          case 'restoreTime':
+            return client.restore(selected.archive.id, selected.command, signal)
+        }
+      },
+      () => {
+        if (selected.kind === 'restoreCopy' || selected.kind === 'restoreTime') {
+          for (const [key, value] of restoreKeys.current)
+            if (value === selected.command.idempotencyKey) restoreKeys.current.delete(key)
+        }
+        setConfirmation(null)
+      },
+    )
+  }
+  const confirmationText = confirmation ? backupConfirmationText(confirmation) : null
+
   return (
     <section className="panel">
       <header className="ui-page-header">
@@ -164,6 +210,7 @@ function BackupWorkspace() {
       )}
       <DataTable
         label="Backup destinations"
+        rowTestId={(item) => `backup-destination-${item.id}`}
         items={destinations.resource ?? []}
         itemKey={(item) => item.id}
         columns={[
@@ -180,12 +227,11 @@ function BackupWorkspace() {
               tenant.canManage && (
                 <div className="row-actions">
                   <Button
-                    disabled={mutation.busy || !destinations.isCurrent || Boolean(item.gitOps)}
+                    disabled={mutation.busy || !hasHealthyCurrentQueryData(destinations) || Boolean(item.gitOps)}
                     onClick={() =>
                       setConfirmation({
-                        title: `Disconnect ${item.name}?`,
-                        description: 'Existing archives must retain an authorized destination.',
-                        execute: (signal) => client.deleteDestination(item, signal),
+                        kind: 'disconnect',
+                        destination: item,
                       })
                     }
                   >
@@ -230,6 +276,7 @@ function BackupWorkspace() {
       )}
       <DataTable
         label="Backup policies"
+        rowTestId={(item) => `backup-policy-${item.id}`}
         items={policies.resource ?? []}
         itemKey={(item) => item.id}
         columns={[
@@ -270,7 +317,7 @@ function BackupWorkspace() {
                   <Button
                     disabled={
                       mutation.busy ||
-                      !policies.isCurrent ||
+                      !hasHealthyCurrentQueryData(policies) ||
                       Boolean(item.deleting) ||
                       Boolean(item.gitOps)
                     }
@@ -282,7 +329,7 @@ function BackupWorkspace() {
                     Edit
                   </Button>
                   <Button
-                    disabled={mutation.busy || !policies.isCurrent || Boolean(item.deleting)}
+                    disabled={mutation.busy || !hasHealthyCurrentQueryData(policies) || Boolean(item.deleting)}
                     onClick={() => {
                       const id = manualKeys.current.get(item.id) ?? crypto.randomUUID()
                       manualKeys.current.set(item.id, id)
@@ -299,7 +346,7 @@ function BackupWorkspace() {
                   <Button
                     disabled={
                       mutation.busy ||
-                      !policies.isCurrent ||
+                      !hasHealthyCurrentQueryData(policies) ||
                       Boolean(item.deleting) ||
                       Boolean(item.gitOps)
                     }
@@ -314,15 +361,14 @@ function BackupWorkspace() {
                   <Button
                     disabled={
                       mutation.busy ||
-                      !policies.isCurrent ||
+                      !hasHealthyCurrentQueryData(policies) ||
                       Boolean(item.deleting) ||
                       Boolean(item.gitOps)
                     }
                     onClick={() =>
                       setConfirmation({
-                        title: `Delete ${item.name}?`,
-                        description: 'Stop this backup policy. Existing copies remain in storage.',
-                        execute: (signal) => client.deletePolicy(item, signal),
+                        kind: 'deletePolicy',
+                        policy: item,
                       })
                     }
                   >
@@ -362,10 +408,8 @@ function BackupWorkspace() {
               disabled={mutation.busy}
               onClick={() =>
                 setConfirmation({
-                  title: `Forget archive for ${archive.resourceName}?`,
-                  description:
-                    'Remove this archive from Pole. Its backups stay in S3. Restoring this archive through Pole requires its metadata, which this action removes.',
-                  execute: (signal) => client.forgetArchive(archive.id, signal),
+                  kind: 'forgetArchive',
+                  archive,
                 })
               }
             >
@@ -402,6 +446,7 @@ function BackupWorkspace() {
           )}
           <DataTable
             label="Completed backups"
+            rowTestId={(item) => `backup-copy-${item.backupId}`}
             items={catalog.resource ?? []}
             itemKey={(item) => item.backupId}
             columns={[
@@ -420,7 +465,7 @@ function BackupWorkspace() {
                       disabled={
                         mutation.busy ||
                         !newName.trim() ||
-                        !catalog.isCurrent ||
+                        !hasHealthyCurrentQueryData(catalog) ||
                         Boolean(catalog.error)
                       }
                       onClick={() => restore(archive, { backupId: item.backupId })}
@@ -454,7 +499,7 @@ function BackupWorkspace() {
                   mutation.busy ||
                   !newName.trim() ||
                   !targetTime ||
-                  !catalog.isCurrent ||
+                  !hasHealthyCurrentQueryData(catalog) ||
                   Boolean(catalog.error)
                 }
               >
@@ -467,6 +512,7 @@ function BackupWorkspace() {
       <h2>Operations</h2>
       <DataTable
         label="Backup and restore operations"
+        rowTestId={(item) => `backup-operation-${item.id}`}
         items={operations.resource ?? []}
         itemKey={(item) => item.id}
         columns={[
@@ -506,15 +552,22 @@ function BackupWorkspace() {
           The current form has unsaved changes.
         </ConfirmationDialog>
       )}
-      {confirmation && (
+      {confirmation && confirmationText && (
         <ConfirmationDialog
-          title={confirmation.title}
+          title={confirmationText.title}
           confirmLabel="Confirm"
           busy={mutation.busy}
           onCancel={() => setConfirmation(null)}
-          onConfirm={() => run(confirmation.execute, () => setConfirmation(null))}
+          confirmDisabled={!confirmationAllowed}
+          onConfirm={confirm}
         >
-          {confirmation.description}
+          {confirmationText.description}
+          {!confirmationAllowed && (
+            <Notice tone="error">
+              The selected data changed or could not be refreshed. Cancel and review the current
+              selection.
+            </Notice>
+          )}
         </ConfirmationDialog>
       )}
     </section>

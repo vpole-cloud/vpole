@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppContext } from '../../shell/AppContext'
 import type { AppServices } from '../../shell/contracts'
 import { createTestApp } from '../../test/TestApp'
-import { strictFetch } from '../../test/http'
+import { deferred, strictFetch } from '../../test/http'
 import { BackupsView } from './BackupsView'
 
 const requests = strictFetch()
@@ -13,6 +13,11 @@ let unavailable = false
 let retired = false
 let policyRevision = 1
 let submittedRevision: number | undefined
+let nextCatalogRead: Promise<Response> | null = null
+let restoreAttempts: Record<string, unknown>[] = []
+let rejectNextRestore = false
+let failArchiveRefresh = false
+let failRefreshAfterRestore = false
 const services = (tenantId: string, role: 'Owner' | 'Member' = 'Owner'): AppServices => ({
   api: { baseUrl: 'https://api.test', tenantId, token: 'current' },
   auth: {
@@ -61,6 +66,11 @@ beforeEach(() => {
   retired = false
   policyRevision = 1
   submittedRevision = undefined
+  nextCatalogRead = null
+  restoreAttempts = []
+  rejectNextRestore = false
+  failArchiveRefresh = false
+  failRefreshAfterRestore = false
   app = createTestApp()
   requests.reset()
   vi.stubGlobal('fetch', requests.fetch)
@@ -90,6 +100,21 @@ beforeEach(() => {
       return Promise.resolve(Response.json({ items: [], nextCursor: null }))
     if (path === '/api/v1/postgres/')
       return Promise.resolve(Response.json({ items: [], totalCount: 0 }))
+    if (path === '/api/v1/backups/archives/archive/restores' && init?.method === 'POST') {
+      restoreAttempts.push(JSON.parse(String(init.body)))
+      if (rejectNextRestore) {
+        rejectNextRestore = false
+        return Promise.reject(new TypeError('Connection interrupted'))
+      }
+      failArchiveRefresh = failRefreshAfterRestore
+      return Promise.resolve(
+        Response.json({ id: 'restore-operation', kind: 'Restore', state: 'Pending' }),
+      )
+    }
+    if (path === '/api/v1/backups/archives' && failArchiveRefresh)
+      return Promise.resolve(
+        new Response('{"title":"Archive refresh unavailable"}', { status: 503 }),
+      )
     if (path === '/api/v1/backups/archives')
       return Promise.resolve(
         Response.json([
@@ -102,6 +127,11 @@ beforeEach(() => {
           },
         ]),
       )
+    if (path === '/api/v1/backups/archives/archive/backups' && nextCatalogRead) {
+      const pending = nextCatalogRead
+      nextCatalogRead = null
+      return pending
+    }
     if (path === '/api/v1/backups/archives/archive/backups')
       return Promise.resolve(
         unavailable
@@ -253,4 +283,106 @@ it('guards switching away from a dirty policy and preserves its draft when disca
   await click('Discard changes')
   expect(app.container.querySelector('input[value="0 3 * * *"]')).toBeNull()
   expect(app.container.textContent).toContain('Create policy')
+})
+
+async function clickButton(label: string) {
+  await act(async () => {
+    ;[...app.container.querySelectorAll('button')]
+      .find((item) => item.textContent === label)!
+      .click()
+  })
+}
+async function fill(label: string, value: string) {
+  await act(async () => {
+    const field = [...app.container.querySelectorAll('input')].find(
+      (item) =>
+        document.getElementById(item.getAttribute('aria-labelledby') ?? '')?.textContent === label,
+    )!
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, value)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+it.each(['unavailable', 'removed'] as const)(
+  'rechecks the selected copy when catalog becomes %s during confirmation',
+  async (result) => {
+    await render()
+    await selectArchive()
+    await fill('New cluster name', 'restored')
+    const pending = deferred<Response>()
+    nextCatalogRead = pending.promise
+    await clickButton('Refresh backup list')
+    await clickButton('Restore')
+    expect(app.container.querySelector('dialog')).not.toBeNull()
+    await act(async () =>
+      pending.resolve(
+        result === 'unavailable'
+          ? new Response('{"title":"Catalog unavailable"}', { status: 503 })
+          : Response.json([]),
+      ),
+    )
+    expect(
+      [...app.container.querySelectorAll('button')].find((item) => item.textContent === 'Confirm')!
+        .disabled,
+    ).toBe(true)
+    await clickButton('Confirm')
+    expect(restoreAttempts).toHaveLength(0)
+  },
+)
+
+it.each(['copy', 'time'] as const)('submits a confirmed %s restore from the UI', async (kind) => {
+  await render()
+  await selectArchive()
+  await fill('New cluster name', 'restored')
+  if (kind === 'copy') await clickButton('Restore')
+  else {
+    await fill('Recovery time (local)', '2026-11-12T12:30:00')
+    await act(async () =>
+      app.container
+        .querySelector('form')!
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+    )
+  }
+  await clickButton('Confirm')
+  expect(restoreAttempts).toHaveLength(1)
+  expect(restoreAttempts[0]).toMatchObject({
+    name: 'restored',
+    confirmed: true,
+    idempotencyKey: expect.any(String),
+  })
+  if (kind === 'copy') {
+    expect(restoreAttempts[0].backupId).toBe('older')
+    expect(restoreAttempts[0].targetTime).toBeUndefined()
+  } else {
+    expect(restoreAttempts[0].targetTime).toBe(new Date('2026-11-12T12:30:00').toISOString())
+    expect(restoreAttempts[0].backupId).toBeUndefined()
+  }
+  expect(app.container.querySelector('dialog')).toBeNull()
+})
+
+it('retains the same restore command key after an unknown outcome and reopening its confirmation', async () => {
+  await render()
+  await selectArchive()
+  await fill('New cluster name', 'restored')
+  rejectNextRestore = true
+  await clickButton('Restore')
+  await clickButton('Confirm')
+  await clickButton('Cancel')
+  await clickButton('Restore')
+  await clickButton('Confirm')
+  expect(restoreAttempts).toHaveLength(2)
+  expect(restoreAttempts[0]).toEqual(restoreAttempts[1])
+})
+
+it('does not repeat an accepted restore when refreshing metadata fails', async () => {
+  await render()
+  await selectArchive()
+  await fill('New cluster name', 'restored')
+  failRefreshAfterRestore = true
+  await clickButton('Restore')
+  await clickButton('Confirm')
+  expect(app.container.querySelector('dialog')).toBeNull()
+  expect(app.container.textContent).toContain('Archive refresh unavailable')
+  await clickButton('Refresh')
+  expect(restoreAttempts).toHaveLength(1)
 })
