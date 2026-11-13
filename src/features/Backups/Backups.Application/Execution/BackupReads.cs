@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 
@@ -11,7 +12,7 @@ public sealed class BackupReads(
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupOperation> operations,
     IMongoCollection<BackupArchive> archives,
-    BackupProviders providers,
+    BackupProviderCatalog providers,
     BackupArchiveAccess access,
     Pole.Features.GitOps.Contracts.IGitOpsMutations git,
     TimeProvider clock

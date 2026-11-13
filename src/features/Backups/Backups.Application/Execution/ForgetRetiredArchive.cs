@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -36,7 +37,7 @@ public sealed class ForgetRetiredArchive(
     LoadResourceDeploymentPlanningSnapshot placements,
     RequestExactResourceDeploymentDeletion requestDeletion,
     LoadRegisteredResource loadSource,
-    BackupProviders providers,
+    BackupProviderCatalog providers,
     BackupConfigurationWriter writer
 )
 {

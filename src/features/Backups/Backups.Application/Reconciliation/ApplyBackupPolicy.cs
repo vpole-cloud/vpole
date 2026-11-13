@@ -2,10 +2,13 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Application.Policies;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Outbox.Contracts;
@@ -20,10 +23,10 @@ public sealed class ApplyBackupPolicy(
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupArchive> archives,
     IMongoCollection<BackupOperation> operations,
-    BackupProviders providers,
+    BackupProviderCatalog providers,
     BackupArchiveAccess access,
     BackupOperations commands,
-    BackupConfigurationWriter configuration,
+    RetireBackupArchive retireArchive,
     MongoRunTransaction transactions,
     LoadRegisteredResource loadSource,
     StoreOutboxWrites outbox,
@@ -149,13 +152,11 @@ public sealed class ApplyBackupPolicy(
                 {
                     if ((await policies.DeleteOneAsync(tx.Session, guard, cancellationToken: token)).DeletedCount == 1)
                     {
-                        await configuration.RetireArchive(policy, tx.Session, token, sourceRemoved: source is null);
-                        await configuration.Changed(
-                            tx.Session,
-                            policy,
-                            BackupDeclarationKinds.Policy,
-                            policy.Revision + 1,
-                            token);
+                        RetireBackupArchiveRequest retirement = source is null
+                            ? new RetireRemovedBackupSource(policy)
+                            : new RetireStoppedBackupPolicy(policy);
+                        await retireArchive.ExecuteAsync(retirement, tx.Session, token);
+                        await outbox(tx.Session, [BackupPolicyNotifications.Removed(policy)], token);
                     }
                 }
                 else

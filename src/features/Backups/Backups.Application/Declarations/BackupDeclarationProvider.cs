@@ -54,12 +54,12 @@ internal abstract class BackupDeclarationProvider<T, TInput>(
     protected abstract DeclarationProjection Project(T entity);
     protected abstract Task<ResolvedBackupDeclaration<TInput>?> ResolveAsync(BackupDeclarationRead read, bool fence);
 
-    protected abstract Task<BackupWriteResult<T>> SaveAsync(
+    protected abstract Task<GitOperationResult> ApplyResolvedAsync(
         BackupConfigurationWrite<TInput> write,
         IClientSessionHandle session,
         CancellationToken ct);
 
-    protected abstract Task<BackupWriteResult<bool>> DeleteAsync(
+    protected abstract Task<RemoveLifecycleResourceOutcome> RemoveAcceptedAsync(
         string tenantId,
         string id,
         long revision,
@@ -68,7 +68,6 @@ internal abstract class BackupDeclarationProvider<T, TInput>(
 
     protected abstract UpdateDefinition<T> PlanningFence { get; }
     protected virtual bool Deleting(T entity) => false;
-    protected virtual bool AsynchronousDeletion => false;
     protected abstract GitLifecycleProtection Protection { get; }
 
     private DeclarationDocumentVersion Version(T entity) => new(
@@ -186,19 +185,10 @@ internal abstract class BackupDeclarationProvider<T, TInput>(
                 return new GitOperationResult(operation.ResourceId, Unavailable().Failure);
             var current = await ByIdAsync(operation.Context.TenantId, operation.ResourceId, session, token);
             var revision = current?.Revision ?? 0;
-            var result = await SaveAsync(
+            return await ApplyResolvedAsync(
                 new(operation.Context.TenantId, operation.ResourceId, revision, desired.Input),
                 session,
                 token);
-            return result switch
-            {
-                BackupWriteResult<T>.Saved saved => new GitOperationResult(
-                    saved.Value.Id,
-                    Changed: saved.Value.Revision != revision),
-                BackupWriteResult<T>.Rejected rejected => new GitOperationResult(
-                    operation.ResourceId,
-                    new BackupDeclarationRejected(rejected.Code)),
-            };
         },
         ct);
 
@@ -244,17 +234,12 @@ internal abstract class BackupDeclarationProvider<T, TInput>(
                 session,
                 ct))
             return new StaleGitExecution();
-        var result = await DeleteAsync(
+        return await RemoveAcceptedAsync(
             request.Authority.TenantId,
             request.Resource.ResourceId,
             version.Revision,
             session,
             ct);
-        if (result is BackupWriteResult<bool>.Rejected rejected)
-            return new DeclarationReadBlocked(new BackupDeclarationRejected(rejected.Code));
-        if (AsynchronousDeletion)
-            return new GitLifecycleRemovalRequested();
-        return new GitLifecycleResourceRemoved();
     }
 
     private static DeclarationReadBlocked Unavailable() =>

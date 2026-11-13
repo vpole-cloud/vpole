@@ -5,6 +5,7 @@ using Pole.Database;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
@@ -19,7 +20,7 @@ namespace Pole.Features.Backups.Application.Operations;
 public sealed class ExecuteBackupOperation(
     IMongoCollection<BackupArchive> archives,
     IMongoCollection<BackupOperation> operations,
-    BackupProviders providers,
+    BackupProviderCatalog providers,
     BackupArchiveAccess access,
     BackupOperations commands,
     MongoRunTransaction transactions,

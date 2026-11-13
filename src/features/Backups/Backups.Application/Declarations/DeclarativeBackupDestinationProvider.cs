@@ -173,19 +173,40 @@ internal sealed class DeclarativeBackupDestinationProvider(
         return new(input, Project(groupId, scope.IsolationScopeId, input.Storage()) with { Dependencies = new(deps) });
     }
 
-    protected override Task<BackupWriteResult<BackupDestination>> SaveAsync(
+    protected override async Task<GitOperationResult> ApplyResolvedAsync(
         BackupConfigurationWrite<BackupDestinationInput> write,
         IClientSessionHandle session,
-        CancellationToken ct) => writer.SaveDestinationAsync(
-        write,
-        session,
-        ct,
-        BackupCredentialGrantPolicy.DeclaredSeparately);
+        CancellationToken ct)
+    {
+        var result = await writer.SaveDestinationAsync(
+            write,
+            session,
+            ct,
+            BackupCredentialGrantPolicy.DeclaredSeparately);
+        return result switch
+        {
+            BackupWriteResult<BackupDestination>.Saved saved => new GitOperationResult(
+                saved.Value.Id,
+                Changed: saved.Value.Revision != write.ExpectedRevision),
+            BackupWriteResult<BackupDestination>.Rejected rejected => new GitOperationResult(
+                write.Id,
+                new BackupDeclarationRejected(rejected.Code)),
+        };
+    }
 
-    protected override Task<BackupWriteResult<bool>> DeleteAsync(
+    protected override async Task<RemoveLifecycleResourceOutcome> RemoveAcceptedAsync(
         string tenantId,
         string id,
         long revision,
         IClientSessionHandle session,
-        CancellationToken ct) => deletions.DeleteDestinationAsync(tenantId, id, revision, session, ct);
+        CancellationToken ct)
+    {
+        var result = await deletions.DeleteDestinationAsync(tenantId, id, revision, session, ct);
+        return result switch
+        {
+            BackupWriteResult<bool>.Saved => new GitLifecycleResourceRemoved(),
+            BackupWriteResult<bool>.Rejected rejected => new DeclarationReadBlocked(
+                new BackupDeclarationRejected(rejected.Code)),
+        };
+    }
 }

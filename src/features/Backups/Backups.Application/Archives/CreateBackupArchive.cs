@@ -1,15 +1,39 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.Backups.Application.Configuration;
+namespace Pole.Features.Backups.Application.Archives;
 
-public sealed class BackupArchiveFactory(
+public sealed record CreateBackupArchiveRequest(
+    string TenantId,
+    string PolicyId,
+    string ResourceType,
+    string ResourceId,
+    BackupDestination Destination
+);
+
+public sealed record BackupSourcePlacementUnavailable;
+
+public sealed record BackupSourceRevisionChanged;
+
+public sealed record BackupDestinationPlacementUnavailable;
+
+public union CreateBackupArchiveOutcome(
+    BackupArchive,
+    BackupSourceUnavailable,
+    BackupSourceUnsupported,
+    BackupSourcePlacementUnavailable,
+    BackupSourceRevisionChanged,
+    BackupDestinationPlacementUnavailable);
+
+public sealed class CreateBackupArchive(
     IMongoCollection<BackupArchive> archives,
+    BackupProviderCatalog providers,
     FenceRegisteredResource fenceResource,
     LoadResourceDeploymentPlanningSnapshot loadPlacement,
     FenceResourceDeploymentPlanningSnapshot fencePlacement,
@@ -18,44 +42,55 @@ public sealed class BackupArchiveFactory(
     TimeProvider clock
 )
 {
-    internal async Task<BackupWriteResult<BackupArchive>> CreateAsync(
-        BackupConfigurationWrite<BackupPolicyInput> write,
-        BackupDestination destination,
-        IBackupProvider provider,
+    internal async Task<CreateBackupArchiveOutcome> CreateAsync(
+        CreateBackupArchiveRequest request,
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var input = write.Input;
-        var type = ResourceTypeId.Create(input.ResourceType);
-        var registered = await fenceResource(new(write.TenantId, type, input.ResourceId), session, ct);
-        var read = await loadPlacement(new(write.TenantId, type, input.ResourceId), session, ct);
-        if (registered is null || registered.ResourceGroupId != destination.ResourceGroupId ||
-            read is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } snapshot)
-            return new BackupWriteResult<BackupArchive>.Rejected("source-unavailable");
+        var destination = request.Destination;
+        var provider = providers.Find(request.ResourceType);
+        if (provider is null)
+            return new BackupSourceUnsupported();
+
+        var type = ResourceTypeId.Create(request.ResourceType);
+        var registered = await fenceResource(new(request.TenantId, type, request.ResourceId), session, ct);
+        if (registered is null || registered.ResourceGroupId != destination.ResourceGroupId)
+            return new BackupSourceUnavailable();
+
+        var read = await loadPlacement(new(request.TenantId, type, request.ResourceId), session, ct);
+        if (read is not ResourceDeploymentPlanningSnapshot { Items.Count: 1 } snapshot)
+            return new BackupSourcePlacementUnavailable();
+
         var source = snapshot.Items[0];
         if (source.State != ResourceDeploymentPlanningState.Active ||
-            source.IsolationScopeId != destination.IsolationScopeId || source.Storage is null ||
-            await fencePlacement(snapshot, session, ct) is not ResourceDeploymentPlanningFenced)
-            return new BackupWriteResult<BackupArchive>.Rejected("placement-unavailable");
-        var physical = (await namespaces(new(write.TenantId, type, input.ResourceId), session, ct)).SingleOrDefault();
+            source.IsolationScopeId != destination.IsolationScopeId || source.Storage is null)
+            return new BackupSourcePlacementUnavailable();
+
+        var fenced = await fencePlacement(snapshot, session, ct);
+        if (fenced is not ResourceDeploymentPlanningFenced)
+            return new BackupSourcePlacementUnavailable();
+
+        var physical
+            = (await namespaces(new(request.TenantId, type, request.ResourceId), session, ct)).SingleOrDefault();
         if (physical is null || physical.DeletionRequested)
-            return new BackupWriteResult<BackupArchive>.Rejected("placement-unavailable");
-        var identity = new BackupSourceIdentity(write.TenantId, type.Value, input.ResourceId);
+            return new BackupSourcePlacementUnavailable();
+
+        var identity = new BackupSourceIdentity(request.TenantId, type.Value, request.ResourceId);
         var description = await provider.DescribeAsync(identity, ct);
         return description switch
         {
             BackupServiceSnapshot service => await CreateForSourceAsync(service),
-            BackupSourceUnavailable => new BackupWriteResult<BackupArchive>.Rejected("source-unavailable"),
-            BackupSourceUnsupported => new BackupWriteResult<BackupArchive>.Rejected("unsupported-provider"),
+            BackupSourceUnavailable => new BackupSourceUnavailable(),
+            BackupSourceUnsupported => new BackupSourceUnsupported(),
         };
 
-        async Task<BackupWriteResult<BackupArchive>> CreateForSourceAsync(BackupServiceSnapshot service)
+        async Task<CreateBackupArchiveOutcome> CreateForSourceAsync(BackupServiceSnapshot service)
         {
             if (service.Revision != source.ResourceRevision)
-                return new BackupWriteResult<BackupArchive>.Rejected("source-revision-changed");
+                return new BackupSourceRevisionChanged();
 
             var placements = await namespaces(
-                new(write.TenantId, BackupResourceTypes.Destination, destination.Id),
+                new(request.TenantId, BackupResourceTypes.Destination, destination.Id),
                 session,
                 ct);
             var placementId = placements
@@ -66,17 +101,17 @@ public sealed class BackupArchiveFactory(
                 placementId = ObjectId.GenerateNewId().ToString();
                 var added = await retainPlacement(
                     new(
-                        write.TenantId,
+                        request.TenantId,
                         BackupResourceTypes.Destination,
                         destination.Id,
                         placementId,
                         type,
-                        input.ResourceId,
+                        request.ResourceId,
                         source.DeploymentId),
                     session,
                     ct);
                 if (added is not PlacementSummaryDto)
-                    return new BackupWriteResult<BackupArchive>.Rejected("destination-placement-unavailable");
+                    return new BackupDestinationPlacementUnavailable();
             }
 
             var placement = new ArchivePlacement(
@@ -94,12 +129,12 @@ public sealed class BackupArchiveFactory(
             var id = ObjectId.GenerateNewId().ToString();
             var archive = BackupArchive.Create(
                 id,
-                write.TenantId,
-                write.Id,
+                request.TenantId,
+                request.PolicyId,
                 destination.Id,
                 new BackupArchiveSource(
-                    input.ResourceType,
-                    input.ResourceId,
+                    request.ResourceType,
+                    request.ResourceId,
                     registered.DisplayName,
                     service.Revision,
                     service.Version,
@@ -109,7 +144,7 @@ public sealed class BackupArchiveFactory(
                 placement,
                 clock.GetUtcNow().UtcDateTime);
             await archives.InsertOneAsync(session, archive, cancellationToken: ct);
-            return new BackupWriteResult<BackupArchive>.Saved(archive);
+            return archive;
         }
     }
 }

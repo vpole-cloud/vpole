@@ -1,7 +1,9 @@
 using System.Text.Json;
 using MongoDB.Driver;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.GitOps.Contracts;
@@ -25,7 +27,7 @@ internal sealed class DeclarativeBackupPolicyProvider(
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupDestination> destinations,
     IGitOpsMutations git,
-    BackupConfigurationWriter writer,
+    BackupPolicyWrites writes,
     BackupConfigurationDeletions deletions,
     IEnumerable<IBackupProvider> services,
     LoadResourceRegistrationPlanningSnapshot loadRegistration,
@@ -44,7 +46,6 @@ internal sealed class DeclarativeBackupPolicyProvider(
     protected override UpdateDefinition<BackupPolicy> PlanningFence =>
         Builders<BackupPolicy>.Update.Inc(p => p.PlanningFence, 1);
 
-    protected override bool AsynchronousDeletion => true;
     protected override bool Deleting(BackupPolicy policy) => policy.Deleting;
 
     public override JsonElement NormalizeAndValidate(JsonElement spec)
@@ -177,15 +178,67 @@ internal sealed class DeclarativeBackupPolicyProvider(
             });
     }
 
-    protected override Task<BackupWriteResult<BackupPolicy>> SaveAsync(
+    protected override async Task<GitOperationResult> ApplyResolvedAsync(
         BackupConfigurationWrite<BackupPolicyInput> write,
         IClientSessionHandle session,
-        CancellationToken ct) => writer.SavePolicyAsync(write, session, ct);
+        CancellationToken ct)
+    {
+        if (write.ExpectedRevision == 0)
+        {
+            var result = await writes.CreateAcceptedAsync(new(write.TenantId, write.Id, write.Input), session, ct);
+            return result switch
+            {
+                BackupPolicy policy => new GitOperationResult(policy.Id, Changed: true),
+                BackupSourceUnavailable => Rejected("source-unavailable"),
+                BackupSourceUnsupported => Rejected("unsupported-provider"),
+                BackupSourcePlacementUnavailable => Rejected("placement-unavailable"),
+                BackupSourceRevisionChanged => Rejected("source-revision-changed"),
+                BackupDestinationPlacementUnavailable => Rejected("destination-placement-unavailable"),
+                BackupRetentionInvalid => Rejected("backup-positive-retention-required"),
+                BackupPolicyDestinationUnavailable => Rejected("destination-unavailable"),
+                BackupPolicyNameAlreadyExists => Rejected("policy-name-exists"),
+                BackupPolicySourceAlreadyBound => Rejected("source-policy-exists"),
+            };
+        }
 
-    protected override Task<BackupWriteResult<bool>> DeleteAsync(
+        var updated = await writes.UpdateAcceptedAsync(
+            new(write.TenantId, write.Id, write.ExpectedRevision, write.Input),
+            session,
+            ct);
+        return updated switch
+        {
+            BackupPolicy policy => new GitOperationResult(
+                policy.Id,
+                Changed: policy.Revision != write.ExpectedRevision),
+            BackupSourceUnavailable => Rejected("source-unavailable"),
+            BackupSourceUnsupported => Rejected("unsupported-provider"),
+            BackupSourcePlacementUnavailable => Rejected("placement-unavailable"),
+            BackupSourceRevisionChanged => Rejected("source-revision-changed"),
+            BackupDestinationPlacementUnavailable => Rejected("destination-placement-unavailable"),
+            BackupRetentionInvalid => Rejected("backup-positive-retention-required"),
+            BackupPolicyDestinationUnavailable => Rejected("destination-unavailable"),
+            BackupPolicyMissing => Rejected("not-found"),
+            BackupPolicyRevisionConflict => Rejected("revision-conflict"),
+            BackupPolicyIdentityImmutable => Rejected("policy-identity-immutable"),
+            BackupPolicyStopping => Rejected("policy-stopping"),
+        };
+
+        GitOperationResult Rejected(string diagnostic) => new(write.Id, new BackupDeclarationRejected(diagnostic));
+    }
+
+    protected override async Task<RemoveLifecycleResourceOutcome> RemoveAcceptedAsync(
         string tenantId,
         string id,
         long revision,
         IClientSessionHandle session,
-        CancellationToken ct) => deletions.DeletePolicyAsync(tenantId, id, revision, session, ct);
+        CancellationToken ct)
+    {
+        var result = await deletions.DeletePolicyAsync(tenantId, id, revision, session, ct);
+        return result switch
+        {
+            BackupWriteResult<bool>.Saved => new GitLifecycleRemovalRequested(),
+            BackupWriteResult<bool>.Rejected rejected => new DeclarationReadBlocked(
+                new BackupDeclarationRejected(rejected.Code)),
+        };
+    }
 }

@@ -104,6 +104,22 @@ public sealed record BackupArchive(
         0);
 
     public BackupArchive Retire() => this with { Active = false };
+
+    public BackupArchive RetireForReplacement(BackupArchive replacement)
+    {
+        if (TenantId != replacement.TenantId || ResourceType != replacement.ResourceType ||
+            ResourceId != replacement.ResourceId)
+            throw new InvalidOperationException("An archive replacement must preserve source ownership.");
+
+        return this with
+        {
+            Active = false,
+            SourceRevision = Math.Max(SourceRevision, replacement.SourceRevision),
+            ServiceVersion = replacement.ServiceVersion,
+            StorageGiB = Math.Max(StorageGiB, replacement.StorageGiB),
+            Instances = replacement.Instances,
+        };
+    }
 }
 
 public sealed record BackupArchiveSource(

@@ -3,17 +3,18 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
-using Pole.Validation;
 using Pole.Scheduling;
+using Pole.Validation;
 using Pole.Workloads;
+using static Pole.Features.Backups.Application.Common.BackupPolicyHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
@@ -44,7 +45,20 @@ public sealed record UpdateBackupPolicyRequest(
     [FromBody] UpdateBackupPolicyBody Body
 ) : IMediatorRequest<UpdateBackupPolicyOutcome>, ITenantWriteOperation;
 
-public union UpdateBackupPolicyOutcome(BackupPolicyDto, BackupRequestRejected);
+public union UpdateBackupPolicyOutcome(
+    BackupPolicyDto,
+    BackupSourceUnavailable,
+    BackupSourceUnsupported,
+    BackupSourcePlacementUnavailable,
+    BackupSourceRevisionChanged,
+    BackupDestinationPlacementUnavailable,
+    BackupRetentionInvalid,
+    BackupPolicyDestinationUnavailable,
+    BackupPolicyMissing,
+    BackupPolicyRevisionConflict,
+    BackupPolicyIdentityImmutable,
+    BackupPolicyStopping,
+    BackupPolicyGitOwned);
 
 public sealed class UpdateBackupPolicyValidator : AbstractValidator<UpdateBackupPolicyRequest>
 {
@@ -75,7 +89,7 @@ public sealed class UpdateBackupPolicyValidator : AbstractValidator<UpdateBackup
 }
 
 public sealed class UpdateBackupPolicyHandler(
-    ManualBackupConfiguration configuration,
+    BackupPolicyWrites writes,
     TimeProvider clock
 ) : IMediatorOutcomeHandler<UpdateBackupPolicyRequest, UpdateBackupPolicyOutcome>
 {
@@ -84,15 +98,24 @@ public sealed class UpdateBackupPolicyHandler(
         CancellationToken ct = default)
     {
         var input = request.Body.ToInput();
-        var answer = await configuration.SavePolicyAsync(
+        var answer = await writes.UpdateAsync(
             new(request.TenantId, request.Id, request.Body.ExpectedRevision, input),
             ct);
         return answer switch
         {
-            BackupWriteResult<BackupPolicy>.Saved ok => BackupViews.From(
-                ok.Value,
-                ok.Value.ReportSchedule(clock.GetUtcNow())),
-            BackupWriteResult<BackupPolicy>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupPolicy policy => BackupViews.From(policy, policy.ReportSchedule(clock.GetUtcNow())),
+            BackupSourceUnavailable error => error,
+            BackupSourceUnsupported error => error,
+            BackupSourcePlacementUnavailable error => error,
+            BackupSourceRevisionChanged error => error,
+            BackupDestinationPlacementUnavailable error => error,
+            BackupRetentionInvalid error => error,
+            BackupPolicyDestinationUnavailable error => error,
+            BackupPolicyMissing error => error,
+            BackupPolicyRevisionConflict error => error,
+            BackupPolicyIdentityImmutable error => error,
+            BackupPolicyStopping error => error,
+            BackupPolicyGitOwned error => error,
         };
     }
 }
@@ -108,7 +131,18 @@ public static class UpdateBackupPolicyEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupPolicyDto value => Results.Ok(value),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupSourceUnavailable error => MapSourceUnavailable(error),
+                    BackupSourceUnsupported error => MapSourceUnsupported(error),
+                    BackupSourcePlacementUnavailable error => MapSourcePlacementUnavailable(error),
+                    BackupSourceRevisionChanged error => MapSourceRevisionChanged(error),
+                    BackupDestinationPlacementUnavailable error => MapDestinationPlacementUnavailable(error),
+                    BackupRetentionInvalid error => MapRetentionInvalid(error),
+                    BackupPolicyDestinationUnavailable error => MapDestinationUnavailable(error),
+                    BackupPolicyMissing error => MapPolicyMissing(error),
+                    BackupPolicyRevisionConflict error => MapPolicyRevisionConflict(error),
+                    BackupPolicyIdentityImmutable error => MapPolicyIdentityImmutable(error),
+                    BackupPolicyStopping error => MapPolicyStopping(error),
+                    BackupPolicyGitOwned error => MapPolicyGitOwned(error),
                 }))
             .WithName("Backups.UpdateBackupPolicy");
         return endpoints;

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
@@ -16,8 +17,6 @@ public sealed record GetBackupPolicyRequest(
     [FromTenantHeader] string TenantId,
     [FromRoute] string Id
 ) : IMediatorRequest<GetBackupPolicyOutcome>, ITenantReadOperation;
-
-public sealed record BackupPolicyMissing;
 
 public union GetBackupPolicyOutcome(BackupPolicyDto, BackupPolicyMissing);
 

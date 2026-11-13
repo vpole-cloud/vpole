@@ -5,15 +5,17 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
-using Pole.Validation;
 using Pole.Scheduling;
+using Pole.Validation;
 using Pole.Workloads;
+using static Pole.Features.Backups.Application.Common.BackupPolicyHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
@@ -42,7 +44,17 @@ public sealed record CreateBackupPolicyRequest(
     [FromBody] CreateBackupPolicyBody Body
 ) : IMediatorRequest<CreateBackupPolicyOutcome>, ITenantCreateOperation;
 
-public union CreateBackupPolicyOutcome(BackupPolicyDto, BackupRequestRejected);
+public union CreateBackupPolicyOutcome(
+    BackupPolicyDto,
+    BackupSourceUnavailable,
+    BackupSourceUnsupported,
+    BackupSourcePlacementUnavailable,
+    BackupSourceRevisionChanged,
+    BackupDestinationPlacementUnavailable,
+    BackupRetentionInvalid,
+    BackupPolicyDestinationUnavailable,
+    BackupPolicyNameAlreadyExists,
+    BackupPolicySourceAlreadyBound);
 
 public sealed class CreateBackupPolicyValidator : AbstractValidator<CreateBackupPolicyRequest>
 {
@@ -71,7 +83,7 @@ public sealed class CreateBackupPolicyValidator : AbstractValidator<CreateBackup
 }
 
 public sealed class CreateBackupPolicyHandler(
-    ManualBackupConfiguration configuration,
+    BackupPolicyWrites writes,
     TimeProvider clock
 ) : IMediatorOutcomeHandler<CreateBackupPolicyRequest, CreateBackupPolicyOutcome>
 {
@@ -80,15 +92,19 @@ public sealed class CreateBackupPolicyHandler(
         CancellationToken ct = default)
     {
         var input = request.Body.ToInput();
-        var answer = await configuration.SavePolicyAsync(
-            new(request.TenantId, ObjectId.GenerateNewId().ToString(), 0, input),
-            ct);
+        var answer = await writes.CreateAsync(new(request.TenantId, ObjectId.GenerateNewId().ToString(), input), ct);
         return answer switch
         {
-            BackupWriteResult<BackupPolicy>.Saved ok => BackupViews.From(
-                ok.Value,
-                ok.Value.ReportSchedule(clock.GetUtcNow())),
-            BackupWriteResult<BackupPolicy>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupPolicy policy => BackupViews.From(policy, policy.ReportSchedule(clock.GetUtcNow())),
+            BackupSourceUnavailable error => error,
+            BackupSourceUnsupported error => error,
+            BackupSourcePlacementUnavailable error => error,
+            BackupSourceRevisionChanged error => error,
+            BackupDestinationPlacementUnavailable error => error,
+            BackupRetentionInvalid error => error,
+            BackupPolicyDestinationUnavailable error => error,
+            BackupPolicyNameAlreadyExists error => error,
+            BackupPolicySourceAlreadyBound error => error,
         };
     }
 }
@@ -104,7 +120,15 @@ public static class CreateBackupPolicyEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupPolicyDto value => Results.Created($"/api/v1/backups/policies/{value.Id}", value),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupSourceUnavailable error => MapSourceUnavailable(error),
+                    BackupSourceUnsupported error => MapSourceUnsupported(error),
+                    BackupSourcePlacementUnavailable error => MapSourcePlacementUnavailable(error),
+                    BackupSourceRevisionChanged error => MapSourceRevisionChanged(error),
+                    BackupDestinationPlacementUnavailable error => MapDestinationPlacementUnavailable(error),
+                    BackupRetentionInvalid error => MapRetentionInvalid(error),
+                    BackupPolicyDestinationUnavailable error => MapDestinationUnavailable(error),
+                    BackupPolicyNameAlreadyExists error => MapPolicyNameExists(error),
+                    BackupPolicySourceAlreadyBound error => MapPolicySourceBound(error),
                 }))
             .WithName("Backups.CreateBackupPolicy");
         return endpoints;

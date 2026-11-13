@@ -1,9 +1,11 @@
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
@@ -38,7 +40,7 @@ public sealed class BackupOperations(
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupOperation> operations,
     BackupArchiveAccess access,
-    BackupProviders providers,
+    BackupProviderCatalog providers,
     MongoRunTransaction transactions,
     StoreOutboxWrites outbox,
     TimeProvider clock
@@ -182,14 +184,17 @@ public sealed class BackupOperations(
     internal async Task InterruptScheduledObservationsAsync(
         string tenantId,
         string archiveId,
-        bool sourceRemoved,
+        ScheduledObservationInterruption interruption,
         IClientSessionHandle session,
         CancellationToken ct)
     {
         var running = BackupDispatchFilters.RunningScheduled(tenantId, archiveId);
-        var reason = sourceRemoved
-            ? "source-removed-before-final-observation"
-            : "archive-retired-before-final-observation";
+        var reason = interruption switch
+        {
+            ScheduledObservationInterruption.SourceRemoved => "source-removed-before-final-observation",
+            ScheduledObservationInterruption.ArchiveRetired => "archive-retired-before-final-observation",
+            _ => throw new ArgumentOutOfRangeException(nameof(interruption)),
+        };
         foreach (var operation in await operations.Find(session, running).ToListAsync(ct))
         {
             var interrupted = operation.InterruptObservation(reason, clock.GetUtcNow().UtcDateTime);

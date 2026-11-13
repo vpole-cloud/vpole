@@ -21,15 +21,6 @@ public sealed class ManualBackupConfiguration(
         (s, t) => writer.SaveDestinationAsync(write, s, t, BackupCredentialGrantPolicy.GrantSelectedKeys),
         ct);
 
-    public Task<BackupWriteResult<BackupPolicy>> SavePolicyAsync(
-        BackupConfigurationWrite<BackupPolicyInput> write,
-        CancellationToken ct) => MutateAsync(
-        write.TenantId,
-        BackupDeclarationKinds.Policy,
-        write.Id,
-        (s, t) => writer.SavePolicyAsync(write, s, t),
-        ct);
-
     public Task<BackupWriteResult<bool>> DeleteAsync(
         string tenantId,
         string kind,

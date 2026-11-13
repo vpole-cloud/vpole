@@ -11,6 +11,8 @@ using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Jobs;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Application.Policies;
+using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
@@ -27,11 +29,13 @@ public static class BackupsFeature
         services.AddBackupsMongo();
         services.AddBackupDeclarations();
         services.AddScoped<IIsolationScopeReferenceGuard, BackupDestinationScopeGuard>();
-        services.AddScoped<BackupProviders>();
+        services.AddScoped<BackupProviderCatalog>();
         services.AddScoped<BackupConfigurationWriter>();
         services.AddScoped<BackupConfigurationDeletions>();
         services.AddScoped<ManualBackupConfiguration>();
-        services.AddScoped<BackupArchiveFactory>();
+        services.AddScoped<CreateBackupArchive>();
+        services.AddScoped<RetireBackupArchive>();
+        services.AddScoped<BackupPolicyWrites>();
         services.AddScoped<BackupArchiveAccess>();
         services.AddScoped<BackupOperations>();
         services.AddScoped<RestoreTargetCreations>();
@@ -58,7 +62,7 @@ public static class BackupsFeature
     public static void ValidateBackupProviders(this IServiceProvider services)
     {
         using var scope = services.CreateScope();
-        _ = scope.ServiceProvider.GetRequiredService<BackupProviders>();
+        _ = scope.ServiceProvider.GetRequiredService<BackupProviderCatalog>();
     }
 
     public static IServiceProvider ScheduleBackupRecurringJobs(this IServiceProvider services)

@@ -1,13 +1,13 @@
 using Pole.Features.Backups.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.Backups.Application.Configuration;
+namespace Pole.Features.Backups.Application.Providers;
 
-public sealed class BackupProviders
+public sealed class BackupProviderCatalog
 {
     private readonly Dictionary<string, IBackupProvider> _providers;
 
-    public BackupProviders(IEnumerable<IBackupProvider> providers)
+    public BackupProviderCatalog(IEnumerable<IBackupProvider> providers)
     {
         _providers = providers.ToDictionary(p => p.ResourceType, StringComparer.Ordinal);
         var kinds = new HashSet<string>(StringComparer.Ordinal);

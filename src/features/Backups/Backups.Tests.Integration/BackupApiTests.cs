@@ -55,6 +55,7 @@ public sealed class BackupApiTests(
 ) : IAsyncLifetime
 {
     private const string Route = "/api/v1/backups";
+    private readonly BackupTestSetup setup = new(mongo);
     public Task InitializeAsync() => mongo.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
@@ -62,16 +63,16 @@ public sealed class BackupApiTests(
     public async Task Policy_consumer_preserves_origin_and_schedules_durable_continuation()
     {
         const string tenant = TestPlatformDefaults.TenantId;
-        await using var host = await StartAsync();
-        using var client = Client(host, tenant);
-        var destinationInput = await StorageAsync(client);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, tenant);
+        var destinationInput = await BackupTestSetup.StorageAsync(client);
         using var destinationResponse = await client.PostAsJsonAsync(Route + "/destinations", destinationInput);
         destinationResponse.EnsureSuccessStatusCode();
         var destination = (await destinationResponse.Content.ReadFromJsonAsync<BackupDestinationDto>())!;
         await using var scope = host.Services.CreateAsyncScope();
         var provider = host.Services.GetRequiredService<TestBackupProvider>();
         var sourceId = ObjectId.GenerateNewId().ToString();
-        await SeedSourceAsync(
+        await setup.SeedSourceAsync(
             scope.ServiceProvider,
             destinationInput,
             ResourceTypeId.Create(provider.ResourceType),
@@ -161,7 +162,7 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Recovery_requeues_a_bounded_batch_of_lost_or_expired_work_with_original_trace()
     {
-        await using var host = await StartAsync();
+        await using var host = await setup.StartAsync();
         await using var scope = host.Services.CreateAsyncScope();
         var origin = new BackupExecutionOrigin("1234567890abcdef1234567890abcdef", "lost-enqueue");
         var now = DateTime.UtcNow.AddMinutes(-10);
@@ -224,16 +225,16 @@ public sealed class BackupApiTests(
     public async Task Operation_and_both_outbox_events_roll_back_if_work_request_write_fails()
     {
         const string tenant = TestPlatformDefaults.TenantId;
-        await using var host = await StartAsync(failOperation: true);
-        using var client = Client(host, tenant);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync(failOperation: true);
+        using var client = BackupTestSetup.Client(host, tenant);
+        var input = await BackupTestSetup.StorageAsync(client);
         using var destinationResponse = await client.PostAsJsonAsync(Route + "/destinations", input);
         destinationResponse.EnsureSuccessStatusCode();
         var destination = (await destinationResponse.Content.ReadFromJsonAsync<BackupDestinationDto>())!;
         await using var scope = host.Services.CreateAsyncScope();
         var provider = host.Services.GetRequiredService<TestBackupProvider>();
         var sourceId = ObjectId.GenerateNewId().ToString();
-        await SeedSourceAsync(
+        await setup.SeedSourceAsync(
             scope.ServiceProvider,
             input,
             ResourceTypeId.Create(provider.ResourceType),
@@ -283,8 +284,8 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task History_pages_are_bounded_tenant_scoped_and_stable_when_timestamps_match()
     {
-        await using var host = await StartAsync();
-        using var client = Client(host, TestPlatformDefaults.TenantId);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
         var timestamp = new DateTime(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc);
         var rows = Enumerable.Range(0, 53)
             .Select(index => BackupOperation.RequestCopy(
@@ -333,7 +334,7 @@ public sealed class BackupApiTests(
         Assert.Equal(2, small.Items.Length);
         Assert.Equal(newer.Id, small.Items[0].Id);
 
-        using var other = Client(host, otherTenant);
+        using var other = BackupTestSetup.Client(host, otherTenant);
         Assert.Equal(
             foreign.Id,
             Assert.Single((await other.GetFromJsonAsync<BackupOperationPage>(Route + "/operations"))!.Items).Id);
@@ -350,9 +351,9 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task A_second_registered_consumer_reads_only_its_granted_keys_without_a_live_deployment()
     {
-        await using var host = await StartAsync();
-        using var client = Client(host, TestPlatformDefaults.TenantId);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
+        var input = await BackupTestSetup.StorageAsync(client);
         var type = ResourceTypeId.Create("tests/archive-reader");
         var consumerId = ObjectId.GenerateNewId().ToString();
         await using var scope = host.Services.CreateAsyncScope();
@@ -399,8 +400,8 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Restore_validation_identifies_ambiguous_missing_and_unzoned_targets()
     {
-        await using var host = await StartAsync();
-        using var client = Client(host, TestPlatformDefaults.TenantId);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
         var route = Route + "/archives/" + ObjectId.GenerateNewId() + "/restores";
         foreach (var (backupId, targetTime, field) in new (string?, string?, string)[]
                  {
@@ -421,9 +422,9 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Destination_validation_reports_the_invalid_field_without_writing_configuration()
     {
-        await using var host = await StartAsync();
-        using var client = Client(host, TestPlatformDefaults.TenantId);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
+        var input = await BackupTestSetup.StorageAsync(client);
 
         foreach (var (body, field) in new[]
                  {
@@ -447,9 +448,9 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Destination_and_grant_commit_in_same_scope_and_remain_invisible_to_other_tenant()
     {
-        await using var host = await StartAsync();
-        using var client = Client(host, TestPlatformDefaults.TenantId);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
+        var input = await BackupTestSetup.StorageAsync(client);
         using var created = await client.PostAsJsonAsync(Route + "/destinations", input);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var item = await created.Content.ReadFromJsonAsync<BackupDestinationDto>();
@@ -482,7 +483,7 @@ public sealed class BackupApiTests(
 
         var other = ObjectId.GenerateNewId().ToString();
         await host.SeedTenantAsync(other);
-        using var foreign = Client(host, other);
+        using var foreign = BackupTestSetup.Client(host, other);
         using var hidden = await foreign.GetAsync(created.Headers.Location);
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
         var list = await foreign.GetFromJsonAsync<BackupDestinationDto[]>(Route + "/destinations");
@@ -492,7 +493,7 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Restore_and_forget_require_an_administrator_of_the_selected_tenant()
     {
-        await using var host = await StartAsync();
+        await using var host = await setup.StartAsync();
         var tenant = TestPlatformDefaults.TenantId;
         var member = ObjectId.GenerateNewId().ToString();
         var tenants = mongo.Database.GetCollection<Tenant>("Tenants");
@@ -521,9 +522,9 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Outbox_exception_rolls_back_destination_and_credential_grant()
     {
-        await using var host = await StartAsync(failDestination: true);
-        using var client = Client(host, TestPlatformDefaults.TenantId);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync(failDestination: true);
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
+        var input = await BackupTestSetup.StorageAsync(client);
         await using var scope = host.Services.CreateAsyncScope();
         var save = scope.ServiceProvider.GetRequiredService<ManualBackupConfiguration>();
         var id = ObjectId.GenerateNewId().ToString();
@@ -551,9 +552,9 @@ public sealed class BackupApiTests(
     [Fact]
     public async Task Retained_placement_inherits_authorized_source_and_catalog_survives_source_removal()
     {
-        await using var host = await StartAsync();
-        using var client = Client(host, TestPlatformDefaults.TenantId);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, TestPlatformDefaults.TenantId);
+        var input = await BackupTestSetup.StorageAsync(client);
         using var created = await client.PostAsJsonAsync(Route + "/destinations", input);
         created.EnsureSuccessStatusCode();
         var destination = (await created.Content.ReadFromJsonAsync<BackupDestinationDto>())!;
@@ -562,7 +563,7 @@ public sealed class BackupApiTests(
         var sourceId = ObjectId.GenerateNewId().ToString();
         var sourceDeployment = ObjectId.GenerateNewId().ToString();
         await using var scope = host.Services.CreateAsyncScope();
-        await SeedSourceAsync(scope.ServiceProvider, input, sourceType, sourceId, sourceDeployment);
+        await setup.SeedSourceAsync(scope.ServiceProvider, input, sourceType, sourceId, sourceDeployment);
 
         var policy = new BackupPolicyInput("daily", sourceType.Value, sourceId, destination.Id, "0 2 * * *", false, 30);
         using var accepted = await client.PostAsJsonAsync(Route + "/policies", policy);
@@ -711,9 +712,9 @@ public sealed class BackupApiTests(
     public async Task Deleted_restore_target_cannot_be_recreated_after_delivery_retry(bool crashBeforeProgress)
     {
         const string tenant = TestPlatformDefaults.TenantId;
-        await using var host = await StartAsync();
-        using var client = Client(host, tenant);
-        var input = await StorageAsync(client);
+        await using var host = await setup.StartAsync();
+        using var client = BackupTestSetup.Client(host, tenant);
+        var input = await BackupTestSetup.StorageAsync(client);
         using var destinationResponse = await client.PostAsJsonAsync(Route + "/destinations", input);
         destinationResponse.EnsureSuccessStatusCode();
         var destination = (await destinationResponse.Content.ReadFromJsonAsync<BackupDestinationDto>())!;
@@ -722,7 +723,7 @@ public sealed class BackupApiTests(
         var sourceId = ObjectId.GenerateNewId().ToString();
         await using var scope = host.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
-        await SeedSourceAsync(services, input, type, sourceId, ObjectId.GenerateNewId().ToString());
+        await setup.SeedSourceAsync(services, input, type, sourceId, ObjectId.GenerateNewId().ToString());
         using var policyResponse = await client.PostAsJsonAsync(
             Route + "/policies",
             new BackupPolicyInput("daily", type.Value, sourceId, destination.Id, "0 2 * * *", false, 30));
@@ -809,177 +810,5 @@ public sealed class BackupApiTests(
         Assert.Equal("Failed", retried!.State);
         Assert.Equal("restore-resource-deleted", retried.FailureCode);
         Assert.Equal(1, nativeCalls);
-    }
-
-    private async Task SeedSourceAsync(
-        IServiceProvider services,
-        BackupDestinationInput input,
-        ResourceTypeId type,
-        string id,
-        string deploymentId)
-    {
-        const string target = TestPlatformDefaults.DeploymentTargetId;
-        const string tenant = TestPlatformDefaults.TenantId;
-        var computeId = ObjectId.GenerateNewId().ToString();
-        var storageId = ObjectId.GenerateNewId().ToString();
-        var compute = ComputeProfileFactory.Create(
-            "database",
-            "Database",
-            "Source workload only",
-            ComputeProfileResourceRequirements.Create(
-                ComputeProfileResourceQuantity.Create(250, 256),
-                ComputeProfileResourceQuantity.Create(500, 512)),
-            ComputeArchitecture.Any,
-            [],
-            [type],
-            AllTenantsComputeProfileAccess.Create(),
-            [ComputeProfileTargetMapping.Create(target)],
-            true,
-            true,
-            new ComputeProfileFactory.CreateOptions(computeId, DateTime.UtcNow));
-        await mongo.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(compute);
-        var storage = StorageProfileFactory.Create(
-            "disk",
-            "Disk",
-            "Database storage",
-            StorageMediaType.SSD,
-            StoragePerformanceTier.Standard,
-            true,
-            true,
-            [StorageProfileTargetMapping.Create(target, "standard")],
-            [type],
-            StorageProfileTenantAccess.Create(StorageProfileTenantAccessMode.AllTenants, []),
-            StorageProfileSizeLimits.Create(1, 100),
-            StorageProfileFactory.DefaultOptions with { Id = storageId });
-        await mongo.Database.GetCollection<StorageProfile>("StorageProfiles").InsertOneAsync(storage);
-        await services.GetRequiredService<MongoRunTransaction>()
-            .InvokeOutcomeAsync<bool>(async (tx, ct) =>
-            {
-                var registration = await services.GetRequiredService<IResourceRegistrar>()
-                    .RegisterAsync(new(tenant, input.ResourceGroupId, new(type, id, "source")), tx.Session, ct);
-                Assert.IsType<RegisteredResource>(registration.Value);
-                var placement = await services.GetRequiredService<CreateResourceDeployment>()(
-                    new(
-                        deploymentId,
-                        tenant,
-                        type,
-                        id,
-                        input.ResourceGroupId,
-                        input.IsolationScopeId,
-                        new(target, 1, null),
-                        new(
-                            computeId,
-                            1,
-                            target,
-                            "Database",
-                            new(250, 256),
-                            new(500, 512),
-                            ComputeArchitecture.Any,
-                            [],
-                            [],
-                            [],
-                            [],
-                            [],
-                            null),
-                        new(storageId, 1, "standard"),
-                        ResourcePlacementCapability.SingleTarget),
-                    tx.Session,
-                    ct);
-                Assert.IsType<PlacementSummaryDto>(placement.Value);
-                return tx.Commit(true);
-            });
-    }
-
-    private async Task<FeatureTestHost> StartAsync(bool failDestination = false, bool failOperation = false)
-    {
-        var host = await FeatureTestHost.StartAsync(
-            new ConfigurationBuilder().Build(),
-            typeof(BackupsFeature).Assembly,
-            typeof(BackupConfigurationChangedEvent).Assembly,
-            (services, _) => services.AddBackupsFeature().AddResourceConnectionsFeature(),
-            endpoints => endpoints.MapBackupsEndpoints(),
-            configureServices: services =>
-            {
-                services.AddTestDeploymentTargets();
-                // The feature host has no Kubernetes cluster. Simulate only reconciliation of its Secret projection.
-                services.AddSingleton<EnsureConsumerSecretProjections>(_ => (request, _) => Task.FromResult(
-                    new EnsureConsumerSecretProjectionsOutcome(
-                        new ConsumerSecretProjectionKeys(
-                        [
-                            .. request.References.Select(key => new ConsumerSecretProjectionKey(
-                                key.SecretId,
-                                key.Key,
-                                "storage-credentials",
-                                key.Key,
-                                1))
-                        ]))));
-                services.AddSingleton<TestBackupProvider>();
-                services.AddSingleton<IBackupProvider>(sp => sp.GetRequiredService<TestBackupProvider>());
-                services.AddSingleton(
-                    new SecretDeclarationConsumer(
-                        "IndependentArchiveReader",
-                        ResourceTypeId.Create("tests/archive-reader"),
-                        SecretBindingUsage.BackupStorage,
-                        SecretConsumerProjectionPolicy.DeclaredPurposeForAllDeployments,
-                        SecretConsumerPlacementRequirement.AllowBeforePlacement,
-                        SecretConsumerValueAccess.GrantedKeys));
-                services.AddSingleton(mongo.Client);
-                services.AddSingleton(mongo.Database);
-                services.AddFeatureMigrations("pole.backups", typeof(BackupsSchemaMigration).Assembly);
-                if (failDestination || failOperation)
-                {
-                    services.RemoveAll<StoreOutboxWrites>();
-                    services.AddSingleton<StoreOutboxWrites>(_ => async (
-                        session, writes,
-                        ct) =>
-                    {
-                        await mongo.StoreOutboxWrites(session, writes, ct);
-                        if (writes.Any(w => failDestination && w.Event is BackupConfigurationChangedEvent ||
-                                failOperation && w.Event is BackupOperationWorkRequestedEvent))
-                            throw new InvalidOperationException("Injected transactional outbox failure.");
-                    });
-                }
-            });
-        await host.SeedTenantAsync();
-        return host;
-    }
-
-    private static HttpClient Client(FeatureTestHost host, string tenant)
-    {
-        var client = host.GetClient();
-        client.DefaultRequestHeaders.Add(FeatureTestAuthentication.UserHeader, TestPlatformDefaults.UserId);
-        client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, tenant);
-        return client;
-    }
-
-    private static async Task<BackupDestinationInput> StorageAsync(HttpClient client)
-    {
-        using var groupResponse = await client.PostAsJsonAsync(
-            "/api/v1/resource-groups/",
-            new { name = "backup-tests", description = "", tags = Array.Empty<string>() });
-        groupResponse.EnsureSuccessStatusCode();
-        var group = await groupResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var groupId = group.GetProperty("id").GetString()!;
-        var scope = group.GetProperty("defaultIsolationScopeId").GetString()!;
-        using var secretResponse = await client.PostAsJsonAsync(
-            "/api/v1/secrets/",
-            new
-            {
-                resourceGroupId = groupId,
-                isolationScopeId = scope, name = "storage", purpose = "Backup credentials",
-                values = new { id = "catalog-id", key = "catalog-private-value" }
-            });
-        secretResponse.EnsureSuccessStatusCode();
-        var secret = await secretResponse.Content.ReadFromJsonAsync<JsonElement>();
-        return new(
-            "snapshots",
-            groupId,
-            scope,
-            "https://storage.example",
-            "service-backups",
-            "",
-            secret.GetProperty("id").GetString()!,
-            "id",
-            "key");
     }
 }

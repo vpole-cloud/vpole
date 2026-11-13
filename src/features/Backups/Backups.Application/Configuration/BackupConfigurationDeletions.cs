@@ -1,7 +1,9 @@
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Events.Abstractions;
+using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 
@@ -12,6 +14,7 @@ public sealed class BackupConfigurationDeletions(
     IMongoCollection<BackupPolicy> policies,
     IMongoCollection<BackupArchive> archives,
     BackupConfigurationWriter writer,
+    StoreOutboxWrites outbox,
     IResourceRegistrar registrar,
     GetResourceDeploymentFinalizationReadiness readiness,
     PurgeDeletedResourceDeployments purge,
@@ -38,7 +41,7 @@ public sealed class BackupConfigurationDeletions(
                 new BackupExecutionOrigin(eventCore.TraceId, eventCore.CorrelationId),
                 clock.GetUtcNow().UtcDateTime);
             await policies.ReplaceOneAsync(session, filter, retiring, cancellationToken: ct);
-            await writer.PolicyChanged(session, retiring, ct);
+            await outbox(session, BackupPolicyNotifications.Changed(retiring), ct);
         }
 
         return new BackupWriteResult<bool>.Saved(true);
