@@ -49,6 +49,54 @@ public sealed class BackupApiTests(
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task Restore_validation_identifies_ambiguous_missing_and_unzoned_targets()
+    {
+        await using var host = await StartAsync();
+        using var client = Client(host, TestPlatformDefaults.TenantId);
+        var route = Route + "/archives/" + ObjectId.GenerateNewId() + "/restores";
+        foreach (var (backupId, targetTime, field) in new (string?, string?, string)[]
+                 {
+                     (null, null, "Body.BackupId"),
+                     ("copy", "2026-11-13T00:00:00Z", "Body.TargetTime"),
+                     (null, "2026-11-13T00:00:00", "Body.TargetTime"),
+                 })
+        {
+            using var response = await client.PostAsJsonAsync(
+                route,
+                new { idempotencyKey = "invalid-target", name = "restore", backupId, targetTime, confirmed = true });
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+        }
+    }
+
+    [Fact]
+    public async Task Destination_validation_reports_the_invalid_field_without_writing_configuration()
+    {
+        await using var host = await StartAsync();
+        using var client = Client(host, TestPlatformDefaults.TenantId);
+        var input = await StorageAsync(client);
+
+        foreach (var (body, field) in new[]
+                 {
+                     (input with { Endpoint = "https://user:password@example.test" }, "Body.Endpoint"),
+                     (input with { Bucket = "INVALID" }, "Body.Bucket"),
+                     (input with { Prefix = "../escape" }, "Body.Prefix"),
+                     (input with { SecretAccessKeyKey = input.AccessKeyIdKey }, "Body.SecretAccessKeyKey"),
+                 })
+        {
+            using var response = await client.PostAsJsonAsync(Route + "/destinations", body);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+        }
+
+        Assert.Equal(
+            0,
+            await mongo.Database.GetCollection<BackupDestination>("BackupDestinations").CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
     public async Task Destination_and_grant_commit_in_same_scope_and_remain_invisible_to_other_tenant()
     {
         await using var host = await StartAsync();

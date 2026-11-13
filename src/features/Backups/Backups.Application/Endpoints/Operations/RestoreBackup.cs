@@ -46,10 +46,20 @@ public sealed class RestoreBackupValidator : AbstractValidator<RestoreBackupRequ
                 RuleFor(r => r.Body.Name).NotEmpty().MaximumLength(63);
                 RuleFor(r => r.Body.Confirmed).Equal(true);
                 RuleFor(r => r.Body.StorageGiB).GreaterThan(0);
-                RuleFor(r => r.Body)
-                    .Must(b => (b.BackupId is null) != (b.TargetTime is null) &&
-                        (b.BackupId is null || !string.IsNullOrWhiteSpace(b.BackupId) && b.BackupId.Length <= 128) &&
-                        (b.TargetTime is null || BackupHttpProblems.TryTime(b.TargetTime, out _)));
+                RuleFor(r => r.Body.BackupId)
+                    .Must(value => value is null || !string.IsNullOrWhiteSpace(value) && value.Length <= 128)
+                    .WithMessage("Use a nonempty backup ID of at most 128 characters.");
+                RuleFor(r => r.Body.BackupId)
+                    .NotEmpty()
+                    .When(r => r.Body.TargetTime is null)
+                    .WithMessage("Select a backup ID or a recovery time.");
+                RuleFor(r => r.Body.TargetTime)
+                    .Must(value => value is null || BackupHttpProblems.TryTime(value, out _))
+                    .WithMessage("Use an offset timestamp with at most microsecond precision.");
+                RuleFor(r => r.Body.TargetTime)
+                    .Null()
+                    .When(r => r.Body.BackupId is not null)
+                    .WithMessage("Select either a backup ID or a recovery time, not both.");
             });
     }
 }

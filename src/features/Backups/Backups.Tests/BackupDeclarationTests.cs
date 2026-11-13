@@ -59,7 +59,7 @@ public class BackupDeclarationTests
 
     [Theory]
     [InlineData("https://user:pass@s3.example", "logs/", "spec.endpoint")]
-    [InlineData("https://s3.example", "../secret", "spec.endpoint")]
+    [InlineData("https://s3.example", "../secret", "spec.prefix")]
     public void Destination_rejects_credentials_in_urls_and_relative_parent_paths(
         string endpoint,
         string prefix,

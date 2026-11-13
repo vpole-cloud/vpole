@@ -10,6 +10,7 @@ using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Secrets.Contracts;
 using Pole.Mediator;
 using Pole.Validation;
 
@@ -51,7 +52,36 @@ public sealed class CreateBackupDestinationValidator : AbstractValidator<CreateB
     public CreateBackupDestinationValidator()
     {
         RuleFor(r => r.Body).NotNull();
-        When(r => r.Body is not null, () => RuleFor(r => r.Body).Must(b => BackupInputRules.Valid(b.ToInput())));
+        When(
+            r => r.Body is not null,
+            () =>
+            {
+                RuleFor(r => r.Body.Name)
+                    .Must(BackupInputRules.ValidName)
+                    .WithMessage("Use a lowercase resource name of at most 63 characters.");
+                RuleFor(r => r.Body.ResourceGroupId).MongoObjectId("Resource group ID");
+                RuleFor(r => r.Body.IsolationScopeId).MongoObjectId("Isolation scope ID");
+                RuleFor(r => r.Body.Endpoint)
+                    .Must(BackupInputRules.ValidEndpoint)
+                    .WithMessage("Use an HTTP(S) origin without credentials, path, query or fragment.");
+                RuleFor(r => r.Body.Bucket)
+                    .Must(BackupInputRules.ValidBucket)
+                    .WithMessage("Use a valid bucket name of 3 to 63 characters.");
+                RuleFor(r => r.Body.Prefix)
+                    .Must(BackupInputRules.ValidPrefix)
+                    .WithMessage(
+                        "Use a prefix of at most 512 characters without control characters or relative path segments.");
+                RuleFor(r => r.Body.CredentialSecretId).MongoObjectId("Credential Secret ID");
+                RuleFor(r => r.Body.AccessKeyIdKey)
+                    .Must(SecretKeyReferenceRules.ValidKey)
+                    .WithMessage("Use a valid Secret key name.");
+                RuleFor(r => r.Body.SecretAccessKeyKey)
+                    .Must(SecretKeyReferenceRules.ValidKey)
+                    .WithMessage("Use a valid Secret key name.");
+                RuleFor(r => r.Body.SecretAccessKeyKey)
+                    .NotEqual(r => r.Body.AccessKeyIdKey)
+                    .WithMessage("Select two distinct credential keys.");
+            });
     }
 }
 

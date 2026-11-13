@@ -12,6 +12,8 @@ using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using Pole.Scheduling;
+using Pole.Workloads;
 
 namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
@@ -49,7 +51,24 @@ public sealed class UpdateBackupPolicyValidator : AbstractValidator<UpdateBackup
     public UpdateBackupPolicyValidator()
     {
         RuleFor(r => r.Body).NotNull();
-        When(r => r.Body is not null, () => RuleFor(r => r.Body).Must(b => BackupInputRules.Valid(b.ToInput())));
+        When(
+            r => r.Body is not null,
+            () =>
+            {
+                RuleFor(r => r.Body.Name)
+                    .Must(BackupInputRules.ValidName)
+                    .WithMessage("Use a lowercase resource name of at most 63 characters.");
+                RuleFor(r => r.Body.ResourceType)
+                    .Must(value => ResourceTypeId.TryCreate(value, out _))
+                    .WithMessage("Use a valid resource type.");
+                RuleFor(r => r.Body.ResourceId).MongoObjectId("Source resource ID");
+                RuleFor(r => r.Body.DestinationId).MongoObjectId("Destination ID");
+                RuleFor(r => r.Body.Schedule)
+                    .MaximumLength(120)
+                    .Must(value => UtcCronSchedule.TryParse(value, out _))
+                    .WithMessage("Use a five-field UTC cron expression.");
+                RuleFor(r => r.Body.RetentionDays).GreaterThan(0);
+            });
         RuleFor(r => r.Id).MongoObjectId("Resource ID");
         When(r => r.Body is not null, () => RuleFor(r => r.Body.ExpectedRevision).GreaterThan(0));
     }
@@ -70,7 +89,9 @@ public sealed class UpdateBackupPolicyHandler(
             ct);
         return answer switch
         {
-            BackupWriteResult<BackupPolicy>.Saved ok => BackupViews.From(ok.Value, ok.Value.ReportSchedule(clock.GetUtcNow())),
+            BackupWriteResult<BackupPolicy>.Saved ok => BackupViews.From(
+                ok.Value,
+                ok.Value.ReportSchedule(clock.GetUtcNow())),
             BackupWriteResult<BackupPolicy>.Rejected failure => new BackupRequestRejected(failure.Code)
         };
     }

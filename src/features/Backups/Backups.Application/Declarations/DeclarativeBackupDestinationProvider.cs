@@ -48,18 +48,23 @@ internal sealed class DeclarativeBackupDestinationProvider(
     public override JsonElement NormalizeAndValidate(JsonElement spec)
     {
         var value = DeclarationJson.Read<BackupDestinationDeclaration>(spec);
-        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), "spec.resourceGroup");
+        DeclarationJson.Require(DeclarationNames.Valid(value.ResourceGroup), DeclarationFieldPaths.ResourceGroup);
         DeclarationJson.Require(
             value.IsolationScope is null ||
             value.IsolationScope != "default" && DeclarationNames.Valid(value.IsolationScope),
-            "spec.isolationScope");
+            DeclarationFieldPaths.IsolationScope);
+        DeclarationJson.Require(BackupInputRules.ValidEndpoint(value.Endpoint), "spec.endpoint");
+        DeclarationJson.Require(BackupInputRules.ValidBucket(value.Bucket), "spec.bucket");
+        DeclarationJson.Require(BackupInputRules.ValidPrefix(value.Prefix), "spec.prefix");
+        DeclarationJson.Require(value.Credentials is not null, "spec.credentials");
+        DeclarationJson.Require(DeclarationNames.Valid(value.Credentials.Secret), "spec.credentials.secret");
         DeclarationJson.Require(
-            BackupInputRules.ValidStorageLocation(value.Endpoint, value.Bucket, value.Prefix),
-            "spec.endpoint");
+            SecretKeyReferenceRules.ValidKey(value.Credentials.AccessKeyIdKey),
+            "spec.credentials.accessKeyIdKey");
         DeclarationJson.Require(
-            value.Credentials is not null && DeclarationNames.Valid(value.Credentials.Secret) &&
-            BackupInputRules.ValidKeys(value.Credentials.AccessKeyIdKey, value.Credentials.SecretAccessKeyKey),
-            "spec.credentials");
+            SecretKeyReferenceRules.ValidKey(value.Credentials.SecretAccessKeyKey) &&
+            value.Credentials.AccessKeyIdKey != value.Credentials.SecretAccessKeyKey,
+            "spec.credentials.secretAccessKeyKey");
         return DeclarationJson.Write(value with { Prefix = value.Prefix.Trim('/') });
     }
 
@@ -77,7 +82,7 @@ internal sealed class DeclarativeBackupDestinationProvider(
                 RequiresAccess: true),
         };
         if (value.IsolationScope is not null)
-            refs.Add(new(new("IsolationScope", value.IsolationScope), "spec.isolationScope"));
+            refs.Add(new(new("IsolationScope", value.IsolationScope), DeclarationFieldPaths.IsolationScope));
         return new(new("ResourceGroup", value.ResourceGroup), [], refs, [], []);
     }
 

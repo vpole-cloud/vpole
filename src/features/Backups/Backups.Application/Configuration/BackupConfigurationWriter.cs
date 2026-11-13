@@ -212,21 +212,27 @@ public static partial class BackupInputRules
     [GeneratedRegex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$|^[a-z]$")]
     private static partial Regex Name();
 
-    private static bool ValidName(string value) => !string.IsNullOrWhiteSpace(value) && Name().IsMatch(value);
+    public static bool ValidName(string value) => !string.IsNullOrWhiteSpace(value) && Name().IsMatch(value);
 
     public static bool Valid(BackupDestinationInput d) => ValidName(d.Name) &&
         ObjectId.TryParse(d.ResourceGroupId, out _) && ObjectId.TryParse(d.IsolationScopeId, out _) &&
         ValidStorageLocation(d.Endpoint, d.Bucket, d.Prefix) && ObjectId.TryParse(d.CredentialSecretId, out _) &&
         ValidKeys(d.AccessKeyIdKey, d.SecretAccessKeyKey);
 
+    public static bool ValidEndpoint(string? endpoint) => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) &&
+        uri.Scheme is "https" or "http" && uri.UserInfo.Length == 0 && uri.Query.Length == 0 &&
+        uri.Fragment.Length == 0 && uri.AbsolutePath == "/";
+
+    public static bool ValidBucket(string? bucket) => bucket is { Length: >= 3 and <= 63 } &&
+        Regex.IsMatch(bucket, "^[a-z0-9][a-z0-9.-]*[a-z0-9]$");
+
+    public static bool ValidPrefix(string? prefix) => prefix is { Length: <= 512 } && !prefix.Any(char.IsControl) &&
+        prefix.Split('/').All(segment => segment != ".." && segment != ".");
+
     public static bool ValidStorageLocation(
         string endpoint,
         string bucket,
-        string prefix) => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http" &&
-        uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.AbsolutePath == "/" &&
-        bucket is { Length: >= 3 and <= 63 } && Regex.IsMatch(bucket, "^[a-z0-9][a-z0-9.-]*[a-z0-9]$") &&
-        prefix is { Length: <= 512 } && !prefix.Any(char.IsControl) &&
-        prefix.Split('/').All(segment => segment != ".." && segment != ".");
+        string prefix) => ValidEndpoint(endpoint) && ValidBucket(bucket) && ValidPrefix(prefix);
 
     public static bool ValidKeys(string accessKeyIdKey, string secretAccessKeyKey) =>
         SecretKeyReferenceRules.ValidKey(accessKeyIdKey) && SecretKeyReferenceRules.ValidKey(secretAccessKeyKey) &&

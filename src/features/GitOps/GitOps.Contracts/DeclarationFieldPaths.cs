@@ -8,6 +8,8 @@ public static class DeclarationFieldPaths
 
     public const string Image = "spec.image";
 
+    public const string IsolationScope = "spec.isolationScope";
+
     public const string MetadataName = "metadata.name";
 
     public const string Placement = "spec.placement";
