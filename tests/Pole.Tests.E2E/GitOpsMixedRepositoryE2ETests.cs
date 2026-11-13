@@ -138,8 +138,15 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
 
         await fixture.AssertGitOpsDeliveryWiringAsync(ids, digest, ct);
 
+        // Pause fences an in-flight poll before the fixture changes all three resources.
+        // Otherwise a run can read PostgreSQL before the drift and the other resources after it.
+        var beforeDrift = await JsonAsync(HttpMethod.Get, $"{Root}/{source}", null, ct);
+        var pausedForDrift = await LifecycleActivityAsync(source, "pause", beforeDrift, ct);
+        Assert.Equal("Paused", pausedForDrift.GetProperty("activity").GetString());
+
         // A controlled database fixture is the only writer bypassing the production ownership guards.
         await fixture.InjectMixedGitOpsDriftAsync(ids, ct);
+        await LifecycleActivityAsync(source, "resume", pausedForDrift, ct);
         var repaired = await WaitMixedAsync(
             source,
             item => LatestRunId(item) != LatestRunId(applied) &&
@@ -169,15 +176,7 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         await fixture.AssertGitOpsDeliveryWiringAsync(ids, digest, ct);
         var stable = await fixture.ReadMixedGitOpsBusinessVersionsAsync(ids, ct);
 
-        await JsonAsync(
-            HttpMethod.Post,
-            $"{Root}/{source}/sync",
-            new
-            {
-                expectedRevision = 1,
-                idempotencyKey = Guid.NewGuid(),
-            },
-            ct);
+        await SyncLifecycleAsync(source, ct);
         var unchanged = await WaitMixedAsync(
             source,
             item => LatestRunId(item) != LatestRunId(attachmentRepair) &&
