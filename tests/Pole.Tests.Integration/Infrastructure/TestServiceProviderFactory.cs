@@ -155,7 +155,7 @@ public static class TestServiceProviderFactory
             typeof(WebServiceSchemaValidationMigration).Assembly,
             typeof(FunctionAppsInitialMigration).Assembly,
             typeof(ResourceConnectionIndexesMigration).Assembly,
-            typeof(BackupsSchemaMigration).Assembly,
+            typeof(BackupsIndexesMigration).Assembly,
         ]);
         services.AddSingleton(new SearchSourceType(ResourceTypeId.Create("third-party/widget"), "Widget", 3));
         services.AddSearchFeature();

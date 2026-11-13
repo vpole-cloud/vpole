@@ -236,7 +236,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             typeof(WebServiceSchemaValidationMigration).Assembly,
             typeof(FunctionAppsInitialMigration).Assembly,
             typeof(ResourceConnectionIndexesMigration).Assembly,
-            typeof(BackupsSchemaMigration).Assembly,
+            typeof(BackupsIndexesMigration).Assembly,
         ]);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature(builder.Configuration);

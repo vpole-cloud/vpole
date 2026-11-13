@@ -150,7 +150,7 @@ internal sealed class BackupTestSetup(
                         SecretConsumerValueAccess.GrantedKeys));
                 services.AddSingleton(mongo.Client);
                 services.AddSingleton(mongo.Database);
-                services.AddFeatureMigrations("pole.backups", typeof(BackupsSchemaMigration).Assembly);
+                services.AddFeatureMigrations("pole.backups", typeof(BackupsIndexesMigration).Assembly);
                 if (failDestination || failOperation || failPolicy || failHistoryContinuation is not null)
                 {
                     services.RemoveAll<StoreOutboxWrites>();

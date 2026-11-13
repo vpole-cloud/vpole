@@ -4,7 +4,7 @@ using Pole.Migrations;
 
 namespace Pole.Features.Backups.Migrations;
 
-public sealed class BackupsSchemaMigration : IMigration
+public sealed class BackupsIndexesMigration : IMigration
 {
     public ObjectId Id => new("6aee6a0031800609592fefb1");
     public string Name => "Tenant backup configuration, archives and operation history";
