@@ -9,9 +9,7 @@ public interface IBackupProvider
     ValidateBackupScheduleOutcome ValidateSchedule(BackupSchedule schedule);
     Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct);
 
-    Task<BackupProviderResult<BackupProviderProgress>> ApplyScheduleAsync(
-        ApplyBackupScheduleRequest request,
-        CancellationToken ct);
+    Task<ApplyBackupScheduleOutcome> ApplyScheduleAsync(ApplyBackupScheduleRequest request, CancellationToken ct);
 
     Task<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>> ListAsync(
         ListBackupCatalogRequest request,

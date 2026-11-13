@@ -14,8 +14,6 @@ using Pole.Features.Backups.Domain;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
-using Progress
-    = Pole.Features.Backups.Contracts.BackupProviderResult<Pole.Features.Backups.Contracts.BackupProviderProgress>;
 
 namespace Pole.Features.Backups.Application.Reconciliation;
 
@@ -83,42 +81,63 @@ public sealed class ApplyBackupPolicy(
             ct);
         var retiring = policy.Deleting || source is null;
         BackupRuntimeObservation? observation = null;
-        Progress effect;
         var provider = providers.Find(policy.ResourceType);
+        BackupPolicyApplicationOutcome effect;
         if (source is null)
-            effect = new Progress.Success(new(BackupProviderPhase.Succeeded, null));
+            effect = new BackupPolicyApplied();
         else if (provider is null)
-            effect = new Progress.Failure("unsupported-provider", false);
+            effect = new BackupSourceUnsupported();
         else if (retiring)
-            effect = await provider.ApplyScheduleAsync(
-                new(policy.Id, BackupArchiveAccess.Context(archive), new StopBackupPolicy(), policy.Revision),
-                attempt);
+            effect = await ApplyAsync(provider, new StopBackupPolicy());
         else
         {
             var runtime = await access.RuntimeAsync(archive, attempt);
             effect = runtime switch
             {
-                BackupCredentialProjection resolved => await provider.ApplyScheduleAsync(
-                    new(
-                        policy.Id,
-                        BackupArchiveAccess.Context(archive),
-                        new ConfigureBackupPolicy(
-                            new(policy.Schedule, policy.Suspended, policy.RetentionDays),
-                            resolved),
-                        policy.Revision),
-                    attempt),
-                BackupArchiveProjectionUnavailable => new Progress.Failure("workload-credential-unavailable", true),
+                BackupCredentialProjection projection => await ApplyAsync(
+                    provider,
+                    new ConfigureBackupPolicy(
+                        new(policy.Schedule, policy.Suspended, policy.RetentionDays),
+                        projection)),
+                BackupArchiveProjectionUnavailable error => error,
             };
-            if (effect is Progress.Success)
+        }
+
+        var failureCode = FailureCode(effect);
+        if (!retiring && provider is not null && effect is BackupPolicyApplied or BackupPolicyPending)
+        {
+            var observed = await provider.ObserveAsync(BackupArchiveAccess.Context(archive), attempt);
+            switch (observed)
             {
-                var observed = await provider.ObserveAsync(BackupArchiveAccess.Context(archive), attempt);
-                if (observed is BackupProviderResult<BackupRuntimeObservation>.Success observedState)
-                    observation = observedState.Value;
-                else
-                    effect = new Progress.Failure(
-                        ((BackupProviderResult<BackupRuntimeObservation>.Failure)observed).Code,
-                        true);
+                case BackupProviderResult<BackupRuntimeObservation>.Success success:
+                    observation = success.Value;
+                    break;
+                case BackupProviderResult<BackupRuntimeObservation>.Failure failure:
+                    failureCode = failure.Code;
+                    break;
             }
+        }
+
+        async Task<BackupPolicyApplicationOutcome> ApplyAsync(
+            IBackupProvider implementation,
+            BackupPolicyConfiguration configuration)
+        {
+            var result = await implementation.ApplyScheduleAsync(
+                new(policy.Id, BackupArchiveAccess.Context(archive), configuration, policy.Revision),
+                attempt);
+            return result switch
+            {
+                BackupPolicyApplied value => value,
+                BackupPolicyPending value => value,
+                BackupSourceUnavailable error => error,
+                BackupNativeOwnershipConflict error => error,
+                BackupNativeIdentityUnavailable error => error,
+                BackupNativeWriteConflict error => error,
+                BackupPolicyAlreadyActive error => error,
+                BackupPolicyRevisionUnreadable error => error,
+                BackupPolicySuperseded error => error,
+                BackupPluginConflict error => error,
+            };
         }
 
         BackupServiceSnapshot? latest = null;
@@ -135,7 +154,7 @@ public sealed class ApplyBackupPolicy(
             };
         }
 
-        var succeeded = effect is Progress.Success { Value.Phase: BackupProviderPhase.Succeeded };
+        var succeeded = effect is BackupPolicyApplied && failureCode is null;
         await transactions.InvokeOutcomeAsync<bool>(
             async (tx, token) =>
             {
@@ -169,9 +188,9 @@ public sealed class ApplyBackupPolicy(
                         .Set(
                             p => p.Dispatch,
                             new AvailableBackupDispatch(
-                                clock.GetUtcNow().UtcDateTime + (effect is Progress.Failure ? Retry : Poll),
+                                clock.GetUtcNow().UtcDateTime + (failureCode is null ? Poll : Retry),
                                 policy.Dispatch.Origin))
-                        .Set(p => p.FailureCode, (effect as Progress.Failure)?.Code);
+                        .Set(p => p.FailureCode, failureCode);
                     if (observation is not null)
                     {
                         var state = new BackupObservation(
@@ -186,7 +205,7 @@ public sealed class ApplyBackupPolicy(
                                     clock.GetUtcNow().UtcDateTime + Retry,
                                     policy.Dispatch.Origin));
                     }
-                    else if (effect is Progress.Failure && policy.Observation is { } previous)
+                    else if (failureCode is not null && policy.Observation is { } previous)
                         update = update.Set(
                             p => p.Observation,
                             previous with { WalArchivingStatus = "Unknown", NextScheduledAt = null });
@@ -209,6 +228,22 @@ public sealed class ApplyBackupPolicy(
             },
             ct);
     }
+
+    private static string? FailureCode(BackupPolicyApplicationOutcome outcome) => outcome switch
+    {
+        BackupPolicyApplied => null,
+        BackupPolicyPending => null,
+        BackupSourceUnsupported => "unsupported-provider",
+        BackupArchiveProjectionUnavailable => "workload-credential-unavailable",
+        BackupSourceUnavailable => "backup-source-unavailable",
+        BackupNativeOwnershipConflict => "backup-resource-ownership-conflict",
+        BackupNativeIdentityUnavailable => "backup-native-identity-missing",
+        BackupNativeWriteConflict => "backup-native-write-conflict",
+        BackupPolicyAlreadyActive => "backup-policy-already-active",
+        BackupPolicyRevisionUnreadable => "backup-policy-revision-unreadable",
+        BackupPolicySuperseded => "backup-policy-superseded",
+        BackupPluginConflict => "backup-existing-plugin-conflict",
+    };
 
     private async Task RecordSchedulesAsync(
         BackupPolicy policy,
@@ -250,3 +285,17 @@ public sealed class ApplyBackupPolicy(
         }
     }
 }
+
+internal union BackupPolicyApplicationOutcome(
+    BackupPolicyApplied,
+    BackupPolicyPending,
+    BackupSourceUnsupported,
+    BackupArchiveProjectionUnavailable,
+    BackupSourceUnavailable,
+    BackupNativeOwnershipConflict,
+    BackupNativeIdentityUnavailable,
+    BackupNativeWriteConflict,
+    BackupPolicyAlreadyActive,
+    BackupPolicyRevisionUnreadable,
+    BackupPolicySuperseded,
+    BackupPluginConflict);

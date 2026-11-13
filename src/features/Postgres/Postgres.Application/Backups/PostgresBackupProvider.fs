@@ -128,7 +128,7 @@ type PostgresBackupProvider
 
             let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
             let! native =
-                BackupNative.get client PostgresBackupNames.Group sourcePlacement.NamespaceName "clusters" name ct
+                PostgresBackupObjects.get client PostgresBackupNames.Group sourcePlacement.NamespaceName "clusters" name ct
             if isNull native then
                 return running
             else
@@ -137,30 +137,30 @@ type PostgresBackupProvider
                       "pole.io/resource-id", cluster.Id
                       "pole.io/runtime-cell-id", target.RuntimeCellId
                       "pole.io/resource-deployment-id", target.DeploymentId ]
-                if not (BackupNative.labelsMatch native labels) then
+                if not (PostgresBackupObjects.labelsMatch native labels) then
                     BackupNative.fail "restore-identity-conflict" false
 
-                let nativeRecovery = BackupNative.field native ["spec"; "bootstrap"; "recovery"]
+                let nativeRecovery = PostgresBackupObjects.field native ["spec"; "bootstrap"; "recovery"]
                 let targetMatches =
                     match request.Target with
                     | :? BackupTimeRecoveryTarget as time ->
-                        let actualTime = BackupNative.timestamp nativeRecovery ["recoveryTarget"; "targetTime"]
+                        let actualTime = PostgresBackupObjects.timestamp nativeRecovery ["recoveryTarget"; "targetTime"]
                         actualTime = Nullable(time.TargetTime.ToUniversalTime())
                     | :? BackupCopyRecoveryTarget as copy ->
-                        BackupNative.value nativeRecovery ["recoveryTarget"; "backupID"] = copy.BackupId
+                        PostgresBackupObjects.value nativeRecovery ["recoveryTarget"; "backupID"] = copy.BackupId
                         && String.Equals(
-                            BackupNative.value nativeRecovery ["recoveryTarget"; "targetImmediate"],
+                            PostgresBackupObjects.value nativeRecovery ["recoveryTarget"; "targetImmediate"],
                             "true", StringComparison.OrdinalIgnoreCase)
                     | _ -> invalidOp "Unsupported backup recovery target."
-                if not targetMatches || BackupNative.value nativeRecovery ["source"] <> "origin" then
+                if not targetMatches || PostgresBackupObjects.value nativeRecovery ["source"] <> "origin" then
                     BackupNative.fail "restore-target-mismatch" false
 
-                let ready = BackupNative.condition native "Ready"
-                let primary = BackupNative.value native ["status"; "currentPrimary"]
+                let ready = PostgresBackupObjects.condition native "Ready"
+                let primary = PostgresBackupObjects.value native ["status"; "currentPrimary"]
                 if target.Status = ResourceDeploymentStatus.Applied
                    && target.DesiredGeneration = target.ObservedGeneration
                    && not (String.IsNullOrEmpty primary)
-                   && BackupNative.value ready ["status"] = "True" then
+                   && PostgresBackupObjects.value ready ["status"] = "True" then
                     let backupId =
                         match request.Target with
                         | :? BackupCopyRecoveryTarget as copy -> copy.BackupId
@@ -214,14 +214,21 @@ type PostgresBackupProvider
 
         member _.ListAsync(request,ct) = BarmanCatalog.read request ct
 
-        member _.ApplyScheduleAsync(request,ct) =
-            ProviderResult.protect (fun () -> task {
+        member _.ApplyScheduleAsync(request, ct) =
+            task {
                 let! client =
                     match request.Configuration with
                     | :? StopBackupPolicy -> clients.GetForCleanupAsync(request.Archive.Placement.DeploymentTargetId, ct)
                     | :? ConfigureBackupPolicy -> clientFor request.Archive ct
                     | _ -> invalidOp "Unsupported backup policy configuration."
-                return! BackupNative.apply client request ct }) ct
+                try
+                    let! result = PostgresBackupPolicy.apply client request ct
+                    return PostgresBackupPolicy.outcome result
+                with
+                | :? HttpOperationException as error when error.Response.StatusCode = HttpStatusCode.Conflict ->
+                    // The observed UID/resourceVersion or a missing-object create lost a race.
+                    return ApplyBackupScheduleOutcome(BackupNativeWriteConflict())
+            }
 
         member _.ObserveAsync(archive,ct) =
             ProviderResult.protect (fun () -> task {
@@ -253,7 +260,13 @@ type PostgresBackupProvider
                     let valid,version = Int32.TryParse(archive.Service.Version)
                     if not valid || not (PostgresSettings.isSupportedVersion settings version) then
                         BackupNative.fail "restore-version-unsupported" false
-                    let! _ = BackupNative.ensureStore client archive r.Projection ct
+                    let! store = PostgresBackupArchive.ensureStore client archive r.Projection ct
+                    match store with
+                    | Error PostgresBackupArchive.OwnershipConflict ->
+                        BackupNative.fail "backup-resource-ownership-conflict" false
+                    | Error PostgresBackupArchive.IdentityUnavailable ->
+                        BackupNative.fail "backup-native-identity-missing" true
+                    | Ok _ -> ()
                     let target: PostgresRecoveryTarget =
                         match r.Target with
                         | :? BackupTimeRecoveryTarget as time -> PostgresTimeRecoveryTarget(time.TargetTime.UtcDateTime)

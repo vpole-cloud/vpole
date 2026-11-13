@@ -60,13 +60,11 @@ internal sealed class TestBackupProvider(
                 new("running-uid", null, BackupObservedRunState.Running, DateTimeOffset.UtcNow, null, null)
             ]));
 
-    public Task<BackupProviderResult<BackupProviderProgress>> ApplyScheduleAsync(
-        ApplyBackupScheduleRequest request,
-        CancellationToken ct)
+    public Task<ApplyBackupScheduleOutcome> ApplyScheduleAsync(ApplyBackupScheduleRequest request, CancellationToken ct)
     {
         Interlocked.Increment(ref _applyCount);
         LastApplyTrace = TraceContext.Current;
-        return Success(new BackupProviderProgress(BackupProviderPhase.Succeeded, null));
+        return Task.FromResult<ApplyBackupScheduleOutcome>(new BackupPolicyApplied());
     }
 
     public Task<BackupProviderResult<BackupProviderProgress>> RunAsync(BackupCopyRequest request, CancellationToken ct)

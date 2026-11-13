@@ -1,12 +1,11 @@
 namespace Pole.Features.Postgres.Application.Backups
 
-open Pole.Scheduling
-
 open System.Text.Json
 open System.Text.Json.Nodes
 open Pole.Features.Backups.Contracts
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.StorageProfiles.Contracts
+open Pole.Scheduling
 open Pole.Workloads
 
 [<RequireQualifiedAccess>]

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
+using k8s;
+using k8s.Autorest;
 using Microsoft.FSharp.Core;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
@@ -10,7 +12,6 @@ using Pole.Features.Postgres.Application.Common;
 using Pole.Features.Postgres.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
 using Xunit;
-using k8s;
 
 namespace Pole.Features.Postgres.Tests;
 
@@ -45,25 +46,24 @@ public sealed class PostgresBackupReconciliationTests
         await Applied(
             new("policy", second, new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection), 2));
         Assert.Equal(writes, api.Writes);
-        Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.ApplyScheduleAsync(
+        Assert.IsType<BackupPolicySuperseded>(
+            (await provider.ApplyScheduleAsync(
                 new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
-                default));
+                default)).Value);
         Assert.Equal(writes, api.Writes);
         await Applied(new("policy", second, new StopBackupPolicy(), 3));
         Assert.Empty(api.Get("clusters", "pg-service")["spec"]!["plugins"]!.AsArray());
         var third = Archive with { Location = Archive.Location with { ArchiveId = "archive-c" } };
         await Applied(new("replacement", third, new ConfigureBackupPolicy(Daily, Projection), 1));
         writes = api.Writes;
-        Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.ApplyScheduleAsync(
+        Assert.IsType<BackupPolicyAlreadyActive>(
+            (await provider.ApplyScheduleAsync(
                 new("policy", second, new ConfigureBackupPolicy(Daily, Projection), 2),
-                default));
+                default)).Value);
         Assert.Equal(writes, api.Writes);
 
         async Task Applied(ApplyBackupScheduleRequest request) =>
-            Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-                await provider.ApplyScheduleAsync(request, default));
+            Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(request, default)).Value);
     }
 
     [Fact]
@@ -101,9 +101,7 @@ public sealed class PostgresBackupReconciliationTests
             new ConfigureBackupPolicy(Daily, Projection),
             1);
         var operation = new BackupCopyRequest("operation", Archive, Projection);
-        var waiting = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-            await provider.ApplyScheduleAsync(desired, default));
-        Assert.Equal(BackupProviderPhase.Running, waiting.Value.Phase);
+        Assert.IsType<BackupPolicyPending>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
         var writes = api.Writes;
         var retry = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
@@ -113,9 +111,7 @@ public sealed class PostgresBackupReconciliationTests
         Assert.Equal(writes, api.Writes);
 
         api.StandbyHasSidecar = true;
-        var applied = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-            await provider.ApplyScheduleAsync(desired, default));
-        Assert.Equal(BackupProviderPhase.Succeeded, applied.Value.Phase);
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.False(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
         await provider.RunAsync(operation, default);
         var native = api.Get("backups", "backup-operation");
@@ -131,6 +127,130 @@ public sealed class PostgresBackupReconciliationTests
             await provider.RunAsync(operation, default));
         Assert.Equal("backup-plugin-unavailable", failure.Code);
         Assert.False(failure.Retryable);
+    }
+
+    [Theory]
+    [InlineData("missing-source", typeof(BackupSourceUnavailable))]
+    [InlineData("source-ownership", typeof(BackupNativeOwnershipConflict))]
+    [InlineData("source-identity", typeof(BackupNativeIdentityUnavailable))]
+    [InlineData("policy-revision", typeof(BackupPolicyRevisionUnreadable))]
+    public async Task Policy_authority_failures_are_typed_and_do_not_write(string fault, Type expected)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var source = api.Get("clusters", "pg-service");
+        switch (fault)
+        {
+            case "missing-source":
+                api.Remove("clusters", "pg-service");
+                break;
+            case "source-ownership":
+                source["metadata"]!["labels"]!["pole.io/tenant-id"] = "another-tenant";
+                break;
+            case "source-identity":
+                source["metadata"]!["resourceVersion"] = null;
+                break;
+            case "policy-revision":
+                source["metadata"]!["annotations"] = JsonNode.Parse(
+                    """{"backups.pole.io/policy-id":"policy","backups.pole.io/policy-revision":"invalid"}""");
+                break;
+        }
+
+        var result = await Provider(client)
+            .ApplyScheduleAsync(new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1), default);
+        Assert.IsType(expected, result.Value);
+        Assert.Equal(0, api.Writes);
+    }
+
+    [Fact]
+    public async Task Policy_cannot_mutate_a_foreign_owned_ObjectStore()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        var desired = new ApplyBackupScheduleRequest(
+            "policy",
+            Archive,
+            new ConfigureBackupPolicy(Daily, Projection),
+            1);
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
+        api.Get("objectstores", "archive-archive-a")["metadata"]!["labels"]!["pole.io/tenant-id"] = "another-tenant";
+        var writes = api.Writes;
+        Assert.IsType<BackupNativeOwnershipConflict>(
+            (await provider.ApplyScheduleAsync(desired with { Revision = 2 }, default)).Value);
+        Assert.Equal(writes, api.Writes);
+    }
+
+    [Fact]
+    public async Task Policy_retries_a_native_CAS_conflict_without_creating_another_archive()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        var desired = new ApplyBackupScheduleRequest(
+            "policy",
+            Archive,
+            new ConfigureBackupPolicy(Daily, Projection),
+            1);
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
+        var store = api.Get("objectstores", "archive-archive-a");
+        var uid = store["metadata"]!["uid"]!.GetValue<string>();
+        var updated = desired with
+        {
+            Revision = 2,
+            Configuration = new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection)
+        };
+        api.NextWriteFailure = HttpStatusCode.Conflict;
+        Assert.IsType<BackupNativeWriteConflict>((await provider.ApplyScheduleAsync(updated, default)).Value);
+        Assert.Equal("7d", store["spec"]!["retentionPolicy"]!.GetValue<string>());
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(updated, default)).Value);
+        Assert.Equal(uid, api.Get("objectstores", "archive-archive-a")["metadata"]!["uid"]!.GetValue<string>());
+        Assert.Equal("14d", store["spec"]!["retentionPolicy"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Policy_waits_for_WAL_archiving_and_preserves_other_plugins()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var source = api.Get("clusters", "pg-service");
+        source["spec"]!["plugins"] = JsonNode.Parse("""[{"name":"another-provider","parameters":{"key":"value"}}]""");
+        var wal = source["status"]!["conditions"]!.AsArray()
+            .Single(node => node!["type"]!.GetValue<string>() == "ContinuousArchiving")!;
+        wal["status"] = "False";
+        var desired = new ApplyBackupScheduleRequest(
+            "policy",
+            Archive,
+            new ConfigureBackupPolicy(Daily, Projection),
+            1);
+        var provider = Provider(client);
+        Assert.IsType<BackupPolicyPending>((await provider.ApplyScheduleAsync(desired, default)).Value);
+        Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        wal["status"] = "True";
+        Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
+        Assert.False(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        Assert.Equal(
+            "value",
+            source["spec"]!["plugins"]!.AsArray()
+                .Single(node => node!["name"]!.GetValue<string>() == "another-provider")!["parameters"]!["key"]!
+                .GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Policy_keeps_unexpected_infrastructure_failure_and_caller_cancellation_on_the_exception_path()
+    {
+        using var api = new NativeApi { ReadFailure = HttpStatusCode.InternalServerError };
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var desired = new ApplyBackupScheduleRequest(
+            "policy",
+            Archive,
+            new ConfigureBackupPolicy(Daily, Projection),
+            1);
+        await Assert.ThrowsAsync<HttpOperationException>(() => Provider(client).ApplyScheduleAsync(desired, default));
+        api.ReadFailure = null;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Provider(client).ApplyScheduleAsync(desired, new CancellationToken(true)));
+        Assert.Equal(0, api.Writes);
     }
 
     [Theory]
@@ -283,6 +403,8 @@ public sealed class PostgresBackupReconciliationTests
         private int version = 1;
         public int Writes { get; private set; }
         public bool StandbyHasSidecar { get; set; } = true;
+        public HttpStatusCode? NextWriteFailure { get; set; }
+        public HttpStatusCode? ReadFailure { get; set; }
 
         public NativeApi()
         {
@@ -298,9 +420,19 @@ public sealed class PostgresBackupReconciliationTests
         }
 
         public JsonNode Get(string plural, string name) => objects[(plural, name)];
+        public void Remove(string plural, string name) => objects.Remove((plural, name));
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
+            if (request.Method == HttpMethod.Get && ReadFailure is { } readFailure)
+                return Reply(request, readFailure, JsonNode.Parse("""{"kind":"Status"}""")!);
+            if (request.Method != HttpMethod.Get && NextWriteFailure is { } writeFailure)
+            {
+                NextWriteFailure = null;
+                return Reply(request, writeFailure, JsonNode.Parse("""{"kind":"Status"}""")!);
+            }
+
             var path = request.RequestUri!.AbsolutePath.Split('/');
             if (request.RequestUri.AbsolutePath == "/api/v1/namespaces/ns/pods")
             {
@@ -332,6 +464,9 @@ public sealed class PostgresBackupReconciliationTests
                 Assert.Equal(
                     current["metadata"]!["resourceVersion"]!.GetValue<string>(),
                     body["metadata"]!["resourceVersion"]!.GetValue<string>());
+                Assert.Equal(
+                    current["metadata"]!["uid"]!.GetValue<string>(),
+                    body["metadata"]!["uid"]!.GetValue<string>());
                 foreach (var key in new[] { "metadata", "spec" })
                 foreach (var item in body[key]!.AsObject())
                     current[key]![item.Key] = item.Value?.DeepClone();

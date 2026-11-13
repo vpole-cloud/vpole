@@ -141,7 +141,7 @@ public class BackupDeclarationTests
         public Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct) =>
             throw new NotSupportedException();
 
-        public Task<BackupProviderResult<BackupProviderProgress>> ApplyScheduleAsync(
+        public Task<ApplyBackupScheduleOutcome> ApplyScheduleAsync(
             ApplyBackupScheduleRequest request,
             CancellationToken ct) => throw new NotSupportedException();
 

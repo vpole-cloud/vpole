@@ -74,6 +74,9 @@
         <Compile Include="Kubernetes/PostgresResourceDeploymentObserver.fs"/>
         <Compile Include="Backups/BarmanCatalog.fs"/>
         <Compile Include="Backups/PostgresBackupManifests.fs"/>
+        <Compile Include="Backups/PostgresBackupObjects.fs"/>
+        <Compile Include="Backups/PostgresBackupArchive.fs"/>
+        <Compile Include="Backups/PostgresBackupPolicy.fs"/>
         <Compile Include="Backups/PostgresBackupKubernetes.fs"/>
         <Compile Include="Backups/PostgresBackupProvider.fs"/>
         <Compile Include="PostgresFeatureRegistration.fs"/>
