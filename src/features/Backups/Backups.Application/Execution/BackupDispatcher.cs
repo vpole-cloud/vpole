@@ -3,6 +3,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceGroups.Contracts;
@@ -176,14 +177,17 @@ public sealed class BackupDispatcher(
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var lockId = ObjectId.GenerateNewId().ToString();
-        var work = BackupDispatchFilters.OperationsDue(now);
-        var operation = await operations.FindOneAndUpdateAsync(
-            work,
-            Builders<BackupOperation>.Update.Set(o => o.LeaseId, lockId).Set(o => o.LeaseUntil, now + Lease),
-            new FindOneAndUpdateOptions<BackupOperation>
-                { Sort = Builders<BackupOperation>.Sort.Ascending(o => o.NextAttemptAt) },
-            ct);
-        if (operation is null)
+        var candidate = await operations.Find(BackupDispatchFilters.OperationsDue(now))
+            .SortBy(o => o.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (candidate is null)
+            return false;
+        var operation = candidate.Claim(new BackupLease(lockId, now + Lease));
+        var claimed = await operations.UpdateOneAsync(
+            BackupDispatchFilters.OperationAtWork(candidate),
+            Builders<BackupOperation>.Update.Set(o => o.Work, operation.Work),
+            cancellationToken: ct);
+        if (claimed.ModifiedCount != 1)
             return false;
         var archive = await archives.Find(BackupsFilters<BackupArchive>.ById(operation.TenantId, operation.ArchiveId))
             .SingleAsync(ct);
@@ -193,13 +197,6 @@ public sealed class BackupDispatcher(
         var effect = provider is null
             ? new Progress.Failure("unsupported-provider", false)
             : await ExecuteAsync(operation, archive, provider, deadline.Token);
-        var nextState = effect switch
-        {
-            Progress.Success { Value.Phase: BackupProviderPhase.Succeeded } => BackupOperationState.Succeeded,
-            Progress.Failure { Retryable: false } => BackupOperationState.Failed,
-            Progress.Failure { Retryable: true } => operation.State,
-            _ => BackupOperationState.Running,
-        };
         var updatedAt = clock.GetUtcNow().UtcDateTime;
         await transactions.InvokeOutcomeAsync<bool>(
             async (tx, token) =>
@@ -209,12 +206,26 @@ public sealed class BackupDispatcher(
                 if (current is null)
                     return tx.Abort(false);
                 // The provider may have committed the creation receipt after this lease was claimed.
-                var updated = current.Advance(
-                    nextState,
-                    (effect as Progress.Failure)?.Code,
-                    (effect as Progress.Success)?.Value.ProviderBackupId,
-                    updatedAt,
-                    effect is Progress.Failure ? Retry : Poll);
+                var updated = effect switch
+                {
+                    Progress.Failure { Retryable: true } failure => current.Retry(updatedAt, Retry, failure.Code),
+                    Progress.Failure { Retryable: false } failure => current.Fail(failure.Code, updatedAt),
+                    Progress.Success { Value.Phase: BackupProviderPhase.Succeeded } success => current.Work switch
+                    {
+                        ManualBackupWork => current.CompleteCopy(success.Value.ProviderBackupId!, updatedAt),
+                        RestoreBackupWork => current.CompleteRestore(updatedAt),
+                        ScheduledBackupWork => throw new InvalidOperationException(
+                            "Scheduled backups are observed separately."),
+                    },
+                    Progress.Success { Value.Phase: BackupProviderPhase.Running } => current.Work switch
+                    {
+                        ManualBackupWork => current.CopyRunning(updatedAt, Poll),
+                        RestoreBackupWork => current.Retry(updatedAt, Poll, null),
+                        ScheduledBackupWork => throw new InvalidOperationException(
+                            "Scheduled backups are observed separately."),
+                    },
+                    Progress.Success => throw new InvalidOperationException("Unsupported provider progress."),
+                };
                 if ((await operations.ReplaceOneAsync(tx.Session, guard, updated, cancellationToken: token))
                     .MatchedCount != 1)
                     return tx.Abort(false);
@@ -235,40 +246,32 @@ public sealed class BackupDispatcher(
     {
         foreach (var run in runs)
         {
-            var key = $"scheduled:{archive.Id}:{run.NativeUid}";
+            var key = BackupOperationKeys.Scheduled(archive.Id, run.NativeUid);
             var filter = BackupDispatchFilters.Idempotency(archive.TenantId, key);
             var previous = await operations.Find(session, filter).SingleOrDefaultAsync(ct);
-            var state = run.State switch
+            ScheduledBackupExecution execution = run.State switch
             {
-                BackupObservedRunState.Running => BackupOperationState.Running,
-                BackupObservedRunState.Succeeded => BackupOperationState.Succeeded,
-                BackupObservedRunState.Failed => BackupOperationState.Failed,
-                _ => throw new ArgumentOutOfRangeException(nameof(run))
+                BackupObservedRunState.Running => new RunningScheduledBackup(),
+                BackupObservedRunState.Succeeded => new CompletedScheduledBackup(
+                    run.BackupId ??
+                    throw new InvalidOperationException("A completed native backup must report its identity.")),
+                BackupObservedRunState.Failed => new FailedScheduledBackup(run.FailureCode ?? "backup-failed"),
+                _ => throw new ArgumentOutOfRangeException(nameof(run)),
             };
-            if (previous?.State == state && previous.FailureCode == run.FailureCode &&
-                previous.BackupId == run.BackupId)
+            if (previous?.Work is ScheduledBackupWork recorded && recorded.Execution == execution)
                 continue;
-            var op = new BackupOperation(
+            var op = BackupOperation.ObserveScheduled(
                 previous?.Id ?? ObjectId.GenerateNewId().ToString(),
                 archive.TenantId,
                 key,
-                BackupOperationKind.ScheduledBackup,
-                state,
                 policy.Id,
                 archive.Id,
-                run.BackupId,
-                null,
-                null,
-                null,
-                run.FailureCode,
+                run.NativeUid,
+                policy.Revision,
+                execution,
                 run.StartedAt.UtcDateTime,
                 (run.FinishedAt ?? run.StartedAt).UtcDateTime,
-                run.StartedAt.UtcDateTime,
-                null,
-                null,
-                policy.Revision,
-                null,
-                false);
+                policy.Dispatch.Origin);
             await operations.ReplaceOneAsync(session, filter, op, new ReplaceOptions { IsUpsert = true }, ct);
             await commands.Changed(session, op, ct);
         }
@@ -282,33 +285,43 @@ public sealed class BackupDispatcher(
     {
         if (operation.Kind == BackupOperationKind.Backup && !archive.Active)
             return new Progress.Failure("archive-retired", false);
-        var targetCreated = operation.Kind == BackupOperationKind.Restore &&
-            (operation.RestoreTargetCreated || operation.State == BackupOperationState.Running);
+        var restore = operation.Work as RestoreBackupWork;
+        var targetCreated = restore?.Execution is ProvisioningBackupRestore;
         if (targetCreated && await loadSource(
-                new(operation.TenantId, ResourceTypeId.Create(archive.ResourceType), operation.NewResourceId!),
+                new(operation.TenantId, ResourceTypeId.Create(archive.ResourceType), restore!.Resource.Id),
                 ct) is null)
             return new Progress.Failure("restore-resource-deleted", false);
         var runtime = await access.RuntimeAsync(archive, ct);
         if (runtime is not BackupProviderResult<BackupArchiveContext>.Success success)
             return new Progress.Failure("workload-credential-unavailable", true);
-        if (operation.Kind == BackupOperationKind.Backup)
-            return await provider.RunAsync(new(operation.Id, success.Value), ct);
-        if (!targetCreated)
+        switch (operation.Work)
         {
-            var invalid = await commands.VerifyTargetAsync(archive, operation.BackupId, operation.TargetTime, ct);
-            if (invalid is not null)
-                return new Progress.Failure(invalid, invalid != "target-unavailable");
+            case ManualBackupWork:
+                return await provider.RunAsync(new(operation.Id, success.Value), ct);
+            case RestoreBackupWork work:
+                if (!targetCreated)
+                {
+                    var invalid = await commands.VerifyTargetAsync(archive, work.Selection, ct);
+                    if (invalid is not null)
+                        return new Progress.Failure(invalid, invalid != "target-unavailable");
+                }
+
+                var backupId = work.Selection is BackupCopySelection copy ? copy.BackupId : null;
+                DateTimeOffset? targetTime = work.Selection is BackupTimeSelection time ? time.TargetTimeUtc : null;
+                return await provider.RestoreAsync(
+                    new(
+                        operation.Id,
+                        success.Value,
+                        work.Resource.Id,
+                        work.Resource.Name,
+                        backupId,
+                        targetTime,
+                        work.Resource.StorageGiB),
+                    ct);
+            case ScheduledBackupWork:
+                throw new InvalidOperationException("Scheduled backups are observed separately.");
         }
 
-        return await provider.RestoreAsync(
-            new(
-                operation.Id,
-                success.Value,
-                operation.NewResourceId!,
-                operation.Name!,
-                operation.BackupId,
-                operation.TargetTime,
-                operation.RestoreStorageGiB),
-            ct);
+        throw new InvalidOperationException("Unsupported backup operation.");
     }
 }

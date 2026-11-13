@@ -68,7 +68,21 @@ public sealed class BackupBoundaryTests
         Assert.True(BackupHttpProblems.TryTime("2026-04-01T12:22:00.000001+03:00", out var timestamp));
         var time = timestamp.UtcDateTime;
         Assert.Equal(9, time.Hour);
-        var op = BackupOperation.RequestRestore("o", "t", "key", "p", "a", null, time, "restore", "new", null, time);
-        Assert.Equal(time, BsonSerializer.Deserialize<BackupOperation>(op.ToBson()).TargetTime);
+        var op = BackupOperation.RequestRestore(
+            "o",
+            "t",
+            "key",
+            "p",
+            "a",
+            new BackupTimeSelection(time),
+            new BackupRestoreResource("new", "restore", null),
+            time,
+            new BackupExecutionOrigin("trace", "correlation"));
+        Assert.Equal(
+            time,
+            Assert.IsType<BackupTimeSelection>(
+                    Assert.IsType<RestoreBackupWork>(BsonSerializer.Deserialize<BackupOperation>(op.ToBson()).Work)
+                        .Selection)
+                .TargetTimeUtc);
     }
 }

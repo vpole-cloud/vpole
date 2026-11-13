@@ -31,7 +31,16 @@ public sealed record BackupDestination(
     BackupStorage Storage,
     long Revision,
     long ReferenceFence
-) : IBackupConfigurationDocument;
+) : IBackupConfigurationDocument
+{
+    public static BackupDestination Create(
+        string id,
+        string tenantId,
+        string name,
+        string resourceGroupId,
+        string isolationScopeId,
+        BackupStorage storage) => new(id, tenantId, name, resourceGroupId, isolationScopeId, storage, 1, 0);
+}
 
 public sealed record ArchivePlacement(
     string ResourceGroupId,
@@ -65,134 +74,51 @@ public sealed record BackupArchive(
     bool Active,
     DateTime CreatedAt,
     long ReferenceFence
-) : IBackupDocument;
-
-public enum BackupOperationKind { Backup, Restore, ScheduledBackup }
-
-public enum BackupOperationState { Pending, Running, Succeeded, Failed, Interrupted }
-
-public sealed record BackupOperation(
-    string Id,
-    string TenantId,
-    string IdempotencyKey,
-    BackupOperationKind Kind,
-    BackupOperationState State,
-    string PolicyId,
-    string ArchiveId,
-    string? BackupId,
-    [property:
-        MongoDB.Bson.Serialization.Attributes.BsonDateTimeOptions(Representation = MongoDB.Bson.BsonType.Document)]
-    DateTime? TargetTime,
-    string? Name,
-    string? NewResourceId,
-    string? FailureCode,
-    DateTime CreatedAt,
-    DateTime UpdatedAt,
-    DateTime NextAttemptAt,
-    string? LeaseId,
-    DateTime? LeaseUntil,
-    long PolicyRevision,
-    int? RestoreStorageGiB,
-    bool RestoreTargetCreated
 ) : IBackupDocument
 {
-    public static BackupOperation RequestCopy(
+    public static BackupArchive Create(
         string id,
-        string tenant,
-        string key,
-        string policy,
-        string archive,
+        string tenantId,
+        string policyId,
+        string destinationId,
+        BackupArchiveSource source,
+        BackupStorage storage,
+        ArchivePlacement placement,
         DateTime utcNow) => new(
         id,
-        tenant,
-        key,
-        BackupOperationKind.Backup,
-        BackupOperationState.Pending,
-        policy,
-        archive,
-        null,
-        null,
-        null,
-        null,
-        null,
+        tenantId,
+        policyId,
+        destinationId,
+        source.ResourceType,
+        source.ResourceId,
+        source.Name,
+        source.Revision,
+        source.Version,
+        source.StorageGiB,
+        source.Instances,
+        storage,
+        placement,
+        BackupArchiveNames.Server(id),
+        true,
         utcNow,
-        utcNow,
-        utcNow,
-        null,
-        null,
-        0,
-        null,
-        false);
+        0);
 
-    public static BackupOperation RequestRestore(
-        string id,
-        string tenant,
-        string key,
-        string policy,
-        string archive,
-        string? backupId,
-        DateTime? targetTime,
-        string name,
-        string newResourceId,
-        int? storageGiB,
-        DateTime utcNow)
-    {
-        if ((backupId is null) == (targetTime is null) || backupId is not null && string.IsNullOrWhiteSpace(backupId))
-            throw new ArgumentException("Restoration requires exactly one backup ID or timestamp.");
-        if (targetTime is { Kind: not DateTimeKind.Utc })
-            throw new ArgumentException("The recovery target must be UTC.", nameof(targetTime));
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newResourceId);
-        if (storageGiB <= 0)
-            throw new ArgumentOutOfRangeException(nameof(storageGiB));
-        return new(
-            id,
-            tenant,
-            key,
-            BackupOperationKind.Restore,
-            BackupOperationState.Pending,
-            policy,
-            archive,
-            backupId,
-            targetTime,
-            name,
-            newResourceId,
-            null,
-            utcNow,
-            utcNow,
-            utcNow,
-            null,
-            null,
-            0,
-            storageGiB,
-            false);
-    }
+    public BackupArchive Retire() => this with { Active = false };
+}
 
-    public BackupOperation InterruptObservation(string reason, DateTime utcNow)
-    {
-        if (Kind != BackupOperationKind.ScheduledBackup || State != BackupOperationState.Running)
-            throw new InvalidOperationException("Only a running scheduled backup can lose its final observation.");
-        return this with { State = BackupOperationState.Interrupted, FailureCode = reason, UpdatedAt = utcNow };
-    }
+public sealed record BackupArchiveSource(
+    string ResourceType,
+    string ResourceId,
+    string Name,
+    long Revision,
+    string Version,
+    int StorageGiB,
+    int Instances
+);
 
-    public BackupOperation Advance(
-        BackupOperationState state,
-        string? failure,
-        string? observedId,
-        DateTime utcNow,
-        TimeSpan retry)
-    {
-        if (State is BackupOperationState.Succeeded or BackupOperationState.Failed or BackupOperationState.Interrupted)
-            throw new InvalidOperationException("A completed operation cannot be dispatched.");
-        if (state == BackupOperationState.Failed && string.IsNullOrWhiteSpace(failure))
-            throw new ArgumentException("A failed operation needs a failure code.", nameof(failure));
-        return this with
-        {
-            State = state, FailureCode = failure,
-            BackupId = Kind == BackupOperationKind.Backup ? BackupId ?? observedId : BackupId,
-            UpdatedAt = utcNow, NextAttemptAt = utcNow + retry, LeaseId = null, LeaseUntil = null
-        };
-    }
+public static class BackupArchiveNames
+{
+    public static string Server(string archiveId) => $"pole-{archiveId}";
 }
 
 public sealed record BackupObservation(

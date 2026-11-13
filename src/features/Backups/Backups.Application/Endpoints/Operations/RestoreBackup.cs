@@ -81,15 +81,16 @@ public sealed class RestoreBackupHandler(
             time = instant.UtcDateTime;
         }
 
+        BackupRestoreSelection selection = time is { } target
+            ? new BackupTimeSelection(target)
+            : new BackupCopySelection(request.Body.BackupId!);
         var answer = await commands.StartAsync(
-            new(
+            new RestoreArchiveCommand(
                 request.TenantId,
                 request.Body.IdempotencyKey,
                 request.Id,
-                true,
+                selection,
                 request.Body.Name,
-                request.Body.BackupId,
-                time,
                 request.Body.StorageGiB),
             ct);
         return answer switch

@@ -44,7 +44,7 @@ public sealed class RunBackupHandler(
     public async Task<RunBackupOutcome> HandleAsync(RunBackupRequest request, CancellationToken ct = default)
     {
         var answer = await commands.StartAsync(
-            new(request.TenantId, request.Body.IdempotencyKey, request.Id, false, null, null, null),
+            new ManualBackupCommand(request.TenantId, request.Body.IdempotencyKey, request.Id),
             ct);
         return answer switch
         {

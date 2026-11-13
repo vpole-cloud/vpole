@@ -54,15 +54,13 @@ public sealed class BackupConfigurationWriter(
         if (await admitScope(new(write.TenantId, input.ResourceGroupId, input.IsolationScopeId, null), session, ct)
             is ResourceScopeReferenceUnavailable)
             return new BackupWriteResult<BackupDestination>.Rejected("scope-unavailable");
-        var destination = new BackupDestination(
+        var destination = BackupDestination.Create(
             write.Id,
             write.TenantId,
             input.Name,
             input.ResourceGroupId,
             input.IsolationScopeId,
-            storage,
-            1,
-            0);
+            storage);
         if (await registrar.RegisterAsync(
                 new(write.TenantId, input.ResourceGroupId, new(DestinationType, write.Id, input.Name)),
                 session,

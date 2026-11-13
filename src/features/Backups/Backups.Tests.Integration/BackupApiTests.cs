@@ -64,7 +64,8 @@ public sealed class BackupApiTests(
                 $"history-{index}",
                 ObjectId.GenerateNewId().ToString(),
                 ObjectId.GenerateNewId().ToString(),
-                timestamp))
+                timestamp,
+                new BackupExecutionOrigin("trace", "correlation")))
             .ToArray();
         var otherTenant = ObjectId.GenerateNewId().ToString();
         await host.SeedTenantAsync(otherTenant);
@@ -74,7 +75,8 @@ public sealed class BackupApiTests(
             "foreign",
             ObjectId.GenerateNewId().ToString(),
             ObjectId.GenerateNewId().ToString(),
-            timestamp.AddDays(1));
+            timestamp.AddDays(1),
+            new BackupExecutionOrigin("trace", "correlation"));
         var operations = mongo.Database.GetCollection<BackupOperation>("BackupOperations");
         await operations.InsertManyAsync([.. rows, foreign]);
 
@@ -88,7 +90,8 @@ public sealed class BackupApiTests(
             "newer",
             rows[0].PolicyId,
             rows[0].ArchiveId,
-            timestamp.AddSeconds(1));
+            timestamp.AddSeconds(1),
+            new BackupExecutionOrigin("trace", "correlation"));
         await operations.InsertOneAsync(newer);
         var next = (await client.GetFromJsonAsync<BackupOperationPage>(
             Route + "/operations?after=" + Uri.EscapeDataString(initial.NextCursor)))!;
@@ -544,10 +547,8 @@ public sealed class BackupApiTests(
             Assert.True(await dispatch.OperationAsync(default));
         var collection = mongo.Database.GetCollection<BackupOperation>("BackupOperations");
         var beforeRemoval = await collection.Find(o => o.Id == command.Id).SingleAsync();
-        Assert.Equal(
-            crashBeforeProgress ? BackupOperationState.Pending : BackupOperationState.Running,
-            beforeRemoval.State);
-        Assert.True(beforeRemoval.RestoreTargetCreated);
+        Assert.Equal(BackupOperationState.Running, beforeRemoval.State);
+        Assert.IsType<ProvisioningBackupRestore>(Assert.IsType<RestoreBackupWork>(beforeRemoval.Work).Execution);
         await transactions.InvokeOutcomeAsync<bool>(async (tx, ct) =>
         {
             var result = await registrar.UnregisterAsync(
@@ -566,7 +567,7 @@ public sealed class BackupApiTests(
         var expired = DateTime.UtcNow.AddMinutes(-5);
         await collection.UpdateOneAsync(
             o => o.Id == command.Id,
-            Builders<BackupOperation>.Update.Set(o => o.LeaseUntil, expired).Set(o => o.NextAttemptAt, expired));
+            Builders<BackupOperation>.Update.Set(o => o.Work, beforeRemoval.Retry(expired, TimeSpan.Zero, null).Work));
         provider.CatalogUnavailable = true;
         Assert.True(await dispatch.OperationAsync(default));
         var retried = await client.GetFromJsonAsync<BackupOperationDto>(Route + "/operations/" + command.Id);

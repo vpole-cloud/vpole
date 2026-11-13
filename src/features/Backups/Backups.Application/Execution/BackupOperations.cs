@@ -3,6 +3,7 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Backups.Events;
@@ -11,16 +12,25 @@ using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.Backups.Application.Execution;
 
-public sealed record BackupCommand(
+public closed record BackupCommand(
+    string TenantId,
+    string Key
+);
+
+public sealed record ManualBackupCommand(
     string TenantId,
     string Key,
-    string SourceId,
-    bool Restore,
-    string? Name,
-    string? BackupId,
-    DateTime? TargetTime,
-    int? StorageGiB = null
-);
+    string PolicyId
+) : BackupCommand(TenantId, Key);
+
+public sealed record RestoreArchiveCommand(
+    string TenantId,
+    string Key,
+    string ArchiveId,
+    BackupRestoreSelection Selection,
+    string Name,
+    int? StorageGiB
+) : BackupCommand(TenantId, Key);
 
 public sealed class BackupOperations(
     IMongoCollection<BackupArchive> archives,
@@ -35,14 +45,18 @@ public sealed class BackupOperations(
 {
     public async Task<BackupWriteResult<BackupOperation>> StartAsync(BackupCommand command, CancellationToken ct)
     {
-        var key = BackupDispatchFilters.Idempotency(command.TenantId, "command:" + command.Key);
+        var key = BackupDispatchFilters.Idempotency(command.TenantId, BackupOperationKeys.Command(command.Key));
         var already = await operations.Find(key).SingleOrDefaultAsync(ct);
         if (already is not null)
             return Match(already, command);
-        var archiveId = command.SourceId;
-        if (!command.Restore)
+        var archiveId = command switch
         {
-            var policy = await policies.Find(BackupsFilters<BackupPolicy>.ById(command.TenantId, command.SourceId))
+            ManualBackupCommand => string.Empty,
+            RestoreArchiveCommand restore => restore.ArchiveId,
+        };
+        if (command is ManualBackupCommand manual)
+        {
+            var policy = await policies.Find(BackupsFilters<BackupPolicy>.ById(command.TenantId, manual.PolicyId))
                 .SingleOrDefaultAsync(ct);
             if (policy is null || policy.Deleting)
                 return new BackupWriteResult<BackupOperation>.Rejected("not-found");
@@ -53,37 +67,40 @@ public sealed class BackupOperations(
             .SingleOrDefaultAsync(ct);
         if (archive is null)
             return new BackupWriteResult<BackupOperation>.Rejected("not-found");
-        if (command.Restore)
+        if (command is RestoreArchiveCommand restoreCommand)
         {
-            if (command.StorageGiB is { } requestedStorage && requestedStorage < archive.StorageGiB)
+            if (restoreCommand.StorageGiB is { } requestedStorage && requestedStorage < archive.StorageGiB)
                 return new BackupWriteResult<BackupOperation>.Rejected("insufficient-restore-storage");
-            var invalid = await VerifyTargetAsync(archive, command.BackupId, command.TargetTime, ct);
+            var invalid = await VerifyTargetAsync(archive, restoreCommand.Selection, ct);
             if (invalid is not null)
                 return new BackupWriteResult<BackupOperation>.Rejected(invalid);
         }
 
         var now = clock.GetUtcNow().UtcDateTime;
         var id = ObjectId.GenerateNewId().ToString();
-        var operation = command.Restore
-            ? BackupOperation.RequestRestore(
+        var core = EventCore.Create(command.TenantId);
+        var origin = new BackupExecutionOrigin(core.TraceId, core.CorrelationId);
+        var operation = command switch
+        {
+            RestoreArchiveCommand restore => BackupOperation.RequestRestore(
                 id,
                 command.TenantId,
-                "command:" + command.Key,
+                BackupOperationKeys.Command(command.Key),
                 archive.PolicyId,
                 archive.Id,
-                command.BackupId,
-                command.TargetTime,
-                command.Name!,
-                ObjectId.GenerateNewId().ToString(),
-                command.StorageGiB,
-                now)
-            : BackupOperation.RequestCopy(
+                restore.Selection,
+                new BackupRestoreResource(ObjectId.GenerateNewId().ToString(), restore.Name, restore.StorageGiB),
+                now,
+                origin),
+            ManualBackupCommand => BackupOperation.RequestCopy(
                 id,
                 command.TenantId,
-                "command:" + command.Key,
+                BackupOperationKeys.Command(command.Key),
                 archive.PolicyId,
                 archive.Id,
-                now);
+                now,
+                origin),
+        };
         try
         {
             return await transactions.InvokeOutcomeAsync<BackupWriteResult<BackupOperation>>(
@@ -96,7 +113,7 @@ public sealed class BackupOperations(
                         cancellationToken: token);
                     if (fenced.MatchedCount != 1)
                         return tx.Abort(new BackupWriteResult<BackupOperation>.Rejected("not-found"));
-                    if (!command.Restore)
+                    if (command is ManualBackupCommand)
                     {
                         var active = BackupDispatchFilters.ActivePolicyArchive(
                             command.TenantId,
@@ -112,7 +129,10 @@ public sealed class BackupOperations(
                 },
                 ct);
         }
-        catch (MongoWriteException e) when (e.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        catch (MongoWriteException e) when (MongoDuplicateKey.IsForIndex(
+                                                e,
+                                                "UX_BackupOperations_Tenant_Key",
+                                                "BackupOperations"))
         {
             var raced = await operations.Find(key).SingleAsync(ct);
             return Match(raced, command);
@@ -121,34 +141,41 @@ public sealed class BackupOperations(
 
     internal async Task<string?> VerifyTargetAsync(
         BackupArchive archive,
-        string? backupId,
-        DateTime? targetTime,
+        BackupRestoreSelection selection,
         CancellationToken ct)
     {
         var provider = providers.Find(archive.ResourceType);
-        if (provider is null || targetTime.HasValue && !provider.SupportsPointInTimeRecovery)
+        if (provider is null || selection is BackupTimeSelection && !provider.SupportsPointInTimeRecovery)
             return "unsupported-provider";
-        if (targetTime > clock.GetUtcNow().UtcDateTime)
+        if (selection is BackupTimeSelection time && time.TargetTimeUtc > clock.GetUtcNow().UtcDateTime)
             return "target-unavailable";
         var result = await access.ListAsync(archive, provider, ct);
         if (result is BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure failure)
             return failure.Code;
         var catalog = ((BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Success)result).Value;
-        return (backupId is not null
-            ? catalog.Any(c => c.BackupId == backupId)
-            : catalog.Any(c => c.CompletedAt.UtcDateTime <= targetTime))
-            ? null
-            : "target-unavailable";
+        var available = selection switch
+        {
+            BackupCopySelection copy => catalog.Any(c => c.BackupId == copy.BackupId),
+            BackupTimeSelection target => catalog.Any(c => c.CompletedAt.UtcDateTime <= target.TargetTimeUtc),
+        };
+        return available ? null : "target-unavailable";
     }
 
-    private static BackupWriteResult<BackupOperation> Match(BackupOperation op, BackupCommand cmd) =>
-        (cmd.Restore
-            ? op.Kind == BackupOperationKind.Restore && op.ArchiveId == cmd.SourceId
-            : op.Kind == BackupOperationKind.Backup && op.PolicyId == cmd.SourceId) && op.Name == cmd.Name &&
-        op.RestoreStorageGiB == cmd.StorageGiB &&
-        (cmd.Restore ? op.BackupId == cmd.BackupId && op.TargetTime == cmd.TargetTime : true)
-            ? new BackupWriteResult<BackupOperation>.Saved(op)
+    private static BackupWriteResult<BackupOperation> Match(BackupOperation operation, BackupCommand command)
+    {
+        var same = (command, operation.Work) switch
+        {
+            (ManualBackupCommand manual, ManualBackupWork) => operation.PolicyId == manual.PolicyId,
+            (RestoreArchiveCommand restore, RestoreBackupWork work) => operation.ArchiveId == restore.ArchiveId &&
+                work.Selection == restore.Selection && work.Resource.Name == restore.Name &&
+                work.Resource.StorageGiB == restore.StorageGiB,
+            (ManualBackupCommand, RestoreBackupWork or ScheduledBackupWork) => false,
+            (RestoreArchiveCommand, ManualBackupWork or ScheduledBackupWork) => false,
+        };
+        return same
+            ? new BackupWriteResult<BackupOperation>.Saved(operation)
             : new BackupWriteResult<BackupOperation>.Rejected("idempotency-conflict");
+    }
 
     internal async Task InterruptScheduledObservationsAsync(
         string tenantId,

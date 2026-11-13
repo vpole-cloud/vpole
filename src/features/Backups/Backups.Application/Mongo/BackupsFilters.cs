@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Operations;
@@ -83,17 +84,80 @@ internal static class BackupDispatchFilters
         string source) => BackupsPolicyFilters.ForSource(tenant, type, source) &
         Builders<BackupPolicy>.Filter.OfType<BackupPolicyLifecycle, ActiveBackupPolicy>(x => x.Lifecycle);
 
+    private static FilterDefinition<BackupOperation> Manual() =>
+        Builders<BackupOperation>.Filter.OfType<BackupOperationWork, ManualBackupWork>(o => o.Work);
+
+    private static FilterDefinition<BackupOperation> Restore() =>
+        Builders<BackupOperation>.Filter.OfType<BackupOperationWork, RestoreBackupWork>(o => o.Work);
+
+    private static FilterDefinition<BackupOperation> ActiveCommands() =>
+        ActiveDispatches(_ => Builders<BackupOperation>.Filter.Empty);
+
+    private static FilterDefinition<BackupOperation>
+        ActiveDispatches(
+            Func<Expression<Func<BackupOperation, BackupDispatch>>, FilterDefinition<BackupOperation>> predicate) =>
+        (Manual() &
+            Builders<BackupOperation>.Filter.OfType<BackupCopyExecution, RequestedBackupCopy>(o =>
+                ((ManualBackupWork)o.Work).Execution) &
+            predicate(o => ((RequestedBackupCopy)((ManualBackupWork)o.Work).Execution).Dispatch)) |
+        (Manual() &
+            Builders<BackupOperation>.Filter.OfType<BackupCopyExecution, RunningBackupCopy>(o =>
+                ((ManualBackupWork)o.Work).Execution) &
+            predicate(o => ((RunningBackupCopy)((ManualBackupWork)o.Work).Execution).Dispatch)) |
+        (Restore() &
+            Builders<BackupOperation>.Filter.OfType<BackupRestoreExecution, RequestedBackupRestore>(o =>
+                ((RestoreBackupWork)o.Work).Execution) &
+            predicate(o => ((RequestedBackupRestore)((RestoreBackupWork)o.Work).Execution).Dispatch)) | (Restore() &
+            Builders<BackupOperation>.Filter.OfType<BackupRestoreExecution, ProvisioningBackupRestore>(o =>
+                ((RestoreBackupWork)o.Work).Execution) & predicate(o =>
+                ((ProvisioningBackupRestore)((RestoreBackupWork)o.Work).Execution).Dispatch));
+
     internal static FilterDefinition<BackupOperation> OperationsDue(DateTime now) =>
-        Builders<BackupOperation>.Filter.Where(o => o.Kind != BackupOperationKind.ScheduledBackup &&
-            (o.State == BackupOperationState.Pending || o.State == BackupOperationState.Running) &&
-            o.NextAttemptAt <= now && (o.LeaseUntil == null || o.LeaseUntil <= now));
+        ActiveDispatches(dispatch => Due(dispatch, now));
+
+    private static FilterDefinition<BackupOperation> Due(
+        Expression<Func<BackupOperation, BackupDispatch>> dispatch,
+        DateTime now)
+    {
+        var next = Append(dispatch, d => d.NextAttemptAtUtc);
+        var expires = Append(dispatch, d => ((ClaimedBackupDispatch)d).Lease.ExpiresAtUtc);
+        return Builders<BackupOperation>.Filter.Lte(next, now) &
+            (Builders<BackupOperation>.Filter.OfType<BackupDispatch, AvailableBackupDispatch>(dispatch) |
+                (Builders<BackupOperation>.Filter.OfType<BackupDispatch, ClaimedBackupDispatch>(dispatch) &
+                    Builders<BackupOperation>.Filter.Lte(expires, now)));
+    }
+
+    private static Expression<Func<T, TResult>> Append<T, TMember, TResult>(
+        Expression<Func<T, TMember>> prefix,
+        Expression<Func<TMember, TResult>> member)
+    {
+        var body = new Substitute(member.Parameters[0], prefix.Body).Visit(member.Body);
+        return Expression.Lambda<Func<T, TResult>>(body, prefix.Parameters);
+    }
+
+    private sealed class Substitute(
+        ParameterExpression parameter,
+        Expression replacement
+    ) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == parameter ? replacement : base.VisitParameter(node);
+    }
+
+    internal static FilterDefinition<BackupOperation> OperationAtWork(BackupOperation operation) =>
+        BackupsFilters<BackupOperation>.ById(operation.TenantId, operation.Id) &
+        Builders<BackupOperation>.Filter.Eq(o => o.Work, operation.Work);
 
     internal static FilterDefinition<BackupOperation> ClaimedOperation(
         BackupOperation operation,
         string leaseId,
         DateTime now) => BackupsFilters<BackupOperation>.ById(operation.TenantId, operation.Id) &
-        Builders<BackupOperation>.Filter.Eq(x => x.LeaseId, leaseId) &
-        Builders<BackupOperation>.Filter.Gt(x => x.LeaseUntil, now);
+        ActiveDispatches(dispatch =>
+            Builders<BackupOperation>.Filter.OfType<BackupDispatch, ClaimedBackupDispatch>(dispatch) &
+            Builders<BackupOperation>.Filter.Eq(Append(dispatch, d => ((ClaimedBackupDispatch)d).Lease.Id), leaseId) &
+            Builders<BackupOperation>.Filter.Gt(
+                Append(dispatch, d => ((ClaimedBackupDispatch)d).Lease.ExpiresAtUtc),
+                now));
 
     internal static FilterDefinition<BackupOperation> Idempotency(string tenant, string key) =>
         BackupsFilters<BackupOperation>.Tenant(tenant) &
@@ -103,24 +167,21 @@ internal static class BackupDispatchFilters
         string tenantId,
         string operationId,
         string archiveId,
-        string newResourceId) => BackupsFilters<BackupOperation>.ById(tenantId, operationId) &
-        Builders<BackupOperation>.Filter.Where(operation =>
-            operation.Kind == BackupOperationKind.Restore && operation.ArchiveId == archiveId &&
-            operation.NewResourceId == newResourceId);
-
-    internal static FilterDefinition<BackupOperation> CanCreateRestoreTarget() =>
-        Builders<BackupOperation>.Filter.Where(operation => !operation.RestoreTargetCreated &&
-            (operation.State == BackupOperationState.Pending || operation.State == BackupOperationState.Running));
+        string newResourceId) => BackupsFilters<BackupOperation>.ById(tenantId, operationId) & Restore() &
+        Builders<BackupOperation>.Filter.Eq(o => o.ArchiveId, archiveId) & Builders<BackupOperation>.Filter.Eq(
+            o => ((RestoreBackupWork)o.Work).Resource.Id,
+            newResourceId);
 
     internal static FilterDefinition<BackupOperation> RunningScheduled(string tenantId, string archiveId) =>
-        BackupsFilters<BackupOperation>.Tenant(tenantId) & Builders<BackupOperation>.Filter.Where(operation =>
-            operation.ArchiveId == archiveId && operation.Kind == BackupOperationKind.ScheduledBackup &&
-            operation.State == BackupOperationState.Running);
+        BackupsFilters<BackupOperation>.Tenant(tenantId) &
+        Builders<BackupOperation>.Filter.Eq(o => o.ArchiveId, archiveId) &
+        Builders<BackupOperation>.Filter.OfType<BackupOperationWork, ScheduledBackupWork>(o => o.Work) &
+        Builders<BackupOperation>.Filter.OfType<ScheduledBackupExecution, RunningScheduledBackup>(o =>
+            ((ScheduledBackupWork)o.Work).Execution);
 
     internal static FilterDefinition<BackupOperation> UnfinishedCommands(string tenant, string archiveId) =>
-        BackupsFilters<BackupOperation>.Tenant(tenant) & Builders<BackupOperation>.Filter.Where(op =>
-            op.ArchiveId == archiveId && op.Kind != BackupOperationKind.ScheduledBackup &&
-            (op.State == BackupOperationState.Pending || op.State == BackupOperationState.Running));
+        BackupsFilters<BackupOperation>.Tenant(tenant) &
+        Builders<BackupOperation>.Filter.Eq(o => o.ArchiveId, archiveId) & ActiveCommands();
 
     internal static FilterDefinition<BackupArchive> CredentialPlacement(
         string tenant,

@@ -170,7 +170,20 @@ public static class BackupViews
         o.CreatedAt,
         o.UpdatedAt,
         o.FailureCode,
-        o.NewResourceId,
-        o.BackupId,
-        o.TargetTime);
+        o.Work is RestoreBackupWork restore ? restore.Resource.Id : null,
+        BackupId(o.Work),
+        o.Work is RestoreBackupWork { Selection: BackupTimeSelection time } ? time.TargetTimeUtc : null);
+
+    internal static string? BackupId(BackupOperationWork work) => work switch
+    {
+        ManualBackupWork { Execution: CompletedBackupCopy completed } => completed.BackupId,
+        ScheduledBackupWork { Execution: CompletedScheduledBackup completed } => completed.BackupId,
+        RestoreBackupWork { Selection: BackupCopySelection copy } => copy.BackupId,
+        ManualBackupWork { Execution: RequestedBackupCopy or RunningBackupCopy or FailedBackupCopy } => null,
+        ScheduledBackupWork
+        {
+            Execution: RunningScheduledBackup or FailedScheduledBackup or InterruptedScheduledBackup
+        } => null,
+        RestoreBackupWork { Selection: BackupTimeSelection } => null,
+    };
 }

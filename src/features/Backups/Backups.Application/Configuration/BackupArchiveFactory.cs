@@ -92,24 +92,22 @@ public sealed class BackupArchiveFactory(
                 source.Compute.ComputeProfileId,
                 source.Compute.ComputeProfileRevision);
             var id = ObjectId.GenerateNewId().ToString();
-            var archive = new BackupArchive(
+            var archive = BackupArchive.Create(
                 id,
                 write.TenantId,
                 write.Id,
                 destination.Id,
-                input.ResourceType,
-                input.ResourceId,
-                registered.DisplayName,
-                service.Revision,
-                service.Version,
-                service.StorageGiB,
-                service.Instances,
+                new BackupArchiveSource(
+                    input.ResourceType,
+                    input.ResourceId,
+                    registered.DisplayName,
+                    service.Revision,
+                    service.Version,
+                    service.StorageGiB,
+                    service.Instances),
                 destination.Storage,
                 placement,
-                $"pole-{id}",
-                true,
-                clock.GetUtcNow().UtcDateTime,
-                0);
+                clock.GetUtcNow().UtcDateTime);
             await archives.InsertOneAsync(session, archive, cancellationToken: ct);
             return new BackupWriteResult<BackupArchive>.Saved(archive);
         }

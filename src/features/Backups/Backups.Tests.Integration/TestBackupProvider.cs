@@ -1,8 +1,15 @@
+using Microsoft.Extensions.DependencyInjection;
+using Pole.Database;
 using Pole.Features.Backups.Contracts;
+using Pole.Features.ResourceGroups.Contracts;
+using Pole.Workloads;
+using Xunit;
 
 namespace Pole.Features.Backups.Tests.Integration;
 
-internal sealed class TestBackupProvider : IBackupProvider
+internal sealed class TestBackupProvider(
+    IServiceScopeFactory scopes
+) : IBackupProvider
 {
     public string ResourceType => "pole/test-backup-database";
     public string DeclarationKind => "TestDatabase";
@@ -59,8 +66,40 @@ internal sealed class TestBackupProvider : IBackupProvider
         CancellationToken ct)
     {
         RestoreStorageGiB = request.StorageGiB;
-        var phase = CreateTarget is null ? BackupProviderPhase.Succeeded : await CreateTarget(request, ct);
+        var phase = CreateTarget is null
+            ? await RecordDefaultTargetAsync(request, ct)
+            : await CreateTarget(request, ct);
         return new BackupProviderResult<BackupProviderProgress>.Success(new(phase, null));
+    }
+
+    private async Task<BackupProviderPhase> RecordDefaultTargetAsync(RestoreBackupRequest request, CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var receipts = services.GetRequiredService<RecordRestoreTargetCreation>();
+        var registrar = services.GetRequiredService<IResourceRegistrar>();
+        var transactions = services.GetRequiredService<MongoRunTransaction>();
+        await transactions.InvokeOutcomeAsync<bool>(
+            async (transaction, token) =>
+            {
+                var archive = request.Archive;
+                var recorded = await receipts(
+                    new(archive.Source.TenantId, request.OperationId, archive.ArchiveId, request.NewResourceId),
+                    transaction.Session,
+                    token);
+                Assert.Equal(RestoreTargetCreationDecision.Recorded, recorded);
+                var registered = await registrar.RegisterAsync(
+                    new(
+                        archive.Source.TenantId,
+                        archive.Placement.ResourceGroupId,
+                        new(ResourceTypeId.Create(archive.Source.ResourceType), request.NewResourceId, request.Name)),
+                    transaction.Session,
+                    token);
+                Assert.IsType<RegisteredResource>(registered.Value);
+                return transaction.Commit(true);
+            },
+            ct);
+        return BackupProviderPhase.Succeeded;
     }
 
     private static Task<BackupProviderResult<T>> Success<T>(T result) =>

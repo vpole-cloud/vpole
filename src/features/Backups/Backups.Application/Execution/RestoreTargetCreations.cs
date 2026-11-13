@@ -6,7 +6,8 @@ using Pole.Features.Backups.Domain;
 namespace Pole.Features.Backups.Application.Execution;
 
 internal sealed class RestoreTargetCreations(
-    IMongoCollection<BackupOperation> operations
+    IMongoCollection<BackupOperation> operations,
+    TimeProvider clock
 )
 {
     public async Task<RestoreTargetCreationDecision> RecordAsync(
@@ -22,18 +23,32 @@ internal sealed class RestoreTargetCreations(
             request.OperationId,
             request.ArchiveId,
             request.NewResourceId);
-        var result = await operations.UpdateOneAsync(
-            session,
-            authorized & BackupDispatchFilters.CanCreateRestoreTarget(),
-            Builders<BackupOperation>.Update.Set(o => o.RestoreTargetCreated, true),
-            cancellationToken: ct);
-        if (result.MatchedCount == 1)
-            return RestoreTargetCreationDecision.Recorded;
-        var created = await operations.Find(session, authorized)
-            .Project(o => o.RestoreTargetCreated)
-            .SingleOrDefaultAsync(ct);
-        return created
-            ? RestoreTargetCreationDecision.AlreadyRecorded
-            : RestoreTargetCreationDecision.OperationUnavailable;
+        var current = await operations.Find(session, authorized).SingleOrDefaultAsync(ct);
+        if (current?.Work is not RestoreBackupWork restore)
+            return RestoreTargetCreationDecision.OperationUnavailable;
+
+        switch (restore.Execution)
+        {
+            case ProvisioningBackupRestore:
+            case CompletedBackupRestore:
+            case FailedBackupRestore { Target: RecordedRestoreTarget }:
+                return RestoreTargetCreationDecision.AlreadyRecorded;
+            case FailedBackupRestore { Target: AwaitingRestoreTarget }:
+                return RestoreTargetCreationDecision.OperationUnavailable;
+            case RequestedBackupRestore:
+                var recorded = current.RecordRestoreTarget(request.NewResourceId, clock.GetUtcNow().UtcDateTime);
+                var result = await operations.UpdateOneAsync(
+                    session,
+                    BackupDispatchFilters.OperationAtWork(current),
+                    Builders<BackupOperation>.Update
+                        .Set(o => o.Work, recorded.Work)
+                        .Set(o => o.UpdatedAt, recorded.UpdatedAt),
+                    cancellationToken: ct);
+                return result.MatchedCount == 1
+                    ? RestoreTargetCreationDecision.Recorded
+                    : RestoreTargetCreationDecision.OperationUnavailable;
+        }
+
+        throw new InvalidOperationException("Unsupported restore execution.");
     }
 }
