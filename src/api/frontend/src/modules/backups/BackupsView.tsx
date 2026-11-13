@@ -6,6 +6,12 @@ import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'
 import { Button, DataTable, Field, Notice, ConfirmationDialog } from '../../ui/components'
 import { backupApi, fetchBackupCredentialChoices, fetchBackupClusterChoices } from './api'
+import {
+  backupPolicyConfiguration,
+  isBackupPolicyDirty,
+  reapplyBackupPolicyChanges,
+} from './configurationModel'
+import type { BackupConfigurationVersion } from './configurationModel'
 import type {
   BackupArchive,
   BackupDestinationInput,
@@ -184,15 +190,17 @@ function BackupWorkspace() {
       {policyForm && (
         <PolicyForm
           key={editingPolicy?.id ?? 'new'}
-          current={editingPolicy}
+          current={
+            policies.resource?.find((item) => item.id === editingPolicy?.id) ?? editingPolicy
+          }
           busy={mutation.busy}
           destinations={(destinations.resource ?? []).map((item) => ({
             id: item.id,
             name: item.name,
           }))}
-          onSave={(input) =>
+          onSave={(input, baseline) =>
             run(
-              (signal) => client.savePolicy(input, signal, editingPolicy),
+              (signal) => client.savePolicy(input, signal, baseline),
               () => setPolicyForm(false),
             )
           }
@@ -576,7 +584,7 @@ function PolicyForm({
 }: {
   busy: boolean
   destinations: { id: string; name: string }[]
-  onSave: (input: BackupPolicyInput) => void
+  onSave: (input: BackupPolicyInput, baseline?: BackupConfigurationVersion) => void
   current?: BackupPolicy
 }) {
   const { api } = useAppServices()
@@ -587,26 +595,35 @@ function PolicyForm({
     load: (signal) =>
       fetchBackupClusterChoices(api.baseUrl, origin.credential, api.tenantId, signal),
   })
-  const [input, setInput] = useState<BackupPolicyInput>(
-    current ?? {
-      name: '',
-      resourceType: 'pole/postgresql',
-      resourceId: '',
-      destinationId: '',
-      schedule: '0 2 * * *',
-      suspended: false,
-      retentionDays: 30,
-    },
+  const [state, setState] = useState(() => backupPolicyConfiguration(current))
+  const input = state.draft
+  const setInput = (draft: BackupPolicyInput) => setState({ ...state, draft })
+  const changedOnServer = Boolean(
+    current && state.version && current.revision !== state.version.revision,
   )
-  const [baseline] = useState(input)
-  useUnsavedChanges(JSON.stringify(input) !== JSON.stringify(baseline), 'Backup policy')
+  useUnsavedChanges(isBackupPolicyDirty(state), 'Backup policy')
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        onSave(input)
+        if (!changedOnServer) onSave(input, state.version)
       }}
     >
+      {changedOnServer && current && (
+        <Notice tone="warning">
+          This policy changed on the server. Latest schedule: {current.schedule}; recovery window:{' '}
+          {current.retentionDays} days.
+          <Button
+            disabled={busy}
+            onClick={() => setState(reapplyBackupPolicyChanges(state, current))}
+          >
+            Reapply my changes
+          </Button>
+          <Button disabled={busy} onClick={() => setState(backupPolicyConfiguration(current))}>
+            Discard my changes
+          </Button>
+        </Notice>
+      )}
       <fieldset disabled={busy} className="form-grid">
         <Field label="Policy name">
           <input
@@ -669,7 +686,9 @@ function PolicyForm({
             onChange={(event) => setInput({ ...input, retentionDays: Number(event.target.value) })}
           />
         </Field>
-        <Button type="submit">{current ? 'Save policy' : 'Create policy'}</Button>
+        <Button type="submit" disabled={changedOnServer}>
+          {current ? 'Save policy' : 'Create policy'}
+        </Button>
       </fieldset>
     </form>
   )

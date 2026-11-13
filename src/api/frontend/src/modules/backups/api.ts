@@ -1,6 +1,7 @@
 import { buildHeaders, fetchJson, sendJson, sendWithoutResponse } from '../../api/transport'
 import { fetchPostgresClusters } from '../postgres/api'
 import { fetchSecrets } from '../secrets/api'
+import type { BackupConfigurationVersion } from './configurationModel'
 import type { SecretMetadata } from '../secrets/types'
 import type { PostgresCluster } from '../postgres/types'
 import type {
@@ -70,7 +71,11 @@ export function backupApi(
         },
         signal,
       ),
-    savePolicy: (body: BackupPolicyInput, signal: AbortSignal, current?: BackupPolicy) =>
+    savePolicy: (
+      body: BackupPolicyInput,
+      signal: AbortSignal,
+      current?: BackupConfigurationVersion,
+    ) =>
       write<BackupPolicy>(
         current ? `policies/${encodeURIComponent(current.id)}` : 'policies',
         current ? 'PUT' : 'POST',
