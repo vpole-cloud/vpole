@@ -2,6 +2,7 @@ using MongoDB.Driver;
 using Pole.Features.Functions.Application.Common;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
+using Pole.Scheduling;
 
 namespace Pole.Features.Functions.Application.Lifecycle;
 
@@ -59,7 +60,7 @@ internal sealed class MongoFunctionRevisionLifecycleStore(
                 continue;
 
             activeTriggerIds.Add(timer.TriggerId);
-            var schedule = FunctionCronSchedule.Parse(timer.Cron);
+            var schedule = UtcCronSchedule.Parse(timer.Cron);
             FunctionTimerState reconciled;
             if (existingByTrigger.TryGetValue(timer.TriggerId, out var current))
             {

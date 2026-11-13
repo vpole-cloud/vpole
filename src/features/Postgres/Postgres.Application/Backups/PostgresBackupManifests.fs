@@ -1,5 +1,7 @@
 namespace Pole.Features.Postgres.Application.Backups
 
+open Pole.Scheduling
+
 open System.Text.Json
 open System.Text.Json.Nodes
 open Pole.Features.Backups.Contracts

@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-namespace Pole.Workloads;
+namespace Pole.Scheduling;
 
 /// <summary>
 ///     A five-field cron schedule evaluated in UTC. The supported fields are minute,

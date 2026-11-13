@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Functions.Application.Mongo;
 using Pole.Features.Functions.Domain;
+using Pole.Scheduling;
 
 namespace Pole.Features.Functions.Application.Runtime.Timers;
 
@@ -30,7 +31,7 @@ public sealed class MongoMaterializeFunctionTimerOccurrence(
                 if (timer is null || timer.Lease is null || !timer.Lease.IsActiveAt(now))
                     return true;
 
-                var schedule = FunctionCronSchedule.Parse(timer.Cron);
+                var schedule = UtcCronSchedule.Parse(timer.Cron);
                 var scheduledFor = timer.NextOccurrenceUtc;
                 var nextAfterScheduled = schedule.GetNextOccurrence(scheduledFor);
                 var isMisfire = nextAfterScheduled <= now;
@@ -108,7 +109,7 @@ public sealed class MongoMaterializeFunctionTimerOccurrence(
     }
 
     private static int CountMissedOccurrences(
-        FunctionCronSchedule schedule,
+        UtcCronSchedule schedule,
         DateTimeOffset firstMissedUtc,
         DateTimeOffset nowUtc)
     {

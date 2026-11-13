@@ -8,6 +8,7 @@ using Pole.Features.GitOps.Contracts;
 using Pole.Features.GitOps.Primitives;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Scheduling;
 using Pole.Workloads;
 
 namespace Pole.Features.Backups.Application.Declarations;

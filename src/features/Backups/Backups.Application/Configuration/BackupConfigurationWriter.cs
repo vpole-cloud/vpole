@@ -1,8 +1,8 @@
 using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Backups.Events;
@@ -10,6 +10,7 @@ using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Contracts;
+using Pole.Scheduling;
 using Pole.Workloads;
 
 namespace Pole.Features.Backups.Application.Configuration;

@@ -24,5 +24,6 @@
         <ProjectReference Include="../../ResourceGroups/ResourceGroups.Events/ResourceGroups.Events.csproj"/>
         <ProjectReference Include="../../ResourceDeployments/ResourceDeployments.Events/ResourceDeployments.Events.csproj"/>
         <InternalsVisibleTo Include="Pole.Features.Backups.Tests"/>
+        <ProjectReference Include="../../../shared/Scheduling/Scheduling.csproj"/>
     </ItemGroup>
 </Project>
