@@ -61,9 +61,9 @@ public static class BackupsFeature
         services.AddScoped<BackupRecoveryJob>();
         services.AddScoped<BackupSourceLifecycle>();
         services.AddScoped<ForgetRetiredArchive>();
-        services.AddScoped<BackupAccessPlacementAdapter>();
+        services.AddScoped<BackupDestinationPlacementAdapter>();
         services.AddSingleton(
-            ResourceDeploymentAdapterDescriptor.Create<BackupAccessPlacementAdapter>(
+            ResourceDeploymentAdapterDescriptor.Create<BackupDestinationPlacementAdapter>(
                 BackupResourceTypes.Destination,
                 ResourcePlacementCapability.MultiTarget));
         return services;
@@ -89,19 +89,4 @@ public static class BackupsFeature
         endpoints.MapGroup("/backups").MapBackupRoutes();
         return endpoints;
     }
-}
-
-/// <summary>The placement owns the retained namespace reference for S3 credential projections.
-/// Secrets reconciles those projections. The destination runs no pods of its own.</summary>
-internal sealed class BackupAccessPlacementAdapter : IProjectionOnlyPlacementAdapter
-{
-    public Task<ResourceDeploymentAdapterResult> ApplyAsync(
-        ResourceDeploymentReconciliationContext context,
-        CancellationToken ct) =>
-        Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
-
-    public Task<ResourceDeploymentAdapterResult> DeleteAsync(
-        ResourceDeploymentReconciliationContext context,
-        CancellationToken ct) =>
-        Task.FromResult<ResourceDeploymentAdapterResult>(ResourceDeploymentAdapterResult.Succeeded.Create());
 }
