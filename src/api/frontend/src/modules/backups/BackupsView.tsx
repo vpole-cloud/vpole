@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useScopedQuery } from '../../data/useScopedQuery'
 import { useApiScope } from '../../data/useApiScope'
 import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
@@ -19,6 +19,8 @@ import type {
   BackupPolicyInput,
   BackupRestoreInput,
 } from './types'
+
+type BackupEditor = { kind: 'destination' } | { kind: 'policy'; policyId: string | null } | null
 
 export function BackupsView() {
   const { api, tenant, auth } = useAppServices()
@@ -65,9 +67,26 @@ function BackupWorkspace() {
   const [newName, setNewName] = useState('')
   const [targetTime, setTargetTime] = useState('')
   const [restoreStorage, setRestoreStorage] = useState('')
-  const [destinationForm, setDestinationForm] = useState(false)
-  const [policyForm, setPolicyForm] = useState(false)
-  const [editingPolicy, setEditingPolicy] = useState<BackupPolicy>()
+  const [editor, setEditor] = useState<BackupEditor>(null)
+  const [pendingEditor, setPendingEditor] = useState<{ next: BackupEditor } | null>(null)
+  const dirtyEditor = useRef(false)
+  const editorDirty = useCallback((dirty: boolean) => {
+    dirtyEditor.current = dirty
+  }, [])
+  const editingPolicy =
+    editor?.kind === 'policy' && editor.policyId
+      ? policies.resource?.find((item) => item.id === editor.policyId)
+      : undefined
+  const changeEditor = (next: BackupEditor) => {
+    dirtyEditor.current = false
+    setEditor(next)
+    setPendingEditor(null)
+  }
+  const requestEditor = (next: BackupEditor) => {
+    if (mutation.busy) return
+    if (dirtyEditor.current) setPendingEditor({ next })
+    else changeEditor(next)
+  }
   const canRestore = auth.isPlatformAdmin || ['Owner', 'Admin'].includes(tenant.active?.role ?? '')
   const refresh = async () => {
     await Promise.all([
@@ -125,19 +144,20 @@ function BackupWorkspace() {
       {tenant.canManage && (
         <Button
           onClick={() => {
-            setDestinationForm(!destinationForm)
+            requestEditor(editor?.kind === 'destination' ? null : { kind: 'destination' })
           }}
         >
           Connect storage
         </Button>
       )}
-      {destinationForm && (
+      {editor?.kind === 'destination' && (
         <DestinationForm
           busy={mutation.busy}
+          onDirtyChange={editorDirty}
           onSave={(input) =>
             run(
               (signal) => client.saveDestination(input, signal),
-              () => setDestinationForm(false),
+              () => changeEditor(null),
             )
           }
         />
@@ -180,20 +200,22 @@ function BackupWorkspace() {
       {tenant.canManage && (
         <Button
           onClick={() => {
-            setEditingPolicy(undefined)
-            setPolicyForm(!policyForm)
+            requestEditor(
+              editor?.kind === 'policy' && editor.policyId === null
+                ? null
+                : { kind: 'policy', policyId: null },
+            )
           }}
         >
           Add policy
         </Button>
       )}
-      {policyForm && (
+      {editor?.kind === 'policy' && (
         <PolicyForm
-          key={editingPolicy?.id ?? 'new'}
-          current={
-            policies.resource?.find((item) => item.id === editingPolicy?.id) ?? editingPolicy
-          }
+          key={editor.policyId ?? 'new'}
+          current={editingPolicy}
           busy={mutation.busy}
+          onDirtyChange={editorDirty}
           destinations={(destinations.resource ?? []).map((item) => ({
             id: item.id,
             name: item.name,
@@ -201,7 +223,7 @@ function BackupWorkspace() {
           onSave={(input, baseline) =>
             run(
               (signal) => client.savePolicy(input, signal, baseline),
-              () => setPolicyForm(false),
+              () => changeEditor(null),
             )
           }
         />
@@ -253,8 +275,8 @@ function BackupWorkspace() {
                       Boolean(item.gitOps)
                     }
                     onClick={() => {
-                      setEditingPolicy(item)
-                      setPolicyForm(true)
+                      if (editor?.kind !== 'policy' || editor.policyId !== item.id)
+                        requestEditor({ kind: 'policy', policyId: item.id })
                     }}
                   >
                     Edit
@@ -474,6 +496,16 @@ function BackupWorkspace() {
           },
         ]}
       />
+      {pendingEditor && (
+        <ConfirmationDialog
+          title="Discard unsaved changes?"
+          confirmLabel="Discard changes"
+          onCancel={() => setPendingEditor(null)}
+          onConfirm={() => changeEditor(pendingEditor.next)}
+        >
+          The current form has unsaved changes.
+        </ConfirmationDialog>
+      )}
       {confirmation && (
         <ConfirmationDialog
           title={confirmation.title}
@@ -491,10 +523,12 @@ function BackupWorkspace() {
 
 function DestinationForm({
   busy,
+  onDirtyChange,
   onSave,
 }: {
   busy: boolean
   onSave: (input: BackupDestinationInput) => void
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const [input, setInput] = useState<BackupDestinationInput>({
     name: '',
@@ -508,7 +542,12 @@ function DestinationForm({
     secretAccessKeyKey: 'ACCESS_SECRET_KEY',
   })
   const [baseline] = useState(input)
-  useUnsavedChanges(JSON.stringify(input) !== JSON.stringify(baseline), 'Backup destination')
+  const dirty = JSON.stringify(input) !== JSON.stringify(baseline)
+  useUnsavedChanges(dirty, 'Backup destination')
+  useEffect(() => {
+    onDirtyChange(dirty)
+    return () => onDirtyChange(false)
+  }, [dirty, onDirtyChange])
   const { api } = useAppServices()
   const origin = useApiScope(api)
   const credentials = useScopedQuery({
@@ -579,6 +618,7 @@ function DestinationForm({
 function PolicyForm({
   current,
   busy,
+  onDirtyChange,
   destinations,
   onSave,
 }: {
@@ -586,6 +626,7 @@ function PolicyForm({
   destinations: { id: string; name: string }[]
   onSave: (input: BackupPolicyInput, baseline?: BackupConfigurationVersion) => void
   current?: BackupPolicy
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const { api } = useAppServices()
   const origin = useApiScope(api)
@@ -598,17 +639,28 @@ function PolicyForm({
   const [state, setState] = useState(() => backupPolicyConfiguration(current))
   const input = state.draft
   const setInput = (draft: BackupPolicyInput) => setState({ ...state, draft })
+  const policyUnavailable = Boolean(state.version && !current)
   const changedOnServer = Boolean(
     current && state.version && current.revision !== state.version.revision,
   )
-  useUnsavedChanges(isBackupPolicyDirty(state), 'Backup policy')
+  const dirty = isBackupPolicyDirty(state)
+  useUnsavedChanges(dirty, 'Backup policy')
+  useEffect(() => {
+    onDirtyChange(dirty)
+    return () => onDirtyChange(false)
+  }, [dirty, onDirtyChange])
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        if (!changedOnServer) onSave(input, state.version)
+        if (!changedOnServer && !policyUnavailable) onSave(input, state.version)
       }}
     >
+      {policyUnavailable && (
+        <Notice tone="error">
+          This policy is no longer available. The draft has been kept for review.
+        </Notice>
+      )}
       {changedOnServer && current && (
         <Notice tone="info">
           This policy changed on the server. Latest schedule: {current.schedule}; recovery window:{' '}
@@ -686,7 +738,7 @@ function PolicyForm({
             onChange={(event) => setInput({ ...input, retentionDays: Number(event.target.value) })}
           />
         </Field>
-        <Button type="submit" disabled={changedOnServer}>
+        <Button type="submit" disabled={changedOnServer || policyUnavailable}>
           {current ? 'Save policy' : 'Create policy'}
         </Button>
       </fieldset>

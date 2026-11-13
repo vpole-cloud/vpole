@@ -42,6 +42,20 @@ const services = (tenantId: string, role: 'Owner' | 'Member' = 'Owner'): AppServ
 })
 
 beforeEach(() => {
+  Object.defineProperties(HTMLDialogElement.prototype, {
+    showModal: {
+      configurable: true,
+      value() {
+        this.open = true
+      },
+    },
+    close: {
+      configurable: true,
+      value() {
+        this.open = false
+      },
+    },
+  })
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   unavailable = false
   retired = false
@@ -72,6 +86,8 @@ beforeEach(() => {
           },
         ]),
       )
+    if (path === '/api/v1/secrets/')
+      return Promise.resolve(Response.json({ items: [], nextCursor: null }))
     if (path === '/api/v1/postgres/')
       return Promise.resolve(Response.json({ items: [], totalCount: 0 }))
     if (path === '/api/v1/backups/archives')
@@ -196,20 +212,6 @@ it('shows a catalog access failure and disables restoring a previously loaded co
 })
 
 it('clears an admin confirmation when the same tenant role drops to Member', async () => {
-  Object.defineProperties(HTMLDialogElement.prototype, {
-    showModal: {
-      configurable: true,
-      value() {
-        this.open = true
-      },
-    },
-    close: {
-      configurable: true,
-      value() {
-        this.open = false
-      },
-    },
-  })
   retired = true
   await render()
   await selectArchive()
@@ -223,4 +225,32 @@ it('clears an admin confirmation when the same tenant role drops to Member', asy
   expect(app.container.querySelector('dialog')).toBeNull()
   expect(app.container.querySelector('select')!.value).toBe('')
   expect(requests.fetch.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+})
+
+it('guards switching away from a dirty policy and preserves its draft when discard is canceled', async () => {
+  await render()
+  const click = async (label: string) =>
+    act(async () => {
+      ;[...app.container.querySelectorAll('button')]
+        .find((item) => item.textContent === label)!
+        .click()
+    })
+  await click('Edit')
+  await act(async () => {
+    const field = app.container.querySelector('input[value="0 2 * * *"]')!
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      field,
+      '0 3 * * *',
+    )
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await click('Connect storage')
+  expect(app.container.textContent).toContain('Discard unsaved changes?')
+  await click('Cancel')
+  expect(app.container.querySelector('input[value="0 3 * * *"]')).not.toBeNull()
+  expect(app.container.textContent).not.toContain('Storage credentials')
+  await click('Add policy')
+  await click('Discard changes')
+  expect(app.container.querySelector('input[value="0 3 * * *"]')).toBeNull()
+  expect(app.container.textContent).toContain('Create policy')
 })
