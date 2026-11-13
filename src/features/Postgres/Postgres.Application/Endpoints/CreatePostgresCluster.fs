@@ -334,7 +334,7 @@ type PostgresClusterCreator
         createBoundSecret: CreateBoundManagedSecret
     ) =
 
-    member _.CreateAsync(request, resourceId, origin, expectedPlacement: (string * int64 * int64) option, recordRestoreTarget, cancellationToken) =
+    member _.CreateAsync(request, resourceId, origin, expectedCell: string option, recordRestoreTarget, cancellationToken) =
         task {
             let! preparation =
                 CreatePostgresClusterWorkflow.prepare
@@ -349,9 +349,6 @@ type PostgresClusterCreator
 
             match preparation with
             | Completed outcome -> return outcome
-            | ReadyToCreate plan when
-                expectedPlacement |> Option.exists (fun (_,compute,storage) -> plan.Compute.ComputeProfileRevision <> compute || plan.Storage.StorageProfileRevision <> storage) ->
-                return CreatePostgresClusterRejected(CreateState PostgresClusterRestoreProfileChanged)
             | ReadyToCreate plan ->
                 return!
                     CreatePostgresClusterWorkflow.execute
@@ -361,7 +358,7 @@ type PostgresClusterCreator
                         createResourceDeployment
                         createBoundSecret
                         recordRestoreTarget
-                        (expectedPlacement |> Option.map (fun (cell,_,_) -> cell))
+                        expectedCell
                         plan
                         cancellationToken
         }

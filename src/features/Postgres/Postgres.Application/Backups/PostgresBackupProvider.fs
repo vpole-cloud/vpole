@@ -53,7 +53,7 @@ type PostgresBackupProvider
                            StorageProfileId = p.StorageProfileId; ComputeProfileId = Some p.ComputeProfileId
                            Password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
                            Placement = Some(PlacementRequest(p.IsolationScopeId,p.DeploymentTargetId)) } }
-            let! result = creator.CreateAsync(request,r.NewResourceId,origin,Some(p.RuntimeCellId,p.ComputeProfileRevision,p.StorageProfileRevision),Some recordTarget,ct)
+            let! result = creator.CreateAsync(request,r.NewResourceId,origin,Some p.RuntimeCellId,Some recordTarget,ct)
             match result with
             | PostgresClusterCreated _ -> return running
             | CreatePostgresClusterRejected(CreateNameAlreadyExists _)
@@ -76,7 +76,6 @@ type PostgresBackupProvider
                     | CreateStorage _ -> "restore-storage-rejected"
                     | CreateCredential _ -> "restore-credential-rejected"
                     | CreateState PostgresClusterRestoreOperationUnavailable -> "restore-operation-unavailable"
-                    | CreateState PostgresClusterRestoreProfileChanged -> "restore-profile-changed"
                     | _ -> "restore-placement-rejected"
                 return BackupNative.fail code false
         }

@@ -508,6 +508,76 @@ public sealed class PostgresLifecycleTests(
     }
 
     [Fact]
+    public async Task Restore_admits_current_profile_revisions_after_profiles_are_renamed()
+    {
+        var original = await Seed("PostgresCluster");
+        var source = await Services.GetRequiredService<IMongoCollection<PostgresCluster>>()
+            .Find(item => item.Id == original.ResourceId)
+            .SingleAsync();
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == source.Id).SingleAsync();
+        var computes = Services.GetRequiredService<IMongoCollection<ComputeProfile>>();
+        var compute = await computes.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
+        var stores = Services.GetRequiredService<IMongoCollection<StorageProfile>>();
+        var storage = await stores.Find(item => item.Id == TestData.DefaultStorageProfileId).SingleAsync();
+        var renamedCompute = compute.Reconfigure(
+            "Renamed compute",
+            compute.Description,
+            compute.Resources,
+            compute.Architecture,
+            compute.ExtendedResources,
+            compute.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            compute.TenantAccess,
+            compute.TargetMappings,
+            compute.IsEnabled,
+            compute.IsDefault,
+            DateTime.UtcNow);
+        var renamedStorage = storage.Reconfigure(
+            "Renamed storage",
+            storage.Description,
+            storage.MediaType,
+            storage.PerformanceTier,
+            storage.IsEnabled,
+            storage.IsDefault,
+            storage.TargetMappings,
+            storage.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            storage.TenantAccess,
+            storage.SizeLimits,
+            DateTime.UtcNow);
+        await computes.ReplaceOneAsync(item => item.Id == compute.Id, renamedCompute);
+        await stores.ReplaceOneAsync(item => item.Id == storage.Id, renamedStorage);
+        var targetId = Id();
+        var origin = new PostgresRecoveryOrigin(Id(), Id(), "source", "20261012T130001", null);
+        var request = new CreatePostgresClusterRequest(
+            new CreatePostgresClusterRequestBody(
+                "restored-after-profile-rename",
+                source.GroupId,
+                17,
+                1,
+                10,
+                storage.Id,
+                compute.Id,
+                "restore-password",
+                new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId)),
+            source.TenantId);
+        RecordRestoreTargetCreation receipt = (
+            _, session,
+            _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult(RestoreTargetCreationDecision.Recorded);
+        };
+
+        var result = await Services.GetRequiredService<PostgresClusterCreator>()
+            .CreateAsync(request, targetId, origin, placement.RuntimeCellId, receipt, default);
+
+        Assert.IsType<CreatePostgresClusterOutcome.PostgresClusterCreated>(result);
+        var restored = await DbContext.ResourceDeployments.Find(item => item.ResourceId == targetId).SingleAsync();
+        Assert.Equal(placement.RuntimeCellId, restored.RuntimeCellId);
+        Assert.Equal(renamedCompute.Revision, restored.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(renamedStorage.Revision, restored.ResolvedPlacement.Storage!.StorageProfileRevision);
+    }
+
+    [Fact]
     public async Task A_recorded_restore_cannot_recreate_a_deleted_cluster_or_issue_another_secret()
     {
         var original = await Seed("PostgresCluster");
