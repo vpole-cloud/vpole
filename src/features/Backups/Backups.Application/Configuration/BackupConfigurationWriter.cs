@@ -134,26 +134,31 @@ public sealed class BackupConfigurationWriter(
                 await RetireArchive(current, session, ct, sourceRemoved: false, replacement: archive);
         }
 
-        var policy = new BackupPolicy(
-            write.Id,
-            write.TenantId,
-            input.Name,
-            input.ResourceType,
-            input.ResourceId,
-            destination.Id,
-            archiveId!,
-            schedule.CronUtc,
-            schedule.Suspended,
-            schedule.RetentionDays,
-            write.ExpectedRevision + 1,
-            current?.AppliedRevision ?? 0,
-            null,
-            false,
-            clock.GetUtcNow().UtcDateTime,
-            current?.LeaseId,
-            current?.LeaseUntil,
-            current?.PlanningFence ?? 0,
-            current?.ArchiveId == archiveId ? current?.Observation : null);
+        var eventCore = EventCore.Create(write.TenantId);
+        var origin = new BackupExecutionOrigin(eventCore.TraceId, eventCore.CorrelationId);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var policy = current is null
+            ? BackupPolicyFactory.Create(
+                write.Id,
+                write.TenantId,
+                input.Name,
+                input.ResourceType,
+                input.ResourceId,
+                destination.Id,
+                archiveId!,
+                schedule.CronUtc,
+                schedule.Suspended,
+                schedule.RetentionDays,
+                origin,
+                now)
+            : current.Reconfigure(
+                destination.Id,
+                archiveId!,
+                schedule.CronUtc,
+                schedule.Suspended,
+                schedule.RetentionDays,
+                origin,
+                now);
         if (current is null)
             await policies.InsertOneAsync(session, policy, cancellationToken: ct);
         else

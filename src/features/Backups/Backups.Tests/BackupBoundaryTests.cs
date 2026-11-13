@@ -25,36 +25,33 @@ public sealed class BackupBoundaryTests
     {
         var now = new DateTimeOffset(2026, 3, 29, 0, 0, 0, TimeSpan.Zero);
         var stale = new BackupObservation("Healthy", null, null, now.AddMinutes(-2).UtcDateTime);
-        var policy = new BackupPolicy(
-            "p",
-            "t",
-            "daily",
-            "pole/postgres",
-            "s",
-            "d",
-            "a",
-            "30 2 * * *",
-            false,
-            30,
-            1,
-            1,
-            null,
-            false,
-            now.UtcDateTime,
-            null,
-            null,
-            0,
-            stale);
-        Assert.Equal(now.AddHours(2).AddMinutes(30).UtcDateTime, BackupViews.From(policy, now).NextScheduledAt);
+        var origin = new BackupExecutionOrigin("trace", "correlation");
+        var policy = BackupPolicyFactory.Create(
+                "p",
+                "t",
+                "daily",
+                "pole/postgres",
+                "s",
+                "d",
+                "a",
+                "30 2 * * *",
+                false,
+                30,
+                origin,
+                now.UtcDateTime) with
+            {
+                AppliedRevision = 1, Observation = stale
+            };
+        Assert.Equal(now.AddHours(2).AddMinutes(30).UtcDateTime, policy.ReportSchedule(now).NextScheduledAt);
         var reported = now.AddHours(3).UtcDateTime;
         Assert.Equal(
             reported,
-            BackupViews.From(policy with { Observation = stale with { NextScheduledAt = reported } }, now)
-                .NextScheduledAt);
-        Assert.Null(BackupViews.From(policy with { Suspended = true }, now).NextScheduledAt);
-        Assert.Null(BackupViews.From(policy with { Deleting = true }, now).NextScheduledAt);
-        Assert.Null(BackupViews.From(policy with { AppliedRevision = 0 }, now).NextScheduledAt);
-        Assert.Null(BackupViews.From(policy with { Schedule = "0 1 31 2 *" }, now).NextScheduledAt);
+            (policy with { Observation = stale with { NextScheduledAt = reported } }).ReportSchedule(now)
+            .NextScheduledAt);
+        Assert.Null((policy with { Suspended = true }).ReportSchedule(now).NextScheduledAt);
+        Assert.Null(policy.BeginStopping(origin, now.UtcDateTime).ReportSchedule(now).NextScheduledAt);
+        Assert.Null((policy with { AppliedRevision = 0 }).ReportSchedule(now).NextScheduledAt);
+        Assert.Null((policy with { Schedule = "0 1 31 2 *" }).ReportSchedule(now).NextScheduledAt);
     }
 
     [Fact]

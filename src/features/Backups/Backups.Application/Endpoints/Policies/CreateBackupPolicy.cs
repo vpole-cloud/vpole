@@ -66,7 +66,7 @@ public sealed class CreateBackupPolicyHandler(
             ct);
         return answer switch
         {
-            BackupWriteResult<BackupPolicy>.Saved ok => BackupViews.From(ok.Value, clock.GetUtcNow()),
+            BackupWriteResult<BackupPolicy>.Saved ok => BackupViews.From(ok.Value, ok.Value.ReportSchedule(clock.GetUtcNow())),
             BackupWriteResult<BackupPolicy>.Rejected failure => new BackupRequestRejected(failure.Code)
         };
     }

@@ -1,6 +1,7 @@
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Domain;
+using Pole.Features.Events.Abstractions;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 
@@ -32,11 +33,10 @@ public sealed class BackupConfigurationDeletions(
             return new BackupWriteResult<bool>.Rejected("revision-conflict");
         if (!current.Deleting)
         {
-            var retiring = current with
-            {
-                Revision = current.Revision + 1, Deleting = true, FailureCode = null,
-                NextAttemptAt = clock.GetUtcNow().UtcDateTime
-            };
+            var eventCore = EventCore.Create(tenantId);
+            var retiring = current.BeginStopping(
+                new BackupExecutionOrigin(eventCore.TraceId, eventCore.CorrelationId),
+                clock.GetUtcNow().UtcDateTime);
             await policies.ReplaceOneAsync(session, filter, retiring, cancellationToken: ct);
             await writer.Changed(session, retiring, "BackupPolicy", retiring.Revision, ct);
         }

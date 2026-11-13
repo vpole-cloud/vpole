@@ -33,28 +33,6 @@ public sealed record BackupDestination(
     long ReferenceFence
 ) : IBackupConfigurationDocument;
 
-public sealed record BackupPolicy(
-    string Id,
-    string TenantId,
-    string Name,
-    string ResourceType,
-    string ResourceId,
-    string DestinationId,
-    string ArchiveId,
-    string Schedule,
-    bool Suspended,
-    int RetentionDays,
-    long Revision,
-    long AppliedRevision,
-    string? FailureCode,
-    bool Deleting,
-    DateTime NextAttemptAt,
-    string? LeaseId,
-    DateTime? LeaseUntil,
-    long PlanningFence,
-    BackupObservation? Observation
-) : IBackupConfigurationDocument;
-
 public sealed record ArchivePlacement(
     string ResourceGroupId,
     string IsolationScopeId,

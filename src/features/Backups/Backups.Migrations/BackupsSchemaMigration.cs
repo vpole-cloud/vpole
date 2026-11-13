@@ -34,7 +34,7 @@ public sealed class BackupsSchemaMigration : IMigration
             "BackupPolicies",
             "IX_BackupPolicies_Dispatch",
             false,
-            keys.Ascending("NextAttemptAt").Ascending("LeaseUntil"));
+            keys.Ascending("Dispatch.NextAttemptAtUtc").Ascending("Dispatch.Lease.ExpiresAtUtc"));
         await IndexAsync(
             "BackupArchives",
             "IX_BackupArchives_Tenant_Created",

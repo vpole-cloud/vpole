@@ -7,7 +7,6 @@ using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
-
 using Progress
     = Pole.Features.Backups.Contracts.BackupProviderResult<Pole.Features.Backups.Contracts.BackupProviderProgress>;
 
@@ -35,13 +34,17 @@ public sealed class BackupDispatcher(
         var now = clock.GetUtcNow().UtcDateTime;
         var lockId = ObjectId.GenerateNewId().ToString();
         var candidate = BackupDispatchFilters.PoliciesDue(now);
-        var policy = await policies.FindOneAndUpdateAsync(
-            candidate,
-            Builders<BackupPolicy>.Update.Set(p => p.LeaseId, lockId).Set(p => p.LeaseUntil, now + Lease),
-            new FindOneAndUpdateOptions<BackupPolicy>
-                { Sort = Builders<BackupPolicy>.Sort.Ascending(p => p.NextAttemptAt) },
-            ct);
-        if (policy is null)
+        var candidatePolicy = await policies.Find(candidate)
+            .SortBy(p => p.Dispatch.NextAttemptAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (candidatePolicy is null)
+            return false;
+        var policy = candidatePolicy.Claim(new BackupLease(lockId, now + Lease));
+        var claimed = await policies.UpdateOneAsync(
+            BackupDispatchFilters.PolicyAtDispatch(candidatePolicy),
+            Builders<BackupPolicy>.Update.Set(p => p.Dispatch, policy.Dispatch),
+            cancellationToken: ct);
+        if (claimed.ModifiedCount != 1)
             return false;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(Lease / 2);
@@ -120,12 +123,12 @@ public sealed class BackupDispatcher(
                 else
                 {
                     var update = Builders<BackupPolicy>.Update
-                        .Set(p => p.LeaseId, null)
-                        .Set(p => p.LeaseUntil, null)
-                        .Set(p => p.FailureCode, (effect as Progress.Failure)?.Code)
                         .Set(
-                            p => p.NextAttemptAt,
-                            clock.GetUtcNow().UtcDateTime + (effect is Progress.Failure ? Retry : Poll));
+                            p => p.Dispatch,
+                            new AvailableBackupDispatch(
+                                clock.GetUtcNow().UtcDateTime + (effect is Progress.Failure ? Retry : Poll),
+                                policy.Dispatch.Origin))
+                        .Set(p => p.FailureCode, (effect as Progress.Failure)?.Code);
                     if (observation is not null)
                     {
                         var state = new BackupObservation(
@@ -134,7 +137,11 @@ public sealed class BackupDispatcher(
                             observation.LastSuccessfulBackupAt?.UtcDateTime,
                             observation.NextScheduledBackupAt?.UtcDateTime);
                         update = update.Set(p => p.Observation, state)
-                            .Set(p => p.NextAttemptAt, clock.GetUtcNow().UtcDateTime + Retry);
+                            .Set(
+                                p => p.Dispatch,
+                                new AvailableBackupDispatch(
+                                    clock.GetUtcNow().UtcDateTime + Retry,
+                                    policy.Dispatch.Origin));
                     }
                     else if (effect is Progress.Failure && policy.Observation is { } previous)
                         update = update.Set(

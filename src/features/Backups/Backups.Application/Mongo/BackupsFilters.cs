@@ -51,29 +51,36 @@ internal static class BackupsPolicyFilters
 internal static class BackupDispatchFilters
 {
     internal static FilterDefinition<BackupPolicy> PoliciesDue(DateTime now) =>
-        Builders<BackupPolicy>.Filter.Where(p =>
-            p.NextAttemptAt <= now && (p.LeaseUntil == null || p.LeaseUntil <= now));
+        Builders<BackupPolicy>.Filter.Lte(p => p.Dispatch.NextAttemptAtUtc, now) &
+        (Builders<BackupPolicy>.Filter.OfType<BackupDispatch, AvailableBackupDispatch>(p => p.Dispatch) |
+            (Builders<BackupPolicy>.Filter.OfType<BackupDispatch, ClaimedBackupDispatch>(p => p.Dispatch) &
+                Builders<BackupPolicy>.Filter.Lte(p => ((ClaimedBackupDispatch)p.Dispatch).Lease.ExpiresAtUtc, now)));
+
+    internal static FilterDefinition<BackupPolicy> PolicyAtDispatch(BackupPolicy policy) =>
+        BackupConfigurationFilters<BackupPolicy>.AtRevision(policy.TenantId, policy.Id, policy.Revision) &
+        Builders<BackupPolicy>.Filter.Eq(p => p.Dispatch, policy.Dispatch);
 
     internal static FilterDefinition<BackupPolicy> ClaimedPolicy(
         BackupPolicy policy,
         string leaseId,
         DateTime now) =>
         BackupConfigurationFilters<BackupPolicy>.AtRevision(policy.TenantId, policy.Id, policy.Revision) &
-        Builders<BackupPolicy>.Filter.Eq(x => x.LeaseId, leaseId) &
-        Builders<BackupPolicy>.Filter.Gt(x => x.LeaseUntil, now);
+        Builders<BackupPolicy>.Filter.OfType<BackupDispatch, ClaimedBackupDispatch>(p => p.Dispatch) &
+        Builders<BackupPolicy>.Filter.Eq(p => ((ClaimedBackupDispatch)p.Dispatch).Lease.Id, leaseId) &
+        Builders<BackupPolicy>.Filter.Gt(p => ((ClaimedBackupDispatch)p.Dispatch).Lease.ExpiresAtUtc, now);
 
     internal static FilterDefinition<BackupPolicy> ActivePolicyArchive(
         string tenant,
         string policy,
         string archive) => BackupsFilters<BackupPolicy>.ById(tenant, policy) &
         Builders<BackupPolicy>.Filter.Eq(x => x.ArchiveId, archive) &
-        Builders<BackupPolicy>.Filter.Eq(x => x.Deleting, false);
+        Builders<BackupPolicy>.Filter.OfType<BackupPolicyLifecycle, ActiveBackupPolicy>(x => x.Lifecycle);
 
     internal static FilterDefinition<BackupPolicy> ActiveSource(
         string tenant,
         string type,
         string source) => BackupsPolicyFilters.ForSource(tenant, type, source) &
-        Builders<BackupPolicy>.Filter.Eq(x => x.Deleting, false);
+        Builders<BackupPolicy>.Filter.OfType<BackupPolicyLifecycle, ActiveBackupPolicy>(x => x.Lifecycle);
 
     internal static FilterDefinition<BackupOperation> OperationsDue(DateTime now) =>
         Builders<BackupOperation>.Filter.Where(o => o.Kind != BackupOperationKind.ScheduledBackup &&

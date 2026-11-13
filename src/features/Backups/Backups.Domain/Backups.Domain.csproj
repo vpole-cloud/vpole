@@ -9,5 +9,6 @@
     <ItemGroup>
         <PackageReference Include="MongoDB.Driver"/>
         <ProjectReference Include="../../../shared/Multitenancy.Primitives/Multitenancy.Primitives.csproj"/>
+        <ProjectReference Include="../../../shared/Scheduling/Scheduling.csproj"/>
     </ItemGroup>
 </Project>

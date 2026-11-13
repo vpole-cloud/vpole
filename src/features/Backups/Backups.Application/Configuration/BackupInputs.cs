@@ -1,6 +1,5 @@
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
-using Pole.Scheduling;
 using Pole.Workloads;
 
 namespace Pole.Features.Backups.Application.Configuration;
@@ -132,7 +131,7 @@ public sealed record BackupOperationDto(
 
 public static class BackupViews
 {
-    public static BackupPolicyDto From(BackupPolicy p, DateTimeOffset now) => new(
+    public static BackupPolicyDto From(BackupPolicy p, BackupPolicyScheduleReport report) => new(
         p.Id,
         p.Name,
         p.ResourceType,
@@ -146,18 +145,9 @@ public static class BackupViews
         p.ArchiveId,
         p.FailureCode,
         p.Deleting,
-        NextRun(p, now),
-        p.Observation?.LastSuccessfulBackupAt,
-        p.Observation?.WalArchivingStatus);
-
-    private static DateTime? NextRun(BackupPolicy policy, DateTimeOffset now)
-    {
-        if (policy.Suspended || policy.Deleting || policy.AppliedRevision != policy.Revision)
-            return null;
-        if (policy.Observation?.NextScheduledAt is { } next && next > now.UtcDateTime)
-            return next;
-        return UtcCronSchedule.Parse(policy.Schedule).FindNextOccurrence(now)?.UtcDateTime;
-    }
+        report.NextScheduledAt,
+        report.LastSuccessfulBackupAt,
+        report.WalArchivingStatus);
 
     public static BackupArchiveDto From(BackupArchive a, bool pitr) => new(
         a.Id,
