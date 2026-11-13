@@ -3,7 +3,6 @@ namespace Pole.Features.Postgres.Application.Backups
 open System
 open System.Net
 open System.Net.Http
-open System.Security.Cryptography
 open System.Threading
 open System.Threading.Tasks
 open k8s
@@ -12,7 +11,7 @@ open Pole.Features.Backups.Contracts
 open Pole.Features.DeploymentTargets.Contracts
 open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Application.Common
-open Pole.Features.Postgres.Application.Endpoints
+open Pole.Features.Postgres.Application.Creation
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
@@ -46,28 +45,40 @@ type PostgresBackupProvider
     let createRestored (r: RestoreBackupRequest) origin version ct =
         task {
             let p = r.Archive.Placement
+            let configuration =
+                { Name = r.Name
+                  GroupId = p.ResourceGroupId
+                  Version = version
+                  Instances = Some r.Archive.Service.Instances
+                  Storage = Some(r.StorageGiB.GetValueOrDefault(r.Archive.Service.StorageGiB))
+                  StorageProfileId = p.StorageProfileId
+                  ComputeProfileId = Some p.ComputeProfileId
+                  Placement = Some(PlacementRequest(p.IsolationScopeId, p.DeploymentTargetId)) }
             let request =
                 { TenantId = r.Archive.Source.TenantId
-                  Body = { Name = r.Name; GroupId = p.ResourceGroupId; Version = version
-                           Instances = Some r.Archive.Service.Instances; Storage = Some(r.StorageGiB.GetValueOrDefault(r.Archive.Service.StorageGiB))
-                           StorageProfileId = p.StorageProfileId; ComputeProfileId = Some p.ComputeProfileId
-                           Password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-                           Placement = Some(PlacementRequest(p.IsolationScopeId,p.DeploymentTargetId)) } }
-            let! result = creator.CreateAsync(request,r.NewResourceId,origin,Some p.RuntimeCellId,Some recordTarget,ct)
+                  ResourceId = r.NewResourceId
+                  Configuration = configuration
+                  Authority =
+                    PostgresCreationAuthority.Recovery(
+                        origin,
+                        { RuntimeCellId = p.RuntimeCellId },
+                        recordTarget
+                    ) }
+            let! result = creator.CreateAsync(request, ct)
             match result with
-            | PostgresClusterCreated _ -> return running
-            | CreatePostgresClusterRejected(CreateNameAlreadyExists _)
-            | CreatePostgresClusterRejected(CreateState PostgresClusterRestoreTargetAlreadyCreated) ->
+            | PostgresCreationOutcome.Created _ -> return running
+            | PostgresCreationOutcome.Rejected(CreateNameAlreadyExists _)
+            | PostgresCreationOutcome.Rejected(CreateState PostgresClusterRestoreTargetAlreadyCreated) ->
                 // A lease may expire while a second worker is completing the transaction.
                 let! winner = load.Invoke(request.TenantId,r.NewResourceId,ct)
                 match winner with
                 | Some c when not (isNull c.Spec.Recovery) && c.Spec.Recovery.OperationId = r.OperationId -> return running
                 | _ ->
                     match result with
-                    | CreatePostgresClusterRejected(CreateState PostgresClusterRestoreTargetAlreadyCreated) ->
+                    | PostgresCreationOutcome.Rejected(CreateState PostgresClusterRestoreTargetAlreadyCreated) ->
                         return BackupNative.fail "restore-resource-deleted" false
                     | _ -> return BackupNative.fail "restore-name-already-exists" false
-            | CreatePostgresClusterRejected error ->
+            | PostgresCreationOutcome.Rejected error ->
                 let code =
                     match error with
                     | CreateQuota _ -> "restore-quota-rejected"

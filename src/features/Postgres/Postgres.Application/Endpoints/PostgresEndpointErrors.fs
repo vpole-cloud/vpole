@@ -10,24 +10,6 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.StorageProfiles.Contracts
 
-type CreatePostgresClusterStateError =
-    | PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId: string
-    | PostgresClusterRestorePlacementChanged
-    | PostgresClusterRestoreProfileChanged
-    | PostgresClusterRestoreTargetAlreadyCreated
-    | PostgresClusterRestoreOperationUnavailable
-
-type CreatePostgresClusterError =
-    | CreateState of CreatePostgresClusterStateError
-    | CreateTarget of DeploymentTargetNewWorkloadAdmissionError
-    | CreateCompute of ComputeProfileResolutionError
-    | CreateStorage of StorageProfileResolutionError
-    | CreateCredential of PostgresCredentialError
-    | CreateDeployment of CreateResourceDeploymentError
-    | CreateRegistration of ResourceRegistrationMutationError
-    | CreateNameAlreadyExists of PostgresClusterNameAlreadyExists
-    | CreateQuota of QuotaExecutionError
-
 type DeletePostgresClusterStateError =
     | PostgresClusterDeletionNotFound of clusterId: string
     | PostgresClusterDeletionResourceDeploymentMissing of clusterId: string

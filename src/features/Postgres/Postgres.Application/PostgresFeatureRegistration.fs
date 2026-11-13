@@ -10,6 +10,7 @@ open Pole.Features.Postgres.Application.Backups
 open Pole.Database
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Endpoints
+open Pole.Features.Postgres.Application.Creation
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Postgres.Application.Search
 open Pole.Features.Postgres.Domain

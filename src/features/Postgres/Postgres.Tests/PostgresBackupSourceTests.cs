@@ -2,6 +2,7 @@ using Microsoft.FSharp.Core;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Postgres.Application.Backups;
 using Pole.Features.Postgres.Application.Clusters;
+using Pole.Features.Postgres.Application.Creation;
 using Pole.Features.Postgres.Domain;
 using Xunit;
 
@@ -9,6 +10,13 @@ namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresBackupSourceTests
 {
+    [Fact]
+    public void Creation_authority_does_not_print_the_administrator_password()
+    {
+        var authority = PostgresCreationAuthority.NewNewCluster("sensitive-owner-password");
+        Assert.DoesNotContain("sensitive-owner-password", authority.ToString());
+    }
+
     [Fact]
     public async Task Missing_and_unsupported_sources_are_exact_typed_outcomes()
     {

@@ -6,6 +6,7 @@ open Pole.ASP.Helpers
 open Pole.Features.ComputeProfiles.Contracts.HttpMapping
 open Pole.Features.DeploymentTargets.Contracts.HttpMapping
 open Pole.Features.Postgres.Application.Endpoints
+open Pole.Features.Postgres.Application.Creation
 open Pole.Features.Postgres.Application.Credentials
 open Pole.Features.Postgres.Application.Lifecycle
 open Pole.Features.Postgres.Application.Clusters
@@ -29,8 +30,6 @@ module PostgresHttpMappings =
             problem HttpStatusCode.Conflict "postgres.restore-operation-unavailable" "The restore operation is unavailable" null
         | PostgresClusterRestorePlacementChanged ->
             problem HttpStatusCode.Conflict "postgres.restore-placement-changed" "Restore placement revision changed" null
-        | PostgresClusterRestoreProfileChanged ->
-            problem HttpStatusCode.Conflict "postgres.restore-profile-changed" "Restore profile revision changed" null
         | CreatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported targetId ->
             let extensions = Dictionary<string, obj>()
             extensions.Add("deploymentTargetId", targetId)

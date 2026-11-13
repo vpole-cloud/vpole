@@ -54,6 +54,8 @@
         <Compile Include="Kubernetes\PostgresClusterKubernetesBuilder.fs"/>
         <Compile Include="Kubernetes\PostgresClusterKubernetesResourceManager.fs"/>
         <Compile Include="Kubernetes\PostgresResourceDeploymentAdapter.fs"/>
+        <Compile Include="Creation/PostgresCreationErrors.fs"/>
+        <Compile Include="Creation/CreatePostgresCluster.fs"/>
         <Compile Include="Endpoints\PostgresEndpointErrors.fs"/>
         <Compile Include="Common\PostgresHttpMappings.fs"/>
         <Compile Include="Endpoints\CreatePostgresCluster.fs"/>
