@@ -16,6 +16,7 @@ public sealed class RepositoryExampleTests(
     [Theory]
     [InlineData("minimal", 2, 3)]
     [InlineData("full", 15, 19)]
+    [InlineData("backups", 4, 5)]
     [InlineData("lifecycle/before", 3, 4)]
     [InlineData("lifecycle/after-rename", 3, 4)]
     [InlineData("lifecycle/after-removal", 1, 1)]

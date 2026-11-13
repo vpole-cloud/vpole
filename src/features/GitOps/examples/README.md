@@ -4,14 +4,15 @@ Each `manifests` directory is a complete desired snapshot. Copy one selected sna
 repository and select that exact directory when creating a GitOps source. Pole reads `.yaml` and
 `.yml` recursively; pointing a source at this examples directory would combine incompatible snapshots.
 
-| Snapshot                            | Content                                        | Purpose                                                                                |
-| ----------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `minimal/manifests`                 | ResourceGroup and Private WebService           | First repository apply and same-commit no-op                                           |
-| `full/manifests`                    | Fifteen declarations across all thirteen kinds | Scopes, bootstrap/runtime grants, workloads, connectivity, domains and source delivery |
-| `lifecycle/before/manifests`        | Group, Private WebService and Secret metadata  | Adoption and reviewed lifecycle starting point                                         |
-| `lifecycle/after-rename/manifests`  | Same group/Secret, renamed WebService          | Explicit replacement/rename                                                            |
-| `lifecycle/after-removal/manifests` | Group only                                     | Retain versus protected removal                                                        |
-| `lifecycle/empty/manifests`         | Existing directory containing only `.keep`     | Explicit confirmation for an empty desired set                                         |
+| Snapshot                            | Content                                                      | Purpose                                                                                |
+| ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `minimal/manifests`                 | ResourceGroup and Private WebService                         | First repository apply and same-commit no-op                                           |
+| `full/manifests`                    | Fifteen declarations across thirteen core kinds              | Scopes, bootstrap/runtime grants, workloads, connectivity, domains and source delivery |
+| `backups/manifests`                 | Secret metadata, BackupStorage grant, destination and policy | Backups for a separately managed PostgreSQL service                                    |
+| `lifecycle/before/manifests`        | Group, Private WebService and Secret metadata                | Adoption and reviewed lifecycle starting point                                         |
+| `lifecycle/after-rename/manifests`  | Same group/Secret, renamed WebService                        | Explicit replacement/rename                                                            |
+| `lifecycle/after-removal/manifests` | Group only                                                   | Retain versus protected removal                                                        |
+| `lifecycle/empty/manifests`         | Existing directory containing only `.keep`                   | Explicit confirmation for an empty desired set                                         |
 
 The current schemas, identity rules and lifecycle guarantees are in the
 [canonical repository contract](../docs/repository-contracts.md). These files are loaded directly by
@@ -185,3 +186,18 @@ Re-entering Git control requires a new source with explicit adoption.
 
 Delete the source only when ownership and pending work are empty. The tombstone retains audit and
 idempotency, and an old creation key cannot recreate it. Source deletion does not delete workloads.
+
+## Backups for an independently managed service
+
+`backups/manifests` assumes an existing PostgreSQL resource named `database` in resource group
+`postgres-group`, isolation scope `private-data`, in the selected tenant. The service may be manual
+or belong to another source. Keep its existing ownership. Use a separate GitOps source pointed only
+at this snapshot and replace the S3 endpoint, bucket and prefix with the tenant's destination.
+The endpoint must be reachable from Pole and the workload target.
+
+The snapshot creates `storage-keys` metadata with `access`/`secret` keys; provide their values through
+Secrets outside Git. `archives-access` grants exactly those keys to destination `archives` with
+`usage: BackupStorage`. Policy `nightly` uses UTC cron and a seven-day PostgreSQL retention window.
+After destination/policy configuration applies, CNPG/Barman own scheduled copies and WAL. Browse the
+live catalog and request manual backups or a copy/time restore through the ordinary Backups UI/API.
+The compiler and cross-source backup integration tests load these exact files.

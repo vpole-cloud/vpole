@@ -25,7 +25,7 @@ the document mutation. Consumers run the tenant-scoped workflow after commit. A 
 commits its next attempt and another work request together; its consumer schedules a Hangfire
 job when the attempt is in the future. The jobs call the same claimed workflow.
 
-A minutely Hangfire recovery job requests at most 100 due policies and 100 due operations,
+A minutely Hangfire recovery job requests at most 100 due policies, 100 due operations and 100 due archive observations,
 including expired claims. It recovers lost delivery or enqueue without a polling hosted service.
 Duplicate delivery uses the same operation-derived native identity and restore creation receipt.
 Completed operations cannot claim execution again. Stored trace and correlation metadata follow
@@ -56,14 +56,28 @@ The operations list returns `items` and `nextCursor`, ordered newest first by cr
 Use `after` for the next page and `pageSize` (default50, maximum200). Each page remains tenant-scoped;
 new operations do not shift older pages. The console distinguishes last successful base-backup time, WAL archiving health and the next scheduled execution.
 When an applied schedule has no future timestamp from the operator, Pole calculates its expected next run
-from the UTC cron expression. Retiring an archive marks still-running scheduled history entries as
-`Interrupted` when final operator status was unobserved. The live catalog remains authoritative for completed copies.
+from the UTC cron expression. Native scheduled-backup history is separate from this health read:
+each observation consumes at most 200 Kubernetes objects/events and fifteen seconds. It saves a paged
+LIST checkpoint, then follows WATCH changes using the opaque resource version. Expired versions start
+a new backfill; accepted history, checkpoint and continuation commit together. Backfill finalization
+and source removal interrupt missing running history in bounded batches. A temporary native outage
+keeps observation retryable. The live S3 catalog remains authoritative for completed copies.
+
+Changing destination or deleting a policy first suspends the old native schedule. Pole keeps the old
+WAL plugin attached while a post-suspension snapshot/WATCH still reports physical base backups or
+manual commands remain unfinished. The exact archive, policy revision and publisher fence authorize
+the later plugin switch/removal. Ordinary retirement continues observing already submitted copies.
+Forgetting archive metadata requires the committed quiescence receipt and finished commands; it never
+lists the whole native history synchronously.
 
 ## PostgreSQL restore
 
 An Owner or Admin of the selected tenant, or a platform administrator acting in that tenant, confirms the archive, target and new resource name. Supply exactly one of `backupId` and `targetTime`. A backup ID restores the consistent state at the end of that specific copy. A timestamp includes an explicit UTC offset and supports microsecond precision. The provider checks for a suitable base backup before requesting WAL replay to the selected time. An absent WAL segment or an unreachable target is a failed restore. Recovery succeeds after the new primary reaches the target and is ready.
 
-Restore creates a separate PostgreSQL resource on the source DeploymentTarget, subject to placement, storage and quota admission. Its single owner connection string uses the SQL superuser `postgres` and database `postgres`, with a fresh managed password. It also recovers customer databases and roles. The recovered resource starts under manual ownership and can be explicitly adopted by GitOps later.
+Restore creates a separate PostgreSQL resource on the source DeploymentTarget, subject to placement, storage and quota admission. Its single owner connection string uses the SQL superuser `postgres` and database `postgres`, with a fresh managed password. It also recovers customer databases and roles. The recovered resource starts under manual ownership and can be explicitly adopted by GitOps later
+through preview → adopt without replacing its managed password or recovery origin. Restore re-resolves
+the current revisions of the same compute/storage profiles on the retained target. A profile rename
+is allowed; current incompatibility, access, capacity or quota restrictions reject the request.
 
 Retained archive access uses its destination registration, deployment placement and authorized storage credentials. With this metadata intact, the original PostgreSQL workload and its administrator Secret can be deleted before listing copies or restoring. Deleting a policy preserves the archive and its customer-owned files. The backup list reads metadata on demand and has no persisted duplicate in Pole.
 
@@ -80,3 +94,41 @@ grew between Pole observations. The selected storage profile's limits and quotas
 
 CloudNativePG 1.30 evaluates `ScheduledBackup` in the operator's local time zone. Run the operator
 in UTC (the stock image default) to execute Pole's UTC schedules.
+
+## GitOps and request examples
+
+`BackupDestination` and `BackupPolicy` are independent declarations. A policy resolves its service and
+destination by tenant identity and can be owned by another source than the service. The
+[backup snapshot](../GitOps/examples/backups/manifests) declares storage-key metadata, the explicit
+`BackupStorage` grant, destination and policy for an existing PostgreSQL service. Secret values are
+supplied outside Git. Sync and no-op verification do not include catalog reads or manual operations.
+
+For an archive ID returned by `GET /api/v1/backups/archives`, send one of these bodies to
+`POST /api/v1/backups/archives/{id}/restores` with the selected tenant header:
+
+```json
+{
+    "idempotencyKey": "restore-reviewed-copy",
+    "name": "orders-copy",
+    "backupId": "20261113T020000",
+    "confirmed": true
+}
+```
+
+```json
+{
+    "idempotencyKey": "restore-reviewed-time",
+    "name": "orders-at-time",
+    "targetTime": "2026-11-13T02:15:00.123456+02:00",
+    "confirmed": true
+}
+```
+
+A successful request returns the durable operation. Follow its ID through `GET /operations/{id}`.
+Reuse the same idempotency key after an unknown response for the same reviewed command. An accepted
+command followed by a read failure is still accepted. A selected copy can disappear after listing;
+missing copies and unreachable times are explicit failures, never substitutions of another target.
+
+Mongo validators freeze the four owned document formats independently of runtime mappings. Execution
+variants require their own receipt/backup IDs and claims; PITR time uses BSON document representation
+with ticks. Schema validation and index migrations are separate. No catalog copy is stored in Mongo.

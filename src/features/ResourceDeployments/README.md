@@ -7,6 +7,19 @@ transactional state/outbox writes, recovery scheduling and adapter/observer cata
 providers own logical configuration and native object selection. RuntimeCells owns namespaces;
 DeploymentTargets owns clients and admission. This feature does not store credentials or audit history.
 
+## Retained projection placements
+
+`RetainProjectionPlacement` lets a registered `IProjectionOnlyPlacementAdapter` keep an authorized
+credential consumer on the exact tenant, source deployment, target, scope and RuntimeCell in the
+caller's Mongo transaction. It copies no running workload and is not a general placement-admission
+bypass. Source/consumer ownership and planning fences still apply. The retained deployment pins the
+namespace after the source disappears; Secrets owns its projected key material.
+
+Backups uses this capability for a destination's archive access. Several archives can share one
+credential placement. Forgetting the last archive requests exact placement deletion with revision
+and compute fences; destination attachment/detachment is serialized in the caller transaction.
+Physical files in the tenant bucket are unaffected.
+
 ## Tenant operations and runtime observation
 
 `GET /resource-deployments/operations` pages current persisted placements in the active tenant,

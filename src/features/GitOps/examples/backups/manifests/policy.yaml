@@ -1,0 +1,10 @@
+apiVersion: pole.io/v1alpha1
+kind: BackupPolicy
+metadata:
+  name: nightly
+spec:
+  service: { kind: PostgresCluster, name: database }
+  destination: archives
+  schedule: "0 2 * * *"
+  suspended: false
+  retentionDays: 7

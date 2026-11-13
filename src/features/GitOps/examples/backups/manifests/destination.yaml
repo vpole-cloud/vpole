@@ -1,0 +1,14 @@
+apiVersion: pole.io/v1alpha1
+kind: BackupDestination
+metadata:
+  name: archives
+spec:
+  resourceGroup: postgres-group
+  isolationScope: private-data
+  endpoint: https://storage.example
+  bucket: tenant-db
+  prefix: archives
+  credentials:
+    secret: storage-keys
+    accessKeyIdKey: access
+    secretAccessKeyKey: secret

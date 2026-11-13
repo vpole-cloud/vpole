@@ -22,7 +22,7 @@ public sealed class BackupPolicyDeclarationTests(
         await SeedPostgresPlanningCatalog();
         var cluster = await InitializePostgres();
         var backupRepository = Id();
-        var files = BackupFiles("archives", moving: false);
+        var files = ReadExample("backups");
         var initial = await Apply(files, backupRepository);
         Assert.Equal(RepositoryPipelineStatus.Blocked, initial.Status);
         var secret = await Secrets.Find(item => item.TenantId == Data.TenantId && item.Name == "storage-keys")
