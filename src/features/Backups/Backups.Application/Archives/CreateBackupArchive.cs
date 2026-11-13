@@ -14,7 +14,8 @@ public sealed record CreateBackupArchiveRequest(
     string PolicyId,
     string ResourceType,
     string ResourceId,
-    BackupDestination Destination
+    BackupDestination Destination,
+    BackupExecutionOrigin Origin
 );
 
 public sealed record BackupSourcePlacementUnavailable;
@@ -142,6 +143,7 @@ public sealed class CreateBackupArchive(
                     service.Instances),
                 destination.Storage,
                 placement,
+                new BackupHistoryStart(id, request.Origin),
                 clock.GetUtcNow().UtcDateTime);
             await archives.InsertOneAsync(session, archive, cancellationToken: ct);
             return archive;

@@ -73,7 +73,8 @@ public sealed record BackupArchive(
     string ServerName,
     bool Active,
     DateTime CreatedAt,
-    long ReferenceFence
+    long ReferenceFence,
+    BackupArchiveHistory History
 ) : IBackupDocument
 {
     public static BackupArchive Create(
@@ -84,6 +85,7 @@ public sealed record BackupArchive(
         BackupArchiveSource source,
         BackupStorage storage,
         ArchivePlacement placement,
+        BackupHistoryStart history,
         DateTime utcNow) => new(
         id,
         tenantId,
@@ -101,7 +103,8 @@ public sealed record BackupArchive(
         BackupArchiveNames.Server(id),
         true,
         utcNow,
-        0);
+        0,
+        BackupArchiveHistory.Begin(history, utcNow));
 
     public BackupArchive Retire() => this with { Active = false };
 

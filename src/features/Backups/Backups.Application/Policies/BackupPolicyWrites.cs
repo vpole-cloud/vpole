@@ -152,8 +152,10 @@ public sealed class BackupPolicyWrites(
         if (destination is null)
             return new BackupPolicyDestinationUnavailable();
 
+        var core = EventCore.Create(command.TenantId);
+        var origin = new BackupExecutionOrigin(core.TraceId, core.CorrelationId);
         var archiveResult = await createArchive.CreateAsync(
-            new(command.TenantId, command.Id, input.ResourceType, input.ResourceId, destination),
+            new(command.TenantId, command.Id, input.ResourceType, input.ResourceId, destination, origin),
             session,
             ct);
         return archiveResult switch
@@ -168,7 +170,6 @@ public sealed class BackupPolicyWrites(
 
         async Task<CreateBackupPolicyWriteOutcome> PersistAsync(BackupArchive archive)
         {
-            var core = EventCore.Create(command.TenantId);
             var policy = BackupPolicyFactory.Create(
                 command.Id,
                 command.TenantId,
@@ -180,7 +181,7 @@ public sealed class BackupPolicyWrites(
                 schedule.CronUtc,
                 schedule.Suspended,
                 schedule.RetentionDays,
-                new BackupExecutionOrigin(core.TraceId, core.CorrelationId),
+                origin,
                 clock.GetUtcNow().UtcDateTime);
             try
             {
@@ -234,6 +235,8 @@ public sealed class BackupPolicyWrites(
             current.Suspended == schedule.Suspended && current.RetentionDays == schedule.RetentionDays)
             return current;
 
+        var core = EventCore.Create(command.TenantId);
+        var origin = new BackupExecutionOrigin(core.TraceId, core.CorrelationId);
         var destination = await FenceDestinationAsync(command.TenantId, input.DestinationId, session, ct);
         if (destination is null)
             return new BackupPolicyDestinationUnavailable();
@@ -241,7 +244,7 @@ public sealed class BackupPolicyWrites(
             return await PersistAsync(current.ArchiveId);
 
         var archiveResult = await createArchive.CreateAsync(
-            new(command.TenantId, command.Id, input.ResourceType, input.ResourceId, destination),
+            new(command.TenantId, command.Id, input.ResourceType, input.ResourceId, destination, origin),
             session,
             ct);
         return archiveResult switch
@@ -262,14 +265,13 @@ public sealed class BackupPolicyWrites(
 
         async Task<UpdateAcceptedBackupPolicyOutcome> PersistAsync(string archiveId)
         {
-            var core = EventCore.Create(command.TenantId);
             var policy = current.Reconfigure(
                 destination.Id,
                 archiveId,
                 schedule.CronUtc,
                 schedule.Suspended,
                 schedule.RetentionDays,
-                new BackupExecutionOrigin(core.TraceId, core.CorrelationId),
+                origin,
                 clock.GetUtcNow().UtcDateTime);
             var result = await policies.ReplaceOneAsync(
                 session,

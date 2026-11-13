@@ -98,6 +98,7 @@ public sealed class BackupRestoreLifecycleTests(
         new(resourceType, Id(), "source", 1, "17", 10, 1),
         new("https://storage.example", "bucket", "", Id(), "id", "key"),
         new(Id(), Id(), TestPlatformDefaults.DeploymentTargetId, Id(), "namespace", Id(), Id(), Id(), 1, Id(), 1),
+        new BackupHistoryStart(Id(), new("trace", "correlation")),
         DateTime.UtcNow);
 
     private static BackupOperation Operation(BackupArchive archive) => BackupOperation.RequestRestore(
