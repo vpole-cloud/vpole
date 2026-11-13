@@ -1,13 +1,14 @@
 using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text.Json;
-using k8s.Models;
 using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Primitives;
 using Xunit;
+using k8s.Models;
 
 namespace Pole.Features.Secrets.Tests;
 
@@ -192,6 +193,7 @@ public sealed class SecretProjectionReconciliationTests
             },
             Encryption,
             Target,
+            new SecretBindingConsumerCatalog([]),
             TimeProvider.System).ReconcileAsync("tenant", "secret", default);
     }
 

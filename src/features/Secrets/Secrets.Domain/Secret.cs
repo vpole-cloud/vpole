@@ -73,11 +73,13 @@ public sealed record SecretBinding(
     public SecretBinding RequireKeysThroughRollout(IEnumerable<string> desiredKeys) =>
         this with { Pins = Pins.RequireThroughRollout(desiredKeys) };
 
-    public const string BackupDestinationConsumer = "pole/backup-destination";
-
-    public bool GrantsRuntimeProjection() => Consumer.ResourceType == BackupDestinationConsumer
-        ? Usage == SecretBindingUsage.BackupStorage && Selection is AllSecretDeployments
-        : Usage == SecretBindingUsage.Runtime;
+    public bool GrantsRuntimeProjection() => Usage switch
+    {
+        SecretBindingUsage.Runtime => true,
+        SecretBindingUsage.BackupStorage => Selection is AllSecretDeployments,
+        SecretBindingUsage.Bootstrap => false,
+        _ => throw new ArgumentOutOfRangeException(nameof(Usage)),
+    };
 
     public string ProjectedKey(string key) => KeyMappings.Count == 0 ? key : KeyMappings[key];
     public bool IncludesKey(string key) => KeyMappings.Count == 0 || KeyMappings.ContainsKey(key);

@@ -23,7 +23,7 @@ public sealed class BackupConfigurationWriter(
     BackupArchiveFactory archiveFactory,
     AdmitResourceScopeReference admitScope,
     IResourceRegistrar registrar,
-    GrantBackupStorageSecret grant,
+    GrantConsumerSecretAccess grant,
     BackupOperations operations,
     StoreOutboxWrites outbox,
     TimeProvider clock
@@ -73,12 +73,12 @@ public sealed class BackupConfigurationWriter(
                     write.TenantId,
                     input.ResourceGroupId,
                     input.IsolationScopeId,
+                    DestinationType,
                     write.Id,
                     storage.CredentialSecretId,
-                    storage.AccessKeyIdKey,
-                    storage.SecretAccessKeyKey),
+                    [storage.AccessKeyIdKey, storage.SecretAccessKeyKey]),
                 session,
-                ct) is not BackupStorageSecretGranted)
+                ct) is not ConsumerSecretAccessGranted)
             return new BackupWriteResult<BackupDestination>.Rejected("credential-grant-denied");
         await destinations.InsertOneAsync(session, destination, cancellationToken: ct);
         await Changed(session, destination, "BackupDestination", destination.Revision, ct);

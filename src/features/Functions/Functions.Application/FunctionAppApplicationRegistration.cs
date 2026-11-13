@@ -36,7 +36,10 @@ public static class FunctionAppApplicationRegistration
             new SecretDeclarationConsumer(
                 "FunctionApp",
                 FunctionResourceDeployment.ResourceType,
-                SecretBindingUsage.Runtime));
+                SecretBindingUsage.Runtime,
+                SecretConsumerProjectionPolicy.RuntimeBindings,
+                SecretConsumerPlacementRequirement.LiveDeployments,
+                SecretConsumerValueAccess.ProjectionOnly));
         services.AddSingleton(
             new ResourceConnectionDeclarationKind("FunctionApp", FunctionResourceDeployment.ResourceType));
         services.AddSingleton(new ResourceConnectionSourceCapability(FunctionResourceDeployment.ResourceType));

@@ -193,8 +193,7 @@ internal sealed class SecretBindingPlanning(
             new ResourceDeploymentPlanningRequest(operation.Context.TenantId, ConsumerType(spec), consumerId),
             session,
             ct);
-        if (placements is ResourceDeploymentPlanningUnavailable &&
-            spec.Usage == Pole.Features.Secrets.Primitives.SecretBindingUsage.BackupStorage)
+        if (placements is ResourceDeploymentPlanningUnavailable && consumers.AllowsBeforePlacement(ConsumerType(spec)))
             placements = new ResourceDeploymentPlanningSnapshot(
                 operation.Context.TenantId,
                 ConsumerType(spec),

@@ -101,7 +101,10 @@ module PostgresPersistenceRegistration =
             SecretDeclarationConsumer(
                 "PostgresCluster",
                 PostgresResourceDeployment.ResourceType,
-                SecretBindingUsage.Bootstrap
+                SecretBindingUsage.Bootstrap,
+                SecretConsumerProjectionPolicy.RuntimeBindings,
+                SecretConsumerPlacementRequirement.LiveDeployments,
+                SecretConsumerValueAccess.ProjectionOnly
             )
         )
         |> ignore

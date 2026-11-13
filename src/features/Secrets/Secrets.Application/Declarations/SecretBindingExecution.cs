@@ -105,8 +105,7 @@ internal sealed class SecretBindingExecution(
                             Consumer: new ResourceScopeConsumerReference(ConsumerType(spec), consumerId)),
                         session: session,
                         cancellationToken: token) is ResourceScopeReferenceUnavailable ||
-                    spec.Usage != Pole.Features.Secrets.Primitives.SecretBindingUsage.BackupStorage &&
-                    await admitDeployments(
+                    !consumers.AllowsBeforePlacement(ConsumerType(spec)) && await admitDeployments(
                         new AdmitResourceDeploymentReferencesRequest(
                             TenantId: context.TenantId,
                             ResourceGroupId: secret.ResourceGroupId,

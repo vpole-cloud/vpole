@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.Secrets.Application;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Contracts;
@@ -76,6 +77,7 @@ public sealed class ConsumerSecretProjectionResolverTests
             (_, _) => throw new InvalidOperationException(),
             null!,
             null!,
+            new SecretBindingConsumerCatalog([]),
             TimeProvider.System);
         var services = new ServiceCollection();
         services.AddSecretsFeature();

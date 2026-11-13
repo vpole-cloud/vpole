@@ -23,9 +23,11 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
+using Pole.Features.ResourceGroups.Application;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Features.ResourceGroups.Events;
 using Pole.Features.Secrets.Contracts;
+using Pole.Features.Secrets.Primitives;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.StorageProfiles.Primitives;
 using Pole.Features.Tenants.Domain;
@@ -47,6 +49,55 @@ public sealed class BackupApiTests(
     private const string Route = "/api/v1/backups";
     public Task InitializeAsync() => mongo.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task A_second_registered_consumer_reads_only_its_granted_keys_without_a_live_deployment()
+    {
+        await using var host = await StartAsync();
+        using var client = Client(host, TestPlatformDefaults.TenantId);
+        var input = await StorageAsync(client);
+        var type = ResourceTypeId.Create("tests/archive-reader");
+        var consumerId = ObjectId.GenerateNewId().ToString();
+        await using var scope = host.Services.CreateAsyncScope();
+        var access = new ConsumerSecretAccessRequest(
+            TestPlatformDefaults.TenantId,
+            input.ResourceGroupId,
+            input.IsolationScopeId,
+            type,
+            consumerId,
+            input.CredentialSecretId,
+            [input.AccessKeyIdKey]);
+        await scope.ServiceProvider
+            .GetRequiredService<MongoRunTransaction>()
+            .InvokeOutcomeAsync<bool>(async (tx, ct) =>
+            {
+                Assert.IsType<RegisteredResource>(
+                    (await scope.ServiceProvider
+                        .CreatePluginResourceRegistrar("tests")
+                        .RegisterAsync(
+                            new(
+                                TestPlatformDefaults.TenantId,
+                                input.ResourceGroupId,
+                                new ResourceRegistrationDescriptor(type, consumerId, "independent-reader")),
+                            tx.Session,
+                            ct)).Value);
+                var granted = await scope.ServiceProvider.GetRequiredService<GrantConsumerSecretAccess>()(
+                    access,
+                    tx.Session,
+                    ct);
+                Assert.IsType<ConsumerSecretAccessGranted>(granted.Value);
+                return tx.Commit(true);
+            });
+
+        var read = scope.ServiceProvider.GetRequiredService<ReadConsumerSecretValues>();
+        var selected = Assert.IsType<ConsumerSecretValues>((await read(access, default)).Value);
+        Assert.Equal(input.AccessKeyIdKey, Assert.Single(selected.Values).Key);
+        Assert.DoesNotContain(selected.Values.Values.First(), selected.ToString());
+        Assert.IsType<ConsumerSecretAccessDenied>(
+            (await read(access with { Keys = [input.SecretAccessKeyKey] }, default)).Value);
+        Assert.IsType<ConsumerSecretAccessDenied>(
+            (await read(access with { ConsumerType = BackupConfigurationWriter.DestinationType }, default)).Value);
+    }
 
     [Fact]
     public async Task Restore_validation_identifies_ambiguous_missing_and_unzoned_targets()
@@ -112,24 +163,24 @@ public sealed class BackupApiTests(
         var grants = host.Services.CreateAsyncScope();
         await using (grants)
         {
-            var use = grants.ServiceProvider.GetRequiredService<ReadBackupStorageSecret>();
-            var access = new BackupStorageSecretAccess(
+            var use = grants.ServiceProvider.GetRequiredService<ReadConsumerSecretValues>();
+            var access = new ConsumerSecretAccessRequest(
                 TestPlatformDefaults.TenantId,
                 input.ResourceGroupId,
                 input.IsolationScopeId,
+                BackupConfigurationWriter.DestinationType,
                 item.Id,
                 input.CredentialSecretId,
-                input.AccessKeyIdKey,
-                input.SecretAccessKeyKey);
-            Assert.IsType<BackupStorageCredentials>((await use(access, default)).Value);
+                [input.AccessKeyIdKey, input.SecretAccessKeyKey]);
+            Assert.IsType<ConsumerSecretValues>((await use(access, default)).Value);
             using var rotated = await client.PostAsJsonAsync(
                 "/api/v1/secrets/" + input.CredentialSecretId + "/versions",
                 new { expectedVersion = 1, values = new { id = "rotated-id", key = "rotated-test-key" } });
             rotated.EnsureSuccessStatusCode();
-            var newKeys = Assert.IsType<BackupStorageCredentials>((await use(access, default)).Value);
-            Assert.Equal("rotated-id", newKeys.AccessKeyId);
-            Assert.IsType<BackupStorageSecretDenied>(
-                (await use(access with { DestinationId = ObjectId.GenerateNewId().ToString() }, default)).Value);
+            var newKeys = Assert.IsType<ConsumerSecretValues>((await use(access, default)).Value);
+            Assert.Equal("rotated-id", newKeys.Values[input.AccessKeyIdKey]);
+            Assert.IsType<ConsumerSecretAccessDenied>(
+                (await use(access with { ConsumerId = ObjectId.GenerateNewId().ToString() }, default)).Value);
         }
 
         var other = ObjectId.GenerateNewId().ToString();
@@ -186,18 +237,18 @@ public sealed class BackupApiTests(
             await mongo.Database
                 .GetCollection<BackupDestination>("BackupDestinations")
                 .CountDocumentsAsync(FilterDefinition<BackupDestination>.Empty));
-        var use = scope.ServiceProvider.GetRequiredService<ReadBackupStorageSecret>();
+        var use = scope.ServiceProvider.GetRequiredService<ReadConsumerSecretValues>();
         var grant = await use(
             new(
                 TestPlatformDefaults.TenantId,
                 input.ResourceGroupId,
                 input.IsolationScopeId,
+                BackupConfigurationWriter.DestinationType,
                 id,
                 input.CredentialSecretId,
-                input.AccessKeyIdKey,
-                input.SecretAccessKeyKey),
+                [input.AccessKeyIdKey, input.SecretAccessKeyKey]),
             default);
-        Assert.IsType<BackupStorageSecretDenied>(grant.Value);
+        Assert.IsType<ConsumerSecretAccessDenied>(grant.Value);
     }
 
     [Fact]
@@ -566,6 +617,14 @@ public sealed class BackupApiTests(
                         ]))));
                 services.AddSingleton<TestBackupProvider>();
                 services.AddSingleton<IBackupProvider>(sp => sp.GetRequiredService<TestBackupProvider>());
+                services.AddSingleton(
+                    new SecretDeclarationConsumer(
+                        "IndependentArchiveReader",
+                        ResourceTypeId.Create("tests/archive-reader"),
+                        SecretBindingUsage.BackupStorage,
+                        SecretConsumerProjectionPolicy.DeclaredPurposeForAllDeployments,
+                        SecretConsumerPlacementRequirement.AllowBeforePlacement,
+                        SecretConsumerValueAccess.GrantedKeys));
                 services.AddSingleton(mongo.Client);
                 services.AddSingleton(mongo.Database);
                 services.AddFeatureMigrations("pole.backups", typeof(BackupsSchemaMigration).Assembly);

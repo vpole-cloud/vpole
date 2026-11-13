@@ -6,7 +6,7 @@ using Pole.Features.Secrets.Contracts;
 namespace Pole.Features.Backups.Application.Execution;
 
 public sealed class BackupArchiveAccess(
-    ReadBackupStorageSecret read,
+    ReadConsumerSecretValues read,
     EnsureConsumerSecretProjections projections
 )
 {
@@ -21,19 +21,19 @@ public sealed class BackupArchiveAccess(
                 archive.TenantId,
                 archive.Placement.ResourceGroupId,
                 archive.Placement.IsolationScopeId,
+                BackupConfigurationWriter.DestinationType,
                 archive.DestinationId,
                 s.CredentialSecretId,
-                s.AccessKeyIdKey,
-                s.SecretAccessKeyKey),
+                [s.AccessKeyIdKey, s.SecretAccessKeyKey]),
             ct);
-        if (access is not BackupStorageCredentials credentials)
+        if (access is not ConsumerSecretValues credentials)
             return new BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure(
                 "catalog-credential-unavailable",
                 false);
         return await provider.ListAsync(
             new(
                 Context(archive, string.Empty, s.AccessKeyIdKey, s.SecretAccessKeyKey),
-                new(credentials.AccessKeyId, credentials.SecretAccessKey)),
+                new(credentials.Values[s.AccessKeyIdKey], credentials.Values[s.SecretAccessKeyKey])),
             ct);
     }
 

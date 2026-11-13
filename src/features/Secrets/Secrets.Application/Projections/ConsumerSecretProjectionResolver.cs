@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.References;
 using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Contracts;
@@ -16,6 +17,7 @@ internal sealed class ConsumerSecretProjectionResolver(
     LoadExactResourceDeploymentRuntimePlacement loadPlacement,
     LoadSecretById loadSecret,
     LoadSecretProjections loadProjections,
+    SecretBindingConsumerCatalog consumers,
     SecretProjectionReconciler reconcile
 )
 {
@@ -103,11 +105,11 @@ internal sealed class ConsumerSecretProjectionResolver(
         return new ConsumerSecretProjectionKeys(keys.ToImmutable());
     }
 
-    private static SecretBinding? FindBinding(
+    private SecretBinding? FindBinding(
         Secret? secret,
         ResourceTypeId type,
         string id) => secret?.Bindings.SingleOrDefault(binding =>
-        binding.GrantsRuntimeProjection() && binding.Consumer.ResourceType == type.Value &&
+        consumers.GrantsProjection(binding) && binding.Consumer.ResourceType == type.Value &&
         binding.Consumer.ResourceId == id);
 
     private static bool IsAuthorized(

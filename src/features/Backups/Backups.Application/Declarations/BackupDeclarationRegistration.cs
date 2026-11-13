@@ -25,7 +25,10 @@ public static class BackupDeclarationRegistration
             new SecretDeclarationConsumer(
                 DeclarativeBackupDestinationProvider.DeclarationKind,
                 BackupConfigurationWriter.DestinationType,
-                SecretBindingUsage.BackupStorage));
+                SecretBindingUsage.BackupStorage,
+                SecretConsumerProjectionPolicy.DeclaredPurposeForAllDeployments,
+                SecretConsumerPlacementRequirement.AllowBeforePlacement,
+                SecretConsumerValueAccess.GrantedKeys));
         return services;
     }
 }

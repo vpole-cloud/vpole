@@ -32,7 +32,10 @@ public static class WebServicesFeatureRegistration
             new SecretDeclarationConsumer(
                 "WebService",
                 ResourceTypeId.Create("pole/web-service"),
-                SecretBindingUsage.Runtime));
+                SecretBindingUsage.Runtime,
+                SecretConsumerProjectionPolicy.RuntimeBindings,
+                SecretConsumerPlacementRequirement.LiveDeployments,
+                SecretConsumerValueAccess.ProjectionOnly));
         services.AddSingleton(new RealtimeTopic("web-services", RealtimeScope.Tenant));
         services.AddSingleton<SearchSourceType>(WebServiceSearchProjection.SourceType);
         services.AddWebServicePersistence();

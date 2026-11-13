@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Pole.Encryption;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Application.Values;
 using Pole.Features.Secrets.Domain;
@@ -20,6 +21,7 @@ public sealed class SecretProjectionReconciler(
     CompleteSecretProjection complete,
     IEnvelopeEncryptionService encryption,
     ISecretProjectionTarget target,
+    SecretBindingConsumerCatalog consumers,
     TimeProvider clock
 )
 {
@@ -31,7 +33,7 @@ public sealed class SecretProjectionReconciler(
         var secret = await loadSecret(tenantId, secretId, ct);
         var desired = new Dictionary<string, SecretProjection>();
         if (secret is not null)
-            foreach (var binding in secret.Bindings.Where(binding => binding.GrantsRuntimeProjection()))
+            foreach (var binding in secret.Bindings.Where(binding => consumers.GrantsProjection(binding)))
             {
                 var deployments = await loadDeployments(
                     new LoadResourceDeploymentSetRequest(
@@ -80,7 +82,7 @@ public sealed class SecretProjectionReconciler(
     {
         var current = await loadSecret(projection.TenantId, projection.SecretId, ct);
         var binding = current?.Bindings.SingleOrDefault(x => x.Id == projection.BindingId);
-        if (current is null || binding is null || !binding.GrantsRuntimeProjection())
+        if (current is null || binding is null || !consumers.GrantsProjection(binding))
             return null;
         if (!SecretProjectionAuthority.MatchesScope(current, projection))
             return null;
