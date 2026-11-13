@@ -28,7 +28,7 @@ internal sealed class DeclarativeBackupPolicyProvider(
     IMongoCollection<BackupDestination> destinations,
     IGitOpsMutations git,
     BackupPolicyWrites writes,
-    BackupConfigurationDeletions deletions,
+    BeginBackupPolicyDeletion deletion,
     IEnumerable<IBackupProvider> services,
     LoadResourceRegistrationPlanningSnapshot loadRegistration,
     FenceResourceRegistrationPlanningSnapshot fenceRegistration,
@@ -233,12 +233,13 @@ internal sealed class DeclarativeBackupPolicyProvider(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var result = await deletions.DeletePolicyAsync(tenantId, id, revision, session, ct);
+        var result = await deletion.ExecuteAcceptedAsync(new(tenantId, id, revision), session, ct);
         return result switch
         {
-            BackupWriteResult<bool>.Saved => new GitLifecycleRemovalRequested(),
-            BackupWriteResult<bool>.Rejected rejected => new DeclarationReadBlocked(
-                new BackupDeclarationRejected(rejected.Code)),
+            BackupPolicyDeletionRequested => new GitLifecycleRemovalRequested(),
+            BackupPolicyMissing => new DeclarationReadBlocked(new BackupDeclarationRejected("not-found")),
+            BackupPolicyRevisionConflict => new DeclarationReadBlocked(
+                new BackupDeclarationRejected("revision-conflict")),
         };
     }
 }

@@ -45,6 +45,16 @@ public static class BackupDestinationHttpMappings
         "backups.git-owned",
         "Backup destination is managed by Git");
 
+    public static HttpProblem MapDestinationInUse(BackupDestinationInUse _) => Problem(
+        409,
+        "backups.destination-in-use",
+        "Backup destination still has archives");
+
+    public static HttpProblem MapDestinationCleanupPending(BackupDestinationCleanupPending _) => Problem(
+        409,
+        "backups.destination-cleanup-pending",
+        "Backup destination credential cleanup is pending");
+
     private static HttpProblem Problem(
         int status,
         string code,

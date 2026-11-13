@@ -32,8 +32,8 @@ public static class BackupsFeature
         services.AddScoped<IIsolationScopeReferenceGuard, BackupDestinationScopeGuard>();
         services.AddScoped<BackupProviderCatalog>();
         services.AddScoped<BackupDestinationWrites>();
-        services.AddScoped<BackupConfigurationDeletions>();
-        services.AddScoped<ManualBackupConfiguration>();
+        services.AddScoped<BeginBackupPolicyDeletion>();
+        services.AddScoped<DeleteBackupDestination>();
         services.AddScoped<CreateBackupArchive>();
         services.AddScoped<RetireBackupArchive>();
         services.AddScoped<BackupPolicyWrites>();

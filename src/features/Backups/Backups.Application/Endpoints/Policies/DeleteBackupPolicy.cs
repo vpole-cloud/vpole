@@ -3,15 +3,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
-using Pole.Features.Backups.Contracts;
-using Pole.Features.Backups.Domain;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupPolicyHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
@@ -21,7 +18,11 @@ public sealed record DeleteBackupPolicyRequest(
     [FromQuery] long ExpectedRevision
 ) : IMediatorRequest<DeleteBackupPolicyOutcome>, ITenantWriteOperation;
 
-public union DeleteBackupPolicyOutcome(BackupDeletionAccepted, BackupRequestRejected);
+public union DeleteBackupPolicyOutcome(
+    BackupPolicyDeletionRequested,
+    BackupPolicyMissing,
+    BackupPolicyRevisionConflict,
+    BackupPolicyGitOwned);
 
 public sealed class DeleteBackupPolicyValidator : AbstractValidator<DeleteBackupPolicyRequest>
 {
@@ -33,23 +34,20 @@ public sealed class DeleteBackupPolicyValidator : AbstractValidator<DeleteBackup
 }
 
 public sealed class DeleteBackupPolicyHandler(
-    ManualBackupConfiguration configuration
+    BeginBackupPolicyDeletion deletion
 ) : IMediatorOutcomeHandler<DeleteBackupPolicyRequest, DeleteBackupPolicyOutcome>
 {
     public async Task<DeleteBackupPolicyOutcome> HandleAsync(
         DeleteBackupPolicyRequest request,
         CancellationToken ct = default)
     {
-        var answer = await configuration.DeleteAsync(
-            request.TenantId,
-            BackupDeclarationKinds.Policy,
-            request.Id,
-            request.ExpectedRevision,
-            ct);
+        var answer = await deletion.ExecuteAsync(new(request.TenantId, request.Id, request.ExpectedRevision), ct);
         return answer switch
         {
-            BackupWriteResult<bool>.Saved ok => new BackupDeletionAccepted(),
-            BackupWriteResult<bool>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupPolicyDeletionRequested value => value,
+            BackupPolicyMissing error => error,
+            BackupPolicyRevisionConflict error => error,
+            BackupPolicyGitOwned error => error,
         };
     }
 }
@@ -64,8 +62,10 @@ public static class DeleteBackupPolicyEndpoint
                     IMediator mediator, [AsParameters] DeleteBackupPolicyRequest request,
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
-                    BackupDeletionAccepted value => Results.NoContent(),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupPolicyDeletionRequested => Results.NoContent(),
+                    BackupPolicyMissing error => MapPolicyMissing(error),
+                    BackupPolicyRevisionConflict error => MapPolicyRevisionConflict(error),
+                    BackupPolicyGitOwned error => MapPolicyGitOwned(error),
                 }))
             .WithName("Backups.DeleteBackupPolicy");
         return endpoints;

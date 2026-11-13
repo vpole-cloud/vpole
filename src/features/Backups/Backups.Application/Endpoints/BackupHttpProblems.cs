@@ -8,8 +8,6 @@ public sealed record BackupRequestRejected(
     string Code
 );
 
-public sealed record BackupDeletionAccepted;
-
 public static partial class BackupHttpProblems
 {
     [GeneratedRegex(@"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,7})?(?:Z|[+-]\d\d:\d\d)$")]

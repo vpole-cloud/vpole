@@ -3,15 +3,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
-using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
-using Pole.Features.Backups.Contracts;
-using Pole.Features.Backups.Domain;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupDestinationHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Destinations;
 
@@ -21,7 +18,14 @@ public sealed record DeleteBackupDestinationRequest(
     [FromQuery] long ExpectedRevision
 ) : IMediatorRequest<DeleteBackupDestinationOutcome>, ITenantWriteOperation;
 
-public union DeleteBackupDestinationOutcome(BackupDeletionAccepted, BackupRequestRejected);
+public union DeleteBackupDestinationOutcome(
+    BackupDestinationDeleted,
+    BackupDestinationMissing,
+    BackupDestinationRevisionConflict,
+    BackupDestinationInUse,
+    BackupDestinationCleanupPending,
+    BackupDestinationRegistrationConflict,
+    BackupDestinationGitOwned);
 
 public sealed class DeleteBackupDestinationValidator : AbstractValidator<DeleteBackupDestinationRequest>
 {
@@ -33,23 +37,23 @@ public sealed class DeleteBackupDestinationValidator : AbstractValidator<DeleteB
 }
 
 public sealed class DeleteBackupDestinationHandler(
-    ManualBackupConfiguration configuration
+    DeleteBackupDestination deletion
 ) : IMediatorOutcomeHandler<DeleteBackupDestinationRequest, DeleteBackupDestinationOutcome>
 {
     public async Task<DeleteBackupDestinationOutcome> HandleAsync(
         DeleteBackupDestinationRequest request,
         CancellationToken ct = default)
     {
-        var answer = await configuration.DeleteAsync(
-            request.TenantId,
-            BackupDeclarationKinds.Destination,
-            request.Id,
-            request.ExpectedRevision,
-            ct);
+        var answer = await deletion.ExecuteAsync(new(request.TenantId, request.Id, request.ExpectedRevision), ct);
         return answer switch
         {
-            BackupWriteResult<bool>.Saved ok => new BackupDeletionAccepted(),
-            BackupWriteResult<bool>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupDestinationDeleted value => value,
+            BackupDestinationMissing error => error,
+            BackupDestinationRevisionConflict error => error,
+            BackupDestinationInUse error => error,
+            BackupDestinationCleanupPending error => error,
+            BackupDestinationRegistrationConflict error => error,
+            BackupDestinationGitOwned error => error,
         };
     }
 }
@@ -64,8 +68,13 @@ public static class DeleteBackupDestinationEndpoint
                     IMediator mediator, [AsParameters] DeleteBackupDestinationRequest request,
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
-                    BackupDeletionAccepted value => Results.NoContent(),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupDestinationDeleted => Results.NoContent(),
+                    BackupDestinationMissing error => MapDestinationMissing(error),
+                    BackupDestinationRevisionConflict error => MapDestinationRevisionConflict(error),
+                    BackupDestinationInUse error => MapDestinationInUse(error),
+                    BackupDestinationCleanupPending error => MapDestinationCleanupPending(error),
+                    BackupDestinationRegistrationConflict error => MapDestinationRegistrationConflict(error),
+                    BackupDestinationGitOwned error => MapDestinationGitOwned(error),
                 }))
             .WithName("Backups.DeleteBackupDestination");
         return endpoints;

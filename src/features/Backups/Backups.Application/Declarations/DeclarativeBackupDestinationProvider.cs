@@ -30,7 +30,7 @@ internal sealed class DeclarativeBackupDestinationProvider(
     IMongoCollection<BackupDestination> destinations,
     IGitOpsMutations git,
     BackupDestinationWrites writes,
-    BackupConfigurationDeletions deletions,
+    DeleteBackupDestination deletion,
     LoadIsolationScopePlanningSnapshot loadScope,
     FenceIsolationScopePlanningSnapshot fenceScope,
     LoadConsumerSecretPlanningSnapshot loadSecret,
@@ -218,12 +218,18 @@ internal sealed class DeclarativeBackupDestinationProvider(
         IClientSessionHandle session,
         CancellationToken ct)
     {
-        var result = await deletions.DeleteDestinationAsync(tenantId, id, revision, session, ct);
+        var result = await deletion.ExecuteAcceptedAsync(new(tenantId, id, revision), session, ct);
         return result switch
         {
-            BackupWriteResult<bool>.Saved => new GitLifecycleResourceRemoved(),
-            BackupWriteResult<bool>.Rejected rejected => new DeclarationReadBlocked(
-                new BackupDeclarationRejected(rejected.Code)),
+            BackupDestinationDeleted => new GitLifecycleResourceRemoved(),
+            BackupDestinationMissing => new DeclarationReadBlocked(new BackupDeclarationRejected("not-found")),
+            BackupDestinationRevisionConflict => new DeclarationReadBlocked(
+                new BackupDeclarationRejected("revision-conflict")),
+            BackupDestinationInUse => new DeclarationReadBlocked(new BackupDeclarationRejected("destination-in-use")),
+            BackupDestinationCleanupPending => new DeclarationReadBlocked(
+                new BackupDeclarationRejected("destination-cleanup-pending")),
+            BackupDestinationRegistrationConflict => new DeclarationReadBlocked(
+                new BackupDeclarationRejected("registration-conflict")),
         };
     }
 }
