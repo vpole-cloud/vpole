@@ -90,9 +90,19 @@ public sealed class BackupDispatcher(
             }
         }
 
-        var latest = source is not null && provider is not null
-            ? await provider.DescribeAsync(new(policy.TenantId, policy.ResourceType, policy.ResourceId), attempt)
-            : null;
+        BackupServiceSnapshot? latest = null;
+        if (source is not null && provider is not null)
+        {
+            var description = await provider.DescribeAsync(
+                new(policy.TenantId, policy.ResourceType, policy.ResourceId),
+                attempt);
+            latest = description switch
+            {
+                BackupServiceSnapshot service => service,
+                BackupSourceUnavailable => null,
+                BackupSourceUnsupported => null,
+            };
+        }
 
         var succeeded = effect is Progress.Success { Value.Phase: BackupProviderPhase.Succeeded };
         await transactions.InvokeOutcomeAsync<bool>(
@@ -101,8 +111,7 @@ public sealed class BackupDispatcher(
                 var guard = BackupDispatchFilters.ClaimedPolicy(policy, lockId, clock.GetUtcNow().UtcDateTime);
                 if (!await policies.Find(tx.Session, guard).AnyAsync(token))
                     return tx.Abort(false);
-                if (latest is BackupProviderResult<BackupServiceSnapshot>.Success { Value: var service } &&
-                    service.Revision > archive.SourceRevision)
+                if (latest is { } service && service.Revision > archive.SourceRevision)
                     await archives.UpdateOneAsync(
                         tx.Session,
                         BackupsFilters<BackupArchive>.ById(archive.TenantId, archive.Id),

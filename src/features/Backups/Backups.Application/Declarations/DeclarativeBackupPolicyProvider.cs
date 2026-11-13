@@ -62,7 +62,8 @@ internal sealed class DeclarativeBackupPolicyProvider(
             "spec.schedule");
         var cron = UtcCronSchedule.Parse(value.Schedule).Expression;
         DeclarationJson.Require(
-            providers[value.Service.Kind].ValidateSchedule(new(cron, value.Suspended, value.RetentionDays)) is null,
+            providers[value.Service.Kind].ValidateSchedule(new(cron, value.Suspended, value.RetentionDays)) is
+                BackupScheduleAccepted,
             "spec.retentionDays");
         return DeclarationJson.Write(value with { Schedule = cron });
     }

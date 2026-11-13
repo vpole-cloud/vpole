@@ -132,16 +132,23 @@ type PostgresBackupProvider
         member _.DeclarationKind = "PostgresCluster"
         member _.SupportsPointInTimeRecovery = true
         member _.ValidateSchedule(schedule) =
-            if schedule.RetentionDays <= 0 then "backup-positive-retention-required" else null
+            if schedule.RetentionDays > 0 then ValidateBackupScheduleOutcome(BackupScheduleAccepted())
+            else ValidateBackupScheduleOutcome(BackupRetentionInvalid())
 
-        member _.DescribeAsync(source,ct) =
-            ProviderResult.protect (fun () -> task {
-                if source.ResourceType <> resourceType.Value then BackupNative.fail "backup-source-unsupported" false
-                let! current = load.Invoke(source.TenantId,source.ResourceId,ct)
-                match current with
-                | Some cluster when cluster.Lifecycle :? ActivePostgresClusterLifecycle && not cluster.IsPrepared ->
-                    return BackupServiceSnapshot(string cluster.Spec.Version,cluster.Spec.Storage,cluster.Spec.Instances,cluster.Revision)
-                | _ -> return BackupNative.fail "backup-source-unavailable" false }) ct
+        member _.DescribeAsync(source, ct) =
+            task {
+                if source.ResourceType <> resourceType.Value then
+                    return DescribeBackupSourceOutcome(BackupSourceUnsupported())
+                else
+                    let! current = load.Invoke(source.TenantId, source.ResourceId, ct)
+                    match current with
+                    | Some cluster when cluster.Lifecycle :? ActivePostgresClusterLifecycle && not cluster.IsPrepared ->
+                        return DescribeBackupSourceOutcome(
+                            BackupServiceSnapshot(string cluster.Spec.Version, cluster.Spec.Storage,
+                                cluster.Spec.Instances, cluster.Revision))
+                    | Some _
+                    | None -> return DescribeBackupSourceOutcome(BackupSourceUnavailable())
+            }
 
         member _.ListAsync(request,ct) = BarmanCatalog.read request ct
 

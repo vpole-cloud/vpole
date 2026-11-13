@@ -7,16 +7,19 @@ internal sealed class TestBackupProvider : IBackupProvider
     public string ResourceType => "pole/test-backup-database";
     public string DeclarationKind => "TestDatabase";
     public bool SupportsPointInTimeRecovery => true;
-    public string? ValidateSchedule(BackupSchedule schedule) => schedule.RetentionDays > 0 ? null : "invalid-retention";
+
+    public ValidateBackupScheduleOutcome ValidateSchedule(BackupSchedule schedule) => schedule.RetentionDays > 0
+        ? new BackupScheduleAccepted()
+        : new BackupRetentionInvalid();
+
     public IReadOnlyList<BackupCatalogEntry> Catalog { get; set; } = [];
     public BackupServiceSnapshot Service { get; set; } = new("17", 4, 1, 1);
     public int? RestoreStorageGiB { get; private set; }
     public Func<RestoreBackupRequest, CancellationToken, Task<BackupProviderPhase>>? CreateTarget { get; set; }
     public bool CatalogUnavailable { get; set; }
 
-    public Task<BackupProviderResult<BackupServiceSnapshot>> DescribeAsync(
-        BackupSourceIdentity source,
-        CancellationToken ct) => Success(Service);
+    public Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct) =>
+        Task.FromResult<DescribeBackupSourceOutcome>(Service);
 
     public Task<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>>
         ListAsync(ListBackupCatalogRequest request, CancellationToken ct) => CatalogUnavailable

@@ -100,9 +100,8 @@ public sealed class BackupConfigurationWriter(
             UtcCronSchedule.Parse(input.Schedule).Expression,
             input.Suspended,
             input.RetentionDays);
-        var invalid = provider.ValidateSchedule(schedule);
-        if (invalid is not null)
-            return new BackupWriteResult<BackupPolicy>.Rejected(invalid);
+        if (provider.ValidateSchedule(schedule) is BackupRetentionInvalid)
+            return new BackupWriteResult<BackupPolicy>.Rejected("backup-positive-retention-required");
         var filter = BackupsFilters<BackupPolicy>.ById(write.TenantId, write.Id);
         var current = await policies.Find(session, filter).SingleOrDefaultAsync(ct);
         if ((current?.Revision ?? 0) != write.ExpectedRevision)

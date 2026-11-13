@@ -130,8 +130,8 @@ public interface IBackupProvider
     string ResourceType { get; }
     string DeclarationKind { get; }
     bool SupportsPointInTimeRecovery { get; }
-    string? ValidateSchedule(BackupSchedule schedule);
-    Task<BackupProviderResult<BackupServiceSnapshot>> DescribeAsync(BackupSourceIdentity source, CancellationToken ct);
+    ValidateBackupScheduleOutcome ValidateSchedule(BackupSchedule schedule);
+    Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct);
 
     Task<BackupProviderResult<BackupProviderProgress>> ApplyScheduleAsync(
         ApplyBackupScheduleRequest request,

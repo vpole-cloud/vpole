@@ -131,12 +131,12 @@ public class BackupDeclarationTests
         public string ResourceType => "example/other";
         public bool SupportsPointInTimeRecovery => false;
 
-        public string? ValidateSchedule(BackupSchedule schedule) =>
-            schedule.RetentionDays > 0 ? null : "retention-days";
+        public ValidateBackupScheduleOutcome ValidateSchedule(BackupSchedule schedule) => schedule.RetentionDays > 0
+            ? new BackupScheduleAccepted()
+            : new BackupRetentionInvalid();
 
-        public Task<BackupProviderResult<BackupServiceSnapshot>> DescribeAsync(
-            BackupSourceIdentity source,
-            CancellationToken ct) => throw new NotSupportedException();
+        public Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct) =>
+            throw new NotSupportedException();
 
         public Task<BackupProviderResult<BackupProviderProgress>> ApplyScheduleAsync(
             ApplyBackupScheduleRequest request,

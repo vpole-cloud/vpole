@@ -42,70 +42,76 @@ public sealed class BackupArchiveFactory(
             return new BackupWriteResult<BackupArchive>.Rejected("placement-unavailable");
         var identity = new BackupSourceIdentity(write.TenantId, type.Value, input.ResourceId);
         var description = await provider.DescribeAsync(identity, ct);
-        if (description is BackupProviderResult<BackupServiceSnapshot>.Failure failure)
-            return new BackupWriteResult<BackupArchive>.Rejected(failure.Code);
-        var service = ((BackupProviderResult<BackupServiceSnapshot>.Success)description).Value;
-
-        if (service.Revision != source.ResourceRevision)
-            return new BackupWriteResult<BackupArchive>.Rejected("source-revision-changed");
-
-        var placements = await namespaces(
-            new(write.TenantId, BackupConfigurationWriter.DestinationType, destination.Id),
-            session,
-            ct);
-        var placementId = placements
-            .SingleOrDefault(p => p.DeploymentTargetId == source.DeploymentTargetId && !p.DeletionRequested)
-            ?.DeploymentId;
-        if (placementId is null)
+        return description switch
         {
-            placementId = ObjectId.GenerateNewId().ToString();
-            var added = await retainPlacement(
-                new(
-                    write.TenantId,
-                    BackupConfigurationWriter.DestinationType,
-                    destination.Id,
-                    placementId,
-                    type,
-                    input.ResourceId,
-                    source.DeploymentId),
+            BackupServiceSnapshot service => await CreateForSourceAsync(service),
+            BackupSourceUnavailable => new BackupWriteResult<BackupArchive>.Rejected("source-unavailable"),
+            BackupSourceUnsupported => new BackupWriteResult<BackupArchive>.Rejected("unsupported-provider"),
+        };
+
+        async Task<BackupWriteResult<BackupArchive>> CreateForSourceAsync(BackupServiceSnapshot service)
+        {
+            if (service.Revision != source.ResourceRevision)
+                return new BackupWriteResult<BackupArchive>.Rejected("source-revision-changed");
+
+            var placements = await namespaces(
+                new(write.TenantId, BackupConfigurationWriter.DestinationType, destination.Id),
                 session,
                 ct);
-            if (added is not PlacementSummaryDto)
-                return new BackupWriteResult<BackupArchive>.Rejected("destination-placement-unavailable");
-        }
+            var placementId = placements
+                .SingleOrDefault(p => p.DeploymentTargetId == source.DeploymentTargetId && !p.DeletionRequested)
+                ?.DeploymentId;
+            if (placementId is null)
+            {
+                placementId = ObjectId.GenerateNewId().ToString();
+                var added = await retainPlacement(
+                    new(
+                        write.TenantId,
+                        BackupConfigurationWriter.DestinationType,
+                        destination.Id,
+                        placementId,
+                        type,
+                        input.ResourceId,
+                        source.DeploymentId),
+                    session,
+                    ct);
+                if (added is not PlacementSummaryDto)
+                    return new BackupWriteResult<BackupArchive>.Rejected("destination-placement-unavailable");
+            }
 
-        var placement = new ArchivePlacement(
-            source.ResourceGroupId,
-            source.IsolationScopeId,
-            source.DeploymentTargetId,
-            physical.RuntimeCellId,
-            physical.KubernetesNamespace,
-            source.DeploymentId,
-            placementId,
-            source.Storage.StorageProfileId,
-            source.Storage.StorageProfileRevision,
-            source.Compute.ComputeProfileId,
-            source.Compute.ComputeProfileRevision);
-        var id = ObjectId.GenerateNewId().ToString();
-        var archive = new BackupArchive(
-            id,
-            write.TenantId,
-            write.Id,
-            destination.Id,
-            input.ResourceType,
-            input.ResourceId,
-            registered.DisplayName,
-            service.Revision,
-            service.Version,
-            service.StorageGiB,
-            service.Instances,
-            destination.Storage,
-            placement,
-            $"pole-{id}",
-            true,
-            clock.GetUtcNow().UtcDateTime,
-            0);
-        await archives.InsertOneAsync(session, archive, cancellationToken: ct);
-        return new BackupWriteResult<BackupArchive>.Saved(archive);
+            var placement = new ArchivePlacement(
+                source.ResourceGroupId,
+                source.IsolationScopeId,
+                source.DeploymentTargetId,
+                physical.RuntimeCellId,
+                physical.KubernetesNamespace,
+                source.DeploymentId,
+                placementId,
+                source.Storage.StorageProfileId,
+                source.Storage.StorageProfileRevision,
+                source.Compute.ComputeProfileId,
+                source.Compute.ComputeProfileRevision);
+            var id = ObjectId.GenerateNewId().ToString();
+            var archive = new BackupArchive(
+                id,
+                write.TenantId,
+                write.Id,
+                destination.Id,
+                input.ResourceType,
+                input.ResourceId,
+                registered.DisplayName,
+                service.Revision,
+                service.Version,
+                service.StorageGiB,
+                service.Instances,
+                destination.Storage,
+                placement,
+                $"pole-{id}",
+                true,
+                clock.GetUtcNow().UtcDateTime,
+                0);
+            await archives.InsertOneAsync(session, archive, cancellationToken: ct);
+            return new BackupWriteResult<BackupArchive>.Saved(archive);
+        }
     }
 }
