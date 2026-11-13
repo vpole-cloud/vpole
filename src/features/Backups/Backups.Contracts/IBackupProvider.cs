@@ -19,5 +19,6 @@ public interface IBackupProvider
 
     Task<RunBackupCopyOutcome> RunAsync(BackupCopyRequest request, CancellationToken ct);
     Task<ObserveBackupCopyOutcome> ObserveCopyAsync(ObserveBackupCopyRequest request, CancellationToken ct);
-    Task<BackupProviderResult<BackupProviderProgress>> RestoreAsync(RestoreBackupRequest request, CancellationToken ct);
+    Task<RestoreBackupOutcome> RestoreAsync(RestoreBackupRequest request, CancellationToken ct);
+    Task<ObserveBackupRestoreOutcome> ObserveRestoreAsync(ObserveBackupRestoreRequest request, CancellationToken ct);
 }

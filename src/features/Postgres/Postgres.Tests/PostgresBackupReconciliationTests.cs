@@ -299,28 +299,118 @@ public sealed class PostgresBackupReconciliationTests
         using var api = new NativeApi();
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
         var (provider, request) = RecoverySubject(api, client, byTime);
-        var result = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-            await provider.RestoreAsync(request, default));
-        Assert.Equal(BackupProviderPhase.Succeeded, result.Value.Phase);
+        var result = Assert.IsType<BackupRestoreCompleted>(
+            (await provider.ObserveRestoreAsync(
+                new(request.OperationId, request.Archive, request.Resource.Id, request.Target),
+                default)).Value);
+        Assert.Equal(request.Resource.Id, result.ResourceId);
         Assert.Equal(0, api.Writes);
     }
 
     [Theory]
-    [InlineData("origin", "restore-identity-conflict")]
-    [InlineData("placement", "restore-placement-changed")]
-    [InlineData("ownership", "restore-identity-conflict")]
-    [InlineData("target", "restore-target-mismatch")]
+    [InlineData("origin", typeof(BackupRestoreIdentityConflict))]
+    [InlineData("placement", typeof(BackupRestorePlacementChanged))]
+    [InlineData("ownership", typeof(BackupRestoreIdentityConflict))]
+    [InlineData("target", typeof(BackupRestoreTargetMismatch))]
+    [InlineData("identity", typeof(BackupNativeIdentityUnavailable))]
     public async Task Recovery_observation_rejects_mismatched_authority_before_reporting_success(
         string fault,
-        string expected)
+        Type expected)
     {
         using var api = new NativeApi();
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
         var (provider, request) = RecoverySubject(api, client, false, fault);
-        var result = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.RestoreAsync(request, default));
-        Assert.Equal(expected, result.Code);
-        Assert.False(result.Retryable);
+        var result = await provider.ObserveRestoreAsync(
+            new(request.OperationId, request.Archive, request.Resource.Id, request.Target),
+            default);
+        Assert.IsType(expected, result.Value);
+        Assert.Equal(0, api.Writes);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Recovery_failure_requires_a_terminal_job_owned_by_this_native_cluster(bool owned)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var (provider, request) = RecoverySubject(api, client, false);
+        api.Get("clusters", "pg-service")["status"]!["conditions"]![0]!["status"] = "False";
+        api.RecoveryJobs.Add(
+            JsonNode.Parse(
+                """{"metadata":{"name":"recovery","ownerReferences":[{"apiVersion":"postgresql.cnpg.io/v1","kind":"Cluster","name":"pg-service","uid":"source-uid"}]},"status":{"conditions":[{"type":"FailureTarget","status":"True"}]}}""")
+            !);
+        if (!owned)
+            api.RecoveryJobs[0]!["metadata"]!["ownerReferences"]![0]!["uid"] = "foreign-cluster";
+        var result = await provider.ObserveRestoreAsync(
+            new(request.OperationId, request.Archive, request.Resource.Id, request.Target),
+            default);
+        if (owned)
+            Assert.IsType<BackupRestoreRecoveryFailed>(result.Value);
+        else
+            Assert.IsType<BackupRestoreInProgress>(result.Value);
+        Assert.Equal(0, api.Writes);
+    }
+
+    [Theory]
+    [InlineData("precision", typeof(BackupRestoreTimePrecisionUnsupported))]
+    [InlineData("storage", typeof(BackupRestoreStorageTooSmall))]
+    [InlineData("version", typeof(BackupRestoreVersionUnsupported))]
+    public async Task Recovery_preconditions_reject_before_native_store_or_resource_creation(
+        string fault,
+        Type expected)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        LoadPostgresClusterById load = (
+            _, _,
+            _) => Task.FromResult<FSharpOption<PostgresCluster>>(null!);
+        IBackupProvider provider = new PostgresBackupProvider(
+            new Clients(client),
+            load,
+            new PostgresBackupRecovery(load, null!, null!, new PostgresSettings(), null!));
+        var archive = fault == "version" ? Archive with { Service = Archive.Service with { Version = "18" } } : Archive;
+        BackupRecoveryTarget target = fault == "precision"
+            ? new BackupTimeRecoveryTarget(new DateTimeOffset(2026, 11, 12, 14, 0, 0, TimeSpan.Zero).AddTicks(1))
+            : new BackupCopyRecoveryTarget("copy");
+        var result = await provider.RestoreAsync(
+            new(
+                "operation",
+                archive,
+                Projection,
+                new("new-resource", "restored", fault == "storage" ? 1 : null),
+                target),
+            default);
+        Assert.IsType(expected, result.Value);
+        Assert.Equal(0, api.Writes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_keeps_database_failure_and_cancellation_on_the_exception_path(bool cancelled)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        LoadPostgresClusterById load = (
+            _, _,
+            token) => token.IsCancellationRequested
+            ? Task.FromCanceled<FSharpOption<PostgresCluster>>(token)
+            : throw new InvalidOperationException("Simulated database outage.");
+        IBackupProvider provider = new PostgresBackupProvider(
+            new Clients(client),
+            load,
+            new PostgresBackupRecovery(load, null!, null!, new PostgresSettings(), null!));
+        var request = new ObserveBackupRestoreRequest(
+            "operation",
+            Archive,
+            "new-resource",
+            new BackupCopyRecoveryTarget("copy"));
+        if (cancelled)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                provider.ObserveRestoreAsync(request, new CancellationToken(true)));
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => provider.ObserveRestoreAsync(request, default));
         Assert.Equal(0, api.Writes);
     }
 
@@ -388,11 +478,10 @@ public sealed class PostgresBackupReconciliationTests
         IBackupProvider provider = new PostgresBackupProvider(
             new Clients(client),
             load,
-            loadPlacement,
-            null!,
-            new PostgresSettings(),
-            null!);
+            new PostgresBackupRecovery(load, loadPlacement, null!, new PostgresSettings(), null!));
         var native = api.Get("clusters", "pg-service");
+        if (fault == "identity")
+            native["metadata"]!["uid"] = null;
         native["metadata"]!["labels"]!["pole.io/resource-deployment-id"]
             = fault == "ownership" ? "foreign-deployment" : deployment.DeploymentId;
         var target = byTime
@@ -416,9 +505,6 @@ public sealed class PostgresBackupReconciliationTests
     private static IBackupProvider Provider(IKubernetes client) => new PostgresBackupProvider(
         new Clients(client),
         null!,
-        null!,
-        null!,
-        new PostgresSettings(),
         null!);
 
     private sealed class Clients(
@@ -443,6 +529,7 @@ public sealed class PostgresBackupReconciliationTests
         public bool StandbyHasSidecar { get; set; } = true;
         public HttpStatusCode? NextWriteFailure { get; set; }
         public HttpStatusCode? ReadFailure { get; set; }
+        public JsonArray RecoveryJobs { get; } = new();
 
         public NativeApi()
         {
@@ -479,6 +566,14 @@ public sealed class PostgresBackupReconciliationTests
                 list["items"]!.AsArray().Add(Instance("pg-service-1", true));
                 list["items"]!.AsArray().Add(Instance("pg-service-2", StandbyHasSidecar));
                 return Reply(request, HttpStatusCode.OK, list);
+            }
+
+            if (request.RequestUri.AbsolutePath == "/apis/batch/v1/namespaces/ns/jobs")
+            {
+                Assert.Equal(HttpMethod.Get, request.Method);
+                var jobs = JsonNode.Parse("""{"apiVersion":"batch/v1","kind":"JobList","metadata":{},"items":[]}""")!;
+                jobs["items"] = RecoveryJobs.DeepClone();
+                return Reply(request, HttpStatusCode.OK, jobs);
             }
 
             var collection = path[6];

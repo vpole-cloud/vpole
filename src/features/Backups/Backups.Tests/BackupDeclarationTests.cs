@@ -159,8 +159,11 @@ public class BackupDeclarationTests
         public Task<RunBackupCopyOutcome> RunAsync(BackupCopyRequest request, CancellationToken ct) =>
             throw new NotSupportedException();
 
-        public Task<BackupProviderResult<BackupProviderProgress>> RestoreAsync(
-            RestoreBackupRequest request,
+        public Task<ObserveBackupRestoreOutcome> ObserveRestoreAsync(
+            ObserveBackupRestoreRequest request,
             CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<RestoreBackupOutcome> RestoreAsync(RestoreBackupRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 }

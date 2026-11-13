@@ -12,8 +12,6 @@ public closed record BackupProviderResult<T>
     ) : BackupProviderResult<T>;
 }
 
-public enum BackupProviderPhase { Running, Succeeded }
-
 public enum BackupObservedRunState { Running, Succeeded, Failed }
 
 public sealed record BackupObservedRun(
@@ -31,9 +29,4 @@ public sealed record BackupRuntimeObservation(
     DateTimeOffset? LastSuccessfulBackupAt,
     DateTimeOffset? NextScheduledBackupAt,
     IReadOnlyList<BackupObservedRun> Runs
-);
-
-public sealed record BackupProviderProgress(
-    BackupProviderPhase Phase,
-    string? ProviderBackupId
 );

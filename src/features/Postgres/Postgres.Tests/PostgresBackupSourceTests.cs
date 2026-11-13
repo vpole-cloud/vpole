@@ -28,7 +28,7 @@ public sealed class PostgresBackupSourceTests
             reads++;
             return Task.FromResult<FSharpOption<PostgresCluster>>(null!);
         };
-        IBackupProvider provider = new PostgresBackupProvider(null!, load, null!, null!, null!, null!);
+        IBackupProvider provider = new PostgresBackupProvider(null!, load, null!);
         Assert.IsType<BackupSourceUnsupported>(
             (await provider.DescribeAsync(new("tenant", "other/database", "source"), default)).Value);
         Assert.Equal(0, reads);
@@ -47,7 +47,7 @@ public sealed class PostgresBackupSourceTests
         LoadPostgresClusterById load = (
             _, _,
             token) => Task.FromCanceled<FSharpOption<PostgresCluster>>(token);
-        IBackupProvider provider = new PostgresBackupProvider(null!, load, null!, null!, null!, null!);
+        IBackupProvider provider = new PostgresBackupProvider(null!, load, null!);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.DescribeAsync(
             new("tenant", "pole/postgresql", "source"),
             cancellation.Token));

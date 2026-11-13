@@ -79,6 +79,7 @@ type PostgresFeatureRegistration =
         )
         |> ignore
 
+        services.AddScoped<PostgresBackupRecovery>() |> ignore
         services.AddScoped<IBackupProvider, PostgresBackupProvider>() |> ignore
         services.TryAddScoped<PostgresClusterCreator>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore

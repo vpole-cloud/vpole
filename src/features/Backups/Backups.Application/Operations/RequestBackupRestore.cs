@@ -20,8 +20,6 @@ public sealed record RestoreArchiveCommand(
     int? StorageGiB
 );
 
-public sealed record BackupRestoreStorageTooSmall;
-
 public union RequestBackupRestoreOutcome(
     BackupOperation,
     BackupArchiveMissing,

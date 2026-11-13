@@ -772,7 +772,7 @@ public sealed class BackupApiTests(
                 ct);
             if (crashBeforeProgress)
                 throw new InvalidOperationException("Simulated interruption after target creation committed.");
-            return BackupProviderPhase.Running;
+            return new BackupRestoreInProgress();
         };
         var dispatch = services.GetRequiredService<ExecuteBackupOperation>();
         if (crashBeforeProgress)

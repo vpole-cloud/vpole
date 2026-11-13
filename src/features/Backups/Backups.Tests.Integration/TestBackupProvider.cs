@@ -23,7 +23,7 @@ internal sealed class TestBackupProvider(
     public IReadOnlyList<BackupCatalogEntry> Catalog { get; set; } = [];
     public BackupServiceSnapshot Service { get; set; } = new("17", 4, 1, 1);
     public int? RestoreStorageGiB { get; private set; }
-    public Func<RestoreBackupRequest, CancellationToken, Task<BackupProviderPhase>>? CreateTarget { get; set; }
+    public Func<RestoreBackupRequest, CancellationToken, Task<RestoreBackupOutcome>>? CreateTarget { get; set; }
     public ReadBackupCatalogOutcome? CatalogResponse { get; set; }
     private int _catalogCount;
     public int CatalogCount => Volatile.Read(ref _catalogCount);
@@ -78,18 +78,33 @@ internal sealed class TestBackupProvider(
         return Task.FromResult<RunBackupCopyOutcome>(new BackupCopyCompleted(request.OperationId));
     }
 
-    public async Task<BackupProviderResult<BackupProviderProgress>> RestoreAsync(
-        RestoreBackupRequest request,
-        CancellationToken ct)
+    public async Task<RestoreBackupOutcome> RestoreAsync(RestoreBackupRequest request, CancellationToken ct)
     {
         RestoreStorageGiB = request.Resource.StorageGiB;
-        var phase = CreateTarget is null
-            ? await RecordDefaultTargetAsync(request, ct)
-            : await CreateTarget(request, ct);
-        return new BackupProviderResult<BackupProviderProgress>.Success(new(phase, null));
+        return CreateTarget is null ? await RecordDefaultTargetAsync(request, ct) : await CreateTarget(request, ct);
     }
 
-    private async Task<BackupProviderPhase> RecordDefaultTargetAsync(RestoreBackupRequest request, CancellationToken ct)
+    public ObserveBackupRestoreOutcome? RestoreObservation { get; set; }
+
+    public async Task<ObserveBackupRestoreOutcome> ObserveRestoreAsync(
+        ObserveBackupRestoreRequest request,
+        CancellationToken ct)
+    {
+        if (RestoreObservation is { } observed)
+            return observed;
+        await using var scope = scopes.CreateAsyncScope();
+        var resource = await scope.ServiceProvider.GetRequiredService<LoadRegisteredResource>()(
+            new(
+                request.Archive.Source.TenantId,
+                ResourceTypeId.Create(request.Archive.Source.ResourceType),
+                request.ResourceId),
+            ct);
+        return resource is null ? new BackupRestoreTargetMissing() : new BackupRestoreCompleted(resource.ResourceId);
+    }
+
+    private async Task<RestoreBackupOutcome> RecordDefaultTargetAsync(
+        RestoreBackupRequest request,
+        CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
@@ -119,7 +134,7 @@ internal sealed class TestBackupProvider(
                 return transaction.Commit(true);
             },
             ct);
-        return BackupProviderPhase.Succeeded;
+        return new BackupRestoreCompleted(request.Resource.Id);
     }
 
     private static Task<BackupProviderResult<T>> Success<T>(T result) =>
