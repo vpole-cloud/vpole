@@ -37,9 +37,8 @@ internal sealed class DeclarativeBackupDestinationProvider(
 ) : BackupDeclarationProvider<BackupDestination, BackupDestinationInput>(destinations, git),
     IDeclarativeRegisteredResourceProvider
 {
-    internal const string DeclarationKind = "BackupDestination";
-    public override string Kind => DeclarationKind;
-    public ResourceTypeId ResourceType => BackupConfigurationWriter.DestinationType;
+    public override string Kind => BackupDeclarationKinds.Destination;
+    public ResourceTypeId ResourceType => BackupResourceTypes.Destination;
     protected override GitLifecycleProtection Protection => GitLifecycleProtection.ProtectedData;
 
     protected override UpdateDefinition<BackupDestination> PlanningFence =>
@@ -177,7 +176,11 @@ internal sealed class DeclarativeBackupDestinationProvider(
     protected override Task<BackupWriteResult<BackupDestination>> SaveAsync(
         BackupConfigurationWrite<BackupDestinationInput> write,
         IClientSessionHandle session,
-        CancellationToken ct) => writer.SaveDestinationAsync(write, session, ct);
+        CancellationToken ct) => writer.SaveDestinationAsync(
+        write,
+        session,
+        ct,
+        BackupCredentialGrantPolicy.DeclaredSeparately);
 
     protected override Task<BackupWriteResult<bool>> DeleteAsync(
         string tenantId,

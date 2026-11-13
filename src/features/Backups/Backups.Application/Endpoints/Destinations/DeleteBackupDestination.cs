@@ -42,7 +42,7 @@ public sealed class DeleteBackupDestinationHandler(
     {
         var answer = await configuration.DeleteAsync(
             request.TenantId,
-            "BackupDestination",
+            BackupDeclarationKinds.Destination,
             request.Id,
             request.ExpectedRevision,
             ct);

@@ -133,8 +133,8 @@ public sealed class BackupOperations(
         }
         catch (MongoWriteException e) when (MongoDuplicateKey.IsForIndex(
                                                 e,
-                                                "UX_BackupOperations_Tenant_Key",
-                                                "BackupOperations"))
+                                                BackupsIndexes.OperationKey,
+                                                BackupsCollections.Operations))
         {
             var raced = await operations.Find(key).SingleAsync(ct);
             return Match(raced, command);

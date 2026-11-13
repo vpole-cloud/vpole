@@ -10,8 +10,8 @@ using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Application.Archives;
-using Pole.Features.Backups.Application.Consumers;
 using Pole.Features.Backups.Application.Configuration;
+using Pole.Features.Backups.Application.Consumers;
 using Pole.Features.Backups.Application.Endpoints.Operations;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Jobs;
@@ -393,7 +393,7 @@ public sealed class BackupApiTests(
         Assert.IsType<ConsumerSecretAccessDenied>(
             (await read(access with { Keys = [input.SecretAccessKeyKey] }, default)).Value);
         Assert.IsType<ConsumerSecretAccessDenied>(
-            (await read(access with { ConsumerType = BackupConfigurationWriter.DestinationType }, default)).Value);
+            (await read(access with { ConsumerType = BackupResourceTypes.Destination }, default)).Value);
     }
 
     [Fact]
@@ -465,7 +465,7 @@ public sealed class BackupApiTests(
                 TestPlatformDefaults.TenantId,
                 input.ResourceGroupId,
                 input.IsolationScopeId,
-                BackupConfigurationWriter.DestinationType,
+                BackupResourceTypes.Destination,
                 item.Id,
                 input.CredentialSecretId,
                 [input.AccessKeyIdKey, input.SecretAccessKeyKey]);
@@ -540,7 +540,7 @@ public sealed class BackupApiTests(
                 TestPlatformDefaults.TenantId,
                 input.ResourceGroupId,
                 input.IsolationScopeId,
-                BackupConfigurationWriter.DestinationType,
+                BackupResourceTypes.Destination,
                 id,
                 input.CredentialSecretId,
                 [input.AccessKeyIdKey, input.SecretAccessKeyKey]),

@@ -34,13 +34,11 @@ internal sealed class DeclarativeBackupPolicyProvider(
     FenceResourceDeploymentPlanningSnapshot fencePlacements
 ) : BackupDeclarationProvider<BackupPolicy, BackupPolicyInput>(policies, git)
 {
-    internal const string DeclarationKind = "BackupPolicy";
-
     private readonly IReadOnlyDictionary<string, IBackupProvider> providers = services.ToDictionary(
         s => s.DeclarationKind,
         StringComparer.Ordinal);
 
-    public override string Kind => DeclarationKind;
+    public override string Kind => BackupDeclarationKinds.Policy;
     protected override GitLifecycleProtection Protection => GitLifecycleProtection.ConfigurationOnly;
 
     protected override UpdateDefinition<BackupPolicy> PlanningFence =>
@@ -74,7 +72,10 @@ internal sealed class DeclarativeBackupPolicyProvider(
         return new(
             null,
             [],
-            [new(value.Service, "spec.service"), new(new("BackupDestination", value.Destination), "spec.destination")],
+            [
+                new(value.Service, "spec.service"),
+                new(new(BackupDeclarationKinds.Destination, value.Destination), "spec.destination")
+            ],
             [new("ServiceBackupPolicy", value.Service, value.Service)],
             []);
     }
@@ -109,8 +110,7 @@ internal sealed class DeclarativeBackupPolicyProvider(
     {
         var spec = DeclarationJson.Read<BackupPolicyDeclaration>(read.Declaration.Spec);
         var resourceId = await read.ResolveAsync(spec.Service);
-        var destinationId
-            = await read.ResolveAsync(new(DeclarativeBackupDestinationProvider.DeclarationKind, spec.Destination));
+        var destinationId = await read.ResolveAsync(new(BackupDeclarationKinds.Destination, spec.Destination));
         if (resourceId is null || destinationId is null || !providers.TryGetValue(spec.Service.Kind, out var provider))
             return null;
         var type = ResourceTypeId.Create(provider.ResourceType);
@@ -162,9 +162,7 @@ internal sealed class DeclarativeBackupPolicyProvider(
                 Dependencies = new(
                 [
                     new(
-                        DeclarationVersionKeys.Resource(
-                            DeclarativeBackupDestinationProvider.DeclarationKind,
-                            destinationId),
+                        DeclarationVersionKeys.Resource(BackupDeclarationKinds.Destination, destinationId),
                         destination.Revision),
                     new(
                         ResourceGroupVersionKeys.RegistrationReferenceFence(registration.Resource.RegistrationId),

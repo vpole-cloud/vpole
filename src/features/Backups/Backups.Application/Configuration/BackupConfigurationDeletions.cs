@@ -59,20 +59,20 @@ public sealed class BackupConfigurationDeletions(
             return new BackupWriteResult<bool>.Rejected("revision-conflict");
         if (await archives.Find(session, BackupDispatchFilters.DestinationArchives(tenantId, id)).AnyAsync(ct))
             return new BackupWriteResult<bool>.Rejected("destination-in-use");
-        var state = await readiness(new(tenantId, BackupConfigurationWriter.DestinationType, id), session, ct);
+        var state = await readiness(new(tenantId, BackupResourceTypes.Destination, id), session, ct);
         if (state == ResourceDeploymentFinalizationReadiness.Waiting ||
             state == ResourceDeploymentFinalizationReadiness.Ready && await purge(
-                new(tenantId, BackupConfigurationWriter.DestinationType, id),
+                new(tenantId, BackupResourceTypes.Destination, id),
                 session,
                 ct) is ResourceDeploymentFinalizationConflict)
             return new BackupWriteResult<bool>.Rejected("destination-cleanup-pending");
         if (await registrar.UnregisterAsync(
-                new(tenantId, current.ResourceGroupId, BackupConfigurationWriter.DestinationType, id),
+                new(tenantId, current.ResourceGroupId, BackupResourceTypes.Destination, id),
                 session,
                 ct) is not ResourceUnregistered)
             return new BackupWriteResult<bool>.Rejected("registration-conflict");
         await destinations.DeleteOneAsync(session, filter, cancellationToken: ct);
-        await writer.Changed(session, current, "BackupDestination", current.Revision + 1, ct);
+        await writer.Changed(session, current, BackupDeclarationKinds.Destination, current.Revision + 1, ct);
         return new BackupWriteResult<bool>.Saved(true);
     }
 }

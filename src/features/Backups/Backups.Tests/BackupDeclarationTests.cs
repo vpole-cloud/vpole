@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Application.Declarations;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.GitOps.Contracts;
@@ -90,7 +91,9 @@ public class BackupDeclarationTests
         var step = Assert.Single(provider.Steps(address, spec));
         Assert.Equal(DeclarationPhase.Configure, step.Phase);
         Assert.Contains(new(service, DeclarationPhase.Configure), step.Dependencies);
-        Assert.Contains(new(new("BackupDestination", "archive"), DeclarationPhase.Configure), step.Dependencies);
+        Assert.Contains(
+            new(new(BackupDeclarationKinds.Destination, "archive"), DeclarationPhase.Configure),
+            step.Dependencies);
         Assert.False(spec.GetProperty("suspended").GetBoolean());
     }
 

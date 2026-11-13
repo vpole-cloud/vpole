@@ -9,6 +9,7 @@ using Pole.Features.Backups.Application.Declarations;
 using Pole.Features.Backups.Application.Endpoints;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Jobs;
+using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
@@ -23,10 +24,7 @@ public static class BackupsFeature
 {
     public static IServiceCollection AddBackupsFeature(this IServiceCollection services)
     {
-        AddCollection<BackupDestination>(services, "BackupDestinations");
-        AddCollection<BackupPolicy>(services, "BackupPolicies");
-        AddCollection<BackupArchive>(services, "BackupArchives");
-        AddCollection<BackupOperation>(services, "BackupOperations");
+        services.AddBackupsMongo();
         services.AddBackupDeclarations();
         services.AddScoped<IIsolationScopeReferenceGuard, BackupDestinationScopeGuard>();
         services.AddScoped<BackupProviders>();
@@ -52,7 +50,7 @@ public static class BackupsFeature
         services.AddScoped<BackupAccessPlacementAdapter>();
         services.AddSingleton(
             ResourceDeploymentAdapterDescriptor.Create<BackupAccessPlacementAdapter>(
-                BackupConfigurationWriter.DestinationType,
+                BackupResourceTypes.Destination,
                 ResourcePlacementCapability.MultiTarget));
         return services;
     }
@@ -70,11 +68,6 @@ public static class BackupsFeature
             job => job.RecoverAsync(CancellationToken.None),
             Cron.Minutely);
         return services;
-    }
-
-    private static void AddCollection<T>(IServiceCollection services, string name)
-    {
-        services.AddSingleton(sp => sp.GetRequiredService<IMongoDatabase>().GetCollection<T>(name));
     }
 
     public static IEndpointRouteBuilder MapBackupsEndpoints(this IEndpointRouteBuilder endpoints)

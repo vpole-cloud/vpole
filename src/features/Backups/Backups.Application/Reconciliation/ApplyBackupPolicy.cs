@@ -150,7 +150,12 @@ public sealed class ApplyBackupPolicy(
                     if ((await policies.DeleteOneAsync(tx.Session, guard, cancellationToken: token)).DeletedCount == 1)
                     {
                         await configuration.RetireArchive(policy, tx.Session, token, sourceRemoved: source is null);
-                        await configuration.Changed(tx.Session, policy, "BackupPolicy", policy.Revision + 1, token);
+                        await configuration.Changed(
+                            tx.Session,
+                            policy,
+                            BackupDeclarationKinds.Policy,
+                            policy.Revision + 1,
+                            token);
                     }
                 }
                 else

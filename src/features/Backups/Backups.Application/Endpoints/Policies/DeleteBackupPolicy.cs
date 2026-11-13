@@ -42,7 +42,7 @@ public sealed class DeleteBackupPolicyHandler(
     {
         var answer = await configuration.DeleteAsync(
             request.TenantId,
-            "BackupPolicy",
+            BackupDeclarationKinds.Policy,
             request.Id,
             request.ExpectedRevision,
             ct);

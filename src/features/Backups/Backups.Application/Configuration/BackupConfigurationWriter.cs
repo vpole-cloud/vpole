@@ -16,6 +16,8 @@ using Pole.Workloads;
 
 namespace Pole.Features.Backups.Application.Configuration;
 
+public enum BackupCredentialGrantPolicy { GrantSelectedKeys, DeclaredSeparately }
+
 public sealed class BackupConfigurationWriter(
     IMongoCollection<BackupDestination> destinations,
     IMongoCollection<BackupPolicy> policies,
@@ -30,14 +32,11 @@ public sealed class BackupConfigurationWriter(
     TimeProvider clock
 )
 {
-    public static readonly ResourceTypeId DestinationType = ResourceTypeId.Create("pole/backup-destination");
-    public static readonly ResourceTypeId PolicyType = ResourceTypeId.Create("pole/backup-policy");
-
     public async Task<BackupWriteResult<BackupDestination>> SaveDestinationAsync(
         BackupConfigurationWrite<BackupDestinationInput> write,
         IClientSessionHandle session,
         CancellationToken ct,
-        bool bindCredentials = false)
+        BackupCredentialGrantPolicy credentialGrant)
     {
         var input = write.Input;
         if (!BackupInputRules.Valid(input))
@@ -63,16 +62,16 @@ public sealed class BackupConfigurationWriter(
             input.IsolationScopeId,
             storage);
         if (await registrar.RegisterAsync(
-                new(write.TenantId, input.ResourceGroupId, new(DestinationType, write.Id, input.Name)),
+                new(write.TenantId, input.ResourceGroupId, new(BackupResourceTypes.Destination, write.Id, input.Name)),
                 session,
                 ct) is not RegisteredResource)
             return new BackupWriteResult<BackupDestination>.Rejected("registration-conflict");
-        if (bindCredentials && await grant(
+        if (credentialGrant == BackupCredentialGrantPolicy.GrantSelectedKeys && await grant(
                 new(
                     write.TenantId,
                     input.ResourceGroupId,
                     input.IsolationScopeId,
-                    DestinationType,
+                    BackupResourceTypes.Destination,
                     write.Id,
                     storage.CredentialSecretId,
                     [storage.AccessKeyIdKey, storage.SecretAccessKeyKey]),
@@ -80,7 +79,7 @@ public sealed class BackupConfigurationWriter(
                 ct) is not ConsumerSecretAccessGranted)
             return new BackupWriteResult<BackupDestination>.Rejected("credential-grant-denied");
         await destinations.InsertOneAsync(session, destination, cancellationToken: ct);
-        await Changed(session, destination, "BackupDestination", destination.Revision, ct);
+        await Changed(session, destination, BackupDeclarationKinds.Destination, destination.Revision, ct);
         return new BackupWriteResult<BackupDestination>.Saved(destination);
     }
 
@@ -196,7 +195,7 @@ public sealed class BackupConfigurationWriter(
         BackupPolicy policy,
         CancellationToken ct)
     {
-        await Changed(session, policy, "BackupPolicy", policy.Revision, ct);
+        await Changed(session, policy, BackupDeclarationKinds.Policy, policy.Revision, ct);
         await outbox(session, [BackupWorkRequests.Policy(policy)], ct);
     }
 

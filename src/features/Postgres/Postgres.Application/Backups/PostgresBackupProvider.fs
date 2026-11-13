@@ -119,7 +119,7 @@ type PostgresBackupProvider
             if isNull target || target.RuntimeCellId <> p.RuntimeCellId || target.IsolationScopeId <> p.IsolationScopeId
                || target.DeploymentTargetId <> p.DeploymentTargetId then BackupNative.fail "restore-placement-changed" false
             let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
-            let! native = BackupNative.get client PostgresBackupManifests.group p.NamespaceName "clusters" name ct
+            let! native = BackupNative.get client PostgresBackupNames.Group p.NamespaceName "clusters" name ct
             if isNull native then return running
             else
                 if not (BackupNative.labelsMatch native

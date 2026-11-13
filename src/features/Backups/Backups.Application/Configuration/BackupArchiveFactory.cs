@@ -55,7 +55,7 @@ public sealed class BackupArchiveFactory(
                 return new BackupWriteResult<BackupArchive>.Rejected("source-revision-changed");
 
             var placements = await namespaces(
-                new(write.TenantId, BackupConfigurationWriter.DestinationType, destination.Id),
+                new(write.TenantId, BackupResourceTypes.Destination, destination.Id),
                 session,
                 ct);
             var placementId = placements
@@ -67,7 +67,7 @@ public sealed class BackupArchiveFactory(
                 var added = await retainPlacement(
                     new(
                         write.TenantId,
-                        BackupConfigurationWriter.DestinationType,
+                        BackupResourceTypes.Destination,
                         destination.Id,
                         placementId,
                         type,

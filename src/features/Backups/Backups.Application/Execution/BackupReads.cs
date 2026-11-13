@@ -27,7 +27,7 @@ public sealed class BackupReads(
             return null;
         return BackupDestinationDto.From(row) with
         {
-            GitOps = await git.StatusAsync(new(tenant, "BackupDestination", id), ct)
+            GitOps = await git.StatusAsync(new(tenant, BackupDeclarationKinds.Destination, id), ct)
         };
     }
 
@@ -41,7 +41,7 @@ public sealed class BackupReads(
             return null;
         return BackupViews.From(row, row.ReportSchedule(clock.GetUtcNow())) with
         {
-            GitOps = await git.StatusAsync(new(tenant, "BackupPolicy", id), ct)
+            GitOps = await git.StatusAsync(new(tenant, BackupDeclarationKinds.Policy, id), ct)
         };
     }
 
@@ -61,7 +61,9 @@ public sealed class BackupReads(
         var rows = await destinations.Find(BackupsFilters<BackupDestination>.Tenant(tenant))
             .SortBy(d => d.Name)
             .ToListAsync(ct);
-        var ownership = await git.StatusesAsync(new(tenant, "BackupDestination", rows.Select(d => d.Id).ToArray()), ct);
+        var ownership = await git.StatusesAsync(
+            new(tenant, BackupDeclarationKinds.Destination, rows.Select(d => d.Id).ToArray()),
+            ct);
         return rows.Select(d => BackupDestinationDto.From(d) with { GitOps = ownership.GetValueOrDefault(d.Id) })
             .ToArray();
     }
@@ -69,7 +71,9 @@ public sealed class BackupReads(
     public async Task<BackupPolicyDto[]> PoliciesAsync(string tenant, CancellationToken ct)
     {
         var rows = await policies.Find(BackupsFilters<BackupPolicy>.Tenant(tenant)).SortBy(p => p.Name).ToListAsync(ct);
-        var ownership = await git.StatusesAsync(new(tenant, "BackupPolicy", rows.Select(p => p.Id).ToArray()), ct);
+        var ownership = await git.StatusesAsync(
+            new(tenant, BackupDeclarationKinds.Policy, rows.Select(p => p.Id).ToArray()),
+            ct);
         var now = clock.GetUtcNow();
         return rows.Select(p =>
                 BackupViews.From(p, p.ReportSchedule(now)) with { GitOps = ownership.GetValueOrDefault(p.Id) })

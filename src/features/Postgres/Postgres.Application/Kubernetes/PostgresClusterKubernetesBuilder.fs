@@ -122,8 +122,8 @@ module PostgresClusterKubernetesBuilder =
             spec["externalClusters"] <-
                 [| {| name = "origin"
                       plugin =
-                        {| name = "barman-cloud.cloudnative-pg.io"
-                           parameters = {| barmanObjectName = "archive-" + origin.ArchiveId; serverName = origin.ServerName |} |} |} |]
+                        {| name = PostgresBackupNames.PluginName
+                           parameters = {| barmanObjectName = PostgresBackupNames.objectStore origin.ArchiveId; serverName = origin.ServerName |} |} |} |]
         | _ -> invalidOp "Unsupported PostgreSQL bootstrap."
 
         spec["inheritedMetadata"] <-

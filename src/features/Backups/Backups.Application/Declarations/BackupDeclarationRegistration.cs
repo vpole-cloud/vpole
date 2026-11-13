@@ -23,8 +23,8 @@ public static class BackupDeclarationRegistration
         services.AddScoped<IDeclarativeLifecycleDependencyProvider, BackupDeclarationDependencies>();
         services.AddSingleton(
             new SecretDeclarationConsumer(
-                DeclarativeBackupDestinationProvider.DeclarationKind,
-                BackupConfigurationWriter.DestinationType,
+                BackupDeclarationKinds.Destination,
+                BackupResourceTypes.Destination,
                 SecretBindingUsage.BackupStorage,
                 SecretConsumerProjectionPolicy.DeclaredPurposeForAllDeployments,
                 SecretConsumerPlacementRequirement.AllowBeforePlacement,

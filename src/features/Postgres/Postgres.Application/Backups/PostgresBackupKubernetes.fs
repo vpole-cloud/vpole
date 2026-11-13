@@ -10,6 +10,7 @@ open k8s
 open k8s.Autorest
 open k8s.Models
 open Pole.Features.Backups.Contracts
+open Pole.Features.Postgres.Application.Kubernetes
 
 exception internal PostgresBackupFailure of string * bool
 
@@ -49,11 +50,11 @@ module internal BackupNative =
         if not (labelsMatch doc (M.sourceLabels archive)) then fail "backup-resource-ownership-conflict" false
     let ensureArchive doc archive =
         ensureSource doc archive
-        if value doc ["metadata";"labels";M.archiveLabel] <> archive.ArchiveId then fail "backup-resource-ownership-conflict" false
+        if value doc ["metadata";"labels";PostgresBackupNames.ArchiveLabel] <> archive.ArchiveId then fail "backup-resource-ownership-conflict" false
 
     let source client (archive: BackupArchiveContext) ct =
         task {
-            let! current = get client M.group archive.Placement.NamespaceName "clusters" (M.clusterName archive) ct
+            let! current = get client PostgresBackupNames.Group archive.Placement.NamespaceName "clusters" (M.clusterName archive) ct
             if isNull current then fail "backup-source-unavailable" true
             ensureSource current archive
             return current
@@ -123,7 +124,7 @@ module internal BackupNative =
                 else return current
         }
 
-    let ensureStore client archive ct = applyOwned client M.storageGroup archive "objectstores" (M.store archive None) None ct
+    let ensureStore client archive ct = applyOwned client PostgresBackupNames.StorageGroup archive "objectstores" (M.store archive None) None ct
 
     let parkSchedule client (request: ApplyBackupScheduleRequest) archiveId clusterUid ct =
         task {
@@ -132,25 +133,25 @@ module internal BackupNative =
                                               a.Prefix, a.ServerName, a.NativeCredentialName, a.AccessKeyIdKey, a.SecretAccessKeyKey)
             // A suspended, versioned object fences delayed creates too. CNPG garbage-collects it with its source.
             let tombstone = M.schedule retired (BackupSchedule("0 0 1 1 *",true,1)) clusterUid
-            let! _ = applyOwned client M.group retired "scheduledbackups" tombstone (Some(request,true)) ct
+            let! _ = applyOwned client PostgresBackupNames.Group retired "scheduledbackups" tombstone (Some(request,true)) ct
             return ()
         }
 
     let plugin current =
-        array current ["spec";"plugins"] |> Seq.tryFind (fun p -> value p ["name"] = M.pluginName)
+        array current ["spec";"plugins"] |> Seq.tryFind (fun p -> value p ["name"] = PostgresBackupNames.PluginName)
     let active current (archive: BackupArchiveContext) =
         plugin current |> Option.exists (fun p ->
-            value p ["parameters";"barmanObjectName"] = M.storeName archive.ArchiveId && value p ["parameters";"serverName"] = archive.ServerName)
+            value p ["parameters";"barmanObjectName"] = PostgresBackupNames.objectStore archive.ArchiveId && value p ["parameters";"serverName"] = archive.ServerName)
 
     let pluginLoaded cluster =
-        array cluster ["status";"pluginStatus"] |> Seq.exists (fun p -> value p ["name"] = M.pluginName)
+        array cluster ["status";"pluginStatus"] |> Seq.exists (fun p -> value p ["name"] = PostgresBackupNames.PluginName)
 
     let private writePlugins client (request: ApplyBackupScheduleRequest) current enable ct =
         task {
             let archive = request.Archive
             let next = JsonArray()
             for p in array current ["spec";"plugins"] do
-                if value p ["name"] <> M.pluginName then next.Add(p.DeepClone())
+                if value p ["name"] <> PostgresBackupNames.PluginName then next.Add(p.DeepClone())
             if enable then next.Add(M.walPlugin archive)
             let stamp = annotations request (not enable)
             let currentPlugins = array current ["spec";"plugins"] |> Seq.toArray
@@ -158,7 +159,7 @@ module internal BackupNative =
             if samePlugins && (stamp |> Seq.forall (fun kv -> annotation current kv.Key = kv.Value)) then return current
             else
                 let body = M.node {| spec = {| plugins = next |}; metadata = {| annotations = stamp |} |}
-                return! patch client M.group archive.Placement.NamespaceName "clusters" (M.clusterName archive) current body ct
+                return! patch client PostgresBackupNames.Group archive.Placement.NamespaceName "clusters" (M.clusterName archive) current body ct
         }
 
     let condition doc kind =
@@ -204,10 +205,10 @@ module internal BackupNative =
                     match plugin cluster with
                     | Some p ->
                         let store = value p ["parameters";"barmanObjectName"]
-                        if isNull store || not (store.StartsWith("archive-",StringComparison.Ordinal)) then
+                        if isNull store || not (store.StartsWith(PostgresBackupNames.ArchivePrefix,StringComparison.Ordinal)) then
                             fail "backup-existing-plugin-conflict" false
-                        if store <> M.storeName a.ArchiveId then
-                            do! parkSchedule client request (store.Substring("archive-".Length)) identity ct
+                        if store <> PostgresBackupNames.objectStore a.ArchiveId then
+                            do! parkSchedule client request (store.Substring(PostgresBackupNames.ArchivePrefix.Length)) identity ct
                     | None -> ()
                 if attachedPolicy = request.PolicyId || (isNull attachedPolicy && (plugin cluster).IsNone) then
                     let! _ = writePlugins client request cluster false ct
@@ -216,26 +217,26 @@ module internal BackupNative =
             else
                 // Check the per-archive tombstone *after* reading the Cluster's resourceVersion.
                 // An older request can neither reattach a retired archive nor re-enable its schedule.
-                let! previousSchedule = get client M.group a.Placement.NamespaceName "scheduledbackups" (M.scheduleName a.ArchiveId) ct
+                let! previousSchedule = get client PostgresBackupNames.Group a.Placement.NamespaceName "scheduledbackups" (PostgresBackupNames.scheduledBackup a.ArchiveId) ct
                 if not (isNull previousSchedule) then
                     ensureArchive previousSchedule a
                     guardRevision request previousSchedule false
                 let store = M.store a (Some request.Schedule.RetentionDays)
-                let! _ = applyOwned client M.storageGroup a "objectstores" store (Some(request,false)) ct
+                let! _ = applyOwned client PostgresBackupNames.StorageGroup a "objectstores" store (Some(request,false)) ct
                 match plugin cluster with
                 | Some p ->
                     if annotation cluster policyKey <> request.PolicyId then fail "backup-existing-plugin-conflict" false
                     let old = value p ["parameters";"barmanObjectName"]
-                    if isNull old || not (old.StartsWith("archive-",StringComparison.Ordinal)) then
+                    if isNull old || not (old.StartsWith(PostgresBackupNames.ArchivePrefix,StringComparison.Ordinal)) then
                         fail "backup-existing-plugin-conflict" false
-                    if old <> M.storeName a.ArchiveId then
-                        do! parkSchedule client request (old.Substring("archive-".Length)) identity ct
+                    if old <> PostgresBackupNames.objectStore a.ArchiveId then
+                        do! parkSchedule client request (old.Substring(PostgresBackupNames.ArchivePrefix.Length)) identity ct
                 | None -> ()
                 let! updated = writePlugins client request cluster true ct
                 let! ready = backupPodsReady client a updated ct
                 let desired = request.Schedule
                 let scheduled = M.schedule a (BackupSchedule(desired.CronUtc,desired.Suspended || not ready,desired.RetentionDays)) identity
-                let! _ = applyOwned client M.group a "scheduledbackups" scheduled (Some(request,false)) ct
+                let! _ = applyOwned client PostgresBackupNames.Group a "scheduledbackups" scheduled (Some(request,false)) ct
                 let archiving = value (condition updated "ContinuousArchiving") ["status"]
                 let phase = if ready && archiving = "True" then BackupProviderPhase.Succeeded else BackupProviderPhase.Running
                 return BackupProviderProgress(phase,null)
@@ -261,14 +262,14 @@ module internal BackupNative =
             let a = request.Archive
             let ns = a.Placement.NamespaceName
             let! cluster = source client a ct
-            let! current = get client M.group ns "backups" ("backup-" + request.OperationId) ct
+            let! current = get client PostgresBackupNames.Group ns "backups" (PostgresBackupNames.manualBackup request.OperationId) ct
             let! native =
                 if isNull current then
                     task {
                         if not (active cluster a) then fail "backup-archive-inactive" true
                         let! ready = backupPodsReady client a cluster ct
                         if not ready then fail "backup-plugin-not-ready" true
-                        return! create client M.group ns "backups" (M.backup request (uid cluster)) ct
+                        return! create client PostgresBackupNames.Group ns "backups" (M.backup request (uid cluster)) ct
                     }
                 else
                     ensureArchive current a
@@ -291,9 +292,9 @@ module internal BackupNative =
         task {
             let ns = archive.Placement.NamespaceName
             let! cluster = source client archive ct
-            let scheduleName = M.scheduleName archive.ArchiveId
-            let! schedule = get client M.group ns "scheduledbackups" scheduleName ct
-            let! store = get client M.storageGroup ns "objectstores" (M.storeName archive.ArchiveId) ct
+            let scheduleName = PostgresBackupNames.scheduledBackup archive.ArchiveId
+            let! schedule = get client PostgresBackupNames.Group ns "scheduledbackups" scheduleName ct
+            let! store = get client PostgresBackupNames.StorageGroup ns "objectstores" (PostgresBackupNames.objectStore archive.ArchiveId) ct
             if not (isNull store) then ensureArchive store archive
             let runs = ResizeArray<BackupObservedRun>()
             if not (isNull schedule) then
@@ -301,7 +302,7 @@ module internal BackupNative =
                 let mutable more = true
                 let mutable token = null
                 while more do
-                    let! result = client.CustomObjects.ListNamespacedCustomObjectAsync(M.group,"v1",ns,"backups",labelSelector=("cnpg.io/cluster=" + M.clusterName archive),limit=Nullable(200),continueParameter=token,cancellationToken=ct)
+                    let! result = client.CustomObjects.ListNamespacedCustomObjectAsync(PostgresBackupNames.Group,"v1",ns,"backups",labelSelector=("cnpg.io/cluster=" + M.clusterName archive),limit=Nullable(200),continueParameter=token,cancellationToken=ct)
                     let doc = JsonSerializer.SerializeToNode(result)
                     for item in array doc ["items"] do
                         let owned = array item ["metadata";"ownerReferences"] |> Seq.exists (fun owner -> value owner ["uid"] = uid schedule && value owner ["kind"] = "ScheduledBackup")

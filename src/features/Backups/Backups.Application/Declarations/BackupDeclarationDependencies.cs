@@ -28,7 +28,7 @@ internal sealed class BackupDeclarationDependencies(
         CancellationToken ct)
     {
         FilterDefinition<BackupPolicy> filter;
-        if (request.Resource.Address.Kind == DeclarativeBackupDestinationProvider.DeclarationKind)
+        if (request.Resource.Address.Kind == BackupDeclarationKinds.Destination)
             filter = BackupsPolicyFilters.ForDestination(request.TenantId, request.Resource.ResourceId);
         else if (providers.TryGetValue(request.Resource.Address.Kind, out var service))
             filter = BackupsPolicyFilters.ForSource(
@@ -40,13 +40,11 @@ internal sealed class BackupDeclarationDependencies(
         var current = await policies.Find(session, filter).ToListAsync(ct);
         return current.OrderBy(p => p.Id, StringComparer.Ordinal)
             .Select(p => new GitLifecycleDependency(
-                new(new(DeclarativeBackupPolicyProvider.DeclarationKind, p.Name), p.Id),
+                new(new(BackupDeclarationKinds.Policy, p.Name), p.Id),
                 request.Resource,
                 new(
                 [
-                    new(
-                        DeclarationVersionKeys.Resource(DeclarativeBackupPolicyProvider.DeclarationKind, p.Id),
-                        p.Revision)
+                    new(DeclarationVersionKeys.Resource(BackupDeclarationKinds.Policy, p.Id), p.Revision)
                 ])))
             .ToArray();
     }
@@ -61,7 +59,7 @@ internal sealed class BackupDeclarationDependencies(
                 expect.Target == item.Target && expect.Dependent == item.Dependent &&
                 expect.Version.Documents.SequenceEqual(item.Version.Documents))))
             return new DeclarationPreconditionsChanged();
-        if (request.Resource.Address.Kind == DeclarativeBackupDestinationProvider.DeclarationKind)
+        if (request.Resource.Address.Kind == BackupDeclarationKinds.Destination)
         {
             var result = await destinations.UpdateOneAsync(
                 session,

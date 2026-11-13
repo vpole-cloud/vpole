@@ -101,7 +101,7 @@ public sealed class ForgetRetiredArchive(
                     archive.Placement.CredentialDeploymentId);
                 if (!await archives.Find(tx.Session, shared).AnyAsync(token))
                 {
-                    var type = BackupConfigurationWriter.DestinationType;
+                    var type = BackupResourceTypes.Destination;
                     var result = await placements(new(tenantId, type, archive.DestinationId), tx.Session, token);
                     var item = result is ResourceDeploymentPlanningSnapshot remaining
                         ? remaining.Items.SingleOrDefault(d =>

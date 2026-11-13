@@ -21,7 +21,7 @@ public sealed class BackupArchiveAccess(
                 archive.TenantId,
                 archive.Placement.ResourceGroupId,
                 archive.Placement.IsolationScopeId,
-                BackupConfigurationWriter.DestinationType,
+                BackupResourceTypes.Destination,
                 archive.DestinationId,
                 s.CredentialSecretId,
                 [s.AccessKeyIdKey, s.SecretAccessKeyKey]),
@@ -45,7 +45,7 @@ public sealed class BackupArchiveAccess(
         var result = await projections(
             new(
                 archive.TenantId,
-                BackupConfigurationWriter.DestinationType,
+                BackupResourceTypes.Destination,
                 archive.DestinationId,
                 archive.Placement.CredentialDeploymentId,
                 [new(s.CredentialSecretId, s.AccessKeyIdKey), new(s.CredentialSecretId, s.SecretAccessKeyKey)]),

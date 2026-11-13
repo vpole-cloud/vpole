@@ -16,16 +16,16 @@ public sealed class ManualBackupConfiguration(
         BackupConfigurationWrite<BackupDestinationInput> write,
         CancellationToken ct) => MutateAsync(
         write.TenantId,
-        "BackupDestination",
+        BackupDeclarationKinds.Destination,
         write.Id,
-        (s, t) => writer.SaveDestinationAsync(write, s, t, true),
+        (s, t) => writer.SaveDestinationAsync(write, s, t, BackupCredentialGrantPolicy.GrantSelectedKeys),
         ct);
 
     public Task<BackupWriteResult<BackupPolicy>> SavePolicyAsync(
         BackupConfigurationWrite<BackupPolicyInput> write,
         CancellationToken ct) => MutateAsync(
         write.TenantId,
-        "BackupPolicy",
+        BackupDeclarationKinds.Policy,
         write.Id,
         (s, t) => writer.SavePolicyAsync(write, s, t),
         ct);
@@ -39,7 +39,7 @@ public sealed class ManualBackupConfiguration(
         tenantId,
         kind,
         id,
-        (s, t) => kind == "BackupDestination"
+        (s, t) => kind == BackupDeclarationKinds.Destination
             ? deletions.DeleteDestinationAsync(tenantId, id, revision, s, t)
             : deletions.DeletePolicyAsync(tenantId, id, revision, s, t),
         ct);

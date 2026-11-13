@@ -14,7 +14,7 @@ public sealed class FinalizeProjectionPlacement(
     public async Task Consume(ConsumeContext<ResourceDeploymentDeletedEvent> context)
     {
         var message = context.Message;
-        var type = BackupConfigurationWriter.DestinationType;
+        var type = BackupResourceTypes.Destination;
         if (message.ResourceType != type.Value)
             return;
         await transactions.InvokeOutcomeAsync<bool>(
