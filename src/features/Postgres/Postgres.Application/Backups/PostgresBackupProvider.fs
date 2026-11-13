@@ -235,10 +235,17 @@ type PostgresBackupProvider
                 let! client = clientFor archive ct
                 return! BackupNative.observe client archive ct }) ct
 
-        member _.RunAsync(request,ct) =
-            ProviderResult.protect (fun () -> task {
+        member _.RunAsync(request, ct) =
+            task {
                 let! client = clientFor request.Archive ct
-                return! BackupNative.run client request ct }) ct
+                return! PostgresBackupCopy.run client request ct
+            }
+
+        member _.ObserveCopyAsync(request, ct) =
+            task {
+                let! client = clientFor request.Archive ct
+                return! PostgresBackupCopy.observe client request ct
+            }
 
         member _.RestoreAsync(r,ct) =
             ProviderResult.protect (fun () -> task {

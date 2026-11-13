@@ -1,6 +1,6 @@
 namespace Pole.Features.Backups.Contracts;
 
-public abstract record BackupProviderResult<T>
+public closed record BackupProviderResult<T>
 {
     public sealed record Success(
         T Value

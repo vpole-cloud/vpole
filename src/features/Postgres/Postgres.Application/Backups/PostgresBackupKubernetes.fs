@@ -2,7 +2,6 @@ namespace Pole.Features.Postgres.Application.Backups
 
 open System
 open System.Text.Json
-open System.Threading.Tasks
 open k8s
 open Pole.Features.Backups.Contracts
 open Pole.Features.Postgres.Application.Kubernetes
@@ -51,32 +50,6 @@ module internal BackupNative =
         elif contains ["connection refused";"no such host";"could not connect to the endpoint"] then "backup-storage-unreachable"
         elif value native ["status";"phase"] = "invalid backup definition" then "backup-definition-invalid"
         else "backup-execution-failed"
-
-    let run client (request: BackupCopyRequest) ct =
-        task {
-            let a = request.Archive
-            let ns = a.Placement.NamespaceName
-            let! cluster = source client a ct
-            let! current = get client PostgresBackupNames.Group ns "backups" (PostgresBackupNames.manualBackup request.OperationId) ct
-            let! native =
-                if isNull current then
-                    task {
-                        if not (active cluster a) then fail "backup-archive-inactive" true
-                        let! ready = PostgresBackupArchive.podsReady client a cluster (nativeIdentity cluster) ct
-                        if not ready then fail "backup-plugin-not-ready" true
-                        return! create client PostgresBackupNames.Group ns "backups" (M.backup request (uid cluster)) ct
-                    }
-                else
-                    ensureArchive current a
-                    Task.FromResult(current)
-            if value native ["spec";"cluster";"name"] <> M.clusterName a then fail "backup-resource-ownership-conflict" false
-            let backupId = value native ["status";"backupId"]
-            match state native with
-            | BackupObservedRunState.Succeeded when not (String.IsNullOrEmpty backupId) ->
-                return BackupProviderProgress(BackupProviderPhase.Succeeded,backupId)
-            | BackupObservedRunState.Failed -> return fail (failureCode native) false
-            | _ -> return BackupProviderProgress(BackupProviderPhase.Running,null)
-        }
 
     let observe (client: IKubernetes) (archive: BackupArchiveContext) ct =
         task {

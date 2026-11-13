@@ -31,6 +31,7 @@ internal sealed class TestBackupProvider(
     private int _runCount;
     public int ApplyCount => Volatile.Read(ref _applyCount);
     public int RunCount => Volatile.Read(ref _runCount);
+    public ObserveBackupCopyOutcome CopyObservation { get; set; } = new BackupCopyMissing();
     public TraceContextSnapshot? LastApplyTrace { get; private set; }
     public TraceContextSnapshot? LastRunTrace { get; private set; }
 
@@ -43,24 +44,22 @@ internal sealed class TestBackupProvider(
         return Task.FromResult(CatalogResponse ?? new BackupCatalogContents(Catalog));
     }
 
+    public IReadOnlyList<BackupObservedRun> ObservedRuns { get; set; } =
+    [
+        new(
+            "native-id",
+            "before",
+            BackupObservedRunState.Succeeded,
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow,
+            null),
+        new("running-uid", null, BackupObservedRunState.Running, DateTimeOffset.UtcNow, null, null),
+    ];
+
     public Task<BackupProviderResult<BackupRuntimeObservation>> ObserveAsync(
         BackupArchiveContext archive,
         CancellationToken ct) => Success(
-        new BackupRuntimeObservation(
-            "Healthy",
-            null,
-            DateTimeOffset.UtcNow,
-            null,
-            [
-                new(
-                    "native-id",
-                    "before",
-                    BackupObservedRunState.Succeeded,
-                    DateTimeOffset.UtcNow.AddMinutes(-1),
-                    DateTimeOffset.UtcNow,
-                    null),
-                new("running-uid", null, BackupObservedRunState.Running, DateTimeOffset.UtcNow, null, null)
-            ]));
+        new BackupRuntimeObservation("Healthy", null, DateTimeOffset.UtcNow, null, ObservedRuns));
 
     public Task<ApplyBackupScheduleOutcome> ApplyScheduleAsync(ApplyBackupScheduleRequest request, CancellationToken ct)
     {
@@ -69,11 +68,14 @@ internal sealed class TestBackupProvider(
         return Task.FromResult<ApplyBackupScheduleOutcome>(new BackupPolicyApplied());
     }
 
-    public Task<BackupProviderResult<BackupProviderProgress>> RunAsync(BackupCopyRequest request, CancellationToken ct)
+    public Task<ObserveBackupCopyOutcome> ObserveCopyAsync(ObserveBackupCopyRequest request, CancellationToken ct) =>
+        Task.FromResult(CopyObservation);
+
+    public Task<RunBackupCopyOutcome> RunAsync(BackupCopyRequest request, CancellationToken ct)
     {
         Interlocked.Increment(ref _runCount);
         LastRunTrace = TraceContext.Current;
-        return Success(new BackupProviderProgress(BackupProviderPhase.Succeeded, request.OperationId));
+        return Task.FromResult<RunBackupCopyOutcome>(new BackupCopyCompleted(request.OperationId));
     }
 
     public async Task<BackupProviderResult<BackupProviderProgress>> RestoreAsync(

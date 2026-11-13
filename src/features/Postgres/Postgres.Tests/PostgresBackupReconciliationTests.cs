@@ -76,16 +76,12 @@ public sealed class PostgresBackupReconciliationTests
                 new("policy", Archive, new ConfigureBackupPolicy(Daily with { Suspended = true }, Projection), 1),
                 default);
         var operation = new BackupCopyRequest("operation", Archive, Projection);
-        var pending = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-            await Provider(client).RunAsync(operation, default));
-        Assert.Equal(BackupProviderPhase.Running, pending.Value.Phase);
+        Assert.IsType<BackupCopyInProgress>((await Provider(client).RunAsync(operation, default)).Value);
         var backup = api.Get("backups", "backup-operation");
         backup["status"] = JsonNode.Parse("""{"phase":"completed","backupId":"20261112T140000"}""");
         var writes = api.Writes;
-        var done = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-            await Provider(client).RunAsync(operation, default));
-        Assert.Equal(BackupProviderPhase.Succeeded, done.Value.Phase);
-        Assert.Equal("20261112T140000", done.Value.ProviderBackupId);
+        var done = Assert.IsType<BackupCopyCompleted>((await Provider(client).RunAsync(operation, default)).Value);
+        Assert.Equal("20261112T140000", done.BackupId);
         Assert.Equal(writes, api.Writes);
     }
 
@@ -104,10 +100,7 @@ public sealed class PostgresBackupReconciliationTests
         Assert.IsType<BackupPolicyPending>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
         var writes = api.Writes;
-        var retry = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.RunAsync(operation, default));
-        Assert.Equal("backup-plugin-not-ready", retry.Code);
-        Assert.True(retry.Retryable);
+        Assert.IsType<BackupPluginNotReady>((await provider.RunAsync(operation, default)).Value);
         Assert.Equal(writes, api.Writes);
 
         api.StandbyHasSidecar = true;
@@ -116,17 +109,62 @@ public sealed class PostgresBackupReconciliationTests
         await provider.RunAsync(operation, default);
         var native = api.Get("backups", "backup-operation");
         native["status"] = JsonNode.Parse("""{"phase":"walArchivingFailing"}""");
-        Assert.Equal(
-            BackupProviderPhase.Running,
-            Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
-                    await provider.RunAsync(operation, default))
-                .Value.Phase);
+        Assert.IsType<BackupCopyInProgress>((await provider.RunAsync(operation, default)).Value);
         native["status"]
             = JsonNode.Parse("""{"phase":"failed","error":"requested plugin is not available: details"}""");
-        var failure = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.RunAsync(operation, default));
-        Assert.Equal("backup-plugin-unavailable", failure.Code);
-        Assert.False(failure.Retryable);
+        Assert.IsType<BackupPluginUnavailable>((await provider.RunAsync(operation, default)).Value);
+    }
+
+    [Fact]
+    public async Task Existing_copy_is_observed_after_archive_detaches_without_projection_or_new_writes()
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        var observed = new ObserveBackupCopyRequest("operation", Archive);
+        Assert.IsType<BackupCopyMissing>((await provider.ObserveCopyAsync(observed, default)).Value);
+        Assert.Equal(0, api.Writes);
+        await provider.ApplyScheduleAsync(
+            new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
+            default);
+        Assert.IsType<BackupCopyInProgress>(
+            (await provider.RunAsync(new("operation", Archive, Projection), default)).Value);
+        api.Get("clusters", "pg-service")["spec"]!["plugins"] = new JsonArray();
+        var writes = api.Writes;
+        Assert.IsType<BackupCopyInProgress>((await Provider(client).ObserveCopyAsync(observed, default)).Value);
+        var backup = api.Get("backups", "backup-operation");
+        backup["status"] = JsonNode.Parse("""{"phase":"completed","backupId":"20261112T140000"}""");
+        Assert.Equal(
+            "20261112T140000",
+            Assert.IsType<BackupCopyCompleted>((await Provider(client).ObserveCopyAsync(observed, default)).Value)
+                .BackupId);
+        Assert.Equal(writes, api.Writes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Copy_observation_rejects_wrong_native_owner_or_incomplete_terminal_status(bool missingBackupId)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var provider = Provider(client);
+        await provider.ApplyScheduleAsync(
+            new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
+            default);
+        await provider.RunAsync(new("operation", Archive, Projection), default);
+        var backup = api.Get("backups", "backup-operation");
+        if (missingBackupId)
+            backup["status"] = JsonNode.Parse("""{"phase":"completed"}""");
+        else
+            backup["metadata"]!["ownerReferences"]![0]!["uid"] = "foreign-cluster";
+        var writes = api.Writes;
+        var observed = await provider.ObserveCopyAsync(new("operation", Archive), default);
+        if (missingBackupId)
+            Assert.IsType<BackupStatusUnreadable>(observed.Value);
+        else
+            Assert.IsType<BackupNativeOwnershipConflict>(observed.Value);
+        Assert.Equal(writes, api.Writes);
     }
 
     [Theory]
