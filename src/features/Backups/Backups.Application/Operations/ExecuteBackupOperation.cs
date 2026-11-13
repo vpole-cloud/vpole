@@ -48,6 +48,7 @@ public sealed class ExecuteBackupOperation(
             logger,
             operation.Origin,
             tenantId,
+            operation.PolicyId,
             operationId,
             () => ExecuteClaimedAsync(operation, lockId, ct),
             ct);

@@ -10,6 +10,7 @@ internal static class BackupAttemptDiagnostics
         ILogger logger,
         BackupExecutionOrigin origin,
         string tenantId,
+        string policyId,
         string identity,
         Func<Task> attempt,
         CancellationToken ct)
@@ -19,6 +20,7 @@ internal static class BackupAttemptDiagnostics
             new Dictionary<string, object>
             {
                 ["TenantId"] = tenantId,
+                ["BackupPolicyId"] = policyId,
                 ["BackupWorkId"] = identity,
                 ["TraceId"] = origin.TraceId,
                 ["CorrelationId"] = origin.CorrelationId,

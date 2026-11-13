@@ -50,6 +50,7 @@ public sealed class ObserveBackupArchiveHistory(
             logger,
             claimed.History.ExecutionOrigin,
             tenantId,
+            claimed.PolicyId,
             archiveId,
             () => ExecuteClaimedAsync(claimed, lockId, ct),
             ct);
