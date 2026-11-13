@@ -4,13 +4,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.Core.Multitenancy;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
 
-namespace Pole.Features.Backups.Application.Endpoints;
+namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
 public sealed record GetBackupPolicyRequest(
     [FromTenantHeader] string TenantId,

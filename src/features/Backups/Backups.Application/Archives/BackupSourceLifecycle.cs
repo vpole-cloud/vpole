@@ -1,4 +1,3 @@
-using MassTransit;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Configuration;
@@ -6,15 +5,7 @@ using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceGroups.Events;
 
-namespace Pole.Features.Backups.Application.Execution;
-
-public sealed class DetachDeletedBackupSource(
-    BackupSourceLifecycle lifecycle
-) : IConsumer<ResourceUnregisteredEvent>
-{
-    public Task Consume(ConsumeContext<ResourceUnregisteredEvent> context) =>
-        lifecycle.RetireAsync(context.Message, context.CancellationToken);
-}
+namespace Pole.Features.Backups.Application.Archives;
 
 public sealed class BackupSourceLifecycle(
     IMongoCollection<BackupPolicy> policies,

@@ -4,7 +4,7 @@ using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Events;
 
-namespace Pole.Features.Backups.Application.Execution;
+namespace Pole.Features.Backups.Application.Consumers;
 
 public sealed class FinalizeProjectionPlacement(
     MongoRunTransaction transactions,

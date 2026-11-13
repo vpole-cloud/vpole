@@ -13,7 +13,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
 
-namespace Pole.Features.Backups.Application.Endpoints;
+namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
 public sealed record CreateBackupPolicyBody(
     string Name,

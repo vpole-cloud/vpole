@@ -1,4 +1,8 @@
 using Microsoft.AspNetCore.Routing;
+using Pole.Features.Backups.Application.Endpoints.Archives;
+using Pole.Features.Backups.Application.Endpoints.Destinations;
+using Pole.Features.Backups.Application.Endpoints.Operations;
+using Pole.Features.Backups.Application.Endpoints.Policies;
 
 namespace Pole.Features.Backups.Application.Endpoints;
 
