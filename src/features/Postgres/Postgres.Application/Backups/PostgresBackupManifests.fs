@@ -28,24 +28,24 @@ module PostgresBackupManifests =
                 kind = kind
                 metadata = {| name = name
                               ``namespace`` = archive.Placement.NamespaceName
-                              labels = dict ((PostgresBackupNames.ArchiveLabel, archive.ArchiveId) :: sourceLabels archive) |}
+                              labels = dict ((PostgresBackupNames.ArchiveLabel, archive.Location.ArchiveId) :: sourceLabels archive) |}
                 spec = spec |}
 
-    let store (archive: BackupArchiveContext) (retention: int option) =
-        let key k = {| name = archive.NativeCredentialName; key = k |}
-        let path = ("s3://" + archive.Bucket + "/" + archive.Prefix.Trim('/')).TrimEnd('/')
+    let store (archive: BackupArchiveContext) (projection: BackupCredentialProjection) (retention: int option) =
+        let key k = {| name = projection.KubernetesName; key = k |}
+        let path = ("s3://" + archive.Location.Storage.Bucket + "/" + archive.Location.Storage.Prefix.Trim('/')).TrimEnd('/')
         let config =
             {| destinationPath = path
-               endpointURL = archive.Endpoint
-               s3Credentials = {| accessKeyId = key archive.AccessKeyIdKey; secretAccessKey = key archive.SecretAccessKeyKey |} |}
+               endpointURL = archive.Location.Storage.Endpoint
+               s3Credentials = {| accessKeyId = key projection.AccessKeyIdKey; secretAccessKey = key projection.SecretAccessKeyKey |} |}
         let spec = node {| configuration = config |}
         retention |> Option.iter (fun days -> spec["retentionPolicy"] <- node $"{days}d")
-        resource PostgresBackupNames.StorageGroup "ObjectStore" (PostgresBackupNames.objectStore archive.ArchiveId) archive spec
+        resource PostgresBackupNames.StorageGroup "ObjectStore" (PostgresBackupNames.objectStore archive.Location.ArchiveId) archive spec
 
     let walPlugin (archive: BackupArchiveContext) =
         node {| name = PostgresBackupNames.PluginName
                 isWALArchiver = true
-                parameters = {| barmanObjectName = PostgresBackupNames.objectStore archive.ArchiveId; serverName = archive.ServerName |} |}
+                parameters = {| barmanObjectName = PostgresBackupNames.objectStore archive.Location.ArchiveId; serverName = archive.Location.ServerName |} |}
 
     let private backupSpec archive =
         node {| cluster = {| name = clusterName archive |}
@@ -62,7 +62,7 @@ module PostgresBackupManifests =
         spec["schedule"] <- node ("0 " + UtcCronSchedule.Parse(policy.CronUtc).ToCanonicalExpression())
         spec["suspend"] <- node policy.Suspended
         spec["backupOwnerReference"] <- node "self"
-        withOwner (resource PostgresBackupNames.Group "ScheduledBackup" (PostgresBackupNames.scheduledBackup archive.ArchiveId) archive spec) archive clusterUid
+        withOwner (resource PostgresBackupNames.Group "ScheduledBackup" (PostgresBackupNames.scheduledBackup archive.Location.ArchiveId) archive spec) archive clusterUid
 
     let backup (request: BackupCopyRequest) (clusterUid: string) =
         withOwner

@@ -1,29 +1,28 @@
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
-using k8s;
+using Microsoft.FSharp.Core;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.DeploymentTargets.Contracts;
 using Pole.Features.Postgres.Application.Backups;
+using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Domain;
+using Pole.Features.ResourceDeployments.Contracts;
 using Xunit;
+using k8s;
 
 namespace Pole.Features.Postgres.Tests;
 
 public sealed class PostgresBackupReconciliationTests
 {
     private static readonly BackupArchiveContext Archive = new(
-        "archive-a",
+        new("archive-a", "server", new("https://s3.invalid", "bucket", "p")),
         new("tenant", "pole/postgresql", "service"),
         new("17", 10, 1, 1),
-        new("group", "scope", "target", "cell", "ns", "deployment", "storage", 1, "compute", 1),
-        "https://s3.invalid",
-        "bucket",
-        "p",
-        "server",
-        "projection",
-        "access",
-        "secret");
+        new("group", "scope", "target", "cell", "ns", "deployment", "storage", 1, "compute", 1));
+
+    private static readonly BackupCredentialProjection Projection = new("projection", "access", "secret");
 
     private static readonly BackupSchedule Daily = new("5 2 * * *", false, 7);
 
@@ -33,24 +32,33 @@ public sealed class PostgresBackupReconciliationTests
         using var api = new NativeApi();
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
         var provider = Provider(client);
-        var second = Archive with { ArchiveId = "archive-b", ServerName = "second" };
-        await Applied(new("policy", Archive, Daily, 1));
-        await Applied(new("policy", second, Daily with { RetentionDays = 14 }, 2));
+        var second = Archive with
+        {
+            Location = Archive.Location with { ArchiveId = "archive-b", ServerName = "second" }
+        };
+        await Applied(new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1));
+        await Applied(
+            new("policy", second, new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection), 2));
         var old = api.Get("scheduledbackups", "schedule-archive-a");
         Assert.True(old["spec"]!["suspend"]!.GetValue<bool>());
         var writes = api.Writes;
-        await Applied(new("policy", second, Daily with { RetentionDays = 14 }, 2));
+        await Applied(
+            new("policy", second, new ConfigureBackupPolicy(Daily with { RetentionDays = 14 }, Projection), 2));
         Assert.Equal(writes, api.Writes);
         Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.ApplyScheduleAsync(new("policy", Archive, Daily, 1), default));
+            await provider.ApplyScheduleAsync(
+                new("policy", Archive, new ConfigureBackupPolicy(Daily, Projection), 1),
+                default));
         Assert.Equal(writes, api.Writes);
-        await Applied(new("policy", second, null, 3));
+        await Applied(new("policy", second, new StopBackupPolicy(), 3));
         Assert.Empty(api.Get("clusters", "pg-service")["spec"]!["plugins"]!.AsArray());
-        var third = Archive with { ArchiveId = "archive-c" };
-        await Applied(new("replacement", third, Daily, 1));
+        var third = Archive with { Location = Archive.Location with { ArchiveId = "archive-c" } };
+        await Applied(new("replacement", third, new ConfigureBackupPolicy(Daily, Projection), 1));
         writes = api.Writes;
         Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
-            await provider.ApplyScheduleAsync(new("policy", second, Daily, 2), default));
+            await provider.ApplyScheduleAsync(
+                new("policy", second, new ConfigureBackupPolicy(Daily, Projection), 2),
+                default));
         Assert.Equal(writes, api.Writes);
 
         async Task Applied(ApplyBackupScheduleRequest request) =>
@@ -63,8 +71,11 @@ public sealed class PostgresBackupReconciliationTests
     {
         using var api = new NativeApi();
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
-        await Provider(client).ApplyScheduleAsync(new("policy", Archive, Daily with { Suspended = true }, 1), default);
-        var operation = new BackupCopyRequest("operation", Archive);
+        await Provider(client)
+            .ApplyScheduleAsync(
+                new("policy", Archive, new ConfigureBackupPolicy(Daily with { Suspended = true }, Projection), 1),
+                default);
+        var operation = new BackupCopyRequest("operation", Archive, Projection);
         var pending = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
             await Provider(client).RunAsync(operation, default));
         Assert.Equal(BackupProviderPhase.Running, pending.Value.Phase);
@@ -84,8 +95,12 @@ public sealed class PostgresBackupReconciliationTests
         using var api = new NativeApi { StandbyHasSidecar = false };
         using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
         var provider = Provider(client);
-        var desired = new ApplyBackupScheduleRequest("policy", Archive, Daily, 1);
-        var operation = new BackupCopyRequest("operation", Archive);
+        var desired = new ApplyBackupScheduleRequest(
+            "policy",
+            Archive,
+            new ConfigureBackupPolicy(Daily, Projection),
+            1);
+        var operation = new BackupCopyRequest("operation", Archive, Projection);
         var waiting = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
             await provider.ApplyScheduleAsync(desired, default));
         Assert.Equal(BackupProviderPhase.Running, waiting.Value.Phase);
@@ -116,6 +131,128 @@ public sealed class PostgresBackupReconciliationTests
             await provider.RunAsync(operation, default));
         Assert.Equal("backup-plugin-unavailable", failure.Code);
         Assert.False(failure.Retryable);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_observation_accepts_the_exact_selected_copy_or_time(bool byTime)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var (provider, request) = RecoverySubject(api, client, byTime);
+        var result = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Success>(
+            await provider.RestoreAsync(request, default));
+        Assert.Equal(BackupProviderPhase.Succeeded, result.Value.Phase);
+        Assert.Equal(0, api.Writes);
+    }
+
+    [Theory]
+    [InlineData("origin", "restore-identity-conflict")]
+    [InlineData("placement", "restore-placement-changed")]
+    [InlineData("ownership", "restore-identity-conflict")]
+    [InlineData("target", "restore-target-mismatch")]
+    public async Task Recovery_observation_rejects_mismatched_authority_before_reporting_success(
+        string fault,
+        string expected)
+    {
+        using var api = new NativeApi();
+        using var client = new Kubernetes(new KubernetesClientConfiguration { Host = "http://test.invalid" }, api);
+        var (provider, request) = RecoverySubject(api, client, false, fault);
+        var result = Assert.IsType<BackupProviderResult<BackupProviderProgress>.Failure>(
+            await provider.RestoreAsync(request, default));
+        Assert.Equal(expected, result.Code);
+        Assert.False(result.Retryable);
+        Assert.Equal(0, api.Writes);
+    }
+
+    private static (IBackupProvider Provider, RestoreBackupRequest Request) RecoverySubject(
+        NativeApi api,
+        IKubernetes client,
+        bool byTime,
+        string fault = "")
+    {
+        var time = DateTimeOffset.Parse("2026-11-12T14:00:00.123456Z");
+        const string backupId = "20261112T140000";
+        BackupRecoveryTarget selected
+            = byTime ? new BackupTimeRecoveryTarget(time) : new BackupCopyRecoveryTarget(backupId);
+        PostgresRecoveryTarget persistedTarget = byTime
+            ? new PostgresTimeRecoveryTarget(time.UtcDateTime)
+            : new PostgresCopyRecoveryTarget(backupId);
+        var origin = new PostgresRecoveryOrigin(
+            fault == "origin" ? "another-operation" : "restore-operation",
+            Archive.Location.ArchiveId,
+            Archive.Location.ServerName,
+            persistedTarget);
+        var created = PostgresCluster.Create(
+            "tenant",
+            "restored",
+            "group",
+            17,
+            "storage",
+            new CreatePostgresClusterOptions(FSharpOption<string>.Some("service"), 1, 10));
+        var cluster = new PostgresCluster(
+            created.Id,
+            created.TenantId,
+            created.Name,
+            created.GroupId,
+            new PostgresClusterSpec(1, 10, "storage", 17, new RecoveryPostgresBootstrap(origin)),
+            created.Revision,
+            created.Lifecycle,
+            created.Provisioning,
+            created.PlanningFence);
+        var deployment = new PlacementSummaryDto(
+            "restored-deployment",
+            "scope",
+            fault == "placement" ? "another-cell" : "cell",
+            "target",
+            1,
+            1,
+            ResourceDeploymentStatus.Applied,
+            null,
+            new(new("compute", 1), "Database", new(250, 256), new(500, 512), []),
+            [],
+            1,
+            1,
+            null,
+            1,
+            ResourceDeploymentDesiredOperation.Apply,
+            new("None", "Ready", "Test placement", DateTime.UtcNow));
+        LoadPostgresClusterById load = (
+            tenant, resource,
+            _) =>
+        {
+            Assert.Equal(cluster.TenantId, tenant);
+            Assert.Equal(cluster.Id, resource);
+            return Task.FromResult(FSharpOption<PostgresCluster>.Some(cluster));
+        };
+        LoadResourceDeployment loadPlacement = (_, _) => Task.FromResult<PlacementSummaryDto?>(deployment);
+        IBackupProvider provider = new PostgresBackupProvider(
+            new Clients(client),
+            load,
+            loadPlacement,
+            null!,
+            new PostgresSettings(),
+            null!);
+        var native = api.Get("clusters", "pg-service");
+        native["metadata"]!["labels"]!["pole.io/resource-deployment-id"]
+            = fault == "ownership" ? "foreign-deployment" : deployment.DeploymentId;
+        var target = byTime
+            ? new JsonObject { ["targetTime"] = time.ToString("O") }
+            : new JsonObject
+                { ["backupID"] = fault == "target" ? "another-backup" : backupId, ["targetImmediate"] = true };
+        native["spec"]!["bootstrap"] = new JsonObject
+        {
+            ["recovery"] = new JsonObject { ["source"] = "origin", ["recoveryTarget"] = target },
+        };
+        var archive = Archive with { Source = Archive.Source with { ResourceId = "original-source" } };
+        return (provider,
+            new RestoreBackupRequest(
+                "restore-operation",
+                archive,
+                Projection,
+                new RestoreBackupResource(cluster.Id, cluster.Name, null),
+                selected));
     }
 
     private static IBackupProvider Provider(IKubernetes client) => new PostgresBackupProvider(

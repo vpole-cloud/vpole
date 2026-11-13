@@ -46,17 +46,17 @@ type PostgresBackupProvider
         task {
             let p = r.Archive.Placement
             let configuration =
-                { Name = r.Name
+                { Name = r.Resource.Name
                   GroupId = p.ResourceGroupId
                   Version = version
                   Instances = Some r.Archive.Service.Instances
-                  Storage = Some(r.StorageGiB.GetValueOrDefault(r.Archive.Service.StorageGiB))
+                  Storage = Some(r.Resource.StorageGiB.GetValueOrDefault(r.Archive.Service.StorageGiB))
                   StorageProfileId = p.StorageProfileId
                   ComputeProfileId = Some p.ComputeProfileId
                   Placement = Some(PlacementRequest(p.IsolationScopeId, p.DeploymentTargetId)) }
             let request =
                 { TenantId = r.Archive.Source.TenantId
-                  ResourceId = r.NewResourceId
+                  ResourceId = r.Resource.Id
                   Configuration = configuration
                   Authority =
                     PostgresCreationAuthority.Recovery(
@@ -70,7 +70,7 @@ type PostgresBackupProvider
             | PostgresCreationOutcome.Rejected(CreateNameAlreadyExists _)
             | PostgresCreationOutcome.Rejected(CreateState PostgresClusterRestoreTargetAlreadyCreated) ->
                 // A lease may expire while a second worker is completing the transaction.
-                let! winner = load.Invoke(request.TenantId,r.NewResourceId,ct)
+                let! winner = load.Invoke(request.TenantId,r.Resource.Id,ct)
                 match winner with
                 | Some cluster when
                     match cluster.Spec.Bootstrap with
@@ -95,62 +95,98 @@ type PostgresBackupProvider
                 return BackupNative.fail code false
         }
 
-    let restoredStatus (client: IKubernetes) (r: RestoreBackupRequest) (cluster: PostgresCluster) ct =
+    let restoredStatus (client: IKubernetes) (request: RestoreBackupRequest) (cluster: PostgresCluster) ct =
         task {
-            let archive = r.Archive
-            let p = archive.Placement
+            let archive = request.Archive
+            let sourcePlacement = archive.Placement
             let originMatches =
                 match cluster.Spec.Bootstrap with
                 | :? RecoveryPostgresBootstrap as recovery ->
                     let origin = recovery.Origin
                     let targetMatches =
-                        match origin.Target with
-                        | :? PostgresCopyRecoveryTarget as copy ->
-                            not r.TargetTime.HasValue && copy.BackupId = r.BackupId
-                        | :? PostgresTimeRecoveryTarget as time ->
-                            r.TargetTime.HasValue && time.TargetTimeUtc = r.TargetTime.Value.UtcDateTime
+                        match origin.Target, request.Target with
+                        | (:? PostgresCopyRecoveryTarget as copy), (:? BackupCopyRecoveryTarget as selected) ->
+                            copy.BackupId = selected.BackupId
+                        | (:? PostgresTimeRecoveryTarget as time), (:? BackupTimeRecoveryTarget as selected) ->
+                            time.TargetTimeUtc = selected.TargetTime.UtcDateTime
                         | _ -> false
-                    origin.OperationId = r.OperationId && origin.ArchiveId = archive.ArchiveId
-                    && origin.ServerName = archive.ServerName && targetMatches
+                    origin.OperationId = request.OperationId
+                    && origin.ArchiveId = archive.Location.ArchiveId
+                    && origin.ServerName = archive.Location.ServerName
+                    && targetMatches
                 | _ -> false
+
             if not originMatches then
                 BackupNative.fail "restore-identity-conflict" false
-            let! target = placement.Invoke(LoadResourceDeploymentRequest(cluster.TenantId,resourceType,cluster.Id),ct)
-            if isNull target || target.RuntimeCellId <> p.RuntimeCellId || target.IsolationScopeId <> p.IsolationScopeId
-               || target.DeploymentTargetId <> p.DeploymentTargetId then BackupNative.fail "restore-placement-changed" false
+
+            let! target =
+                placement.Invoke(LoadResourceDeploymentRequest(cluster.TenantId, resourceType, cluster.Id), ct)
+            if isNull target || target.RuntimeCellId <> sourcePlacement.RuntimeCellId
+               || target.IsolationScopeId <> sourcePlacement.IsolationScopeId
+               || target.DeploymentTargetId <> sourcePlacement.DeploymentTargetId then
+                BackupNative.fail "restore-placement-changed" false
+
             let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
-            let! native = BackupNative.get client PostgresBackupNames.Group p.NamespaceName "clusters" name ct
-            if isNull native then return running
+            let! native =
+                BackupNative.get client PostgresBackupNames.Group sourcePlacement.NamespaceName "clusters" name ct
+            if isNull native then
+                return running
             else
-                if not (BackupNative.labelsMatch native
-                            ["pole.io/tenant-id",cluster.TenantId; "pole.io/resource-id",cluster.Id
-                             "pole.io/runtime-cell-id",target.RuntimeCellId; "pole.io/resource-deployment-id",target.DeploymentId]) then
+                let labels =
+                    [ "pole.io/tenant-id", cluster.TenantId
+                      "pole.io/resource-id", cluster.Id
+                      "pole.io/runtime-cell-id", target.RuntimeCellId
+                      "pole.io/resource-deployment-id", target.DeploymentId ]
+                if not (BackupNative.labelsMatch native labels) then
                     BackupNative.fail "restore-identity-conflict" false
-                let recovery = BackupNative.field native ["spec";"bootstrap";"recovery"]
+
+                let nativeRecovery = BackupNative.field native ["spec"; "bootstrap"; "recovery"]
                 let targetMatches =
-                    if r.TargetTime.HasValue then
-                        BackupNative.timestamp recovery ["recoveryTarget";"targetTime"] = r.TargetTime
-                    else
-                        BackupNative.value recovery ["recoveryTarget";"backupID"] = r.BackupId
-                        && String.Equals(BackupNative.value recovery ["recoveryTarget";"targetImmediate"],"true",StringComparison.OrdinalIgnoreCase)
-                if not targetMatches || BackupNative.value recovery ["source"] <> "origin" then
+                    match request.Target with
+                    | :? BackupTimeRecoveryTarget as time ->
+                        let actualTime = BackupNative.timestamp nativeRecovery ["recoveryTarget"; "targetTime"]
+                        actualTime = Nullable(time.TargetTime.ToUniversalTime())
+                    | :? BackupCopyRecoveryTarget as copy ->
+                        BackupNative.value nativeRecovery ["recoveryTarget"; "backupID"] = copy.BackupId
+                        && String.Equals(
+                            BackupNative.value nativeRecovery ["recoveryTarget"; "targetImmediate"],
+                            "true", StringComparison.OrdinalIgnoreCase)
+                    | _ -> invalidOp "Unsupported backup recovery target."
+                if not targetMatches || BackupNative.value nativeRecovery ["source"] <> "origin" then
                     BackupNative.fail "restore-target-mismatch" false
+
                 let ready = BackupNative.condition native "Ready"
-                let primary = BackupNative.value native ["status";"currentPrimary"]
-                if target.Status = ResourceDeploymentStatus.Applied && target.DesiredGeneration = target.ObservedGeneration
-                   && not (String.IsNullOrEmpty primary) && BackupNative.value ready ["status"] = "True" then
-                    return BackupProviderProgress(BackupProviderPhase.Succeeded,r.BackupId)
+                let primary = BackupNative.value native ["status"; "currentPrimary"]
+                if target.Status = ResourceDeploymentStatus.Applied
+                   && target.DesiredGeneration = target.ObservedGeneration
+                   && not (String.IsNullOrEmpty primary)
+                   && BackupNative.value ready ["status"] = "True" then
+                    let backupId =
+                        match request.Target with
+                        | :? BackupCopyRecoveryTarget as copy -> copy.BackupId
+                        | :? BackupTimeRecoveryTarget -> null
+                        | _ -> invalidOp "Unsupported backup recovery target."
+                    return BackupProviderProgress(BackupProviderPhase.Succeeded, backupId)
                 else
-                    let! jobs = client.BatchV1.ListNamespacedJobAsync(p.NamespaceName,labelSelector=("cnpg.io/cluster=" + name + ",cnpg.io/jobRole=full-recovery"),cancellationToken=ct)
+                    let! jobs =
+                        client.BatchV1.ListNamespacedJobAsync(
+                            sourcePlacement.NamespaceName,
+                            labelSelector = ("cnpg.io/cluster=" + name + ",cnpg.io/jobRole=full-recovery"),
+                            cancellationToken = ct)
                     let failed =
                         jobs.Items |> Seq.exists (fun job ->
                             not (isNull job.Metadata.OwnerReferences)
-                            && (job.Metadata.OwnerReferences |> Seq.exists (fun owner -> owner.Uid = BackupNative.uid native && owner.Kind = "Cluster"))
+                            && (job.Metadata.OwnerReferences |> Seq.exists (fun owner ->
+                                owner.Uid = BackupNative.uid native && owner.Kind = "Cluster"))
                             && not (isNull job.Status)
                             && not (isNull job.Status.Conditions)
-                            && (job.Status.Conditions |> Seq.exists (fun c -> (c.Type = "Failed" || c.Type = "FailureTarget") && c.Status = "True")))
-                    if failed then return BackupNative.fail "restore-recovery-failed" false
-                    else return running
+                            && (job.Status.Conditions |> Seq.exists (fun condition ->
+                                (condition.Type = "Failed" || condition.Type = "FailureTarget")
+                                && condition.Status = "True")))
+                    if failed then
+                        return BackupNative.fail "restore-recovery-failed" false
+                    else
+                        return running
         }
 
     interface IBackupProvider with
@@ -181,8 +217,10 @@ type PostgresBackupProvider
         member _.ApplyScheduleAsync(request,ct) =
             ProviderResult.protect (fun () -> task {
                 let! client =
-                    if isNull request.Schedule then clients.GetForCleanupAsync(request.Archive.Placement.DeploymentTargetId,ct)
-                    else clientFor request.Archive ct
+                    match request.Configuration with
+                    | :? StopBackupPolicy -> clients.GetForCleanupAsync(request.Archive.Placement.DeploymentTargetId, ct)
+                    | :? ConfigureBackupPolicy -> clientFor request.Archive ct
+                    | _ -> invalidOp "Unsupported backup policy configuration."
                 return! BackupNative.apply client request ct }) ct
 
         member _.ObserveAsync(archive,ct) =
@@ -199,24 +237,31 @@ type PostgresBackupProvider
             ProviderResult.protect (fun () -> task {
                 let archive = r.Archive
                 let! client = clientFor archive ct
-                let! existing = load.Invoke(archive.Source.TenantId,r.NewResourceId,ct)
+                let! existing = load.Invoke(archive.Source.TenantId,r.Resource.Id,ct)
                 match existing with
                 | Some cluster -> return! restoredStatus client r cluster ct
                 | None ->
-                    if r.TargetTime.HasValue && r.TargetTime.Value.UtcTicks % 10L <> 0L then
+                    let unsupportedPrecision =
+                        match r.Target with
+                        | :? BackupTimeRecoveryTarget as time -> time.TargetTime.UtcTicks % 10L <> 0L
+                        | :? BackupCopyRecoveryTarget -> false
+                        | _ -> invalidOp "Unsupported backup recovery target."
+                    if unsupportedPrecision then
                         BackupNative.fail "restore-target-time-precision-unsupported" false
-                    if r.StorageGiB.HasValue && r.StorageGiB.Value < archive.Service.StorageGiB then
+                    if r.Resource.StorageGiB.HasValue && r.Resource.StorageGiB.Value < archive.Service.StorageGiB then
                         BackupNative.fail "restore-storage-too-small" false
                     let valid,version = Int32.TryParse(archive.Service.Version)
                     if not valid || not (PostgresSettings.isSupportedVersion settings version) then
                         BackupNative.fail "restore-version-unsupported" false
-                    let! _ = BackupNative.ensureStore client archive ct
+                    let! _ = BackupNative.ensureStore client archive r.Projection ct
                     let target: PostgresRecoveryTarget =
-                        if r.TargetTime.HasValue then PostgresTimeRecoveryTarget(r.TargetTime.Value.UtcDateTime)
-                        else PostgresCopyRecoveryTarget(r.BackupId)
+                        match r.Target with
+                        | :? BackupTimeRecoveryTarget as time -> PostgresTimeRecoveryTarget(time.TargetTime.UtcDateTime)
+                        | :? BackupCopyRecoveryTarget as copy -> PostgresCopyRecoveryTarget(copy.BackupId)
+                        | _ -> invalidOp "Unsupported backup recovery target."
                     let origin =
                         { OperationId = r.OperationId
-                          ArchiveId = archive.ArchiveId
-                          ServerName = archive.ServerName
+                          ArchiveId = archive.Location.ArchiveId
+                          ServerName = archive.Location.ServerName
                           Target = target }
                     return! createRestored r origin version ct }) ct

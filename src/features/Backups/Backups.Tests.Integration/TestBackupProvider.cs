@@ -80,7 +80,7 @@ internal sealed class TestBackupProvider(
         RestoreBackupRequest request,
         CancellationToken ct)
     {
-        RestoreStorageGiB = request.StorageGiB;
+        RestoreStorageGiB = request.Resource.StorageGiB;
         var phase = CreateTarget is null
             ? await RecordDefaultTargetAsync(request, ct)
             : await CreateTarget(request, ct);
@@ -99,7 +99,7 @@ internal sealed class TestBackupProvider(
             {
                 var archive = request.Archive;
                 var recorded = await receipts(
-                    new(archive.Source.TenantId, request.OperationId, archive.ArchiveId, request.NewResourceId),
+                    new(archive.Source.TenantId, request.OperationId, archive.Location.ArchiveId, request.Resource.Id),
                     transaction.Session,
                     token);
                 Assert.Equal(RestoreTargetCreationDecision.Recorded, recorded);
@@ -107,7 +107,10 @@ internal sealed class TestBackupProvider(
                     new(
                         archive.Source.TenantId,
                         archive.Placement.ResourceGroupId,
-                        new(ResourceTypeId.Create(archive.Source.ResourceType), request.NewResourceId, request.Name)),
+                        new(
+                            ResourceTypeId.Create(archive.Source.ResourceType),
+                            request.Resource.Id,
+                            request.Resource.Name)),
                     transaction.Session,
                     token);
                 Assert.IsType<RegisteredResource>(registered.Value);

@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Providers;
@@ -64,7 +65,7 @@ public sealed class ForgetRetiredArchive(
         {
             var provider = providers.Find(selected.ResourceType);
             if (provider is null ||
-                await provider.ObserveAsync(BackupArchiveAccess.Context(selected, "", "", ""), ct) is not
+                await provider.ObserveAsync(BackupArchiveAccess.Context(selected), ct) is not
                     BackupProviderResult<BackupRuntimeObservation>.Success observation)
                 return new ArchiveObservationUnavailable();
             if (observation.Value.Runs.Any(run => run.State == BackupObservedRunState.Running))

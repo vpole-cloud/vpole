@@ -91,23 +91,27 @@ public sealed class ApplyBackupPolicy(
             effect = new Progress.Failure("unsupported-provider", false);
         else if (retiring)
             effect = await provider.ApplyScheduleAsync(
-                new(policy.Id, BackupArchiveAccess.Context(archive, "", "", ""), null, policy.Revision),
+                new(policy.Id, BackupArchiveAccess.Context(archive), new StopBackupPolicy(), policy.Revision),
                 attempt);
         else
         {
             var runtime = await access.RuntimeAsync(archive, attempt);
-            effect = runtime is BackupProviderResult<BackupArchiveContext>.Success resolved
-                ? await provider.ApplyScheduleAsync(
+            effect = runtime switch
+            {
+                BackupCredentialProjection resolved => await provider.ApplyScheduleAsync(
                     new(
                         policy.Id,
-                        resolved.Value,
-                        new(policy.Schedule, policy.Suspended, policy.RetentionDays),
+                        BackupArchiveAccess.Context(archive),
+                        new ConfigureBackupPolicy(
+                            new(policy.Schedule, policy.Suspended, policy.RetentionDays),
+                            resolved),
                         policy.Revision),
-                    attempt)
-                : new Progress.Failure("workload-credential-unavailable", true);
+                    attempt),
+                BackupArchiveProjectionUnavailable => new Progress.Failure("workload-credential-unavailable", true),
+            };
             if (effect is Progress.Success)
             {
-                var observed = await provider.ObserveAsync(BackupArchiveAccess.Context(archive, "", "", ""), attempt);
+                var observed = await provider.ObserveAsync(BackupArchiveAccess.Context(archive), attempt);
                 if (observed is BackupProviderResult<BackupRuntimeObservation>.Success observedState)
                     observation = observedState.Value;
                 else

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
@@ -125,45 +126,51 @@ public sealed class ExecuteBackupOperation(
         IBackupProvider provider,
         CancellationToken ct)
     {
-        if (operation.Kind == BackupOperationKind.Backup && !archive.Active)
+        if (operation.Work is ManualBackupWork && !archive.Active)
             return new Progress.Failure("archive-retired", false);
-        var restore = operation.Work as RestoreBackupWork;
-        var targetCreated = restore?.Execution is ProvisioningBackupRestore;
-        if (targetCreated && await loadSource(
-                new(operation.TenantId, ResourceTypeId.Create(archive.ResourceType), restore!.Resource.Id),
+        if (operation.Work is RestoreBackupWork { Execution: ProvisioningBackupRestore } restore && await loadSource(
+                new(operation.TenantId, ResourceTypeId.Create(archive.ResourceType), restore.Resource.Id),
                 ct) is null)
             return new Progress.Failure("restore-resource-deleted", false);
+
         var runtime = await access.RuntimeAsync(archive, ct);
-        if (runtime is not BackupProviderResult<BackupArchiveContext>.Success success)
-            return new Progress.Failure("workload-credential-unavailable", true);
-        switch (operation.Work)
+        return runtime switch
         {
-            case ManualBackupWork:
-                return await provider.RunAsync(new(operation.Id, success.Value), ct);
-            case RestoreBackupWork work:
-                if (!targetCreated)
-                {
-                    var invalid = await commands.VerifyTargetAsync(archive, work.Selection, ct);
-                    if (invalid is not null)
-                        return new Progress.Failure(invalid, invalid != "target-unavailable");
-                }
+            BackupCredentialProjection projection => await ExecuteWithProjectionAsync(projection),
+            BackupArchiveProjectionUnavailable => new Progress.Failure("workload-credential-unavailable", true),
+        };
 
-                var backupId = work.Selection is BackupCopySelection copy ? copy.BackupId : null;
-                DateTimeOffset? targetTime = work.Selection is BackupTimeSelection time ? time.TargetTimeUtc : null;
-                return await provider.RestoreAsync(
-                    new(
-                        operation.Id,
-                        success.Value,
-                        work.Resource.Id,
-                        work.Resource.Name,
-                        backupId,
-                        targetTime,
-                        work.Resource.StorageGiB),
-                    ct);
-            case ScheduledBackupWork:
-                throw new InvalidOperationException("Scheduled backups are observed separately.");
+        Task<Progress> ExecuteWithProjectionAsync(BackupCredentialProjection projection) => operation.Work switch
+        {
+            ManualBackupWork => provider.RunAsync(
+                new(operation.Id, BackupArchiveAccess.Context(archive), projection),
+                ct),
+            RestoreBackupWork work => RestoreAsync(work, projection),
+            ScheduledBackupWork => throw new InvalidOperationException("Scheduled backups are observed separately."),
+        };
+
+        async Task<Progress> RestoreAsync(RestoreBackupWork work, BackupCredentialProjection projection)
+        {
+            if (work.Execution is RequestedBackupRestore)
+            {
+                var invalid = await commands.VerifyTargetAsync(archive, work.Selection, ct);
+                if (invalid is not null)
+                    return new Progress.Failure(invalid, invalid != "target-unavailable");
+            }
+
+            BackupRecoveryTarget target = work.Selection switch
+            {
+                BackupCopySelection copy => new BackupCopyRecoveryTarget(copy.BackupId),
+                BackupTimeSelection time => new BackupTimeRecoveryTarget(time.TargetTimeUtc),
+            };
+            return await provider.RestoreAsync(
+                new(
+                    operation.Id,
+                    BackupArchiveAccess.Context(archive),
+                    projection,
+                    new RestoreBackupResource(work.Resource.Id, work.Resource.Name, work.Resource.StorageGiB),
+                    target),
+                ct);
         }
-
-        throw new InvalidOperationException("Unsupported backup operation.");
     }
 }

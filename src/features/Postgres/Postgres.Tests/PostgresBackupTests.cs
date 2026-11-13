@@ -1,7 +1,7 @@
 using System.Text;
 using Amazon.Runtime;
-using Amazon.S3.Model;
 using Amazon.S3;
+using Amazon.S3.Model;
 using Microsoft.FSharp.Core;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Postgres.Application.Backups;
@@ -14,22 +14,17 @@ namespace Pole.Features.Postgres.Tests;
 public sealed class PostgresBackupTests
 {
     private static readonly BackupArchiveContext Archive = new(
-        "archive",
+        new("archive", "origin", new("https://objects.invalid", "bucket", "nested/prefix")),
         new("tenant", "pole/postgresql", "service"),
         new("17", 10, 1, 1),
-        new("group", "scope", "target", "cell", "namespace", "deployment", "storage", 1, "compute", 1),
-        "https://objects.invalid",
-        "bucket",
-        "nested/prefix",
-        "origin",
-        "projected-secret",
-        "accessKey",
-        "secretKey");
+        new("group", "scope", "target", "cell", "namespace", "deployment", "storage", 1, "compute", 1));
+
+    private static readonly BackupCredentialProjection Projection = new("projected-secret", "accessKey", "secretKey");
 
     [Fact]
     public void PausedScheduleKeepsRetentionAndWalArchiving()
     {
-        var store = PostgresBackupManifests.store(Archive, FSharpOption<int>.Some(14));
+        var store = PostgresBackupManifests.store(Archive, Projection, FSharpOption<int>.Some(14));
         var config = store["spec"]!["configuration"]!;
         Assert.Equal("s3://bucket/nested/prefix", config["destinationPath"]!.GetValue<string>());
         Assert.Equal("14d", store["spec"]!["retentionPolicy"]!.GetValue<string>());
@@ -80,7 +75,7 @@ public sealed class PostgresBackupTests
     public async Task LiveCatalogReadsOnlySelectedArchiveMetadataAcrossAllPages()
     {
         using var client = new MetadataClient();
-        var items = await BarmanCatalog.readWith(client, Archive, CancellationToken.None);
+        var items = await BarmanCatalog.readWith(client, Archive.Location, CancellationToken.None);
         var entry = Assert.Single(items);
         Assert.Equal("20261112T091100", entry.BackupId);
         Assert.Equal(new DateTimeOffset(2026, 11, 12, 16, 30, 0, TimeSpan.Zero), entry.CompletedAt);
@@ -90,7 +85,7 @@ public sealed class PostgresBackupTests
 
     private sealed class MetadataClient() : AmazonS3Client(
         new AnonymousAWSCredentials(),
-        new AmazonS3Config { ServiceURL = Archive.Endpoint })
+        new AmazonS3Config { ServiceURL = Archive.Location.Storage.Endpoint })
     {
         public int Pages { get; private set; }
         public int MetadataReads { get; private set; }
@@ -99,7 +94,7 @@ public sealed class PostgresBackupTests
             ListObjectsV2Request request,
             CancellationToken ct)
         {
-            Assert.Equal(Archive.Bucket, request.BucketName);
+            Assert.Equal(Archive.Location.Storage.Bucket, request.BucketName);
             Assert.Equal("nested/prefix/origin/base/", request.Prefix);
             Assert.Equal("/", request.Delimiter);
             Assert.Equal(Pages == 0 ? null : "next", request.ContinuationToken);
@@ -115,7 +110,7 @@ public sealed class PostgresBackupTests
 
         public override Task<GetObjectResponse> GetObjectAsync(GetObjectRequest request, CancellationToken ct)
         {
-            Assert.Equal(Archive.Bucket, request.BucketName);
+            Assert.Equal(Archive.Location.Storage.Bucket, request.BucketName);
             Assert.EndsWith("/backup.info", request.Key);
             MetadataReads++;
             var text = request.Key.Contains("091100")

@@ -64,10 +64,10 @@ module BarmanCatalog =
             return UTF8Encoding(false, true).GetString(bytes.ToArray())
         }
 
-    let readWith (client: #IAmazonS3) (archive: BackupArchiveContext) ct =
+    let readWith (client: #IAmazonS3) (archive: BackupArchiveLocation) ct =
         task {
-            let prefix = String.Join('/', [| archive.Prefix.Trim('/'); archive.ServerName; "base" |] |> Array.filter (String.IsNullOrEmpty >> not)) + "/"
-            let query = ListObjectsV2Request(BucketName = archive.Bucket, Prefix = prefix, Delimiter = "/")
+            let prefix = String.Join('/', [| archive.Storage.Prefix.Trim('/'); archive.ServerName; "base" |] |> Array.filter (String.IsNullOrEmpty >> not)) + "/"
+            let query = ListObjectsV2Request(BucketName = archive.Storage.Bucket, Prefix = prefix, Delimiter = "/")
             let entries = ResizeArray<BackupCatalogEntry>()
             let mutable more = true
             while more do
@@ -78,7 +78,7 @@ module BarmanCatalog =
                             raise (InvalidDataException("InvalidBackupPrefix"))
                         let id = folder.Substring(prefix.Length).TrimEnd('/')
                         if not (validBackupId id) then raise (InvalidDataException("InvalidBackupCatalogId"))
-                        let! metadata = readMetadata client archive.Bucket (folder + "backup.info") ct
+                        let! metadata = readMetadata client archive.Storage.Bucket (folder + "backup.info") ct
                         parseEntry id metadata |> Option.iter entries.Add
                 more <- page.IsTruncated.GetValueOrDefault()
                 if more && (String.IsNullOrEmpty(page.NextContinuationToken) || page.NextContinuationToken = query.ContinuationToken) then
@@ -105,7 +105,7 @@ module BarmanCatalog =
         task {
             use deadline = CancellationTokenSource.CreateLinkedTokenSource(ct)
             deadline.CancelAfter(TimeSpan.FromSeconds(30.))
-            let endpoint = request.Archive.Endpoint
+            let endpoint = request.Archive.Storage.Endpoint
             let region = Amazon.Util.AWSSDKUtils.DetermineRegion(endpoint)
             let readRegion signingRegion =
                 task {

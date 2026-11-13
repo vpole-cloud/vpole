@@ -50,7 +50,7 @@ module internal BackupNative =
         if not (labelsMatch doc (M.sourceLabels archive)) then fail "backup-resource-ownership-conflict" false
     let ensureArchive doc archive =
         ensureSource doc archive
-        if value doc ["metadata";"labels";PostgresBackupNames.ArchiveLabel] <> archive.ArchiveId then fail "backup-resource-ownership-conflict" false
+        if value doc ["metadata";"labels";PostgresBackupNames.ArchiveLabel] <> archive.Location.ArchiveId then fail "backup-resource-ownership-conflict" false
 
     let source client (archive: BackupArchiveContext) ct =
         task {
@@ -124,13 +124,14 @@ module internal BackupNative =
                 else return current
         }
 
-    let ensureStore client archive ct = applyOwned client PostgresBackupNames.StorageGroup archive "objectstores" (M.store archive None) None ct
+    let ensureStore client archive projection ct =
+        applyOwned client PostgresBackupNames.StorageGroup archive "objectstores" (M.store archive projection None) None ct
 
     let parkSchedule client (request: ApplyBackupScheduleRequest) archiveId clusterUid ct =
         task {
             let a = request.Archive
-            let retired = BackupArchiveContext(archiveId, a.Source, a.Service, a.Placement, a.Endpoint, a.Bucket,
-                                              a.Prefix, a.ServerName, a.NativeCredentialName, a.AccessKeyIdKey, a.SecretAccessKeyKey)
+            let location = BackupArchiveLocation(archiveId, a.Location.ServerName, a.Location.Storage)
+            let retired = BackupArchiveContext(location, a.Source, a.Service, a.Placement)
             // A suspended, versioned object fences delayed creates too. CNPG garbage-collects it with its source.
             let tombstone = M.schedule retired (BackupSchedule("0 0 1 1 *",true,1)) clusterUid
             let! _ = applyOwned client PostgresBackupNames.Group retired "scheduledbackups" tombstone (Some(request,true)) ct
@@ -141,7 +142,7 @@ module internal BackupNative =
         array current ["spec";"plugins"] |> Seq.tryFind (fun p -> value p ["name"] = PostgresBackupNames.PluginName)
     let active current (archive: BackupArchiveContext) =
         plugin current |> Option.exists (fun p ->
-            value p ["parameters";"barmanObjectName"] = PostgresBackupNames.objectStore archive.ArchiveId && value p ["parameters";"serverName"] = archive.ServerName)
+            value p ["parameters";"barmanObjectName"] = PostgresBackupNames.objectStore archive.Location.ArchiveId && value p ["parameters";"serverName"] = archive.Location.ServerName)
 
     let pluginLoaded cluster =
         array cluster ["status";"pluginStatus"] |> Seq.exists (fun p -> value p ["name"] = PostgresBackupNames.PluginName)
@@ -194,11 +195,12 @@ module internal BackupNative =
         task {
             let a = request.Archive
             let! cluster = source client a ct
-            let retiring = isNull request.Schedule
+            let retiring = request.Configuration :? StopBackupPolicy
             guardRevision request cluster retiring
             let identity = uid cluster
-            if retiring then
-                do! parkSchedule client request a.ArchiveId identity ct
+            match request.Configuration with
+            | :? StopBackupPolicy ->
+                do! parkSchedule client request a.Location.ArchiveId identity ct
                 let attachedPolicy = annotation cluster policyKey
                 if attachedPolicy = request.PolicyId then
                     // The latest archive may never have attached if deletion won a race with a destination change.
@@ -207,21 +209,21 @@ module internal BackupNative =
                         let store = value p ["parameters";"barmanObjectName"]
                         if isNull store || not (store.StartsWith(PostgresBackupNames.ArchivePrefix,StringComparison.Ordinal)) then
                             fail "backup-existing-plugin-conflict" false
-                        if store <> PostgresBackupNames.objectStore a.ArchiveId then
+                        if store <> PostgresBackupNames.objectStore a.Location.ArchiveId then
                             do! parkSchedule client request (store.Substring(PostgresBackupNames.ArchivePrefix.Length)) identity ct
                     | None -> ()
                 if attachedPolicy = request.PolicyId || (isNull attachedPolicy && (plugin cluster).IsNone) then
                     let! _ = writePlugins client request cluster false ct
                     ()
                 return BackupProviderProgress(BackupProviderPhase.Succeeded,null)
-            else
+            | :? ConfigureBackupPolicy as configuration ->
                 // Check the per-archive tombstone *after* reading the Cluster's resourceVersion.
                 // An older request can neither reattach a retired archive nor re-enable its schedule.
-                let! previousSchedule = get client PostgresBackupNames.Group a.Placement.NamespaceName "scheduledbackups" (PostgresBackupNames.scheduledBackup a.ArchiveId) ct
+                let! previousSchedule = get client PostgresBackupNames.Group a.Placement.NamespaceName "scheduledbackups" (PostgresBackupNames.scheduledBackup a.Location.ArchiveId) ct
                 if not (isNull previousSchedule) then
                     ensureArchive previousSchedule a
                     guardRevision request previousSchedule false
-                let store = M.store a (Some request.Schedule.RetentionDays)
+                let store = M.store a configuration.Projection (Some configuration.Schedule.RetentionDays)
                 let! _ = applyOwned client PostgresBackupNames.StorageGroup a "objectstores" store (Some(request,false)) ct
                 match plugin cluster with
                 | Some p ->
@@ -229,17 +231,18 @@ module internal BackupNative =
                     let old = value p ["parameters";"barmanObjectName"]
                     if isNull old || not (old.StartsWith(PostgresBackupNames.ArchivePrefix,StringComparison.Ordinal)) then
                         fail "backup-existing-plugin-conflict" false
-                    if old <> PostgresBackupNames.objectStore a.ArchiveId then
+                    if old <> PostgresBackupNames.objectStore a.Location.ArchiveId then
                         do! parkSchedule client request (old.Substring(PostgresBackupNames.ArchivePrefix.Length)) identity ct
                 | None -> ()
                 let! updated = writePlugins client request cluster true ct
                 let! ready = backupPodsReady client a updated ct
-                let desired = request.Schedule
+                let desired = configuration.Schedule
                 let scheduled = M.schedule a (BackupSchedule(desired.CronUtc,desired.Suspended || not ready,desired.RetentionDays)) identity
                 let! _ = applyOwned client PostgresBackupNames.Group a "scheduledbackups" scheduled (Some(request,false)) ct
                 let archiving = value (condition updated "ContinuousArchiving") ["status"]
                 let phase = if ready && archiving = "True" then BackupProviderPhase.Succeeded else BackupProviderPhase.Running
                 return BackupProviderProgress(phase,null)
+            | _ -> return invalidOp "Unsupported backup policy configuration."
         }
 
     let private state doc =
@@ -292,9 +295,9 @@ module internal BackupNative =
         task {
             let ns = archive.Placement.NamespaceName
             let! cluster = source client archive ct
-            let scheduleName = PostgresBackupNames.scheduledBackup archive.ArchiveId
+            let scheduleName = PostgresBackupNames.scheduledBackup archive.Location.ArchiveId
             let! schedule = get client PostgresBackupNames.Group ns "scheduledbackups" scheduleName ct
-            let! store = get client PostgresBackupNames.StorageGroup ns "objectstores" (PostgresBackupNames.objectStore archive.ArchiveId) ct
+            let! store = get client PostgresBackupNames.StorageGroup ns "objectstores" (PostgresBackupNames.objectStore archive.Location.ArchiveId) ct
             if not (isNull store) then ensureArchive store archive
             let runs = ResizeArray<BackupObservedRun>()
             if not (isNull schedule) then
@@ -326,5 +329,5 @@ module internal BackupNative =
                 if String.Equals(value schedule ["spec";"suspend"],"true",StringComparison.OrdinalIgnoreCase) then Nullable()
                 else timestamp schedule ["status";"nextScheduleTime"]
             return BackupRuntimeObservation(health,timestamp wal ["lastTransitionTime"],
-                        timestamp store ["status";"serverRecoveryWindow";archive.ServerName;"lastSuccessfulBackupTime"],next,runs)
+                        timestamp store ["status";"serverRecoveryWindow";archive.Location.ServerName;"lastSuccessfulBackupTime"],next,runs)
         }

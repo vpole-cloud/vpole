@@ -3,7 +3,11 @@ using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Secrets.Contracts;
 
-namespace Pole.Features.Backups.Application.Execution;
+namespace Pole.Features.Backups.Application.Archives;
+
+public sealed record BackupArchiveProjectionUnavailable;
+
+public union ResolveBackupArchiveProjectionOutcome(BackupCredentialProjection, BackupArchiveProjectionUnavailable);
 
 public sealed class BackupArchiveAccess(
     ReadConsumerSecretValues read,
@@ -31,15 +35,11 @@ public sealed class BackupArchiveAccess(
                 "catalog-credential-unavailable",
                 false);
         return await provider.ListAsync(
-            new(
-                Context(archive, string.Empty, s.AccessKeyIdKey, s.SecretAccessKeyKey),
-                new(credentials.Values[s.AccessKeyIdKey], credentials.Values[s.SecretAccessKeyKey])),
+            new(Location(archive), new(credentials.Values[s.AccessKeyIdKey], credentials.Values[s.SecretAccessKeyKey])),
             ct);
     }
 
-    public async Task<BackupProviderResult<BackupArchiveContext>> RuntimeAsync(
-        BackupArchive archive,
-        CancellationToken ct)
+    public async Task<ResolveBackupArchiveProjectionOutcome> RuntimeAsync(BackupArchive archive, CancellationToken ct)
     {
         var s = archive.Storage;
         var result = await projections(
@@ -51,43 +51,36 @@ public sealed class BackupArchiveAccess(
                 [new(s.CredentialSecretId, s.AccessKeyIdKey), new(s.CredentialSecretId, s.SecretAccessKeyKey)]),
             ct);
         if (result is not ConsumerSecretProjectionKeys keys)
-            return new BackupProviderResult<BackupArchiveContext>.Failure("workload-credential-unavailable", true);
+            return new BackupArchiveProjectionUnavailable();
         var id = keys.Keys.Single(k => k.SourceKey == s.AccessKeyIdKey);
         var key = keys.Keys.Single(k => k.SourceKey == s.SecretAccessKeyKey);
         if (id.KubernetesName != key.KubernetesName)
-            return new BackupProviderResult<BackupArchiveContext>.Failure("workload-credential-unavailable", true);
-        return new BackupProviderResult<BackupArchiveContext>.Success(
-            Context(archive, id.KubernetesName, id.ProjectedKey, key.ProjectedKey));
+            return new BackupArchiveProjectionUnavailable();
+        return new BackupCredentialProjection(id.KubernetesName, id.ProjectedKey, key.ProjectedKey);
     }
 
-    internal static BackupArchiveContext Context(
-        BackupArchive a,
-        string native,
-        string id,
-        string key)
+    internal static BackupArchiveLocation Location(BackupArchive archive) => new(
+        archive.Id,
+        archive.ServerName,
+        new BackupObjectStorageLocation(archive.Storage.Endpoint, archive.Storage.Bucket, archive.Storage.Prefix));
+
+    internal static BackupArchiveContext Context(BackupArchive archive)
     {
-        var p = a.Placement;
+        var placement = archive.Placement;
         return new(
-            a.Id,
-            new(a.TenantId, a.ResourceType, a.ResourceId),
-            new(a.ServiceVersion, a.StorageGiB, a.Instances, a.SourceRevision),
+            Location(archive),
+            new(archive.TenantId, archive.ResourceType, archive.ResourceId),
+            new(archive.ServiceVersion, archive.StorageGiB, archive.Instances, archive.SourceRevision),
             new(
-                p.ResourceGroupId,
-                p.IsolationScopeId,
-                p.DeploymentTargetId,
-                p.RuntimeCellId,
-                p.NamespaceName,
-                p.SourceDeploymentId,
-                p.StorageProfileId,
-                p.StorageProfileRevision,
-                p.ComputeProfileId,
-                p.ComputeProfileRevision),
-            a.Storage.Endpoint,
-            a.Storage.Bucket,
-            a.Storage.Prefix,
-            a.ServerName,
-            native,
-            id,
-            key);
+                placement.ResourceGroupId,
+                placement.IsolationScopeId,
+                placement.DeploymentTargetId,
+                placement.RuntimeCellId,
+                placement.NamespaceName,
+                placement.SourceDeploymentId,
+                placement.StorageProfileId,
+                placement.StorageProfileRevision,
+                placement.ComputeProfileId,
+                placement.ComputeProfileRevision));
     }
 }

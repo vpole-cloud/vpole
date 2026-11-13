@@ -762,7 +762,7 @@ public sealed class BackupApiTests(
                 {
                     Assert.Equal(RestoreTargetCreationDecision.Recorded, await receipts(identity, tx.Session, token));
                     var result = await registrar.RegisterAsync(
-                        new(tenant, input.ResourceGroupId, new(type, request.NewResourceId, request.Name)),
+                        new(tenant, input.ResourceGroupId, new(type, request.Resource.Id, request.Resource.Name)),
                         tx.Session,
                         token);
                     Assert.IsType<RegisteredResource>(result.Value);
