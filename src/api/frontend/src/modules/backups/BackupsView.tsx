@@ -610,7 +610,7 @@ function PolicyForm({
       }}
     >
       {changedOnServer && current && (
-        <Notice tone="warning">
+        <Notice tone="info">
           This policy changed on the server. Latest schedule: {current.schedule}; recovery window:{' '}
           {current.retentionDays} days.
           <Button
