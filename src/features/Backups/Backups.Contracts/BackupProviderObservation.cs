@@ -4,7 +4,8 @@ public sealed record BackupRuntimeObservation(
     string WalArchivingState,
     DateTimeOffset? WalStatusChangedAt,
     DateTimeOffset? LastSuccessfulBackupAt,
-    DateTimeOffset? NextScheduledBackupAt
+    DateTimeOffset? NextScheduledBackupAt,
+    bool NativeScheduleEnabled
 );
 
 public union ObserveBackupRuntimeOutcome(

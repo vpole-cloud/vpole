@@ -144,5 +144,6 @@ public sealed record BackupObservation(
     string WalArchivingStatus,
     DateTime? WalStatusChangedAt,
     DateTime? LastSuccessfulBackupAt,
-    DateTime? NextScheduledAt
+    DateTime? NextScheduledAt,
+    bool NativeScheduleEnabled
 );

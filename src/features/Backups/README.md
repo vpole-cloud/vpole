@@ -55,8 +55,9 @@ Writes to existing configuration include `expectedRevision`, in the query string
 The operations list returns `items` and `nextCursor`, ordered newest first by creation time and ID.
 Use `after` for the next page and `pageSize` (default50, maximum200). Each page remains tenant-scoped;
 new operations do not shift older pages. The console distinguishes last successful base-backup time, WAL archiving health and the next scheduled execution.
-When an applied schedule has no future timestamp from the operator, Pole calculates its expected next run
-from the UTC cron expression. Native scheduled-backup history is separate from this health read:
+When an applied schedule is currently observed as enabled but has no future operator timestamp,
+Pole calculates its expected next run from UTC cron. A native readiness/health pause, failed observation
+or interrupted claim leaves the next run empty while retaining the historical applied revision. Native scheduled-backup history is separate from this health read:
 each observation consumes at most 200 Kubernetes objects/events and fifteen seconds. It saves a paged
 LIST checkpoint, then follows WATCH changes using the opaque resource version. Expired versions start
 a new backfill; accepted history, checkpoint and continuation commit together. Backfill finalization
@@ -69,6 +70,11 @@ manual commands remain unfinished. The exact archive, policy revision and publis
 the later plugin switch/removal. Ordinary retirement continues observing already submitted copies.
 Forgetting archive metadata requires the committed quiescence receipt and finished commands; it never
 lists the whole native history synchronously.
+
+This is bounded observation of the operator. CNPG can already have passed its suspension check and
+publish a child Backup after Pole's snapshot. Configuration changes use an asynchronous handoff;
+the receipt describes the observed native set rather than a transactional scheduler acknowledgement.
+Catalog availability and the verified outcome of a restore remain separate signals.
 
 ## PostgreSQL restore
 

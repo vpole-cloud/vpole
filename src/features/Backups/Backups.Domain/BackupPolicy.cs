@@ -54,7 +54,8 @@ public sealed record BackupPolicy(
     public BackupPolicyScheduleReport ReportSchedule(DateTimeOffset now)
     {
         DateTime? next = null;
-        if (!Suspended && !Deleting && AppliedRevision == Revision)
+        if (!Suspended && !Deleting && AppliedRevision == Revision && FailureCode is null &&
+            Dispatch is AvailableBackupDispatch && Observation is { NativeScheduleEnabled: true })
             next = Observation?.NextScheduledAt is { } observed && observed > now.UtcDateTime
                 ? observed
                 : UtcCronSchedule.Parse(Schedule).FindNextOccurrence(now)?.UtcDateTime;

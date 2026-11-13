@@ -207,7 +207,8 @@ public sealed class ApplyBackupPolicy(
                             observation.WalArchivingState,
                             observation.WalStatusChangedAt?.UtcDateTime,
                             observation.LastSuccessfulBackupAt?.UtcDateTime,
-                            observation.NextScheduledBackupAt?.UtcDateTime);
+                            observation.NextScheduledBackupAt?.UtcDateTime,
+                            observation.NativeScheduleEnabled);
                         update = update.Set(p => p.Observation, state)
                             .Set(
                                 p => p.Dispatch,
@@ -218,7 +219,11 @@ public sealed class ApplyBackupPolicy(
                     else if (failureCode is not null && policy.Observation is { } previous)
                         update = update.Set(
                             p => p.Observation,
-                            previous with { WalArchivingStatus = "Unknown", NextScheduledAt = null });
+                            previous with
+                            {
+                                WalArchivingStatus = "Unknown", NextScheduledAt = null,
+                                NativeScheduleEnabled = false
+                            });
 
                     if (effect is BackupPolicyDrainRequired drain)
                     {

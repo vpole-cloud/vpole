@@ -40,7 +40,8 @@ public sealed class BackupPolicySchemaValidationMigration : IMigration
                         ("WalArchivingStatus", Text()),
                         ("WalStatusChangedAt", Nullable(Type("date"))),
                         ("LastSuccessfulBackupAt", Nullable(Type("date"))),
-                        ("NextScheduledAt", Nullable(Type("date")))))),
+                        ("NextScheduledAt", Nullable(Type("date"))),
+                        ("NativeScheduleEnabled", Type("bool"))))),
             ("Application",
                 OneOf(
                     Variant("BackupPolicyApplication", "ApplyingBackupPolicy"),

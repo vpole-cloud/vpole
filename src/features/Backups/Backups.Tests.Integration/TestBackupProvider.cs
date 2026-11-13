@@ -54,9 +54,13 @@ internal sealed class TestBackupProvider(
         new("running-uid", new NativeScheduledBackupRunning(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
     ];
 
+    public bool NativeScheduleEnabled { get; set; } = true;
+    public Func<BackupArchiveContext, ObserveBackupRuntimeOutcome>? ObserveRuntime { get; set; }
+
     public Task<ObserveBackupRuntimeOutcome> ObserveAsync(BackupArchiveContext archive, CancellationToken ct) =>
         Task.FromResult<ObserveBackupRuntimeOutcome>(
-            new BackupRuntimeObservation("Healthy", null, DateTimeOffset.UtcNow, null));
+            ObserveRuntime?.Invoke(archive) ?? new ObserveBackupRuntimeOutcome(
+                new BackupRuntimeObservation("Healthy", null, DateTimeOffset.UtcNow, null, NativeScheduleEnabled)));
 
     public Func<ReadBackupHistoryRequest, CancellationToken, Task<ReadBackupHistoryOutcome>>? ReadHistory { get; set; }
     public ReadBackupHistoryRequest? LastHistoryRequest { get; private set; }

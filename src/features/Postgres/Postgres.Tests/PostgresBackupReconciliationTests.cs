@@ -196,6 +196,9 @@ public sealed class PostgresBackupReconciliationTests
         var operation = new BackupCopyRequest("operation", Archive, Projection);
         Assert.IsType<BackupPolicyPending>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.True(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        Assert.False(
+            Assert.IsType<BackupRuntimeObservation>((await provider.ObserveAsync(Archive, default)).Value)
+                .NativeScheduleEnabled);
         var writes = api.Writes;
         Assert.IsType<BackupPluginNotReady>((await provider.RunAsync(operation, default)).Value);
         Assert.Equal(writes, api.Writes);
@@ -203,6 +206,9 @@ public sealed class PostgresBackupReconciliationTests
         api.StandbyHasSidecar = true;
         Assert.IsType<BackupPolicyApplied>((await provider.ApplyScheduleAsync(desired, default)).Value);
         Assert.False(api.Get("scheduledbackups", "schedule-archive-a")["spec"]!["suspend"]!.GetValue<bool>());
+        Assert.True(
+            Assert.IsType<BackupRuntimeObservation>((await provider.ObserveAsync(Archive, default)).Value)
+                .NativeScheduleEnabled);
         await provider.RunAsync(operation, default);
         var native = api.Get("backups", "backup-operation");
         native["status"] = JsonNode.Parse("""{"phase":"walArchivingFailing"}""");

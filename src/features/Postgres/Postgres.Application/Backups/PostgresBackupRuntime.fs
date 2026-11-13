@@ -31,12 +31,12 @@ module internal PostgresBackupRuntime =
                         | "True" -> "Healthy"
                         | "False" -> "Failing"
                         | _ -> "Unknown"
-                    let next =
-                        if String.Equals(value schedule ["spec"; "suspend"], "true", StringComparison.OrdinalIgnoreCase)
-                        then Nullable()
-                        else timestamp schedule ["status"; "nextScheduleTime"]
+                    let suspended =
+                        String.Equals(value schedule ["spec"; "suspend"], "true", StringComparison.OrdinalIgnoreCase)
+                    let enabled = not (isNull schedule) && not suspended
+                    let next = if enabled then timestamp schedule ["status"; "nextScheduleTime"] else Nullable()
                     return ObserveBackupRuntimeOutcome(BackupRuntimeObservation(
                         health, timestamp wal ["lastTransitionTime"],
                         timestamp store ["status"; "serverRecoveryWindow"; archive.Location.ServerName;
-                                         "lastSuccessfulBackupTime"], next))
+                                         "lastSuccessfulBackupTime"], next, enabled))
         }

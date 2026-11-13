@@ -404,6 +404,61 @@ public sealed class BackupHistoryLifecycleTests(
             });
     }
 
+    [Fact]
+    public async Task An_applied_policy_stops_reporting_a_next_run_while_native_scheduling_is_pending_and_recovers()
+    {
+        await using var host = await setup.StartAsync();
+        var archive = await CreateArchiveAsync(host);
+        var provider = host.Services.GetRequiredService<TestBackupProvider>();
+        var policies = mongo.Database.GetCollection<BackupPolicy>("BackupPolicies");
+        await ApplyNow();
+        var applied = await policies.Find(p => p.Id == archive.PolicyId).SingleAsync();
+        Assert.Equal(applied.Revision, applied.AppliedRevision);
+        Assert.NotNull(applied.ReportSchedule(DateTimeOffset.UtcNow).NextScheduledAt);
+        provider.Apply = _ => new BackupPolicyPending();
+        provider.NativeScheduleEnabled = false;
+        await ApplyNow();
+        var pending = await policies.Find(p => p.Id == archive.PolicyId).SingleAsync();
+        Assert.Equal(applied.Revision, pending.Revision);
+        Assert.Equal(applied.AppliedRevision, pending.AppliedRevision);
+        Assert.Null(pending.ReportSchedule(DateTimeOffset.UtcNow).NextScheduledAt);
+        provider.Apply = _ => new BackupPolicyApplied();
+        provider.NativeScheduleEnabled = true;
+        await ApplyNow();
+        var recovered = await policies.Find(p => p.Id == archive.PolicyId).SingleAsync();
+        Assert.Equal(applied.Revision, recovered.Revision);
+        Assert.NotNull(recovered.ReportSchedule(DateTimeOffset.UtcNow).NextScheduledAt);
+
+        provider.ObserveRuntime = _ => new BackupNativeOwnershipConflict();
+        await ApplyNow();
+        var unknown = await policies.Find(p => p.Id == archive.PolicyId).SingleAsync();
+        Assert.False(unknown.Observation!.NativeScheduleEnabled);
+        Assert.Null(unknown.ReportSchedule(DateTimeOffset.UtcNow).NextScheduledAt);
+        provider.ObserveRuntime = null;
+        await ApplyNow();
+        provider.ObserveRuntime = _ => throw new HttpRequestException("Simulated native read outage.");
+        await Assert.ThrowsAsync<HttpRequestException>(ApplyNow);
+        var interrupted = await policies.Find(p => p.Id == archive.PolicyId).SingleAsync();
+        Assert.IsType<ClaimedBackupDispatch>(interrupted.Dispatch);
+        Assert.True(interrupted.Observation!.NativeScheduleEnabled);
+        Assert.Null(interrupted.ReportSchedule(DateTimeOffset.UtcNow).NextScheduledAt);
+
+        async Task ApplyNow()
+        {
+            var current = await policies.Find(p => p.Id == archive.PolicyId).SingleAsync();
+            await policies.UpdateOneAsync(
+                p => p.Id == current.Id,
+                Builders<BackupPolicy>.Update.Set(
+                    p => p.Dispatch,
+                    new AvailableBackupDispatch(DateTime.UtcNow.AddSeconds(-1), current.Dispatch.Origin)));
+            await using var scope = host.Services.CreateAsyncScope();
+            Assert.True(
+                await scope.ServiceProvider
+                    .GetRequiredService<ApplyBackupPolicy>()
+                    .ExecuteAsync(Tenant, current.Id, default));
+        }
+    }
+
     private async Task<BackupArchive> CreateArchiveAsync(FeatureTestHost host)
     {
         using var client = BackupTestSetup.Client(host, Tenant);

@@ -24,7 +24,7 @@ public sealed class BackupBoundaryTests
     public void Next_run_follows_the_applied_UTC_schedule_if_operator_status_is_stale()
     {
         var now = new DateTimeOffset(2026, 3, 29, 0, 0, 0, TimeSpan.Zero);
-        var stale = new BackupObservation("Healthy", null, null, now.AddMinutes(-2).UtcDateTime);
+        var stale = new BackupObservation("Healthy", null, null, now.AddMinutes(-2).UtcDateTime, true);
         var origin = new BackupExecutionOrigin("trace", "correlation");
         var policy = BackupPolicyFactory.Create(
                 "p",
@@ -51,6 +51,14 @@ public sealed class BackupBoundaryTests
         Assert.Null((policy with { Suspended = true }).ReportSchedule(now).NextScheduledAt);
         Assert.Null(policy.BeginStopping(origin, now.UtcDateTime).ReportSchedule(now).NextScheduledAt);
         Assert.Null((policy with { AppliedRevision = 0 }).ReportSchedule(now).NextScheduledAt);
+        Assert.Null((policy with { Observation = null }).ReportSchedule(now).NextScheduledAt);
+        Assert.Null(
+            (policy with { Observation = stale with { NativeScheduleEnabled = false } }).ReportSchedule(now)
+            .NextScheduledAt);
+        Assert.Null((policy with { FailureCode = "native-read-unavailable" }).ReportSchedule(now).NextScheduledAt);
+        Assert.Null(
+            policy.Claim(new("active-read", now.AddMinutes(1).UtcDateTime)).ReportSchedule(now).NextScheduledAt);
+        Assert.Equal(1, policy.AppliedRevision);
         Assert.Null((policy with { Schedule = "0 1 31 2 *" }).ReportSchedule(now).NextScheduledAt);
     }
 
