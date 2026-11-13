@@ -25,4 +25,3 @@ type CreatePostgresClusterError =
     | CreateRegistration of ResourceRegistrationMutationError
     | CreateNameAlreadyExists of PostgresClusterNameAlreadyExists
     | CreateQuota of QuotaExecutionError
-
