@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupOperationHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Operations;
 
@@ -16,8 +18,6 @@ public sealed record GetBackupOperationRequest(
     [FromTenantHeader] string TenantId,
     [FromRoute] string Id
 ) : IMediatorRequest<GetBackupOperationOutcome>, ITenantReadOperation;
-
-public sealed record BackupOperationMissing;
 
 public union GetBackupOperationOutcome(BackupOperationDto, BackupOperationMissing);
 
@@ -27,15 +27,19 @@ public sealed class GetBackupOperationValidator : AbstractValidator<GetBackupOpe
 }
 
 public sealed class GetBackupOperationHandler(
-    BackupReads reads
+    LoadBackupOperation load
 ) : IMediatorOutcomeHandler<GetBackupOperationRequest, GetBackupOperationOutcome>
 {
     public async Task<GetBackupOperationOutcome> HandleAsync(
         GetBackupOperationRequest request,
         CancellationToken ct = default)
     {
-        var item = await reads.OperationAsync(request.TenantId, request.Id, ct);
-        return item is null ? new BackupOperationMissing() : item;
+        var result = await load.ExecuteAsync(new(request.TenantId, request.Id), ct);
+        return result switch
+        {
+            BackupOperation operation => BackupViews.From(operation),
+            BackupOperationMissing error => error,
+        };
     }
 }
 
@@ -50,7 +54,7 @@ public static class GetBackupOperationEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupOperationDto item => Results.Ok(item),
-                    BackupOperationMissing => BackupHttpProblems.From(new("not-found"))
+                    BackupOperationMissing error => MapOperationMissing(error)
                 }))
             .WithName("Backups.GetBackupOperation");
         return endpoints;

@@ -1,7 +1,7 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Endpoints;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Xunit;
@@ -62,10 +62,10 @@ public sealed class BackupBoundaryTests
     [Fact]
     public void PITR_rejects_unzoned_times_and_preserves_submillisecond_precision_in_durable_commands()
     {
-        Assert.False(BackupHttpProblems.TryTime("2026-04-01T12:22:00", out _));
-        Assert.False(BackupHttpProblems.TryTime("2026-04-01T12:22:00.1234567Z", out _));
-        Assert.True(BackupHttpProblems.TryTime("2026-04-01T12:22:00.1234560Z", out _));
-        Assert.True(BackupHttpProblems.TryTime("2026-04-01T12:22:00.000001+03:00", out var timestamp));
+        Assert.False(BackupRestoreTime.TryTime("2026-04-01T12:22:00", out _));
+        Assert.False(BackupRestoreTime.TryTime("2026-04-01T12:22:00.1234567Z", out _));
+        Assert.True(BackupRestoreTime.TryTime("2026-04-01T12:22:00.1234560Z", out _));
+        Assert.True(BackupRestoreTime.TryTime("2026-04-01T12:22:00.000001+03:00", out var timestamp));
         var time = timestamp.UtcDateTime;
         Assert.Equal(9, time.Hour);
         var op = BackupOperation.RequestRestore(

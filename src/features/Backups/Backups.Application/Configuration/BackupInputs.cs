@@ -1,6 +1,5 @@
-using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
-using Pole.Workloads;
+using Pole.Features.GitOps.Contracts;
 
 namespace Pole.Features.Backups.Application.Configuration;
 
@@ -42,17 +41,6 @@ public sealed record BackupConfigurationWrite<T>(
     T Input
 );
 
-public closed record BackupWriteResult<T>
-{
-    public sealed record Saved(
-        T Value
-    ) : BackupWriteResult<T>;
-
-    public sealed record Rejected(
-        string Code
-    ) : BackupWriteResult<T>;
-}
-
 public sealed record BackupDestinationDto(
     string Id,
     string Name,
@@ -65,7 +53,7 @@ public sealed record BackupDestinationDto(
     string AccessKeyIdKey,
     string SecretAccessKeyKey,
     long Revision,
-    Pole.Features.GitOps.Contracts.GitResourceStatus? GitOps = null
+    GitResourceStatus? GitOps = null
 )
 {
     public static BackupDestinationDto From(BackupDestination d) => new(
@@ -99,7 +87,7 @@ public sealed record BackupPolicyDto(
     DateTime? NextScheduledAt,
     DateTime? LastSuccessfulBackupAt,
     string? WalArchivingStatus,
-    Pole.Features.GitOps.Contracts.GitResourceStatus? GitOps = null
+    GitResourceStatus? GitOps = null
 );
 
 public sealed record BackupArchiveDto(

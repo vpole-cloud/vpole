@@ -1,6 +1,5 @@
 using MongoDB.Driver;
 using Pole.Database;
-using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Common;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Providers;
@@ -11,7 +10,7 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
 using Pole.Workloads;
 
-namespace Pole.Features.Backups.Application.Execution;
+namespace Pole.Features.Backups.Application.Archives;
 
 public sealed record BackupArchiveForgotten;
 

@@ -3,15 +3,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Contracts;
-using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupArchiveHttpMappings;
+using static Pole.Features.Backups.Application.Common.BackupPolicyHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Archives;
 
@@ -20,7 +20,15 @@ public sealed record ListBackupCatalogRequest(
     [FromRoute] string Id
 ) : IMediatorRequest<ListBackupCatalogOutcome>, ITenantReadOperation;
 
-public union ListBackupCatalogOutcome(BackupCatalogEntry[], BackupRequestRejected);
+public union ListBackupCatalogOutcome(
+    BackupCatalogEntry[],
+    BackupArchiveMissing,
+    BackupSourceUnsupported,
+    BackupCatalogCredentialUnavailable,
+    BackupCatalogAccessDenied,
+    BackupCatalogUnavailable,
+    BackupCatalogUnreadable,
+    BackupCatalogTimeout);
 
 public sealed class ListBackupCatalogValidator : AbstractValidator<ListBackupCatalogRequest>
 {
@@ -31,18 +39,24 @@ public sealed class ListBackupCatalogValidator : AbstractValidator<ListBackupCat
 }
 
 public sealed class ListBackupCatalogHandler(
-    BackupReads reads
+    LoadArchiveBackupCatalog catalog
 ) : IMediatorOutcomeHandler<ListBackupCatalogRequest, ListBackupCatalogOutcome>
 {
     public async Task<ListBackupCatalogOutcome> HandleAsync(
         ListBackupCatalogRequest request,
         CancellationToken ct = default)
     {
-        var answer = await reads.CatalogAsync(request.TenantId, request.Id, ct);
+        var answer = await catalog.ExecuteAsync(new(request.TenantId, request.Id), ct);
         return answer switch
         {
-            BackupWriteResult<BackupCatalogEntry[]>.Saved ok => ok.Value,
-            BackupWriteResult<BackupCatalogEntry[]>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupCatalogContents contents => contents.Entries.ToArray(),
+            BackupArchiveMissing error => error,
+            BackupSourceUnsupported error => error,
+            BackupCatalogCredentialUnavailable error => error,
+            BackupCatalogAccessDenied error => error,
+            BackupCatalogUnavailable error => error,
+            BackupCatalogUnreadable error => error,
+            BackupCatalogTimeout error => error,
         };
     }
 }
@@ -58,7 +72,13 @@ public static class ListBackupCatalogEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupCatalogEntry[] value => Results.Ok(value),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupArchiveMissing error => MapArchiveMissing(error),
+                    BackupSourceUnsupported error => MapSourceUnsupported(error),
+                    BackupCatalogCredentialUnavailable error => MapCatalogCredentialUnavailable(error),
+                    BackupCatalogAccessDenied error => MapCatalogAccessDenied(error),
+                    BackupCatalogUnavailable error => MapCatalogUnavailable(error),
+                    BackupCatalogUnreadable error => MapCatalogUnreadable(error),
+                    BackupCatalogTimeout error => MapCatalogTimeout(error),
                 }))
             .WithName("Backups.ListBackupCatalog");
         return endpoints;

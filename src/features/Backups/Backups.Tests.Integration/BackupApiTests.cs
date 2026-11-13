@@ -11,10 +11,9 @@ using Pole.Database;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Application.Archives;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Application.Consumers;
+using Pole.Features.Backups.Application.Destinations;
 using Pole.Features.Backups.Application.Endpoints.Operations;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Jobs;
 using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Application.Reconciliation;
@@ -250,8 +249,8 @@ public sealed class BackupApiTests(
         var baseline = await outbox.CountDocumentsAsync(_ => true);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             scope.ServiceProvider
-                .GetRequiredService<BackupOperations>()
-                .StartAsync(new ManualBackupCommand(tenant, "rolled-back", policy.Id), default));
+                .GetRequiredService<RequestManualBackup>()
+                .ExecuteAsync(new ManualBackupCommand(tenant, "rolled-back", policy.Id), default));
         Assert.Equal(
             0,
             await mongo.Database.GetCollection<BackupOperation>("BackupOperations").CountDocumentsAsync(_ => true));
@@ -687,7 +686,7 @@ public sealed class BackupApiTests(
             restorePath,
             new { idempotencyKey = "two", body.name, body.backupId, body.confirmed });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, removed.StatusCode);
-        provider.CatalogUnavailable = true;
+        provider.CatalogResponse = new BackupCatalogUnavailable();
         using var outage = await client.GetAsync(path);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, outage.StatusCode);
         using var forgotten = await client.DeleteAsync(archiveRoute + "?confirmed=true");
@@ -806,7 +805,7 @@ public sealed class BackupApiTests(
         await collection.UpdateOneAsync(
             o => o.Id == command.Id,
             Builders<BackupOperation>.Update.Set(o => o.Work, beforeRemoval.Retry(expired, TimeSpan.Zero, null).Work));
-        provider.CatalogUnavailable = true;
+        provider.CatalogResponse = new BackupCatalogUnavailable();
         Assert.True(await dispatch.ExecuteAsync(tenant, command.Id, default));
         var retried = await client.GetFromJsonAsync<BackupOperationDto>(Route + "/operations/" + command.Id);
         Assert.Equal("Failed", retried!.State);

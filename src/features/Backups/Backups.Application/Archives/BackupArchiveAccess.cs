@@ -7,6 +7,16 @@ namespace Pole.Features.Backups.Application.Archives;
 
 public sealed record BackupArchiveProjectionUnavailable;
 
+public sealed record BackupCatalogCredentialUnavailable;
+
+public union ReadAuthorizedBackupCatalogOutcome(
+    BackupCatalogContents,
+    BackupCatalogCredentialUnavailable,
+    BackupCatalogAccessDenied,
+    BackupCatalogUnavailable,
+    BackupCatalogUnreadable,
+    BackupCatalogTimeout);
+
 public union ResolveBackupArchiveProjectionOutcome(BackupCredentialProjection, BackupArchiveProjectionUnavailable);
 
 public sealed class BackupArchiveAccess(
@@ -14,7 +24,7 @@ public sealed class BackupArchiveAccess(
     EnsureConsumerSecretProjections projections
 )
 {
-    public async Task<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>> ListAsync(
+    public async Task<ReadAuthorizedBackupCatalogOutcome> ListAsync(
         BackupArchive archive,
         IBackupProvider provider,
         CancellationToken ct)
@@ -31,12 +41,18 @@ public sealed class BackupArchiveAccess(
                 [s.AccessKeyIdKey, s.SecretAccessKeyKey]),
             ct);
         if (access is not ConsumerSecretValues credentials)
-            return new BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure(
-                "catalog-credential-unavailable",
-                false);
-        return await provider.ListAsync(
+            return new BackupCatalogCredentialUnavailable();
+        var result = await provider.ListAsync(
             new(Location(archive), new(credentials.Values[s.AccessKeyIdKey], credentials.Values[s.SecretAccessKeyKey])),
             ct);
+        return result switch
+        {
+            BackupCatalogContents contents => contents,
+            BackupCatalogAccessDenied error => error,
+            BackupCatalogUnavailable error => error,
+            BackupCatalogUnreadable error => error,
+            BackupCatalogTimeout error => error,
+        };
     }
 
     public async Task<ResolveBackupArchiveProjectionOutcome> RuntimeAsync(BackupArchive archive, CancellationToken ct)

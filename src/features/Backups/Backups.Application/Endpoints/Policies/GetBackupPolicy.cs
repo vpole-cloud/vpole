@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupPolicyHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Policies;
 
@@ -26,7 +26,7 @@ public sealed class GetBackupPolicyValidator : AbstractValidator<GetBackupPolicy
 }
 
 public sealed class GetBackupPolicyHandler(
-    BackupReads reads
+    BackupPolicyQueries reads
 ) : IMediatorOutcomeHandler<GetBackupPolicyRequest, GetBackupPolicyOutcome>
 {
     public async Task<GetBackupPolicyOutcome> HandleAsync(
@@ -49,7 +49,7 @@ public static class GetBackupPolicyEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupPolicyDto item => Results.Ok(item),
-                    BackupPolicyMissing => BackupHttpProblems.From(new("not-found"))
+                    BackupPolicyMissing error => MapPolicyMissing(error)
                 }))
             .WithName("Backups.GetBackupPolicy");
         return endpoints;

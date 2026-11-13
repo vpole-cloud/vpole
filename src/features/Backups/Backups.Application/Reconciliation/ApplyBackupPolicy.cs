@@ -3,8 +3,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Archives;
-using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Application.Policies;
@@ -23,7 +21,6 @@ public sealed class ApplyBackupPolicy(
     IMongoCollection<BackupOperation> operations,
     BackupProviderCatalog providers,
     BackupArchiveAccess access,
-    BackupOperations commands,
     RetireBackupArchive retireArchive,
     MongoRunTransaction transactions,
     LoadRegisteredResource loadSource,
@@ -281,7 +278,7 @@ public sealed class ApplyBackupPolicy(
                 (run.FinishedAt ?? run.StartedAt).UtcDateTime,
                 policy.Dispatch.Origin);
             await operations.ReplaceOneAsync(session, filter, op, new ReplaceOptions { IsUpsert = true }, ct);
-            await commands.Changed(session, op, ct);
+            await outbox(session, [BackupWorkRequests.OperationChanged(op)], ct);
         }
     }
 }

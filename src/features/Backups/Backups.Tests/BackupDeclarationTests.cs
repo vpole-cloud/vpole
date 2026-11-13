@@ -145,9 +145,8 @@ public class BackupDeclarationTests
             ApplyBackupScheduleRequest request,
             CancellationToken ct) => throw new NotSupportedException();
 
-        public Task<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>> ListAsync(
-            ListBackupCatalogRequest request,
-            CancellationToken ct) => throw new NotSupportedException();
+        public Task<ReadBackupCatalogOutcome> ListAsync(ListBackupCatalogRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
 
         public Task<BackupProviderResult<BackupRuntimeObservation>> ObserveAsync(
             BackupArchiveContext archive,

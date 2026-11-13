@@ -17,3 +17,22 @@ public sealed record ListBackupCatalogRequest(
     BackupArchiveLocation Archive,
     BackupCatalogCredentials Credentials
 );
+
+public sealed record BackupCatalogContents(
+    IReadOnlyList<BackupCatalogEntry> Entries
+);
+
+public sealed record BackupCatalogAccessDenied;
+
+public sealed record BackupCatalogUnavailable;
+
+public sealed record BackupCatalogUnreadable;
+
+public sealed record BackupCatalogTimeout;
+
+public union ReadBackupCatalogOutcome(
+    BackupCatalogContents,
+    BackupCatalogAccessDenied,
+    BackupCatalogUnavailable,
+    BackupCatalogUnreadable,
+    BackupCatalogTimeout);

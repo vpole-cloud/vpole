@@ -3,15 +3,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MongoDB.Bson;
 using Pole.ASP.Helpers;
+using Pole.Features.Backups.Application.Archives;
+using Pole.Features.Backups.Application.Common;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupArchiveHttpMappings;
+using static Pole.Features.Backups.Application.Common.BackupOperationHttpMappings;
+using static Pole.Features.Backups.Application.Common.BackupPolicyHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Operations;
 
@@ -21,7 +25,7 @@ public sealed record RestoreBackupBody(
     string? BackupId,
     string? TargetTime,
     bool Confirmed,
-    int? StorageGiB = null
+    int? StorageGiB
 );
 
 public sealed record RestoreBackupRequest(
@@ -30,13 +34,30 @@ public sealed record RestoreBackupRequest(
     [FromBody] RestoreBackupBody Body
 ) : IMediatorRequest<RestoreBackupOutcome>, ITenantWriteOperation;
 
-public union RestoreBackupOutcome(BackupOperationDto, BackupRequestRejected);
+public union RestoreBackupOutcome(
+    BackupOperationDto,
+    BackupArchiveMissing,
+    BackupCommandIdempotencyConflict,
+    BackupRestoreStorageTooSmall,
+    BackupRestoreCopyUnavailable,
+    BackupRestoreTimeUnavailable,
+    BackupRestoreTimeUnsupported,
+    BackupSourceUnsupported,
+    BackupCatalogCredentialUnavailable,
+    BackupCatalogAccessDenied,
+    BackupCatalogUnavailable,
+    BackupCatalogUnreadable,
+    BackupCatalogTimeout,
+    BackupAdministrationRequired,
+    BackupRestoreSelectionInvalid);
+
+public sealed record BackupRestoreSelectionInvalid;
 
 public sealed class RestoreBackupValidator : AbstractValidator<RestoreBackupRequest>
 {
     public RestoreBackupValidator()
     {
-        RuleFor(r => r.Id).MongoObjectId("Source ID");
+        RuleFor(r => r.Id).MongoObjectId("Archive ID");
         RuleFor(r => r.Body).NotNull();
         When(
             r => r.Body is not null,
@@ -54,7 +75,7 @@ public sealed class RestoreBackupValidator : AbstractValidator<RestoreBackupRequ
                     .When(r => r.Body.TargetTime is null)
                     .WithMessage("Select a backup ID or a recovery time.");
                 RuleFor(r => r.Body.TargetTime)
-                    .Must(value => value is null || BackupHttpProblems.TryTime(value, out _))
+                    .Must(value => value is null || BackupRestoreTime.TryTime(value, out _))
                     .WithMessage("Use an offset timestamp with at most microsecond precision.");
                 RuleFor(r => r.Body.TargetTime)
                     .Null()
@@ -65,26 +86,28 @@ public sealed class RestoreBackupValidator : AbstractValidator<RestoreBackupRequ
 }
 
 public sealed class RestoreBackupHandler(
-    BackupOperations commands,
+    RequestBackupRestore commands,
     ITenantContextAccessor tenant
 ) : IMediatorOutcomeHandler<RestoreBackupRequest, RestoreBackupOutcome>
 {
     public async Task<RestoreBackupOutcome> HandleAsync(RestoreBackupRequest request, CancellationToken ct = default)
     {
         if (tenant.Current is not { } current || (!current.IsPlatformAdmin && !current.Role.CanManageMembers()))
-            return new BackupRequestRejected("admin-required");
-        DateTime? time = null;
-        if (request.Body.TargetTime is { } requested)
+            return new BackupAdministrationRequired();
+        BackupRestoreSelection selection;
+        switch (request.Body)
         {
-            if (!BackupHttpProblems.TryTime(requested, out var instant))
-                return new BackupRequestRejected("invalid-target-time");
-            time = instant.UtcDateTime;
+            case { BackupId: { } copy, TargetTime: null }:
+                selection = new BackupCopySelection(copy);
+                break;
+            case { BackupId: null, TargetTime: { } text } when BackupRestoreTime.TryTime(text, out var instant):
+                selection = new BackupTimeSelection(instant.UtcDateTime);
+                break;
+            default:
+                return new BackupRestoreSelectionInvalid();
         }
 
-        BackupRestoreSelection selection = time is { } target
-            ? new BackupTimeSelection(target)
-            : new BackupCopySelection(request.Body.BackupId!);
-        var answer = await commands.StartAsync(
+        var answer = await commands.ExecuteAsync(
             new RestoreArchiveCommand(
                 request.TenantId,
                 request.Body.IdempotencyKey,
@@ -95,8 +118,19 @@ public sealed class RestoreBackupHandler(
             ct);
         return answer switch
         {
-            BackupWriteResult<BackupOperation>.Saved ok => BackupViews.From(ok.Value),
-            BackupWriteResult<BackupOperation>.Rejected failure => new BackupRequestRejected(failure.Code)
+            BackupOperation operation => BackupViews.From(operation),
+            BackupArchiveMissing error => error,
+            BackupCommandIdempotencyConflict error => error,
+            BackupRestoreStorageTooSmall error => error,
+            BackupRestoreCopyUnavailable error => error,
+            BackupRestoreTimeUnavailable error => error,
+            BackupRestoreTimeUnsupported error => error,
+            BackupSourceUnsupported error => error,
+            BackupCatalogCredentialUnavailable error => error,
+            BackupCatalogAccessDenied error => error,
+            BackupCatalogUnavailable error => error,
+            BackupCatalogUnreadable error => error,
+            BackupCatalogTimeout error => error,
         };
     }
 }
@@ -112,7 +146,20 @@ public static class RestoreBackupEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupOperationDto value => Results.Accepted($"/api/v1/backups/operations/{value.Id}", value),
-                    BackupRequestRejected error => BackupHttpProblems.From(error)
+                    BackupArchiveMissing error => MapArchiveMissing(error),
+                    BackupCommandIdempotencyConflict error => MapCommandIdempotencyConflict(error),
+                    BackupRestoreStorageTooSmall error => MapRestoreStorageTooSmall(error),
+                    BackupRestoreCopyUnavailable error => MapRestoreCopyUnavailable(error),
+                    BackupRestoreTimeUnavailable error => MapRestoreTimeUnavailable(error),
+                    BackupRestoreTimeUnsupported error => MapRestoreTimeUnsupported(error),
+                    BackupSourceUnsupported error => MapSourceUnsupported(error),
+                    BackupCatalogCredentialUnavailable error => MapCatalogCredentialUnavailable(error),
+                    BackupCatalogAccessDenied error => MapCatalogAccessDenied(error),
+                    BackupCatalogUnavailable error => MapCatalogUnavailable(error),
+                    BackupCatalogUnreadable error => MapCatalogUnreadable(error),
+                    BackupCatalogTimeout error => MapCatalogTimeout(error),
+                    BackupAdministrationRequired error => MapAdministrationRequired(error),
+                    BackupRestoreSelectionInvalid error => MapRestoreSelectionInvalid(error),
                 }))
             .WithName("Backups.RestoreBackup");
         return endpoints;

@@ -127,15 +127,17 @@ module BarmanCatalog =
                                 return! readRegion hint
                             | _ -> return raise ex
                     }
-                return BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Success(items) :> BackupProviderResult<_>
+                return ReadBackupCatalogOutcome(BackupCatalogContents(items))
             with
             | :? OperationCanceledException when not ct.IsCancellationRequested ->
-                return BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure("backup-catalog-timeout", true) :> _
+                return ReadBackupCatalogOutcome(BackupCatalogTimeout())
             | :? AmazonS3Exception as ex ->
                 let denied = ex.StatusCode = HttpStatusCode.Forbidden || ex.StatusCode = HttpStatusCode.Unauthorized
-                return BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure((if denied then "backup-catalog-access-denied" else "backup-catalog-unavailable"), not denied) :> _
+                return
+                    if denied then ReadBackupCatalogOutcome(BackupCatalogAccessDenied())
+                    else ReadBackupCatalogOutcome(BackupCatalogUnavailable())
             | :? InvalidDataException | :? DecoderFallbackException ->
-                return BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure("backup-catalog-unreadable", false) :> _
+                return ReadBackupCatalogOutcome(BackupCatalogUnreadable())
             | :? HttpRequestException | :? IOException ->
-                return BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure("backup-catalog-unavailable", true) :> _
+                return ReadBackupCatalogOutcome(BackupCatalogUnavailable())
         }

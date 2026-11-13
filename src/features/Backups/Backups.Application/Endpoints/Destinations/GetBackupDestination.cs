@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Destinations;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
@@ -27,7 +26,7 @@ public sealed class GetBackupDestinationValidator : AbstractValidator<GetBackupD
 }
 
 public sealed class GetBackupDestinationHandler(
-    BackupReads reads
+    BackupDestinationQueries reads
 ) : IMediatorOutcomeHandler<GetBackupDestinationRequest, GetBackupDestinationOutcome>
 {
     public async Task<GetBackupDestinationOutcome> HandleAsync(

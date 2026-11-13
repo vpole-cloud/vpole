@@ -5,7 +5,7 @@ using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Outbox.Contracts;
 
-namespace Pole.Features.Backups.Application.Execution;
+namespace Pole.Features.Backups.Application.Operations;
 
 internal sealed class RestoreTargetCreations(
     IMongoCollection<BackupOperation> operations,

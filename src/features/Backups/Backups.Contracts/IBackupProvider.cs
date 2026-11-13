@@ -11,9 +11,7 @@ public interface IBackupProvider
 
     Task<ApplyBackupScheduleOutcome> ApplyScheduleAsync(ApplyBackupScheduleRequest request, CancellationToken ct);
 
-    Task<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>> ListAsync(
-        ListBackupCatalogRequest request,
-        CancellationToken ct);
+    Task<ReadBackupCatalogOutcome> ListAsync(ListBackupCatalogRequest request, CancellationToken ct);
 
     Task<BackupProviderResult<BackupRuntimeObservation>> ObserveAsync(
         BackupArchiveContext archive,

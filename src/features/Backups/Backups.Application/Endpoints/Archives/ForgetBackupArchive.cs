@@ -4,10 +4,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
-using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Archives;
+using Pole.Features.Backups.Application.Common;
 using Pole.Features.Core.Multitenancy;
 using Pole.Mediator;
 using Pole.Validation;
+using static Pole.Features.Backups.Application.Common.BackupArchiveHttpMappings;
 
 namespace Pole.Features.Backups.Application.Endpoints.Archives;
 
@@ -17,15 +19,13 @@ public sealed record ForgetBackupArchiveRequest(
     [FromQuery] bool Confirmed
 ) : IMediatorRequest<ForgetBackupArchiveOutcome>, ITenantWriteOperation;
 
-public sealed record ArchiveAccessForbidden;
-
 public union ForgetBackupArchiveOutcome(
     BackupArchiveForgotten,
     BackupArchiveMissing,
     BackupArchiveInUse,
     ArchivePlacementConflict,
     ArchiveObservationUnavailable,
-    ArchiveAccessForbidden);
+    BackupAdministrationRequired);
 
 public sealed class ForgetBackupArchiveValidator : AbstractValidator<ForgetBackupArchiveRequest>
 {
@@ -46,7 +46,7 @@ public sealed class ForgetBackupArchiveHandler(
         CancellationToken ct = default)
     {
         if (tenant.Current is not { } current || (!current.IsPlatformAdmin && !current.Role.CanManageMembers()))
-            return new ArchiveAccessForbidden();
+            return new BackupAdministrationRequired();
         return (await archives.ExecuteAsync(request.TenantId, request.Id, ct)) switch
         {
             BackupArchiveForgotten forgotten => forgotten,
@@ -69,11 +69,11 @@ public static class ForgetBackupArchiveEndpoint
                     CancellationToken ct) => (await mediator.Send(request, ct)).ToHttpResult(outcome => outcome switch
                 {
                     BackupArchiveForgotten => Results.NoContent(),
-                    BackupArchiveMissing => BackupHttpProblems.From(new("not-found")),
-                    BackupArchiveInUse => BackupHttpProblems.From(new("archive-in-use")),
-                    ArchiveObservationUnavailable => BackupHttpProblems.From(new("archive-observation-unavailable")),
-                    ArchivePlacementConflict => BackupHttpProblems.From(new("placement-conflict")),
-                    ArchiveAccessForbidden => BackupHttpProblems.From(new("admin-required"))
+                    BackupArchiveMissing error => MapArchiveMissing(error),
+                    BackupArchiveInUse error => MapArchiveInUse(error),
+                    ArchiveObservationUnavailable error => MapArchiveObservationUnavailable(error),
+                    ArchivePlacementConflict error => MapArchivePlacementConflict(error),
+                    BackupAdministrationRequired error => MapAdministrationRequired(error)
                 }))
             .WithName("Backups.ForgetBackupArchive");
         return endpoints;

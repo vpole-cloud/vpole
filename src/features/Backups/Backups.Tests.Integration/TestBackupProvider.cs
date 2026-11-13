@@ -24,7 +24,9 @@ internal sealed class TestBackupProvider(
     public BackupServiceSnapshot Service { get; set; } = new("17", 4, 1, 1);
     public int? RestoreStorageGiB { get; private set; }
     public Func<RestoreBackupRequest, CancellationToken, Task<BackupProviderPhase>>? CreateTarget { get; set; }
-    public bool CatalogUnavailable { get; set; }
+    public ReadBackupCatalogOutcome? CatalogResponse { get; set; }
+    private int _catalogCount;
+    public int CatalogCount => Volatile.Read(ref _catalogCount);
     private int _applyCount;
     private int _runCount;
     public int ApplyCount => Volatile.Read(ref _applyCount);
@@ -35,11 +37,11 @@ internal sealed class TestBackupProvider(
     public Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct) =>
         Task.FromResult<DescribeBackupSourceOutcome>(Service);
 
-    public Task<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>>
-        ListAsync(ListBackupCatalogRequest request, CancellationToken ct) => CatalogUnavailable
-        ? Task.FromResult<BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>>(
-            new BackupProviderResult<IReadOnlyList<BackupCatalogEntry>>.Failure("catalog-unavailable", true))
-        : Success(Catalog);
+    public Task<ReadBackupCatalogOutcome> ListAsync(ListBackupCatalogRequest request, CancellationToken ct)
+    {
+        Interlocked.Increment(ref _catalogCount);
+        return Task.FromResult(CatalogResponse ?? new BackupCatalogContents(Catalog));
+    }
 
     public Task<BackupProviderResult<BackupRuntimeObservation>> ObserveAsync(
         BackupArchiveContext archive,

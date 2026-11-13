@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using MongoDB.Bson;
 using Pole.ASP.Helpers;
 using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Policies;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Core.Multitenancy;
@@ -22,7 +22,7 @@ public sealed record ListBackupPoliciesRequest(
 public union ListBackupPoliciesOutcome(BackupPolicyDto[]);
 
 public sealed class ListBackupPoliciesHandler(
-    BackupReads reads
+    BackupPolicyQueries reads
 ) : IMediatorOutcomeHandler<ListBackupPoliciesRequest, ListBackupPoliciesOutcome>
 {
     public async Task<ListBackupPoliciesOutcome> HandleAsync(

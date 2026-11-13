@@ -1,6 +1,6 @@
 using MongoDB.Driver;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Operations;
 using Pole.Features.Backups.Domain;
 
 namespace Pole.Features.Backups.Application.Archives;
@@ -26,7 +26,7 @@ public enum ScheduledObservationInterruption { SourceRemoved, ArchiveRetired }
 
 public sealed class RetireBackupArchive(
     IMongoCollection<BackupArchive> archives,
-    BackupOperations operations
+    ScheduledBackupHistory history
 )
 {
     public async Task ExecuteAsync(
@@ -49,6 +49,6 @@ public sealed class RetireBackupArchive(
             RetireRemovedBackupSource => ScheduledObservationInterruption.SourceRemoved,
             RetireStoppedBackupPolicy or RetireReplacedBackupArchive => ScheduledObservationInterruption.ArchiveRetired,
         };
-        await operations.InterruptScheduledObservationsAsync(policy.TenantId, policy.ArchiveId, reason, session, ct);
+        await history.InterruptAsync(policy.TenantId, policy.ArchiveId, reason, session, ct);
     }
 }

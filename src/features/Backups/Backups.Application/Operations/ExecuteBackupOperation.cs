@@ -3,8 +3,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application.Archives;
-using Pole.Features.Backups.Application.Configuration;
-using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Providers;
 using Pole.Features.Backups.Application.Reconciliation;
@@ -23,7 +21,7 @@ public sealed class ExecuteBackupOperation(
     IMongoCollection<BackupOperation> operations,
     BackupProviderCatalog providers,
     BackupArchiveAccess access,
-    BackupOperations commands,
+    VerifyBackupRestoreTarget verify,
     MongoRunTransaction transactions,
     LoadRegisteredResource loadSource,
     StoreOutboxWrites outbox,
@@ -112,7 +110,7 @@ public sealed class ExecuteBackupOperation(
                     .MatchedCount != 1)
                     return tx.Abort(false);
                 if (updated.State != current.State || updated.FailureCode != current.FailureCode)
-                    await commands.Changed(tx.Session, updated, token);
+                    await outbox(tx.Session, [BackupWorkRequests.OperationChanged(updated)], token);
                 if (updated.Dispatch is AvailableBackupDispatch)
                     await outbox(tx.Session, [BackupWorkRequests.Operation(updated)], token);
                 return tx.Commit(true);
@@ -153,9 +151,10 @@ public sealed class ExecuteBackupOperation(
         {
             if (work.Execution is RequestedBackupRestore)
             {
-                var invalid = await commands.VerifyTargetAsync(archive, work.Selection, ct);
-                if (invalid is not null)
-                    return new Progress.Failure(invalid, invalid != "target-unavailable");
+                var verification = await verify.ExecuteAsync(archive, work.Selection, ct);
+                var rejected = TargetFailure(verification);
+                if (rejected is not null)
+                    return rejected;
             }
 
             BackupRecoveryTarget target = work.Selection switch
@@ -173,4 +172,16 @@ public sealed class ExecuteBackupOperation(
                 ct);
         }
     }
+
+    private static Progress.Failure? TargetFailure(VerifyBackupRestoreTargetOutcome target) => target switch
+    {
+        BackupRestoreTargetAvailable => null,
+        BackupRestoreCopyUnavailable or BackupRestoreTimeUnavailable => new("target-unavailable", false),
+        BackupRestoreTimeUnsupported or BackupSourceUnsupported => new("unsupported-provider", false),
+        BackupCatalogCredentialUnavailable => new("catalog-credential-unavailable", true),
+        BackupCatalogAccessDenied => new("backup-catalog-access-denied", true),
+        BackupCatalogUnavailable => new("backup-catalog-unavailable", true),
+        BackupCatalogUnreadable => new("backup-catalog-unreadable", false),
+        BackupCatalogTimeout => new("backup-catalog-timeout", true),
+    };
 }
