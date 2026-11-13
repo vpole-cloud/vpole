@@ -49,7 +49,8 @@ public sealed class BackupsIndexesMigration : IMigration
             "BackupOperations",
             "IX_BackupOperations_Dispatch",
             false,
-            keys.Ascending("Work.Execution.Dispatch.NextAttemptAtUtc").Ascending("Work.Execution.Dispatch.Lease.ExpiresAtUtc"));
+            keys.Ascending("Work.Execution.Dispatch.NextAttemptAtUtc")
+                .Ascending("Work.Execution.Dispatch.Lease.ExpiresAtUtc"));
         await IndexAsync(
             "BackupOperations",
             "IX_BackupOperations_Tenant_Created",
