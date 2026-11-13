@@ -196,9 +196,7 @@ export function PostgresResourceView({
         <div>
           <p className="ui-page-eyebrow">PostgreSQL · {group.resource?.name ?? 'Resource group'}</p>
           <h1>{cluster.name}</h1>
-          <p>
-            PostgreSQL {cluster.spec.version} · {'CloudNativePG'}
-          </p>
+          <p>PostgreSQL {cluster.spec.version} · CloudNativePG</p>
         </div>
         <div className="row-actions">
           <Button onClick={() => void details.refresh()} disabled={details.status === 'loading'}>

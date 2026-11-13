@@ -31,7 +31,9 @@ export interface BackupPolicyInput {
 export interface BackupPolicy extends BackupPolicyInput {
   gitOps?: GitOpsStatus | null
   id: string
+  archiveId: string
   revision: number
+  appliedRevision: number
   deleting: boolean
   nextScheduledAt?: string | null
   failureCode?: string | null
@@ -59,6 +61,7 @@ export interface BackupCatalogEntry {
 
 export interface BackupOperation {
   id: string
+  policyId: string
   archiveId: string
   kind: 'Backup' | 'Restore' | 'ScheduledBackup'
   state: 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Interrupted'

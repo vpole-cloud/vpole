@@ -8,7 +8,9 @@ import type { BackupPolicy } from './types'
 
 const policy: BackupPolicy = {
   id: 'policy',
+  archiveId: 'archive',
   revision: 1,
+  appliedRevision: 1,
   name: 'nightly',
   resourceType: 'pole/postgresql',
   resourceId: 'cluster',

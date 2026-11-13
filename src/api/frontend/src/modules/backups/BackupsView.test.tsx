@@ -12,6 +12,7 @@ let app: ReturnType<typeof createTestApp>
 let unavailable = false
 let retired = false
 let policyRevision = 1
+let nextScheduledAt: string | null = null
 let submittedRevision: number | undefined
 let nextCatalogRead: Promise<Response> | null = null
 let restoreAttempts: Record<string, unknown>[] = []
@@ -66,6 +67,7 @@ beforeEach(() => {
   unavailable = false
   retired = false
   policyRevision = 1
+  nextScheduledAt = null
   submittedRevision = undefined
   nextCatalogRead = null
   restoreAttempts = []
@@ -108,8 +110,12 @@ beforeEach(() => {
         Response.json([
           {
             id: 'policy',
+            archiveId: 'archive',
             name: 'nightly',
             revision: policyRevision,
+            appliedRevision: policyRevision,
+            nextScheduledAt,
+            deleting: false,
             resourceType: 'pole/postgresql',
             resourceId: 'cluster',
             destinationId: 'destination',
@@ -183,6 +189,7 @@ afterEach(async () => {
   app.container.remove()
   requests.verify()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 async function render(tenantId = 'alpha', role: 'Owner' | 'Member' = 'Owner') {
   await act(async () =>
@@ -437,4 +444,24 @@ it('loads only the selected operations page and keeps tenant headers on every pa
     expect(new Headers(request?.headers).get('X-Pole-Tenant-ID')).toBe('alpha')
     expect(new Headers(request?.headers).get('Authorization')).toBe('Bearer current')
   }
+})
+
+it('renders UTC and local next runs across the repeated daylight-saving hour', async () => {
+  const local = new Intl.DateTimeFormat('uk-UA', {
+    timeZone: 'Europe/Kyiv',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+  vi.spyOn(Date.prototype, 'toLocaleString').mockImplementation(function (this: Date) {
+    return local.format(this)
+  })
+  nextScheduledAt = '2026-10-25T00:30:00Z'
+  await render()
+  expect(app.container.textContent).toContain('2026-10-25T00:30:00.000Z · 25.10.26, 03:30')
+  nextScheduledAt = '2026-10-25T01:30:00Z'
+  await clickButton('Refresh')
+  expect(app.container.textContent).toContain('2026-10-25T01:30:00.000Z · 25.10.26, 03:30')
+  nextScheduledAt = '2026-03-29T01:30:00Z'
+  await clickButton('Refresh')
+  expect(app.container.textContent).toContain('2026-03-29T01:30:00.000Z · 29.03.26, 04:30')
 })
