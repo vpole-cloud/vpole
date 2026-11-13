@@ -72,7 +72,11 @@ type PostgresBackupProvider
                 // A lease may expire while a second worker is completing the transaction.
                 let! winner = load.Invoke(request.TenantId,r.NewResourceId,ct)
                 match winner with
-                | Some c when not (isNull c.Spec.Recovery) && c.Spec.Recovery.OperationId = r.OperationId -> return running
+                | Some cluster when
+                    match cluster.Spec.Bootstrap with
+                    | :? RecoveryPostgresBootstrap as recovery -> recovery.Origin.OperationId = r.OperationId
+                    | _ -> false
+                    -> return running
                 | _ ->
                     match result with
                     | PostgresCreationOutcome.Rejected(CreateState PostgresClusterRestoreTargetAlreadyCreated) ->
@@ -95,10 +99,21 @@ type PostgresBackupProvider
         task {
             let archive = r.Archive
             let p = archive.Placement
-            let origin = cluster.Spec.Recovery
-            if isNull origin || origin.OperationId <> r.OperationId || origin.ArchiveId <> archive.ArchiveId
-               || origin.ServerName <> archive.ServerName || origin.BackupId <> r.BackupId
-               || origin.TargetTimeUtc <> (if r.TargetTime.HasValue then Nullable(r.TargetTime.Value.UtcDateTime) else Nullable()) then
+            let originMatches =
+                match cluster.Spec.Bootstrap with
+                | :? RecoveryPostgresBootstrap as recovery ->
+                    let origin = recovery.Origin
+                    let targetMatches =
+                        match origin.Target with
+                        | :? PostgresCopyRecoveryTarget as copy ->
+                            not r.TargetTime.HasValue && copy.BackupId = r.BackupId
+                        | :? PostgresTimeRecoveryTarget as time ->
+                            r.TargetTime.HasValue && time.TargetTimeUtc = r.TargetTime.Value.UtcDateTime
+                        | _ -> false
+                    origin.OperationId = r.OperationId && origin.ArchiveId = archive.ArchiveId
+                    && origin.ServerName = archive.ServerName && targetMatches
+                | _ -> false
+            if not originMatches then
                 BackupNative.fail "restore-identity-conflict" false
             let! target = placement.Invoke(LoadResourceDeploymentRequest(cluster.TenantId,resourceType,cluster.Id),ct)
             if isNull target || target.RuntimeCellId <> p.RuntimeCellId || target.IsolationScopeId <> p.IsolationScopeId
@@ -196,6 +211,12 @@ type PostgresBackupProvider
                     if not valid || not (PostgresSettings.isSupportedVersion settings version) then
                         BackupNative.fail "restore-version-unsupported" false
                     let! _ = BackupNative.ensureStore client archive ct
-                    let time = if r.TargetTime.HasValue then Nullable(r.TargetTime.Value.UtcDateTime) else Nullable()
-                    let origin = PostgresRecoveryOrigin(r.OperationId,archive.ArchiveId,archive.ServerName,r.BackupId,time)
+                    let target: PostgresRecoveryTarget =
+                        if r.TargetTime.HasValue then PostgresTimeRecoveryTarget(r.TargetTime.Value.UtcDateTime)
+                        else PostgresCopyRecoveryTarget(r.BackupId)
+                    let origin =
+                        { OperationId = r.OperationId
+                          ArchiveId = archive.ArchiveId
+                          ServerName = archive.ServerName
+                          Target = target }
                     return! createRestored r origin version ct }) ct

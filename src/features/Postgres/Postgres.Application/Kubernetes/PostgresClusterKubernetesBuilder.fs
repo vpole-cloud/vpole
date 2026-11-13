@@ -106,20 +106,25 @@ module PostgresClusterKubernetesBuilder =
         spec["superuserSecret"] <- {| name = clusterSecretName |}
         spec["imageName"] <- image
 
-        let origin = cluster.Spec.Recovery
-        if not (isNull origin) then
+        match cluster.Spec.Bootstrap with
+        | :? FreshPostgresBootstrap -> ()
+        | :? RecoveryPostgresBootstrap as recovery ->
+            let origin = recovery.Origin
             let target = Dictionary<string, obj>()
-            if origin.TargetTimeUtc.HasValue then
-                target["targetTime"] <- origin.TargetTimeUtc.Value.ToUniversalTime().ToString("O")
-            else
-                target["backupID"] <- origin.BackupId
+            match origin.Target with
+            | :? PostgresTimeRecoveryTarget as time ->
+                target["targetTime"] <- time.TargetTimeUtc.ToString("O")
+            | :? PostgresCopyRecoveryTarget as copy ->
+                target["backupID"] <- copy.BackupId
                 target["targetImmediate"] <- true
+            | _ -> invalidOp "Unsupported PostgreSQL recovery target."
             spec["bootstrap"] <- {| recovery = {| source = "origin"; recoveryTarget = target |} |}
             spec["externalClusters"] <-
                 [| {| name = "origin"
                       plugin =
                         {| name = "barman-cloud.cloudnative-pg.io"
                            parameters = {| barmanObjectName = "archive-" + origin.ArchiveId; serverName = origin.ServerName |} |} |} |]
+        | _ -> invalidOp "Unsupported PostgreSQL bootstrap."
 
         spec["inheritedMetadata"] <-
             {| labels = buildLabels cluster metadata

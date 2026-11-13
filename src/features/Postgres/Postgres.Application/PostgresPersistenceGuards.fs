@@ -47,9 +47,18 @@ module PostgresPersistenceGuards =
         if pageSize < 1 then
             invalidArg "pageSize" "Page size must be greater than zero."
 
-    let private originIdentity (origin: PostgresRecoveryOrigin) =
-        Option.ofObj origin |> Option.map (fun value ->
-            value.OperationId, value.ArchiveId, value.ServerName, value.BackupId, value.TargetTimeUtc)
+    let private bootstrapIdentity (bootstrap: PostgresClusterBootstrap) =
+        match bootstrap with
+        | :? FreshPostgresBootstrap -> None
+        | :? RecoveryPostgresBootstrap as recovery ->
+            let origin = recovery.Origin
+            let target =
+                match origin.Target with
+                | :? PostgresCopyRecoveryTarget as copy -> Choice1Of2 copy.BackupId
+                | :? PostgresTimeRecoveryTarget as time -> Choice2Of2 time.TargetTimeUtc
+                | _ -> invalidOp "Unsupported PostgreSQL recovery target."
+            Some(origin.OperationId, origin.ArchiveId, origin.ServerName, target)
+        | _ -> invalidOp "Unsupported PostgreSQL bootstrap."
 
     let sameIdentity (current: PostgresCluster) (replacement: PostgresCluster) =
         cluster current
@@ -64,7 +73,7 @@ module PostgresPersistenceGuards =
 
         if
             current.GroupId <> replacement.GroupId
-            || originIdentity current.Spec.Recovery <> originIdentity replacement.Spec.Recovery
+            || bootstrapIdentity current.Spec.Bootstrap <> bootstrapIdentity replacement.Spec.Bootstrap
             || current.Spec.Version <> replacement.Spec.Version
             || current.Spec.StorageProfileId <> replacement.Spec.StorageProfileId
         then

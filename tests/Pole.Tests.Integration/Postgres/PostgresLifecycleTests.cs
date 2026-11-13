@@ -135,12 +135,29 @@ public sealed class PostgresLifecycleTests(
         await session.AbortTransactionAsync();
     }
 
-    [Fact]
-    public async Task PostgreSQL_adoption_preserves_existing_credential_without_bootstrapping_empty_source()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PostgreSQL_adoption_preserves_existing_credential_and_recovery_origin(bool restored)
     {
         var resource = await Seed("PostgresCluster");
         var resources = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
         var current = await resources.Find(item => item.Id == resource.ResourceId).SingleAsync();
+        if (restored)
+        {
+            var origin = new PostgresRecoveryOrigin(
+                Id(),
+                Id(),
+                "original-server",
+                new PostgresTimeRecoveryTarget(DateTime.UtcNow.AddHours(-1).AddTicks(10)));
+            await resources.UpdateOneAsync(
+                item => item.Id == current.Id,
+                Builders<PostgresCluster>.Update.Set(
+                    item => item.Spec.Bootstrap,
+                    new RecoveryPostgresBootstrap(origin)));
+            current = await resources.Find(item => item.Id == resource.ResourceId).SingleAsync();
+        }
+
         var group = await DbContext.ResourceGroups.Find(item => item.Id == current.GroupId).SingleAsync();
         var deployment = await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).SingleAsync();
         var computes = Services.GetRequiredService<IMongoCollection<ComputeProfile>>();
@@ -547,7 +564,11 @@ public sealed class PostgresLifecycleTests(
         await computes.ReplaceOneAsync(item => item.Id == compute.Id, renamedCompute);
         await stores.ReplaceOneAsync(item => item.Id == storage.Id, renamedStorage);
         var targetId = Id();
-        var origin = new PostgresRecoveryOrigin(Id(), Id(), "source", "20261012T130001", null);
+        var origin = new PostgresRecoveryOrigin(
+            Id(),
+            Id(),
+            "source",
+            new PostgresCopyRecoveryTarget("20261012T130001"));
         var configuration = new PostgresCreationConfiguration(
             "restored-after-profile-rename",
             source.GroupId,
@@ -602,7 +623,11 @@ public sealed class PostgresLifecycleTests(
         var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
         var secretCount = await secrets.CountDocumentsAsync(_ => true);
         var targetId = Id();
-        var origin = new PostgresRecoveryOrigin(Id(), Id(), "source", "20261012T130001", null);
+        var origin = new PostgresRecoveryOrigin(
+            Id(),
+            Id(),
+            "source",
+            new PostgresCopyRecoveryTarget("20261012T130001"));
         var configuration = new PostgresCreationConfiguration(
             "disabled-profile-restore",
             source.GroupId,
@@ -644,7 +669,11 @@ public sealed class PostgresLifecycleTests(
         var secretCount = await secrets.CountDocumentsAsync(_ => true);
         var eventCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
         var targetId = Id();
-        var origin = new PostgresRecoveryOrigin(Id(), Id(), "source", "20261012T130001", null);
+        var origin = new PostgresRecoveryOrigin(
+            Id(),
+            Id(),
+            "source",
+            new PostgresCopyRecoveryTarget("20261012T130001"));
         var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == source.Id).SingleAsync();
         var configuration = new PostgresCreationConfiguration(
             "restored",

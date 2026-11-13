@@ -151,14 +151,13 @@ public sealed class PostgresManifestTests
             "operation",
             "archive",
             "original-server",
-            byTime ? null : "20261112T131500",
-            byTime ? target : null);
+            byTime ? new PostgresTimeRecoveryTarget(target) : new PostgresCopyRecoveryTarget("20261112T131500"));
         var spec = new PostgresClusterSpec(
             source.Spec.Instances,
             source.Spec.Storage,
             source.Spec.StorageProfileId,
             source.Spec.Version,
-            origin);
+            new RecoveryPostgresBootstrap(origin));
         var cluster = new PostgresCluster(
             source.Id,
             source.TenantId,
@@ -170,8 +169,12 @@ public sealed class PostgresManifestTests
             source.Provisioning,
             source.PlanningFence);
         var restored = BsonSerializer.Deserialize<PostgresCluster>(cluster.ToBsonDocument()).UpdateDesiredState(3, 40);
-        Assert.Equal(origin.OperationId, restored.Spec.Recovery.OperationId);
-        Assert.Equal(origin.TargetTimeUtc, restored.Spec.Recovery.TargetTimeUtc);
+        var restoredOrigin = Assert.IsType<RecoveryPostgresBootstrap>(restored.Spec.Bootstrap).Origin;
+        Assert.Equal(origin.OperationId, restoredOrigin.OperationId);
+        if (byTime)
+            Assert.Equal(target, Assert.IsType<PostgresTimeRecoveryTarget>(restoredOrigin.Target).TargetTimeUtc);
+        else
+            Assert.Equal("20261112T131500", Assert.IsType<PostgresCopyRecoveryTarget>(restoredOrigin.Target).BackupId);
         var specNode = JsonSerializer.SerializeToNode(
             PostgresClusterKubernetesBuilder.buildCluster(
                 restored,

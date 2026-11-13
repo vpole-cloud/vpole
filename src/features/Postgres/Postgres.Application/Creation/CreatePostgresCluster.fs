@@ -110,11 +110,12 @@ module private CreatePostgresClusterWorkflow =
         =
         task {
             let isolationScopeId, explicitDeploymentTargetId = placementIds request
-            let origin, password =
+            let bootstrap, password =
                 match request.Authority with
-                | PostgresCreationAuthority.NewCluster password -> null, password
+                | PostgresCreationAuthority.NewCluster password -> FreshPostgresBootstrap() :> PostgresClusterBootstrap, password
                 | PostgresCreationAuthority.Recovery(origin, _, _) ->
-                    origin, Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+                    RecoveryPostgresBootstrap(origin) :> PostgresClusterBootstrap,
+                    Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
 
             let! targetResult =
                 admitDeploymentTarget.Invoke(
@@ -185,7 +186,7 @@ module private CreatePostgresClusterWorkflow =
                                   Storage = requestedStorage }
                             )
 
-                        let cluster = { cluster with Spec = { cluster.Spec with Recovery = origin } }
+                        let cluster = { cluster with Spec = { cluster.Spec with Bootstrap = bootstrap } }
 
                         let! credentialResult =
                             createCredential.Invoke(
