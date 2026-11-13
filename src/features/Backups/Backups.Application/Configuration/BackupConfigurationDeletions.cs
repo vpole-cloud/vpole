@@ -38,7 +38,7 @@ public sealed class BackupConfigurationDeletions(
                 new BackupExecutionOrigin(eventCore.TraceId, eventCore.CorrelationId),
                 clock.GetUtcNow().UtcDateTime);
             await policies.ReplaceOneAsync(session, filter, retiring, cancellationToken: ct);
-            await writer.Changed(session, retiring, "BackupPolicy", retiring.Revision, ct);
+            await writer.PolicyChanged(session, retiring, ct);
         }
 
         return new BackupWriteResult<bool>.Saved(true);

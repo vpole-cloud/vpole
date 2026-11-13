@@ -18,6 +18,22 @@ when both day-of-month and day-of-week are restricted, either match schedules th
 provider expands these fields and normalizes Sunday to `0` before adding CNPG's seconds field. This
 preserves the same schedule despite the operator parser's different treatment of wildcard syntax.
 
+## Durable execution
+
+Policy changes and manual commands commit their work request to the transactional outbox with
+the document mutation. Consumers run the tenant-scoped workflow after commit. A continuation
+commits its next attempt and another work request together; its consumer schedules a Hangfire
+job when the attempt is in the future. The jobs call the same claimed workflow.
+
+A minutely Hangfire recovery job requests at most 100 due policies and 100 due operations,
+including expired claims. It recovers lost delivery or enqueue without a polling hosted service.
+Duplicate delivery uses the same operation-derived native identity and restore creation receipt.
+Completed operations cannot claim execution again. Stored trace and correlation metadata follow
+consumer delivery, delayed jobs and recovery. Diagnostics include work and tenant identity plus
+the exception type and stack, excluding native response bodies and credential values.
+
+CNPG and Barman continue to own the physical schedule, WAL archiving and active-archive retention.
+
 ## Tenant API
 
 Routes are under `/api/v1/backups` and require an authenticated tenant selection through `X-Pole-Tenant-ID`.

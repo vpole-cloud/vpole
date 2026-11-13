@@ -1,12 +1,15 @@
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
+using Pole.Features.Outbox.Contracts;
 
 namespace Pole.Features.Backups.Application.Execution;
 
 internal sealed class RestoreTargetCreations(
     IMongoCollection<BackupOperation> operations,
+    StoreOutboxWrites outbox,
     TimeProvider clock
 )
 {
@@ -44,9 +47,10 @@ internal sealed class RestoreTargetCreations(
                         .Set(o => o.Work, recorded.Work)
                         .Set(o => o.UpdatedAt, recorded.UpdatedAt),
                     cancellationToken: ct);
-                return result.MatchedCount == 1
-                    ? RestoreTargetCreationDecision.Recorded
-                    : RestoreTargetCreationDecision.OperationUnavailable;
+                if (result.MatchedCount != 1)
+                    return RestoreTargetCreationDecision.OperationUnavailable;
+                await outbox(session, [BackupWorkRequests.OperationChanged(recorded)], ct);
+                return RestoreTargetCreationDecision.Recorded;
         }
 
         throw new InvalidOperationException("Unsupported restore execution.");

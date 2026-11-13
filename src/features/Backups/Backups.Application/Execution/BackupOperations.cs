@@ -4,6 +4,7 @@ using Pole.Database;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Mongo;
 using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Backups.Events;
@@ -125,6 +126,7 @@ public sealed class BackupOperations(
 
                     await operations.InsertOneAsync(tx.Session, operation, cancellationToken: token);
                     await Changed(tx.Session, operation, token);
+                    await outbox(tx.Session, [BackupWorkRequests.Operation(operation)], token);
                     return tx.Commit(new BackupWriteResult<BackupOperation>.Saved(operation));
                 },
                 ct);
@@ -203,11 +205,5 @@ public sealed class BackupOperations(
     internal Task Changed(
         IClientSessionHandle session,
         BackupOperation op,
-        CancellationToken ct) => outbox(
-        session,
-        [
-            OutboxWrite.Create(
-                new BackupOperationChangedEvent(op.Id, op.State.ToString(), EventCore.Create(op.TenantId)))
-        ],
-        ct);
+        CancellationToken ct) => outbox(session, [BackupWorkRequests.OperationChanged(op)], ct);
 }

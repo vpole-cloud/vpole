@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pole.Database;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Observability;
 using Pole.Workloads;
 using Xunit;
 
@@ -24,6 +25,12 @@ internal sealed class TestBackupProvider(
     public int? RestoreStorageGiB { get; private set; }
     public Func<RestoreBackupRequest, CancellationToken, Task<BackupProviderPhase>>? CreateTarget { get; set; }
     public bool CatalogUnavailable { get; set; }
+    private int _applyCount;
+    private int _runCount;
+    public int ApplyCount => Volatile.Read(ref _applyCount);
+    public int RunCount => Volatile.Read(ref _runCount);
+    public TraceContextSnapshot? LastApplyTrace { get; private set; }
+    public TraceContextSnapshot? LastRunTrace { get; private set; }
 
     public Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct) =>
         Task.FromResult<DescribeBackupSourceOutcome>(Service);
@@ -55,11 +62,19 @@ internal sealed class TestBackupProvider(
 
     public Task<BackupProviderResult<BackupProviderProgress>> ApplyScheduleAsync(
         ApplyBackupScheduleRequest request,
-        CancellationToken ct) => Success(new BackupProviderProgress(BackupProviderPhase.Succeeded, null));
+        CancellationToken ct)
+    {
+        Interlocked.Increment(ref _applyCount);
+        LastApplyTrace = TraceContext.Current;
+        return Success(new BackupProviderProgress(BackupProviderPhase.Succeeded, null));
+    }
 
-    public Task<BackupProviderResult<BackupProviderProgress>>
-        RunAsync(BackupCopyRequest request, CancellationToken ct) => Success(
-        new BackupProviderProgress(BackupProviderPhase.Succeeded, request.OperationId));
+    public Task<BackupProviderResult<BackupProviderProgress>> RunAsync(BackupCopyRequest request, CancellationToken ct)
+    {
+        Interlocked.Increment(ref _runCount);
+        LastRunTrace = TraceContext.Current;
+        return Success(new BackupProviderProgress(BackupProviderPhase.Succeeded, request.OperationId));
+    }
 
     public async Task<BackupProviderResult<BackupProviderProgress>> RestoreAsync(
         RestoreBackupRequest request,

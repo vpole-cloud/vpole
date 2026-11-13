@@ -3,6 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Features.Backups.Application.Execution;
 using Pole.Features.Backups.Application.Mongo;
+using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Backups.Events;
@@ -160,7 +161,7 @@ public sealed class BackupConfigurationWriter(
             await policies.InsertOneAsync(session, policy, cancellationToken: ct);
         else
             await policies.ReplaceOneAsync(session, filter, policy, cancellationToken: ct);
-        await Changed(session, policy, "BackupPolicy", policy.Revision, ct);
+        await PolicyChanged(session, policy, ct);
         return new BackupWriteResult<BackupPolicy>.Saved(policy);
     }
 
@@ -188,6 +189,15 @@ public sealed class BackupConfigurationWriter(
             sourceRemoved,
             session,
             ct);
+    }
+
+    internal async Task PolicyChanged(
+        IClientSessionHandle session,
+        BackupPolicy policy,
+        CancellationToken ct)
+    {
+        await Changed(session, policy, "BackupPolicy", policy.Revision, ct);
+        await outbox(session, [BackupWorkRequests.Policy(policy)], ct);
     }
 
     internal Task Changed(

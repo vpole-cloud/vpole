@@ -9,6 +9,7 @@
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
         <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="Hangfire.Core"/>
         <ProjectReference Include="../Backups.Contracts/Backups.Contracts.csproj"/>
         <ProjectReference Include="../Backups.Domain/Backups.Domain.csproj"/>
         <ProjectReference Include="../Backups.Events/Backups.Events.csproj"/>

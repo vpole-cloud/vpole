@@ -1,6 +1,6 @@
+using System.Reflection;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Events;
-using System.Reflection;
 using Pole.Features.ComputeProfiles.Application.Bootstrap;
 using Pole.Features.ContainerRegistries.Application;
 using Pole.Features.DeploymentTargets.Application.Bootstrap;
@@ -94,6 +94,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 await app.Services.InitializePolePlatformAsync();
+app.Services.ValidateBackupProviders();
 await app.Services.GetRequiredService<BootstrapDeploymentTargets>()();
 await app.Services.GetRequiredService<BootstrapComputeProfiles>()();
 
@@ -128,6 +129,7 @@ app.UsePoleTenantPipeline();
 
 app.UseHangfire();
 app.Services
+    .ScheduleBackupRecurringJobs()
     .ScheduleGitOpsRecurringJobs()
     .ScheduleOutboxRecurringJobs()
     .ScheduleSourceBuildRecurringJobs()

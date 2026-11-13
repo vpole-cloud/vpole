@@ -1,18 +1,22 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using MassTransit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pole.Database;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Application.Archives;
+using Pole.Features.Backups.Application.Consumers;
 using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Endpoints.Operations;
 using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Jobs;
+using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.Backups.Events;
@@ -21,6 +25,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Events.Abstractions;
 using Pole.Features.Outbox.Contracts;
+using Pole.Features.Outbox.Domain;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
@@ -32,10 +37,12 @@ using Pole.Features.Secrets.Primitives;
 using Pole.Features.StorageProfiles.Domain;
 using Pole.Features.StorageProfiles.Primitives;
 using Pole.Features.Tenants.Domain;
+using Pole.Observability;
 using Pole.Platform.Hosting;
 using Pole.Testing;
 using Pole.Workloads;
 using Xunit;
+using EventExtensions = Pole.Features.Events.Abstractions.EventExtensions;
 
 namespace Pole.Features.Backups.Tests.Integration;
 
@@ -50,6 +57,228 @@ public sealed class BackupApiTests(
     private const string Route = "/api/v1/backups";
     public Task InitializeAsync() => mongo.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task Policy_consumer_preserves_origin_and_schedules_durable_continuation()
+    {
+        const string tenant = TestPlatformDefaults.TenantId;
+        await using var host = await StartAsync();
+        using var client = Client(host, tenant);
+        var destinationInput = await StorageAsync(client);
+        using var destinationResponse = await client.PostAsJsonAsync(Route + "/destinations", destinationInput);
+        destinationResponse.EnsureSuccessStatusCode();
+        var destination = (await destinationResponse.Content.ReadFromJsonAsync<BackupDestinationDto>())!;
+        await using var scope = host.Services.CreateAsyncScope();
+        var provider = host.Services.GetRequiredService<TestBackupProvider>();
+        var sourceId = ObjectId.GenerateNewId().ToString();
+        await SeedSourceAsync(
+            scope.ServiceProvider,
+            destinationInput,
+            ResourceTypeId.Create(provider.ResourceType),
+            sourceId,
+            ObjectId.GenerateNewId().ToString());
+        using var response = await client.PostAsJsonAsync(
+            Route + "/policies",
+            new BackupPolicyInput("daily", provider.ResourceType, sourceId, destination.Id, "0 2 * * *", false, 30));
+        response.EnsureSuccessStatusCode();
+        var policy = (await response.Content.ReadFromJsonAsync<BackupPolicyDto>())!;
+        var outbox = mongo.Database.GetCollection<OutboxMessage>("OutboxMessages");
+        var row = await outbox.Find(message => message.EventType == "pole.backups/v1/policy-work-requested")
+            .SingleAsync();
+        var requested = JsonSerializer.Deserialize<BackupPolicyWorkRequestedEvent>(
+            row.PayloadJson,
+            EventExtensions.SerializerOptions)!;
+        Assert.Equal(policy.Id, requested.PolicyId);
+        Assert.Equal(tenant, requested.EventCore.TenantId);
+        Assert.True(requested.NotBeforeUtc <= DateTime.UtcNow);
+        Assert.Equal(tenant, row.TenantId);
+        var policies = mongo.Database.GetCollection<BackupPolicy>("BackupPolicies");
+        var stored = await policies.Find(value => value.Id == policy.Id).SingleAsync();
+        var origin = new TraceContextSnapshot(stored.Dispatch.Origin.TraceId, stored.Dispatch.Origin.CorrelationId);
+        Assert.Equal(origin.TraceId, row.TraceId);
+        Assert.Equal(origin.CorrelationId, row.CorrelationId);
+
+        using (TraceContext.Push(TraceContext.Create()))
+            await SendToConsumerAsync<ApplyRequestedBackupPolicy, BackupPolicyWorkRequestedEvent>(
+                scope.ServiceProvider,
+                requested);
+        await WaitForAsync(async () =>
+            (await policies.Find(value => value.Id == policy.Id).SingleAsync()).AppliedRevision == policy.Revision);
+        Assert.Equal(origin, provider.LastApplyTrace);
+        Assert.Equal(1, provider.ApplyCount);
+        Assert.False(
+            await scope.ServiceProvider
+                .GetRequiredService<ApplyBackupPolicy>()
+                .ExecuteAsync(tenant, policy.Id, default));
+
+        var continuationRows = await outbox.Find(message => message.EventType == row.EventType).ToListAsync();
+        var continuation = continuationRows
+            .Select(message => JsonSerializer.Deserialize<BackupPolicyWorkRequestedEvent>(
+                message.PayloadJson,
+                EventExtensions.SerializerOptions)!)
+            .Single(message => message.NotBeforeUtc > requested.NotBeforeUtc);
+        Assert.Equal(origin.TraceId, continuation.EventCore.TraceId);
+        Assert.Equal(origin.CorrelationId, continuation.EventCore.CorrelationId);
+        await SendToConsumerAsync<ApplyRequestedBackupPolicy, BackupPolicyWorkRequestedEvent>(
+            scope.ServiceProvider,
+            continuation);
+        var jobs = host.Services.GetRequiredService<RecordedBackgroundJobs>();
+        await WaitForAsync(() =>
+            Task.FromResult(jobs.Jobs.Values.Any(item => item.Job.Type == typeof(BackupPolicyJob))));
+        var job = Assert.Single(jobs.Jobs.Values, item => item.Job.Type == typeof(BackupPolicyJob));
+        Assert.Equal(tenant, job.Job.Args[0]);
+        Assert.Equal(policy.Id, job.Job.Args[1]);
+        Assert.Equal(1, provider.ApplyCount);
+
+        using var runResponse = await client.PostAsJsonAsync(
+            Route + "/policies/" + policy.Id + "/runs",
+            new { idempotencyKey = "manual-once" });
+        runResponse.EnsureSuccessStatusCode();
+        var operation = (await runResponse.Content.ReadFromJsonAsync<BackupOperationDto>())!;
+        var operationRow = await outbox.Find(message => message.EventType == "pole.backups/v1/operation-work-requested")
+            .SingleAsync();
+        var operationRequest = JsonSerializer.Deserialize<BackupOperationWorkRequestedEvent>(
+            operationRow.PayloadJson,
+            EventExtensions.SerializerOptions)!;
+        await SendToConsumerAsync<ExecuteRequestedBackupOperation, BackupOperationWorkRequestedEvent>(
+            scope.ServiceProvider,
+            operationRequest);
+        var operations = mongo.Database.GetCollection<BackupOperation>("BackupOperations");
+        await WaitForAsync(async () => (await operations.Find(value => value.Id == operation.Id).SingleAsync()).State ==
+            BackupOperationState.Succeeded);
+        var completed = await operations.Find(value => value.Id == operation.Id).SingleAsync();
+        Assert.Equal(
+            new TraceContextSnapshot(completed.Origin.TraceId, completed.Origin.CorrelationId),
+            provider.LastRunTrace);
+        Assert.Equal(1, provider.RunCount);
+        Assert.False(
+            await scope.ServiceProvider
+                .GetRequiredService<ExecuteBackupOperation>()
+                .ExecuteAsync(tenant, operation.Id, default));
+        Assert.Equal(1, provider.RunCount);
+    }
+
+    [Fact]
+    public async Task Recovery_requeues_a_bounded_batch_of_lost_or_expired_work_with_original_trace()
+    {
+        await using var host = await StartAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var origin = new BackupExecutionOrigin("1234567890abcdef1234567890abcdef", "lost-enqueue");
+        var now = DateTime.UtcNow.AddMinutes(-10);
+        var pending = Enumerable.Range(0, 125)
+            .Select(index => BackupOperation.RequestCopy(
+                ObjectId.GenerateNewId().ToString(),
+                TestPlatformDefaults.TenantId,
+                "recovery-" + index,
+                ObjectId.GenerateNewId().ToString(),
+                ObjectId.GenerateNewId().ToString(),
+                now.AddSeconds(index),
+                origin))
+            .ToArray();
+        pending[0] = pending[0].Claim(new BackupLease("expired", now.AddMinutes(1)));
+        var future = BackupOperation.RequestCopy(
+            ObjectId.GenerateNewId().ToString(),
+            TestPlatformDefaults.TenantId,
+            "future",
+            pending[0].PolicyId,
+            pending[0].ArchiveId,
+            DateTime.UtcNow.AddHours(1),
+            origin);
+        var leased = BackupOperation
+            .RequestCopy(
+                ObjectId.GenerateNewId().ToString(),
+                TestPlatformDefaults.TenantId,
+                "leased",
+                pending[0].PolicyId,
+                pending[0].ArchiveId,
+                now,
+                origin)
+            .Claim(new BackupLease("live", DateTime.UtcNow.AddMinutes(2)));
+        var operations = mongo.Database.GetCollection<BackupOperation>("BackupOperations");
+        await operations.InsertManyAsync([.. pending, future, leased]);
+        await scope.ServiceProvider.GetRequiredService<BackupRecoveryScanner>().RequestDueWorkAsync(default);
+        var outbox = mongo.Database.GetCollection<OutboxMessage>("OutboxMessages");
+        var rows = await outbox.Find(message => message.EventType == "pole.backups/v1/operation-work-requested")
+            .ToListAsync();
+        Assert.Equal(100, rows.Count);
+        var requests = rows.Select(row =>
+                JsonSerializer.Deserialize<BackupOperationWorkRequestedEvent>(
+                    row.PayloadJson,
+                    EventExtensions.SerializerOptions)!)
+            .ToArray();
+        Assert.Contains(requests, request => request.OperationId == pending[0].Id);
+        Assert.DoesNotContain(
+            requests,
+            request => request.OperationId == future.Id || request.OperationId == leased.Id);
+        Assert.All(
+            requests,
+            request =>
+            {
+                Assert.Equal(TestPlatformDefaults.TenantId, request.EventCore.TenantId);
+                Assert.Equal(origin.TraceId, request.EventCore.TraceId);
+                Assert.Equal(origin.CorrelationId, request.EventCore.CorrelationId);
+            });
+    }
+
+    [Fact]
+    public async Task Operation_and_both_outbox_events_roll_back_if_work_request_write_fails()
+    {
+        const string tenant = TestPlatformDefaults.TenantId;
+        await using var host = await StartAsync(failOperation: true);
+        using var client = Client(host, tenant);
+        var input = await StorageAsync(client);
+        using var destinationResponse = await client.PostAsJsonAsync(Route + "/destinations", input);
+        destinationResponse.EnsureSuccessStatusCode();
+        var destination = (await destinationResponse.Content.ReadFromJsonAsync<BackupDestinationDto>())!;
+        await using var scope = host.Services.CreateAsyncScope();
+        var provider = host.Services.GetRequiredService<TestBackupProvider>();
+        var sourceId = ObjectId.GenerateNewId().ToString();
+        await SeedSourceAsync(
+            scope.ServiceProvider,
+            input,
+            ResourceTypeId.Create(provider.ResourceType),
+            sourceId,
+            ObjectId.GenerateNewId().ToString());
+        using var policyResponse = await client.PostAsJsonAsync(
+            Route + "/policies",
+            new BackupPolicyInput("daily", provider.ResourceType, sourceId, destination.Id, "0 2 * * *", false, 30));
+        policyResponse.EnsureSuccessStatusCode();
+        var policy = (await policyResponse.Content.ReadFromJsonAsync<BackupPolicyDto>())!;
+        var outbox = mongo.Database.GetCollection<OutboxMessage>("OutboxMessages");
+        var baseline = await outbox.CountDocumentsAsync(_ => true);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.ServiceProvider
+                .GetRequiredService<BackupOperations>()
+                .StartAsync(new ManualBackupCommand(tenant, "rolled-back", policy.Id), default));
+        Assert.Equal(
+            0,
+            await mongo.Database.GetCollection<BackupOperation>("BackupOperations").CountDocumentsAsync(_ => true));
+        Assert.Equal(baseline, await outbox.CountDocumentsAsync(_ => true));
+        var archive = await mongo.Database
+            .GetCollection<BackupArchive>("BackupArchives")
+            .Find(value => value.Id == policy.ArchiveId)
+            .SingleAsync();
+        Assert.Equal(0, archive.ReferenceFence);
+        Assert.Equal(0, provider.RunCount);
+    }
+
+    // Exercise consumer dispatch in the in-memory host. RabbitMQ's publish topology for the
+    // versioned entity names is a separate production-composition boundary covered by Aspire E2E.
+    private static async Task SendToConsumerAsync<TConsumer, TMessage>(IServiceProvider services, TMessage message)
+        where TConsumer : class, IConsumer<TMessage>
+        where TMessage : class
+    {
+        var address = new Uri("queue:" + DefaultEndpointNameFormatter.Instance.Consumer<TConsumer>());
+        var endpoint = await services.GetRequiredService<ISendEndpointProvider>().GetSendEndpoint(address);
+        await endpoint.Send(message);
+    }
+
+    private static async Task WaitForAsync(Func<Task<bool>> ready)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!await ready())
+            await Task.Delay(TimeSpan.FromMilliseconds(20), deadline.Token);
+    }
 
     [Fact]
     public async Task History_pages_are_bounded_tenant_scoped_and_stable_when_timestamps_match()
@@ -368,9 +597,9 @@ public sealed class BackupApiTests(
             });
         Assert.True(denied);
 
-        var dispatch = scope.ServiceProvider.GetRequiredService<BackupDispatcher>();
+        var dispatch = scope.ServiceProvider.GetRequiredService<ApplyBackupPolicy>();
         provider.Service = new("17", 10, 1, 2);
-        Assert.True(await dispatch.PolicyAsync(default));
+        Assert.True(await dispatch.ExecuteAsync(TestPlatformDefaults.TenantId, saved.Id, default));
         var live = await client.GetFromJsonAsync<BackupPolicyDto>(Route + "/policies/" + saved.Id);
         Assert.Equal(saved.Revision, live!.AppliedRevision);
         Assert.Equal("Healthy", live.WalArchivingStatus);
@@ -406,7 +635,7 @@ public sealed class BackupApiTests(
                 new ResourceUnregisteredEvent(input.ResourceGroupId, sourceType.Value, sourceId)
                     { EventCore = EventCore.Create(TestPlatformDefaults.TenantId) },
                 default);
-        Assert.True(await dispatch.PolicyAsync(default));
+        Assert.True(await dispatch.ExecuteAsync(TestPlatformDefaults.TenantId, saved.Id, default));
         var storedArchive = Assert.Single((await client.GetFromJsonAsync<BackupArchiveDto[]>(Route + "/archives"))!);
         Assert.False(storedArchive.Active);
         var interrupted = await client.GetFromJsonAsync<BackupOperationDto>(Route + "/operations/" + unfinished.Id);
@@ -443,7 +672,10 @@ public sealed class BackupApiTests(
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         using var unfinishedForget = await client.DeleteAsync(archiveRoute + "?confirmed=true");
         Assert.Equal(HttpStatusCode.Conflict, unfinishedForget.StatusCode);
-        Assert.True(await dispatch.OperationAsync(default));
+        Assert.True(
+            await scope.ServiceProvider
+                .GetRequiredService<ExecuteBackupOperation>()
+                .ExecuteAsync(TestPlatformDefaults.TenantId, first.Id, default));
         Assert.Equal(14, provider.RestoreStorageGiB);
         var done = await client.GetFromJsonAsync<BackupOperationDto>(Route + "/operations/" + first.Id);
         Assert.Equal("Succeeded", done!.State);
@@ -540,11 +772,14 @@ public sealed class BackupApiTests(
                 throw new InvalidOperationException("Simulated interruption after target creation committed.");
             return BackupProviderPhase.Running;
         };
-        var dispatch = services.GetRequiredService<BackupDispatcher>();
+        var dispatch = services.GetRequiredService<ExecuteBackupOperation>();
         if (crashBeforeProgress)
-            await Assert.ThrowsAsync<InvalidOperationException>(() => dispatch.OperationAsync(default));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => dispatch.ExecuteAsync(
+                tenant,
+                command.Id,
+                default));
         else
-            Assert.True(await dispatch.OperationAsync(default));
+            Assert.True(await dispatch.ExecuteAsync(tenant, command.Id, default));
         var collection = mongo.Database.GetCollection<BackupOperation>("BackupOperations");
         var beforeRemoval = await collection.Find(o => o.Id == command.Id).SingleAsync();
         Assert.Equal(BackupOperationState.Running, beforeRemoval.State);
@@ -569,7 +804,7 @@ public sealed class BackupApiTests(
             o => o.Id == command.Id,
             Builders<BackupOperation>.Update.Set(o => o.Work, beforeRemoval.Retry(expired, TimeSpan.Zero, null).Work));
         provider.CatalogUnavailable = true;
-        Assert.True(await dispatch.OperationAsync(default));
+        Assert.True(await dispatch.ExecuteAsync(tenant, command.Id, default));
         var retried = await client.GetFromJsonAsync<BackupOperationDto>(Route + "/operations/" + command.Id);
         Assert.Equal("Failed", retried!.State);
         Assert.Equal("restore-resource-deleted", retried.FailureCode);
@@ -655,7 +890,7 @@ public sealed class BackupApiTests(
             });
     }
 
-    private async Task<FeatureTestHost> StartAsync(bool failDestination = false)
+    private async Task<FeatureTestHost> StartAsync(bool failDestination = false, bool failOperation = false)
     {
         var host = await FeatureTestHost.StartAsync(
             new ConfigurationBuilder().Build(),
@@ -666,9 +901,6 @@ public sealed class BackupApiTests(
             configureServices: services =>
             {
                 services.AddTestDeploymentTargets();
-                var worker = services.Single(d => d.ServiceType == typeof(IHostedService) &&
-                    d.ImplementationType?.FullName == "Pole.Features.Backups.Application.Execution.BackupWorker");
-                services.Remove(worker);
                 // The feature host has no Kubernetes cluster. Simulate only reconciliation of its Secret projection.
                 services.AddSingleton<EnsureConsumerSecretProjections>(_ => (request, _) => Task.FromResult(
                     new EnsureConsumerSecretProjectionsOutcome(
@@ -694,7 +926,7 @@ public sealed class BackupApiTests(
                 services.AddSingleton(mongo.Client);
                 services.AddSingleton(mongo.Database);
                 services.AddFeatureMigrations("pole.backups", typeof(BackupsSchemaMigration).Assembly);
-                if (failDestination)
+                if (failDestination || failOperation)
                 {
                     services.RemoveAll<StoreOutboxWrites>();
                     services.AddSingleton<StoreOutboxWrites>(_ => async (
@@ -702,7 +934,8 @@ public sealed class BackupApiTests(
                         ct) =>
                     {
                         await mongo.StoreOutboxWrites(session, writes, ct);
-                        if (writes.Any(w => w.Event is BackupConfigurationChangedEvent))
+                        if (writes.Any(w => failDestination && w.Event is BackupConfigurationChangedEvent ||
+                                failOperation && w.Event is BackupOperationWorkRequestedEvent))
                             throw new InvalidOperationException("Injected transactional outbox failure.");
                     });
                 }

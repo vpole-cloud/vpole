@@ -1,3 +1,4 @@
+using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +8,9 @@ using Pole.Features.Backups.Application.Configuration;
 using Pole.Features.Backups.Application.Declarations;
 using Pole.Features.Backups.Application.Endpoints;
 using Pole.Features.Backups.Application.Execution;
+using Pole.Features.Backups.Application.Jobs;
 using Pole.Features.Backups.Application.Operations;
+using Pole.Features.Backups.Application.Reconciliation;
 using Pole.Features.Backups.Contracts;
 using Pole.Features.Backups.Domain;
 using Pole.Features.ResourceDeployments.Contracts;
@@ -38,7 +41,12 @@ public static class BackupsFeature
             sp.GetRequiredService<RestoreTargetCreations>().RecordAsync);
         services.AddScoped<BackupReads>();
         services.AddScoped<LoadBackupOperationHistory>();
-        services.AddScoped<BackupDispatcher>();
+        services.AddScoped<ApplyBackupPolicy>();
+        services.AddScoped<ExecuteBackupOperation>();
+        services.AddScoped<BackupRecoveryScanner>();
+        services.AddScoped<BackupPolicyJob>();
+        services.AddScoped<BackupOperationJob>();
+        services.AddScoped<BackupRecoveryJob>();
         services.AddScoped<BackupSourceLifecycle>();
         services.AddScoped<ForgetRetiredArchive>();
         services.AddScoped<BackupAccessPlacementAdapter>();
@@ -46,7 +54,21 @@ public static class BackupsFeature
             ResourceDeploymentAdapterDescriptor.Create<BackupAccessPlacementAdapter>(
                 BackupConfigurationWriter.DestinationType,
                 ResourcePlacementCapability.MultiTarget));
-        services.AddHostedService<BackupWorker>();
+        return services;
+    }
+
+    public static void ValidateBackupProviders(this IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        _ = scope.ServiceProvider.GetRequiredService<BackupProviders>();
+    }
+
+    public static IServiceProvider ScheduleBackupRecurringJobs(this IServiceProvider services)
+    {
+        RecurringJob.AddOrUpdate<BackupRecoveryJob>(
+            "recover-backup-work",
+            job => job.RecoverAsync(CancellationToken.None),
+            Cron.Minutely);
         return services;
     }
 
