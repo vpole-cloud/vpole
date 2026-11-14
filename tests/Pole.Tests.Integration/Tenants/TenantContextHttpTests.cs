@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.GitProviders.Application;
 using Pole.Features.Realtime.Application;
 using Pole.Features.RedisServices.Application.Endpoints;
 using Pole.Features.Search.Application.Common;
@@ -26,11 +28,16 @@ public sealed class TenantContextHttpTests
 {
     private const string TenantId = "507f1f77bcf86cd799439011";
 
-    [Fact]
-    public async Task ProductionEndpointGraphRequiresTenantContextByDefault()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProductionEndpointGraphEnforcesAuthorizationAndTenantContext(bool realtimeEnabled)
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Configuration["Realtime:Enabled"] = realtimeEnabled.ToString();
+        builder.Configuration["Realtime:AllowedOrigins:0"] = "https://console.example.test";
         builder.Services.AddRealtimeFeature(builder.Configuration, development: false);
+        builder.Services.AddGitProvidersFeature(builder.Configuration);
         builder.Services.AddTenantsFeature();
         builder.Services.AddPoleMediator();
         await using var app = builder.Build();
@@ -67,6 +74,43 @@ public sealed class TenantContextHttpTests
             endpoint =>
             {
                 var route = endpoint.RoutePattern.RawText!;
+                var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods;
+                var method = methods?.Count == 1 ? methods[0] : null;
+                var githubCallback
+                    = (method, route) is ("GET", "/api/v1/integrations/github/oauth-callback"
+                    or "/api/v1/integrations/github/setup-complete") or ("POST", "/api/v1/integrations/github/webhook");
+                var imageTagCredential = (method, route) is ("PATCH", "/api/v1/web-services/{Id}/image-tag");
+                var disabledRealtime = !realtimeEnabled && (method, route) is ("POST", "/api/v1/realtime/session");
+                var anonymous = githubCallback || imageTagCredential || disabledRealtime;
+                Assert.True(anonymous == (endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null), route);
+                if (imageTagCredential)
+                    Assert.Equal(
+                        "pole_ci_",
+                        endpoint.Metadata.GetMetadata<TenantCredentialMetadata>()?.BearerTokenPrefix);
+                if (githubCallback)
+                {
+                    Assert.Null(endpoint.Metadata.GetMetadata<TenantEndpointMetadata>());
+                    return;
+                }
+
+                var authorization = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
+                if (!anonymous)
+                    Assert.True(
+                        authorization.Count > 0 || endpoint.Metadata.GetMetadata<AuthorizationPolicy>() is not null,
+                        route);
+                if (route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
+                    (method, route.TrimEnd('/')) is ("POST", "/api/v1/users" or "/api/v1/tenants"))
+                    Assert.Contains(authorization, requirement => requirement.Policy == Policy.Admin);
+                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.Ordinal))
+                {
+                    var marker = method == "GET"
+                        ? typeof(ITenantMemberReadOperation)
+                        : typeof(ITenantMemberManageOperation);
+                    Assert.Contains(
+                        endpoint.Metadata.GetMetadata<MethodInfo>()!.GetParameters(),
+                        parameter => marker.IsAssignableFrom(parameter.ParameterType));
+                }
+
                 var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||

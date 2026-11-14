@@ -11,7 +11,6 @@ using Pole.Features.Functions.Runtime;
 using Pole.Features.Functions.Runtime.Consumers;
 using Pole.Features.Functions.Runtime.Gateway;
 using Pole.Features.GitOps.Application;
-using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Events;
@@ -127,7 +126,7 @@ app.UseRealtimeOriginGuard();
 app.UseCors("frontend-dev");
 app.UsePoleTenantPipeline();
 
-app.UseHangfire();
+app.MapDevelopmentHangfireDashboard();
 app.Services
     .ScheduleBackupRecurringJobs()
     .ScheduleGitOpsRecurringJobs()
@@ -139,7 +138,6 @@ app.Services
     .ScheduleSecretProjectionRecurringJobs()
     .ScheduleContainerRegistryRecurringJobs();
 
-app.MapGitHubCallbackEndpoints();
 app.MapPoleCliDiscovery(configuration);
 
 app.MapGet("/test-keycloak", () => "Hello World!").RequireAuthorization();

@@ -9,6 +9,9 @@ public static class DependencyInjection
     {
         public WebApplicationBuilder AddSecurity()
         {
+            if (builder.Environment.IsDevelopment())
+                builder.Services.AddAntiforgery();
+
             var configuredValidIssuer = builder.Configuration["Authentication:ValidIssuer"];
             builder.Services
                 .AddAuthentication(options =>
@@ -36,7 +39,9 @@ public static class DependencyInjection
                     });
             builder.Services.AddAuthorization(options =>
             {
-                options.AddPolicy(Policy.Admin, policy => policy.RequireClaim(Claims.Roles, Roles.Admin));
+                options.AddPolicy(
+                    Policy.Admin,
+                    policy => policy.RequireAuthenticatedUser().RequireClaim(Claims.Roles, Roles.Admin));
             });
 
             return builder;

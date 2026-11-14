@@ -168,11 +168,10 @@ public static class DependencyInjection
 
     extension(WebApplication app)
     {
-        public WebApplication UseHangfire()
+        public void MapDevelopmentHangfireDashboard()
         {
             if (app.Environment.IsDevelopment())
-                app.UseHangfireDashboard();
-            return app;
+                app.MapHangfireDashboardWithAuthorizationPolicy(Policy.Admin);
         }
     }
 }
