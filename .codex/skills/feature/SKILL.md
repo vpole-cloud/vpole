@@ -5,7 +5,9 @@ description: Plan and implement a Pole feature from a GitHub issue or user brief
 
 # Pole Feature Delivery
 
-Accept a GitHub issue ID or a user brief. Do not assume that a ticket is current or complete.
+Accept a GitHub issue ID or a user brief. Check the [agent-ready work and maintainer decisions](../pole-github-issue-planning/SKILL.md#issue-template)
+against current dependencies and evidence. For older issues or direct briefs, derive the same split during planning.
+Only the work affected by an unanswered question needs to wait for that decision.
 
 ## Understand And Plan
 
@@ -34,6 +36,5 @@ Do not commit, push, create a branch, or open a pull request without explicit us
 
 ## Delivery Gate
 
-Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
-
-If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.
+Use the [publication gate](../../../docs/agent-delivery.md#local-and-ci-gate-profiles) for the complete PR diff and the
+[failure reporting rules](../../../docs/agent-delivery.md#failure-first-summaries-and-lasting-fixes) for current blockers.

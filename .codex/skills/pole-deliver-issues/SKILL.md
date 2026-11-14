@@ -5,8 +5,8 @@ description: Coordinate a batch of Pole GitHub issues through prioritization, bo
 
 # Pole Issue Delivery
 
-The primary agent owns product decisions, coordination, acceptance and the final result,
-including delegated work. Compose bounded assignments; do not create persistent agent personas.
+The primary agent coordinates delivery, applies agreed product decisions and owns acceptance
+of delegated work. Bring unresolved product choices to the maintainer. Compose bounded assignments; do not create persistent agent personas.
 
 Read `AGENTS.md`, [agent delivery](../../../docs/agent-delivery.md), and the relevant feature
 documentation. Those sources own engineering rules, canonical examples and publication gates.
@@ -21,7 +21,10 @@ and `$pole-post-task-review` for review when those stages apply.
 - Read current issues and repository state. Propose a small coherent batch based on user value,
   dependencies, risk and overlap; do not select tasks merely because they are easy to parallelize.
 - For each issue, identify the owning feature, observable acceptance criteria, exclusions and
-  dependencies. Resolve product assumptions that affect contracts or lifecycle before coding:
+  dependencies. Check the [issue readiness sections](../pole-github-issue-planning/SKILL.md#issue-template)
+  against current evidence, deriving them during triage for older issues. Assign independent,
+  authorized work while the maintainer decides the questions blocking other tasks.
+  Examples of choices affecting contracts or lifecycle include
   identity, name uniqueness, deletion/recreation, authorization and startup/admission ordering.
   Use current project context rather than assuming production compatibility or frontend priority.
 - Keep architectural decisions in their owning documentation and reference them from the brief.
@@ -54,7 +57,9 @@ serialization rules. The selected quality-gate command retains its own group sch
 
 Use focused checks during development and the selected local verification before publication, exactly as
 specified in agent delivery. Missing infrastructure, inherited failures, or a draft PR do not waive
-that gate. Diagnose failed prerequisites and use scoped recovery; do not reset a shared lab while
+that gate. Before scheduling a rerun, inspect the worker’s evidence and apply the
+[retry guidance](../../../docs/agent-delivery.md#diagnose-before-retrying-a-failed-run).
+Use scoped recovery; do not reset a shared lab while
 other runs are active. Reproduce bugs at the relevant boundary, fix their cause and retain meaningful
 regression coverage. Repeated defects should improve the existing rule, test or canonical example.
 

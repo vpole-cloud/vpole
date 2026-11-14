@@ -5,6 +5,9 @@ description: Implement a Pole capability that spans multiple feature layers, suc
 
 # Pole Feature Slice
 
+Use this implementation guide for an agreed cross-layer change. Use `$feature` when the
+task also needs a staged plan and approval.
+
 Read `docs/engineering-guidelines.md`, `docs/module-boundaries.md`, and the owning feature README. Inspect the closest feature with the same architectural needs; feature folders are capability-shaped and do not all contain the same projects.
 
 ## Design The Boundary
@@ -48,8 +51,4 @@ Generator unit tests alone are not evidence that semantic template changes work.
 
 Load the focused Pole skill when the slice touches tenant scoping, outbox delivery, Kubernetes resources, or the frontend. Use `$pole-test-runner` to select tests that prove each changed boundary, and add manifest tests before live-cluster checks.
 
-## Delivery Gate
-
-Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
-
-If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.
+For publication, use the [complete-diff gate](../../../docs/agent-delivery.md#local-and-ci-gate-profiles).

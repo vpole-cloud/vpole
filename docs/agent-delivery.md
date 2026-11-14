@@ -263,6 +263,23 @@ The receipt is local evidence, not a substitute for CI or required independent r
 fabricate one or bypass the wrapper with direct PR creation. Publication still requires a clean
 authorized task branch, matching pushed HEAD and matching target base; no gate grants Git permission.
 
+## Diagnose before retrying a failed run
+
+Before repeating a failed build, test, CI job or gate, inspect the first actionable failure in the
+original run. Identify the check, what was expected and what actually happened. Use its report,
+logs or resource events to distinguish a failed assertion from a missing prerequisite.
+
+State the known cause or a working hypothesis and the smallest observation that would confirm
+or rule it out. For an expensive or delegated run, leave this with the run or log reference in
+the task notes or handoff so the next agent can continue. For example, if an Aspire test times
+out waiting for a Deployment and no Pod exists, inspect Deployment and ReplicaSet events before
+launching the suite again.
+
+Retry when a fix or prerequisite has changed, or when a targeted repeat tests a specific
+hypothesis such as intermittent ordering. Say what new evidence the repeat should yield.
+If it produces the same failure without new evidence, inspect another signal or report the
+concrete blocker. Once resolved, run the verification required for the complete diff.
+
 ## Failure-first summaries and lasting fixes
 
 When tests are failing, the **first sentence of every summary** must name the

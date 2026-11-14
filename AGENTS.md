@@ -91,6 +91,7 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 - Do not discard, rewrite, or revert changes you did not make. Other agents or the user may be editing the same checkout.
 - Do not commit, push, create branches, or open pull requests unless the user explicitly asks for that action.
 - When a task branch is authorized, create it after any required plan or diagnosis approval and before implementation changes.
+- In issue bodies, identify [agent-ready work and decisions for the maintainer](.codex/skills/pole-github-issue-planning/SKILL.md#issue-template).
 - Check existing issues before creating a new one. Creating issues requires explicit publish intent; drafting does not.
 - Local approved implementation plans belong in `.codex/notes/`, which is ignored.
 
@@ -112,6 +113,7 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 ## Completion
 
 - Run focused checks while developing, then the applicable local gate before PR publication. Use `scripts/quality_gate.py record-review`, `verify`, and `open-pr`; do not bypass current evidence with direct PR creation.
+- Before retrying a failed check, follow [diagnosis before retry](docs/agent-delivery.md#diagnose-before-retrying-a-failed-run).
 - If tests fail, the first sentence of every summary must name the tests and explain why (or state that diagnosis is pending). If suites cannot run, lead with the suite and missing prerequisite. This applies to progress summaries, handoffs, PR descriptions and final answers.
 - Turn recurring defects into a focused regression test, semantic rule, formatter rule or corrected canonical example; keep rules precise.
 - Inspect the actual diff, complete [the review checklist](docs/review-checklist.md), and use `$pole-post-task-review` before handoff.

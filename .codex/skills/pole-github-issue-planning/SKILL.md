@@ -42,6 +42,14 @@ Use this body shape unless GitHub issue templates require something else:
 
 ## Proposed Scope
 
+## Agent-ready work
+
+- <Independent task with a known outcome and satisfied dependencies.>
+
+## Maintainer decisions
+
+- <Question for the maintainer?> Blocks <specific task>. <Why the choice matters.>
+
 ## Acceptance Criteria
 
 ## Technical Notes
@@ -50,6 +58,17 @@ Use this body shape unless GitHub issue templates require something else:
 
 ## Related Areas
 ```
+
+Fill both readiness sections in the issue body. Use “None” when a section is empty.
+For work waiting only on another issue, name that dependency under Proposed Scope.
+Resolve questions answerable from code, docs or an existing decision before drafting.
+For example, documenting current deletion behavior can be agent-ready while changing it
+waits on “Should deleting the group also delete its resources?”
+
+When authorized to update the issue, record the maintainer’s answer and move newly
+unblocked work into Agent-ready work once its dependencies are satisfied. Otherwise
+prepare the revised text locally. Readiness describes scope. The existing plan and
+publication approvals still apply.
 
 ## Publishing
 
