@@ -391,6 +391,15 @@ public sealed class PublicServiceBindingsJourney(
             fixture.Alpha,
             fixture.Alpha.DefaultTenantId);
         using var response = await fixture.Api.SendAsync(request, bounded.Token);
+        if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+        {
+            var code = await ApiProblemCode.ReadAsync(response, bounded.Token);
+            throw new HttpRequestException(
+                $"Cleanup DELETE {route} returned HTTP {(int)response.StatusCode} ({code}).",
+                null,
+                response.StatusCode);
+        }
+
         if (TestDeletion.IsComplete(response.StatusCode))
             return;
         await TestWait.UntilAsync(
