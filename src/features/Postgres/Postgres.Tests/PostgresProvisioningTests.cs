@@ -61,7 +61,6 @@ public sealed class PostgresProvisioningTests
         Assert.Equal(0, cluster.PlanningFence);
         Assert.True(cluster.IsPrepared);
         Assert.Equal("password", prepared.Bootstrap.SourceKey);
-        Assert.Equal("application", prepared.Bootstrap.Username);
         Assert.Throws<InvalidOperationException>(cluster.EnsureConfigured);
         Assert.Throws<InvalidOperationException>(() => cluster.UpdateDesiredState(2, 30));
         Assert.DoesNotContain(
@@ -97,7 +96,6 @@ public sealed class PostgresProvisioningTests
             prepared.Name,
             prepared.GroupId,
             prepared.Spec.Version,
-            prepared.Spec.DeploymentMode,
             prepared.Spec.StorageProfileId,
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(prepared.Id), 3, 40));
 
@@ -119,8 +117,7 @@ public sealed class PostgresProvisioningTests
             PostgresBootstrapCredential.Create(
                 bootstrap.SourceSecretId,
                 bootstrap.SourceKey,
-                ObjectId.GenerateNewId().ToString(),
-                bootstrap.Username)));
+                ObjectId.GenerateNewId().ToString())));
         Assert.Equal(
             adopted.ToBsonDocument(),
             BsonSerializer.Deserialize<PostgresCluster>(adopted.ToBsonDocument()).ToBsonDocument());
@@ -137,7 +134,6 @@ public sealed class PostgresProvisioningTests
             prepared.Name,
             prepared.GroupId,
             prepared.Spec.Version,
-            prepared.Spec.DeploymentMode,
             prepared.Spec.StorageProfileId,
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(prepared.Id), 1, 20));
         Assert.Throws<InvalidOperationException>(() =>
@@ -182,7 +178,6 @@ public sealed class PostgresProvisioningTests
                 prepared.Name,
                 prepared.GroupId,
                 prepared.Spec.Version,
-                prepared.Spec.DeploymentMode,
                 prepared.Spec.StorageProfileId,
                 new CreatePostgresClusterOptions(FSharpOption<string>.Some(prepared.Id), 1, 20)),
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
@@ -198,18 +193,15 @@ public sealed class PostgresProvisioningTests
         Assert.False(bson.Contains("IsPrepared"));
     }
 
-    internal static PostgresCluster Prepared(PostgresDeploymentMode mode = PostgresDeploymentMode.Operator) =>
-        PostgresCluster.CreatePrepared(
-            TestData.TenantId,
-            "declarative-postgres",
+    internal static PostgresCluster Prepared() => PostgresCluster.CreatePrepared(
+        TestData.TenantId,
+        "declarative-postgres",
+        ObjectId.GenerateNewId().ToString(),
+        17,
+        TestData.DefaultStorageProfileId,
+        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 20),
+        PostgresBootstrapCredential.Create(
             ObjectId.GenerateNewId().ToString(),
-            17,
-            mode,
-            TestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 20),
-            PostgresBootstrapCredential.Create(
-                ObjectId.GenerateNewId().ToString(),
-                "password",
-                ObjectId.GenerateNewId().ToString(),
-                "application"));
+            "password",
+            ObjectId.GenerateNewId().ToString()));
 }

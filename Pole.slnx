@@ -35,6 +35,17 @@
         <Project Path="src/shared/Request/Request.csproj"/>
         <Project Path="src/shared/Validation/Validation.csproj"/>
         <Project Path="src/shared/Workloads/Workloads.csproj"/>
+        <Project Path="src/shared/Scheduling/Scheduling.csproj"/>
+        <Project Path="src/shared/Scheduling.Tests/Scheduling.Tests.csproj"/>
+    </Folder>
+    <Folder Name="/features/Backups/">
+        <Project Path="src/features/Backups/Backups.Application/Backups.Application.csproj"/>
+        <Project Path="src/features/Backups/Backups.Contracts/Backups.Contracts.csproj"/>
+        <Project Path="src/features/Backups/Backups.Domain/Backups.Domain.csproj"/>
+        <Project Path="src/features/Backups/Backups.Events/Backups.Events.csproj"/>
+        <Project Path="src/features/Backups/Backups.Migrations/Backups.Migrations.csproj"/>
+        <Project Path="src/features/Backups/Backups.Tests/Backups.Tests.csproj"/>
+        <Project Path="src/features/Backups/Backups.Tests.Integration/Backups.Tests.Integration.csproj"/>
     </Folder>
     <Folder Name="/features/"/>
     <Folder Name="/features/GitOps/">

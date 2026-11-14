@@ -24,21 +24,16 @@ namespace Pole.Tests.Integration.Postgres;
 
 public sealed class PostgresNativeObservationTests
 {
-    [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    public async Task Quiet_owned_controller_source_covers_exact_services_slices_and_direct_instance_UIDs(
-        PostgresDeploymentMode mode)
+    [Fact]
+    public async Task Quiet_owned_controller_source_covers_exact_services_slices_and_direct_instance_UIDs()
     {
-        using var api = new PostgresNativeTestApi(mode) { IncludeBootstrapPod = true };
+        using var api = new PostgresNativeTestApi() { IncludeBootstrapPod = true };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
         await NextAsync(changes, ResourceDeploymentObservationChangeKind.SourceReady);
         Assert.Equal("controller", changes.Current.BindingId);
-        Assert.Equal(
-            mode == PostgresDeploymentMode.Operator ? 6 : 8,
-            api.Requests.Count(NativeWatchTestClient.IsWatch));
+        Assert.Equal(6, api.Requests.Count(NativeWatchTestClient.IsWatch));
         Assert.All(api.Streams, stream => Assert.Equal(0, stream.FramesWritten));
         Assert.DoesNotContain(
             api.Requests.Where(uri => uri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal)),
@@ -52,13 +47,10 @@ public sealed class PostgresNativeObservationTests
         Assert.All(api.Streams, stream => Assert.True(stream.Disposed));
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    public async Task Empty_owned_controller_LIST_watches_creation_without_repeated_LIST_polling(
-        PostgresDeploymentMode mode)
+    [Fact]
+    public async Task Empty_owned_controller_LIST_watches_creation_without_repeated_LIST_polling()
     {
-        using var api = new PostgresNativeTestApi(mode) { ControllerPresent = false };
+        using var api = new PostgresNativeTestApi() { ControllerPresent = false };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
@@ -84,7 +76,7 @@ public sealed class PostgresNativeObservationTests
     [InlineData("uid")]
     public async Task CNPG_foreign_controller_cannot_be_adopted_from_name_or_inherited_child_labels(string mismatch)
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator) { ControllerMismatch = mismatch };
+        using var api = new PostgresNativeTestApi() { ControllerMismatch = mismatch };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
@@ -95,12 +87,10 @@ public sealed class PostgresNativeObservationTests
         await changes.DisposeAsync();
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    public async Task Selector_loss_delivers_negative_binding_fence_and_retires_dependents(PostgresDeploymentMode mode)
+    [Fact]
+    public async Task Selector_loss_delivers_negative_binding_fence_and_retires_dependents()
     {
-        using var api = new PostgresNativeTestApi(mode);
+        using var api = new PostgresNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
@@ -115,13 +105,10 @@ public sealed class PostgresNativeObservationTests
         Assert.All(api.Streams, stream => Assert.True(stream.Disposed));
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    public async Task Direct_Pod_owner_loss_withdraws_UID_warning_and_101st_incremental_Pod_fails_closed(
-        PostgresDeploymentMode mode)
+    [Fact]
+    public async Task Direct_Pod_owner_loss_withdraws_UID_warning_and_101st_incremental_Pod_fails_closed()
     {
-        using var api = new PostgresNativeTestApi(mode) { PodCount = 100 };
+        using var api = new PostgresNativeTestApi() { PodCount = 100 };
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
@@ -148,19 +135,13 @@ public sealed class PostgresNativeObservationTests
     }
 
     [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet, 1)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, 2)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, 3)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, 4)]
-    [InlineData(PostgresDeploymentMode.Operator, 1)]
-    [InlineData(PostgresDeploymentMode.Operator, 2)]
-    [InlineData(PostgresDeploymentMode.Operator, 3)]
-    [InlineData(PostgresDeploymentMode.Operator, 4)]
-    public async Task Exact_bound_sample_rejects_UID_replacement_around_health_and_runtime_sampling(
-        PostgresDeploymentMode mode,
-        int replacement)
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task Exact_bound_sample_rejects_UID_replacement_around_health_and_runtime_sampling(int replacement)
     {
-        using var api = new PostgresNativeTestApi(mode) { ReplaceAtRead = replacement };
+        using var api = new PostgresNativeTestApi() { ReplaceAtRead = replacement };
         using var client = NativeWatchTestClient.Create(api);
         var result = await Bound(api, client).ObserveBoundAsync(api.Context, "controller");
         Assert.Null(result.BindingId);
@@ -168,13 +149,10 @@ public sealed class PostgresNativeObservationTests
         Assert.IsType<UnavailableWorkloadDiagnostics>(result.Diagnostics);
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    public async Task Bound_sample_requires_current_generation_and_owned_instance_readiness_and_exports_no_raw_payload(
-        PostgresDeploymentMode mode)
+    [Fact]
+    public async Task Bound_sample_requires_current_generation_and_owned_instance_readiness_and_exports_no_raw_payload()
     {
-        using var api = new PostgresNativeTestApi(mode) { IncludeBootstrapPod = true };
+        using var api = new PostgresNativeTestApi() { IncludeBootstrapPod = true };
         using var client = NativeWatchTestClient.Create(api);
         var observer = Bound(api, client);
         var result = await observer.ObserveBoundAsync(api.Context, "controller");
@@ -196,7 +174,7 @@ public sealed class PostgresNativeObservationTests
     [InlineData("zero")]
     public async Task CNPG_unversioned_condition_requires_current_native_and_actual_Pod_PVC_intent(string generation)
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator)
+        using var api = new PostgresNativeTestApi()
         {
             UnversionedCondition = generation,
             IncludeBootstrapPod = true,
@@ -229,7 +207,7 @@ public sealed class PostgresNativeObservationTests
     [InlineData("native-change")]
     public async Task CNPG_current_labels_and_unversioned_condition_cannot_hide_old_actual_intent(string mismatch)
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator)
+        using var api = new PostgresNativeTestApi()
         {
             UnversionedCondition = "omitted",
             IntentMismatch = mismatch,
@@ -248,7 +226,7 @@ public sealed class PostgresNativeObservationTests
     [InlineData("bad-metadata")]
     public async Task Malformed_operator_scalars_produce_safe_unavailable_without_unsafe_JSON_access(string shape)
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator) { Malformed = shape };
+        using var api = new PostgresNativeTestApi() { Malformed = shape };
         using var client = NativeWatchTestClient.Create(api);
         var result = await ((IResourceDeploymentObserver)Observer(api, client)).ObserveAsync(api.Context.Deployment);
         Assert.Equal("InvalidNativeObservation", Assert.IsType<UnavailableWorkloadObservation>(result).Reason);
@@ -261,19 +239,16 @@ public sealed class PostgresNativeObservationTests
     [InlineData("condition-generation-string")]
     public async Task Invalid_operator_condition_shapes_cannot_make_workload_ready(string shape)
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator) { Malformed = shape };
+        using var api = new PostgresNativeTestApi() { Malformed = shape };
         using var client = NativeWatchTestClient.Create(api);
         var result = await ((IResourceDeploymentObserver)Observer(api, client)).ObserveAsync(api.Context.Deployment);
         Assert.False(Assert.IsType<ObservedWorkload>(result).Ready);
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    public async Task Service_UID_replacement_retires_slice_interest_and_foreign_slice_never_invalidates(
-        PostgresDeploymentMode mode)
+    [Fact]
+    public async Task Service_UID_replacement_retires_slice_interest_and_foreign_slice_never_invalidates()
     {
-        using var api = new PostgresNativeTestApi(mode);
+        using var api = new PostgresNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var changes = Source(api, client).WatchAsync(api.Context, cancellation.Token).GetAsyncEnumerator();
@@ -302,7 +277,7 @@ public sealed class PostgresNativeObservationTests
     [InlineData(true, true)]
     public async Task Disabled_or_deleting_target_cannot_open_native_Cluster_requests(bool enabled, bool deleting)
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
+        using var api = new PostgresNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         var reads = 0;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -326,7 +301,7 @@ public sealed class PostgresNativeObservationTests
     [Fact]
     public async Task Credential_rotation_during_client_acquisition_fails_post_lookup_before_any_native_request()
     {
-        using var api = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
+        using var api = new PostgresNativeTestApi();
         using var client = NativeWatchTestClient.Create(api);
         var version = 1L;
         var reads = 0;
@@ -352,8 +327,8 @@ public sealed class PostgresNativeObservationTests
     [Fact]
     public async Task Rotation_fences_old_context_and_new_context_uses_fresh_client_without_disposing_cached_client()
     {
-        using var firstApi = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
-        using var secondApi = new PostgresNativeTestApi(PostgresDeploymentMode.Operator);
+        using var firstApi = new PostgresNativeTestApi();
+        using var secondApi = new PostgresNativeTestApi();
         using var firstClient = NativeWatchTestClient.Create(firstApi);
         using var secondClient = NativeWatchTestClient.Create(secondApi);
         var version = 1L;
@@ -491,14 +466,13 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
     private readonly PostgresCluster _resource;
     private readonly ConcurrentDictionary<string, NativeWatchTestStream> _streams = new(StringComparer.Ordinal);
 
-    public PostgresNativeTestApi(PostgresDeploymentMode mode)
+    public PostgresNativeTestApi()
     {
         _resource = PostgresCluster.Create(
             "507f1f77bcf86cd799439010",
             "database",
             "507f1f77bcf86cd799439012",
             17,
-            mode,
             "profile",
             new CreatePostgresClusterOptions(FSharpOption<string>.Some("scope"), 1, 1));
         _identity = new WorkloadIdentityLabels(
@@ -545,8 +519,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
     public ResourceDeploymentObservationContext Context { get; }
     public WorkloadIdentityLabels Identity => ResourceIdentity?.Identity ?? _identity;
     public string Name => PostgresClusterKubernetesBuilder.buildResourceName(Resource.Id);
-    public bool Operator => Resource.Spec.DeploymentMode == PostgresDeploymentMode.Operator;
-    public string ControllerKind => Operator ? "clusters" : "statefulsets";
+    public string ControllerKind => "clusters";
 
     public bool ControllerPresent { get; set; } = true;
 
@@ -614,16 +587,13 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
         else if (kind == Name)
         {
             ControllerReads++;
-            json = Operator
-                ? ClusterJson(ControllerReads >= ReplaceAtRead ? "replacement" : "controller")
-                : KubernetesJson.Serialize(
-                    StatefulSet(ControllerReads >= ReplaceAtRead ? "replacement" : "controller"));
+            json = ClusterJson(ControllerReads >= ReplaceAtRead ? "replacement" : "controller");
         }
         else
         {
             json = kind switch
             {
-                "clusters" when Operator => JsonSerializer.Serialize(
+                "clusters" => JsonSerializer.Serialize(
                     new
                     {
                         apiVersion = "postgresql.cnpg.io/v1",
@@ -635,12 +605,6 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                         items = ControllerPresent
                             ? new[] { JsonSerializer.Deserialize<JsonElement>(ClusterJson("controller")) }
                             : [],
-                    }),
-                "statefulsets" when !Operator => KubernetesJson.Serialize(
-                    new V1StatefulSetList
-                    {
-                        Metadata = ListMeta("stateful-list"),
-                        Items = ControllerPresent ? [StatefulSet("controller")] : [],
                     }),
                 "pods" => KubernetesJson.Serialize(
                     new V1PodList
@@ -702,9 +666,8 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
                 new V1OwnerReference
                 {
                     Uid = parent, Name = "parent",
-                    Kind = parent == "bootstrap-job" ? "Job" : Operator ? "Cluster" : "StatefulSet",
-                    ApiVersion
-                        = parent == "bootstrap-job" ? "batch/v1" : Operator ? "postgresql.cnpg.io/v1" : "apps/v1",
+                    Kind = parent == "bootstrap-job" ? "Job" : "Cluster",
+                    ApiVersion = parent == "bootstrap-job" ? "batch/v1" : "postgresql.cnpg.io/v1",
                     Controller = true,
                 },
             ],
@@ -721,28 +684,6 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
             meta.Labels[key] = "foreign";
         return meta;
     }
-
-    private V1StatefulSet StatefulSet(string uid) => new()
-    {
-        ApiVersion = "apps/v1",
-        Kind = "StatefulSet",
-        Metadata = ControllerMetadata(uid),
-        Spec = new V1StatefulSetSpec
-        {
-            Replicas = 1,
-            Template = new V1PodTemplateSpec { Metadata = Metadata("template", "template") },
-        },
-        Status = new V1StatefulSetStatus
-        {
-            ObservedGeneration = CurrentCondition ? 2 : 1,
-            CurrentRevision = "current",
-            UpdateRevision = "current",
-            Replicas = 1,
-            UpdatedReplicas = 1,
-            ReadyReplicas = 1,
-            AvailableReplicas = 1,
-        },
-    };
 
     private string ClusterJson(string uid)
     {
@@ -818,9 +759,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
         return node.ToJsonString();
     }
 
-    public string ControllerFrame(string kind) => Operator
-        ? $"{{\"type\":\"{kind}\",\"object\":{ClusterJson("controller")}}}\n"
-        : Frame(kind, StatefulSet("controller"));
+    public string ControllerFrame(string kind) => $"{{\"type\":\"{kind}\",\"object\":{ClusterJson("controller")}}}\n";
 
     private static V1ResourceRequirements Requirements(bool stale = false) => new()
     {
@@ -942,7 +881,7 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
     {
         ApiVersion = "v1",
         Kind = "Service",
-        Metadata = Metadata(name, ServiceVersion + name, Operator ? "controller" : null),
+        Metadata = Metadata(name, ServiceVersion + name, "controller"),
     };
 
     public V1EndpointSlice Slice(string uid, string serviceName) => new()

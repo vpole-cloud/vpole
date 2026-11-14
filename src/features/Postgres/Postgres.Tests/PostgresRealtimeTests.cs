@@ -25,12 +25,7 @@ public sealed class PostgresRealtimeTests
     {
         var hints = new List<RealtimeChange>();
         var consumer = Consumer(hints);
-        var spec = new PostgresClusterSpecSnapshot(
-            1,
-            7,
-            "private-storage-profile",
-            17,
-            PostgresDeploymentModeSnapshot.StatefulSet);
+        var spec = new PostgresClusterSpecSnapshot(1, 7, "private-storage-profile", 17);
         var core = EventCore.Create(Tenant);
         await (operation switch
         {

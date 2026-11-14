@@ -188,7 +188,6 @@ type PostgresDeclarationAdoption
                   IsolationScopeId = placement.IsolationScopeId
                   DeploymentTargetId = placement.DeploymentTargetId
                   Version = current.Spec.Version
-                  DeploymentMode = current.Spec.DeploymentMode
                   BootstrapSecretId =
                     if desired then
                         data.BootstrapSecretId
@@ -199,7 +198,6 @@ type PostgresDeclarationAdoption
                         spec.BootstrapPassword.Key
                     else
                         bootstrap |> Option.map _.SourceKey |> Option.defaultValue null
-                  Username = spec.Username
                   StorageProfileId = current.Spec.StorageProfileId
                   Storage = placement.Storage }
               Instances =
@@ -344,8 +342,7 @@ type PostgresDeclarationAdoption
                                 PostgresBootstrapCredential.Create(
                                     data.BootstrapSecretId,
                                     spec.BootstrapPassword.Key,
-                                    credential.SecretId,
-                                    spec.Username
+                                    credential.SecretId
                                 )
 
                             let next = current.AdoptConfigured(bootstrap)

@@ -1,12 +1,12 @@
 using System.Collections.Immutable;
 
-namespace Pole.Features.Functions.Domain;
+namespace Pole.Scheduling;
 
 /// <summary>
 ///     A five-field cron schedule evaluated in UTC. The supported fields are minute,
 ///     hour, day of month, month, and day of week.
 /// </summary>
-public sealed class FunctionCronSchedule
+public sealed class UtcCronSchedule
 {
     // Gregorian dates and weekdays repeat after 400 years, so one full cycle is
     // sufficient to prove that a valid five-field schedule has no future match.
@@ -18,7 +18,7 @@ public sealed class FunctionCronSchedule
     private readonly CronField _minutes;
     private readonly CronField _months;
 
-    private FunctionCronSchedule(
+    private UtcCronSchedule(
         string expression,
         CronField minutes,
         CronField hours,
@@ -36,7 +36,19 @@ public sealed class FunctionCronSchedule
 
     public string Expression { get; }
 
-    public static FunctionCronSchedule Parse(string expression)
+    /// <summary>
+    ///     Expands fields into numeric values, using * for complete fields and 0 for Sunday.
+    ///     This preserves day matching when a provider treats syntactic wildcards specially.
+    /// </summary>
+    public string ToCanonicalExpression() => string.Join(
+        ' ',
+        _minutes.ToExpression(),
+        _hours.ToExpression(),
+        _daysOfMonth.ToExpression(),
+        _months.ToExpression(),
+        _daysOfWeek.ToExpression());
+
+    public static UtcCronSchedule Parse(string expression)
     {
         if (string.IsNullOrWhiteSpace(expression))
             throw new FormatException("A cron expression cannot be empty.");
@@ -45,7 +57,7 @@ public sealed class FunctionCronSchedule
         if (fields.Length != 5)
             throw new FormatException("A cron expression must contain exactly five fields.");
 
-        return new FunctionCronSchedule(
+        return new UtcCronSchedule(
             string.Join(' ', fields),
             CronField.Parse(fields[0], 0, 59, "minute"),
             CronField.Parse(fields[1], 0, 23, "hour"),
@@ -54,7 +66,7 @@ public sealed class FunctionCronSchedule
             CronField.Parse(fields[4], 0, 7, "day of week", normalizeSunday: true));
     }
 
-    public static bool TryParse(string? expression, out FunctionCronSchedule? schedule)
+    public static bool TryParse(string? expression, out UtcCronSchedule? schedule)
     {
         try
         {
@@ -71,7 +83,10 @@ public sealed class FunctionCronSchedule
     /// <summary>
     ///     Returns the first scheduled minute strictly after <paramref name="afterUtc" />.
     /// </summary>
-    public DateTimeOffset GetNextOccurrence(DateTimeOffset afterUtc)
+    public DateTimeOffset GetNextOccurrence(DateTimeOffset afterUtc) => FindNextOccurrence(afterUtc) ??
+        throw new InvalidOperationException("No cron occurrence exists within the supported UTC calendar range.");
+
+    public DateTimeOffset? FindNextOccurrence(DateTimeOffset afterUtc)
     {
         EnsureUtc(afterUtc);
 
@@ -97,7 +112,7 @@ public sealed class FunctionCronSchedule
             date = date.AddDays(1);
         }
 
-        throw new InvalidOperationException("No cron occurrence exists within the supported UTC calendar range.");
+        return null;
     }
 
     public bool IsMatch(DateTimeOffset occurrenceUtc)
@@ -143,6 +158,8 @@ public sealed class FunctionCronSchedule
         public bool IsUnrestricted { get; }
 
         public bool Contains(int value) => _lookup.Contains(value);
+
+        public string ToExpression() => IsUnrestricted ? "*" : string.Join(',', Values);
 
         public static CronField Parse(
             string expression,

@@ -1,5 +1,6 @@
 namespace Pole.Features.Postgres.Application.Endpoints
 
+open System.Data.Common
 open System.Runtime.CompilerServices
 open FluentValidation
 open Microsoft.AspNetCore.Builder
@@ -98,10 +99,15 @@ type GetPostgresClusterConnectionStringHandler
                             | PostgresError error ->
                                 return GetPostgresClusterConnectionStringRejected(ConnectionStringCredentials error)
                             | PostgresSuccess credentials ->
-                                let connectionString =
-                                    $"Host={endpoint.Host};Port={endpoint.Port};Database={PostgresClusterKubernetesBuilder.buildDatabaseName cluster.Id};Username={credentials.Username};Password={credentials.Password};SSL Mode=Disable"
+                                let connectionString = DbConnectionStringBuilder()
+                                connectionString["Host"] <- endpoint.Host
+                                connectionString["Port"] <- endpoint.Port
+                                connectionString["Database"] <- PostgresManagedSecret.administrator
+                                connectionString["Username"] <- PostgresManagedSecret.administrator
+                                connectionString["Password"] <- credentials.Password
+                                connectionString["SSL Mode"] <- "Disable"
 
-                                return { ConnectionString = connectionString } |> PostgresClusterConnectionString
+                                return { ConnectionString = connectionString.ConnectionString } |> PostgresClusterConnectionString
             }
 
 type GetPostgresClusterConnectionStringRequestValidator() as this =

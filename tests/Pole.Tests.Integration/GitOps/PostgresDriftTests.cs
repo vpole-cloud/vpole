@@ -114,8 +114,7 @@ public sealed class PostgresDriftTests(
                     new ManagedSecretOwner("pole/postgresql", resource.Id),
                     ownerCredential.Name,
                     ownerCredential.CurrentVersion + 1,
-                    new Dictionary<string, string>
-                        { ["username"] = bootstrap.Username, ["password"] = "rotated-owner" },
+                    new Dictionary<string, string> { ["username"] = "postgres", ["password"] = "rotated-owner" },
                     ManagedSecretKubernetesType.BasicAuthentication),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
@@ -272,7 +271,7 @@ public sealed class PostgresDriftTests(
     [Fact]
     public async Task PostgresPreparedConfigureAcceptsLatestCapacityOnceAndOperatorSupportsGrowth()
     {
-        await SeedPostgresPlanningCatalog(PostgresDeploymentMode.Operator);
+        await SeedPostgresPlanningCatalog();
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(PostgresSnapshot())).Status);
         var prepared = await PostgresResources
             .Find(Builders<PostgresCluster>.Filter.Eq(item => item.TenantId, Data.TenantId))
@@ -291,20 +290,6 @@ public sealed class PostgresDriftTests(
         Assert.Equal(3, updated.Spec.Instances);
         Assert.Equal(8, updated.Spec.Storage);
         Assert.Equal(RepositoryPipelineStatus.Blocked, (await Apply(PostgresSnapshot(size: 7, instances: 3))).Status);
-    }
-
-    [Theory]
-    [InlineData(2, 4)]
-    [InlineData(1, 5)]
-    public async Task PostgresStatefulSetRejectsUnsupportedConfiguredCapacityChanges(int instances, int size)
-    {
-        await SeedPostgresPlanningCatalog();
-        var current = await InitializePostgres();
-        var result = await Apply(PostgresSnapshot(size: size, instances: instances));
-        Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);
-        Assert.Equal(
-            current.Revision,
-            (await PostgresResources.Find(item => item.Id == current.Id).SingleAsync()).Revision);
     }
 
     [Fact]
@@ -387,7 +372,6 @@ public sealed class PostgresDriftGlobalTests(
 {
     [Theory]
     [InlineData("version")]
-    [InlineData("username")]
     [InlineData("storageRevision")]
     [InlineData("scope")]
     public async Task PostgresImmutableChangesBlockWithoutTouchingCredentials(string field)
@@ -406,7 +390,6 @@ public sealed class PostgresDriftGlobalTests(
         var result = await Apply(
             PostgresSnapshot(
                 version: field == "version" ? 17 : 16,
-                username: field == "username" ? "replacement" : "application",
                 scope: field == "scope" ? null : "private-data",
                 storageRevision: field == "storageRevision" ? 2 : 1));
         Assert.Equal(RepositoryPipelineStatus.Blocked, result.Status);

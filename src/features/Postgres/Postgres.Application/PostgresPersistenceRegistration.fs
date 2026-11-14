@@ -101,7 +101,10 @@ module PostgresPersistenceRegistration =
             SecretDeclarationConsumer(
                 "PostgresCluster",
                 PostgresResourceDeployment.ResourceType,
-                SecretBindingUsage.Bootstrap
+                SecretBindingUsage.Bootstrap,
+                SecretConsumerProjectionPolicy.RuntimeBindings,
+                SecretConsumerPlacementRequirement.LiveDeployments,
+                SecretConsumerValueAccess.ProjectionOnly
             )
         )
         |> ignore
@@ -137,10 +140,10 @@ module PostgresPersistenceRegistration =
 
         services.AddScoped<CreatePostgresCredential>(
             Func<IServiceProvider, CreatePostgresCredential>(fun serviceProvider ->
-                CreatePostgresCredential(fun tenantId clusterId username password cancellationToken ->
+                CreatePostgresCredential(fun tenantId clusterId password cancellationToken ->
                     serviceProvider
                         .GetRequiredService<PostgresCredentialCreator>()
-                        .InvokeAsync(tenantId, clusterId, username, password, cancellationToken)))
+                        .InvokeAsync(tenantId, clusterId, password, cancellationToken)))
         )
         |> ignore
 

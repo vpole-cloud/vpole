@@ -1,3 +1,5 @@
+using Pole.Features.Backups.Migrations;
+using Pole.Features.Backups.Application;
 using System.Reflection;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
@@ -76,6 +78,7 @@ public sealed class TestApiApplication : IAsyncDisposable
     private static readonly Assembly[] Assemblies =
     [
         typeof(GitOpsFeature).Assembly,
+        typeof(BackupsFeature).Assembly,
         typeof(SecretFeature).Assembly,
         typeof(PrivateAccessFeature).Assembly,
         typeof(WebServiceEndpoints).Assembly,
@@ -213,6 +216,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             Task.FromResult<EnsureRuntimeCellIngressBaselineOutcome>(new RuntimeCellIngressBaselineReady()));
         builder.Services.AddRedisServicesFeature();
         builder.Services.AddPostgresFeature(builder.Configuration);
+        builder.Services.AddBackupsFeature();
         builder.Services.AddSecretsFeature();
         builder.Services.AddPrivateAccessFeature();
         builder.Services.AddTenantsFeature();
@@ -232,6 +236,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             typeof(WebServiceSchemaValidationMigration).Assembly,
             typeof(FunctionAppsInitialMigration).Assembly,
             typeof(ResourceConnectionIndexesMigration).Assembly,
+            typeof(BackupsIndexesMigration).Assembly,
         ]);
         builder.Services.AddSearchFeature();
         builder.Services.AddGitProvidersFeature(builder.Configuration);
@@ -340,6 +345,7 @@ public sealed class TestApiApplication : IAsyncDisposable
             .MapDeploymentTargetEncryptionEndpoints()
             .MapWebServiceEndpoints()
             .MapResourceDeploymentEndpoints()
+            .MapBackupsEndpoints()
             .MapResourceConnectionEndpoints()
             .MapFunctionAppEndpoints()
             .MapQuotaEndpoints()

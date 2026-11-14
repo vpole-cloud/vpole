@@ -29,5 +29,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\ComputeProfiles\ComputeProfiles.Contracts.HttpMapping\ComputeProfiles.Contracts.HttpMapping.csproj"/>
+        <ProjectReference Include="../../../shared/Scheduling/Scheduling.csproj"/>
     </ItemGroup>
 </Project>

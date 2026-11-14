@@ -1,0 +1,9 @@
+apiVersion: pole.io/v1alpha1
+kind: SecretBinding
+metadata:
+  name: archives-access
+spec:
+  secret: storage-keys
+  consumer: { kind: BackupDestination, name: archives }
+  usage: BackupStorage
+  keyMappings: { access: access, secret: secret }

@@ -19,7 +19,6 @@ namespace Pole.Features.Postgres.Tests.Kubernetes.Infrastructure;
 internal sealed class ManagedProjectionFixture : IDisposable
 {
     private readonly SecretBinding _binding;
-    private readonly PostgresDeploymentMode _mode;
     private readonly IServiceScope _scope;
     private readonly ServiceProvider _services;
     private bool _applied;
@@ -30,7 +29,6 @@ internal sealed class ManagedProjectionFixture : IDisposable
         PostgresCluster cluster,
         string namespaceName)
     {
-        _mode = cluster.Spec.DeploymentMode;
         _binding = SecretBinding.Create(Id(), "pole/postgresql", cluster.Id, new AllSecretDeployments(), []);
         _authority = SecretFactory.CreateManaged(
             Id(),
@@ -94,12 +92,7 @@ internal sealed class ManagedProjectionFixture : IDisposable
 
     public SecretProjection Projection { get; private set; }
 
-    public PostgresProjectedCredentials Credentials =>
-        _mode == PostgresDeploymentMode.Operator
-            ? PostgresProjectedCredentials.NewOperatorCredentials("postgres-user", Reference)
-            : PostgresProjectedCredentials.NewStatefulSetCredentials(Reference);
-
-    private SecretProjectionReference Reference =>
+    public SecretProjectionReference Credentials =>
         new(Projection.SecretId, Projection.KubernetesName, Projection.DesiredVersion);
 
     private ISecretProjectionTarget Target => _scope.ServiceProvider.GetRequiredService<ISecretProjectionTarget>();
@@ -127,7 +120,7 @@ internal sealed class ManagedProjectionFixture : IDisposable
                 SecretProjectionManifest.Create(
                     Projection,
                     _binding,
-                    new Dictionary<string, string> { ["username"] = "postgres-user", ["password"] = password })),
+                    new Dictionary<string, string> { ["username"] = "postgres", ["password"] = password })),
             default);
         Assert.IsType<SecretProjectionTargetSucceeded>(applied.Value);
         _applied = true;

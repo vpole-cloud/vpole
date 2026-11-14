@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Pole.Features.Realtime.Contracts;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Application.Managed;
 using Pole.Features.Secrets.Application.Projections;
@@ -14,6 +15,12 @@ namespace Pole.Features.Secrets.Application;
 
 public static class SecretFeature
 {
+    public static void ValidateSecretConsumerContributions(this IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        _ = scope.ServiceProvider.GetRequiredService<SecretBindingConsumerCatalog>();
+    }
+
     public static IServiceCollection AddSecretsFeature(this IServiceCollection services)
     {
         services.AddSingleton(new RealtimeTopic("secrets", RealtimeScope.Tenant));

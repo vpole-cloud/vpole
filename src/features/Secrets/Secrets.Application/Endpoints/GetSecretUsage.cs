@@ -8,6 +8,7 @@ using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.ResourceDeployments.Contracts;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Secrets;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Primitives;
@@ -36,7 +37,8 @@ public sealed class GetSecretUsageValidator : AbstractValidator<GetSecretUsageRe
 public sealed class GetSecretUsageHandler(
     LoadSecretById load,
     LoadResourceDeploymentSet loadDeployments,
-    IGitOpsMutations git
+    IGitOpsMutations git,
+    SecretBindingConsumerCatalog consumers
 ) : IMediatorOutcomeHandler<GetSecretUsageRequest, GetSecretUsageOutcome>
 {
     public async Task<GetSecretUsageOutcome> HandleAsync(
@@ -68,8 +70,7 @@ public sealed class GetSecretUsageHandler(
                             ct: cancellationToken),
                     },
                     deployments.Where(x =>
-                            binding.Usage == SecretBindingUsage.Runtime &&
-                            x.IsolationScopeId == secret.IsolationScopeId &&
+                            consumers.GrantsProjection(binding) && x.IsolationScopeId == secret.IsolationScopeId &&
                             x.DesiredOperation != ResourceDeploymentDesiredOperation.Delete &&
                             (binding.Selection is AllSecretDeployments ||
                                 (binding.Selection is SelectedSecretDeployments selected &&

@@ -181,6 +181,7 @@ public static class PolePlatform
         _ = services.GetRequiredService<RealtimeTopicRegistry>();
         _ = services.GetRequiredService<SearchSourceTypeRegistry>();
         services.ValidateResourceDeploymentContributions();
+        services.ValidateSecretConsumerContributions();
         _ = services.GetRequiredService<IEnvelopeEncryptionService>();
         await services.GetRequiredService<EnsurePendingOutboxEventsRegistered>().InvokeAsync(cancellationToken);
         await services.GetRequiredService<MigrationRunner>().RunMigrations(cancellationToken);

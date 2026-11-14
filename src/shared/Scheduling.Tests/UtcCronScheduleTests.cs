@@ -1,9 +1,9 @@
-using Pole.Features.Functions.Domain;
+using Pole.Scheduling;
 using Xunit;
 
-namespace Pole.Features.Functions.Tests;
+namespace Pole.Scheduling.Tests;
 
-public sealed class FunctionCronScheduleTests
+public sealed class UtcCronScheduleTests
 {
     [Theory]
     [InlineData("* * * * *")]
@@ -12,10 +12,10 @@ public sealed class FunctionCronScheduleTests
     [InlineData("*/5 */2 1-31/3 1-12/2 0-7")]
     public void Parse_accepts_supported_five_field_syntax(string expression)
     {
-        var schedule = FunctionCronSchedule.Parse(expression);
+        var schedule = UtcCronSchedule.Parse(expression);
 
         Assert.Equal(expression, schedule.Expression);
-        Assert.True(FunctionCronSchedule.TryParse(expression, out var parsed));
+        Assert.True(UtcCronSchedule.TryParse(expression, out var parsed));
         Assert.NotNull(parsed);
     }
 
@@ -38,15 +38,15 @@ public sealed class FunctionCronScheduleTests
     [InlineData("one * * * *")]
     public void Parse_rejects_invalid_syntax_and_ranges(string expression)
     {
-        Assert.Throws<FormatException>(() => FunctionCronSchedule.Parse(expression));
-        Assert.False(FunctionCronSchedule.TryParse(expression, out var schedule));
+        Assert.Throws<FormatException>(() => UtcCronSchedule.Parse(expression));
+        Assert.False(UtcCronSchedule.TryParse(expression, out var schedule));
         Assert.Null(schedule);
     }
 
     [Fact]
     public void GetNextOccurrence_is_strictly_after_the_input_minute()
     {
-        var schedule = FunctionCronSchedule.Parse("*/15 * * * *");
+        var schedule = UtcCronSchedule.Parse("*/15 * * * *");
 
         Assert.Equal(Utc("2026-07-18T10:15:00Z"), schedule.GetNextOccurrence(Utc("2026-07-18T10:00:00Z")));
         Assert.Equal(Utc("2026-07-18T10:15:00Z"), schedule.GetNextOccurrence(Utc("2026-07-18T10:14:59Z")));
@@ -55,7 +55,7 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void GetNextOccurrence_supports_lists_ranges_and_steps()
     {
-        var schedule = FunctionCronSchedule.Parse("10,40 8-14/3 * 1,7 1-5");
+        var schedule = UtcCronSchedule.Parse("10,40 8-14/3 * 1,7 1-5");
 
         Assert.Equal(Utc("2026-07-20T08:10:00Z"), schedule.GetNextOccurrence(Utc("2026-07-18T09:00:00Z")));
         Assert.Equal(Utc("2026-07-20T11:10:00Z"), schedule.GetNextOccurrence(Utc("2026-07-20T08:40:00Z")));
@@ -64,7 +64,7 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void Restricted_day_of_month_and_day_of_week_use_or_semantics()
     {
-        var schedule = FunctionCronSchedule.Parse("0 9 13 * 1");
+        var schedule = UtcCronSchedule.Parse("0 9 13 * 1");
 
         Assert.Equal(Utc("2026-07-20T09:00:00Z"), schedule.GetNextOccurrence(Utc("2026-07-18T00:00:00Z")));
         Assert.Equal(Utc("2026-07-27T09:00:00Z"), schedule.GetNextOccurrence(Utc("2026-07-20T09:00:00Z")));
@@ -74,8 +74,8 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void Unrestricted_day_field_does_not_force_or_semantics()
     {
-        var mondays = FunctionCronSchedule.Parse("0 9 * * 1");
-        var thirteenths = FunctionCronSchedule.Parse("0 9 13 * *");
+        var mondays = UtcCronSchedule.Parse("0 9 * * 1");
+        var thirteenths = UtcCronSchedule.Parse("0 9 13 * *");
 
         Assert.Equal(Utc("2026-07-20T09:00:00Z"), mondays.GetNextOccurrence(Utc("2026-07-18T00:00:00Z")));
         Assert.Equal(Utc("2026-08-13T09:00:00Z"), thirteenths.GetNextOccurrence(Utc("2026-07-18T00:00:00Z")));
@@ -87,7 +87,7 @@ public sealed class FunctionCronScheduleTests
     [InlineData("0,7")]
     public void Sunday_can_be_written_as_zero_or_seven(string sunday)
     {
-        var schedule = FunctionCronSchedule.Parse($"0 12 * * {sunday}");
+        var schedule = UtcCronSchedule.Parse($"0 12 * * {sunday}");
 
         Assert.Equal(Utc("2026-07-19T12:00:00Z"), schedule.GetNextOccurrence(Utc("2026-07-18T00:00:00Z")));
     }
@@ -95,7 +95,7 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void GetNextOccurrence_crosses_years_and_handles_leap_day()
     {
-        var schedule = FunctionCronSchedule.Parse("0 0 29 2 *");
+        var schedule = UtcCronSchedule.Parse("0 0 29 2 *");
 
         Assert.Equal(Utc("2028-02-29T00:00:00Z"), schedule.GetNextOccurrence(Utc("2026-07-18T00:00:00Z")));
     }
@@ -103,7 +103,7 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void Evaluation_rejects_non_utc_inputs()
     {
-        var schedule = FunctionCronSchedule.Parse("* * * * *");
+        var schedule = UtcCronSchedule.Parse("* * * * *");
         var localOffset = new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.FromHours(3));
 
         Assert.Throws<ArgumentException>(() => schedule.GetNextOccurrence(localOffset));
@@ -113,7 +113,7 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void IsMatch_requires_an_exact_scheduled_minute()
     {
-        var schedule = FunctionCronSchedule.Parse("30 10 * * *");
+        var schedule = UtcCronSchedule.Parse("30 10 * * *");
 
         Assert.True(schedule.IsMatch(Utc("2026-07-18T10:30:00Z")));
         Assert.False(schedule.IsMatch(Utc("2026-07-18T10:30:01Z")));
@@ -124,7 +124,7 @@ public sealed class FunctionCronScheduleTests
     [Fact]
     public void Search_at_end_of_supported_calendar_fails_cleanly()
     {
-        var schedule = FunctionCronSchedule.Parse("0 0 1 1 *");
+        var schedule = UtcCronSchedule.Parse("0 0 1 1 *");
 
         Assert.Throws<InvalidOperationException>(() => schedule.GetNextOccurrence(Utc("9999-12-31T23:59:59Z")));
     }

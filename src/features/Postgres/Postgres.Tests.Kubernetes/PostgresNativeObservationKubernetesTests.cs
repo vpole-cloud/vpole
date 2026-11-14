@@ -27,15 +27,8 @@ public sealed class PostgresNativeObservationKubernetesTests(
     ITestOutputHelper output
 ) : KubernetesIntegrationTestBase(fixture)
 {
-    [KubernetesFact]
-    public Task Native_StatefulSet_source_observes_owned_Pod_UID_change_and_controller_fence() =>
-        VerifyAsync(PostgresDeploymentMode.StatefulSet);
-
     [KubernetesFact("cnpg")]
-    public Task CNPG_source_verifies_inherited_labels_direct_instance_UIDs_and_controller_fence() =>
-        VerifyAsync(PostgresDeploymentMode.Operator);
-
-    private async Task VerifyAsync(PostgresDeploymentMode mode)
+    public async Task CNPG_source_verifies_inherited_labels_direct_instance_UIDs_and_controller_fence()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(6));
         using var client = new KubernetesClient(Target.CreateConfiguration(), new KubernetesWatchHeaders());
@@ -44,7 +37,6 @@ public sealed class PostgresNativeObservationKubernetesTests(
             "postgres-observation",
             Id(),
             17,
-            mode,
             PostgresTestData.DefaultStorageProfileId,
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 1));
         var targetId = PostgresTestData.DefaultDeploymentTargetId;
@@ -100,7 +92,6 @@ public sealed class PostgresNativeObservationKubernetesTests(
         var settings = new PostgresSettings
         {
             OperatorImage = new PostgresImageSettings { Server = "ghcr.io", Name = "cloudnative-pg/postgresql" },
-            StatefulSetImage = new PostgresImageSettings { Server = "docker.io", Name = "postgres" },
         };
         IPostgresClusterDeploymentManager manager = new PostgresClusterDeploymentManager(settings);
         using var projection = new ManagedProjectionFixture(client, cluster, NamespaceName);
@@ -157,43 +148,39 @@ public sealed class PostgresNativeObservationKubernetesTests(
                     summary.CurrentReplicas,
                     summary.DesiredReplicas,
                     summary.UpdatedReplicas);
-            if (mode == PostgresDeploymentMode.Operator)
+            var native = await client.CustomObjects.GetNamespacedCustomObjectAsync(
+                "postgresql.cnpg.io",
+                "v1",
+                NamespaceName,
+                "clusters",
+                name,
+                cancellationToken: deadline.Token);
+            var json = JsonSerializer.SerializeToElement(native);
+            output.WriteLine(
+                "Controller generation: {0}",
+                json.GetProperty("metadata").GetProperty("generation").GetInt64());
+            if (json.TryGetProperty("status", out var status))
             {
-                var native = await client.CustomObjects.GetNamespacedCustomObjectAsync(
-                    "postgresql.cnpg.io",
-                    "v1",
-                    NamespaceName,
-                    "clusters",
-                    name,
-                    cancellationToken: deadline.Token);
-                var json = JsonSerializer.SerializeToElement(native);
-                output.WriteLine(
-                    "Controller generation: {0}",
-                    json.GetProperty("metadata").GetProperty("generation").GetInt64());
-                if (json.TryGetProperty("status", out var status))
-                {
-                    foreach (var key in new[] { "instances", "readyInstances" })
-                        if (status.TryGetProperty(key, out var count) && count.ValueKind == JsonValueKind.Number)
-                            output.WriteLine("{0}: {1}", key, count.GetInt64());
-                    if (status.TryGetProperty("conditions", out var conditions) &&
-                        conditions.ValueKind == JsonValueKind.Array)
-                        foreach (var condition in conditions.EnumerateArray().Take(16))
-                        {
-                            var type = condition.GetProperty("type").GetString();
-                            if (type is not ("Ready" or "Initialized" or "ContinuousArchiving"
-                                or "LastBackupSucceeded"))
-                                type = "Other";
-                            var state = condition.GetProperty("status").GetString();
-                            if (state is not ("True" or "False" or "Unknown"))
-                                state = "Unknown";
-                            var generation
-                                = condition.TryGetProperty("observedGeneration", out var value) &&
-                                value.ValueKind == JsonValueKind.Number
-                                    ? value.GetInt64()
-                                    : -1;
-                            output.WriteLine("Condition: {0}/{1}/observedGeneration={2}", type, state, generation);
-                        }
-                }
+                foreach (var key in new[] { "instances", "readyInstances" })
+                    if (status.TryGetProperty(key, out var count) && count.ValueKind == JsonValueKind.Number)
+                        output.WriteLine("{0}: {1}", key, count.GetInt64());
+                if (status.TryGetProperty("conditions", out var conditions) &&
+                    conditions.ValueKind == JsonValueKind.Array)
+                    foreach (var condition in conditions.EnumerateArray().Take(16))
+                    {
+                        var type = condition.GetProperty("type").GetString();
+                        if (type is not ("Ready" or "Initialized" or "ContinuousArchiving" or "LastBackupSucceeded"))
+                            type = "Other";
+                        var state = condition.GetProperty("status").GetString();
+                        if (state is not ("True" or "False" or "Unknown"))
+                            state = "Unknown";
+                        var generation
+                            = condition.TryGetProperty("observedGeneration", out var value) &&
+                            value.ValueKind == JsonValueKind.Number
+                                ? value.GetInt64()
+                                : -1;
+                        output.WriteLine("Condition: {0}/{1}/observedGeneration={2}", type, state, generation);
+                    }
             }
         }
 
@@ -205,20 +192,14 @@ public sealed class PostgresNativeObservationKubernetesTests(
             cancellationToken: deadline.Token);
         Assert.Equal(instance.Uid, pod.Metadata.Uid);
         AssertOwned(pod.Metadata, identity);
-        Assert.True(
-            KubernetesOwnedWatchItem.ControlledBy(
-                pod.Metadata,
-                binding,
-                mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
-                mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1"));
+        Assert.True(KubernetesOwnedWatchItem.ControlledBy(pod.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
         var service = await client.CoreV1.ReadNamespacedServiceAsync(
             PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id),
             NamespaceName,
             cancellationToken: deadline.Token);
         AssertOwned(service.Metadata, identity);
-        if (mode == PostgresDeploymentMode.Operator)
-            Assert.True(
-                KubernetesOwnedWatchItem.ControlledBy(service.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
+        Assert.True(
+            KubernetesOwnedWatchItem.ControlledBy(service.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
         var slices = await client.DiscoveryV1.ListNamespacedEndpointSliceAsync(
             NamespaceName,
             labelSelector: $"kubernetes.io/service-name={service.Metadata.Name}",
@@ -254,11 +235,7 @@ public sealed class PostgresNativeObservationKubernetesTests(
             Assert.Equal(instance.Uid, freshPod.Metadata.Uid);
             AssertOwned(freshPod.Metadata, identity);
             Assert.True(
-                KubernetesOwnedWatchItem.ControlledBy(
-                    freshPod.Metadata,
-                    binding,
-                    mode == PostgresDeploymentMode.Operator ? "Cluster" : "StatefulSet",
-                    mode == PostgresDeploymentMode.Operator ? "postgresql.cnpg.io/v1" : "apps/v1"));
+                KubernetesOwnedWatchItem.ControlledBy(freshPod.Metadata, binding, "Cluster", "postgresql.cnpg.io/v1"));
             var latency = Stopwatch.StartNew();
             await client.CoreV1.DeleteNamespacedPodAsync(
                 instance.Name,
@@ -297,21 +274,14 @@ public sealed class PostgresNativeObservationKubernetesTests(
                         },
                     }),
                 V1Patch.PatchType.MergePatch);
-            if (mode == PostgresDeploymentMode.Operator)
-                await client.CustomObjects.PatchNamespacedCustomObjectAsync(
-                    patch,
-                    "postgresql.cnpg.io",
-                    "v1",
-                    NamespaceName,
-                    "clusters",
-                    name,
-                    cancellationToken: deadline.Token);
-            else
-                await client.AppsV1.PatchNamespacedStatefulSetAsync(
-                    patch,
-                    name,
-                    NamespaceName,
-                    cancellationToken: deadline.Token);
+            await client.CustomObjects.PatchNamespacedCustomObjectAsync(
+                patch,
+                "postgresql.cnpg.io",
+                "v1",
+                NamespaceName,
+                "clusters",
+                name,
+                cancellationToken: deadline.Token);
             await NextAsync(
                 changes,
                 ResourceDeploymentObservationChangeKind.BindingChanged,
@@ -333,11 +303,6 @@ public sealed class PostgresNativeObservationKubernetesTests(
 
         async Task<V1ObjectMeta> ControllerAsync()
         {
-            if (mode == PostgresDeploymentMode.StatefulSet)
-                return (await client.AppsV1.ReadNamespacedStatefulSetAsync(
-                    name,
-                    NamespaceName,
-                    cancellationToken: deadline.Token)).Metadata;
             var native = await client.CustomObjects.GetNamespacedCustomObjectAsync(
                 "postgresql.cnpg.io",
                 "v1",

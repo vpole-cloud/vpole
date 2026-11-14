@@ -40,26 +40,20 @@ type PostgresResourceDeploymentObserver
             let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
             let ns = deployment.Placement.KubernetesNamespace
 
-            match cluster.Spec.DeploymentMode with
-            | PostgresDeploymentMode.StatefulSet ->
-                let! controller = client.AppsV1.ReadNamespacedStatefulSetAsync(name, ns, cancellationToken = ct)
-                return controller.Metadata
-            | PostgresDeploymentMode.Operator ->
-                let! native =
-                    client.CustomObjects.GetNamespacedCustomObjectAsync(
-                        "postgresql.cnpg.io",
-                        "v1",
-                        ns,
-                        "clusters",
-                        name,
-                        cancellationToken = ct
-                    )
+            let! native =
+                client.CustomObjects.GetNamespacedCustomObjectAsync(
+                    "postgresql.cnpg.io",
+                    "v1",
+                    ns,
+                    "clusters",
+                    name,
+                    cancellationToken = ct
+                )
 
-                try
-                    return PostgresClusterObservation.metadata native
-                with :? JsonException ->
-                    return null
-            | mode -> return invalidOp $"Unsupported PostgreSQL mode '{mode}'."
+            try
+                return PostgresClusterObservation.metadata native
+            with :? JsonException ->
+                return null
         }
 
     member private this.WorkloadAsync
@@ -74,37 +68,22 @@ type PostgresResourceDeploymentObserver
             let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
             let ns = deployment.Placement.KubernetesNamespace
 
-            match cluster.Spec.DeploymentMode with
-            | PostgresDeploymentMode.StatefulSet ->
-                return!
-                    KubernetesWorkloadDiagnostics.StatefulSetAsync(
+            let! meta = this.ControllerMetadataAsync(cluster, deployment, client, ct)
+
+            return
+                if isNull meta then
+                    null
+                else
+                    KubernetesWorkloadDiagnostics.Controller(
                         client,
-                        name,
                         ns,
                         identity,
+                        meta,
+                        "Cluster",
                         deployment.DesiredGeneration,
                         "pole.io/deployment-generation",
-                        true,
-                        ct
+                        true
                     )
-            | PostgresDeploymentMode.Operator ->
-                let! meta = this.ControllerMetadataAsync(cluster, deployment, client, ct)
-
-                return
-                    if isNull meta then
-                        null
-                    else
-                        KubernetesWorkloadDiagnostics.Controller(
-                            client,
-                            ns,
-                            identity,
-                            meta,
-                            "Cluster",
-                            deployment.DesiredGeneration,
-                            "pole.io/deployment-generation",
-                            true
-                        )
-            | mode -> return invalidOp $"Unsupported PostgreSQL mode '{mode}'."
         }
 
     member private this.ObserveNativeAsync
@@ -119,63 +98,48 @@ type PostgresResourceDeploymentObserver
             let name = PostgresClusterKubernetesBuilder.buildResourceName cluster.Id
             let ns = deployment.Placement.KubernetesNamespace
 
-            match cluster.Spec.DeploymentMode with
-            | PostgresDeploymentMode.StatefulSet ->
+            let! native =
+                client.CustomObjects.GetNamespacedCustomObjectAsync(
+                    "postgresql.cnpg.io",
+                    "v1",
+                    ns,
+                    "clusters",
+                    name,
+                    cancellationToken = ct
+                )
+
+            match PostgresClusterObservation.tryRead native with
+            | None -> return UnavailableWorkloadObservation("InvalidNativeObservation") :> WorkloadObservation
+            | Some observed ->
+                let! conforming =
+                    if observed.RequiresPodConformance then
+                        PostgresOperatorReadiness.matchesAsync observed cluster deployment settings client ct
+                    else
+                        Threading.Tasks.Task.FromResult(false)
+
                 return!
-                    KubernetesWorkloadObservation.StatefulSetAsync(
+                    KubernetesWorkloadObservation.PodsAsync(
                         client,
-                        name,
                         ns,
                         identity,
+                        observed.Metadata,
+                        HashSet<string>([ observed.Metadata.Uid ], StringComparer.Ordinal),
                         deployment.DesiredGeneration,
                         "pole.io/deployment-generation",
                         true,
+                        (observed.ReadyCondition || conforming)
+                        && KubernetesWorkloadObservation.Generation(
+                            observed.Metadata,
+                            "pole.io/deployment-generation",
+                            true
+                        ) = deployment.DesiredGeneration,
+                        observed.Desired,
+                        observed.Current,
+                        observed.Ready,
+                        observed.Ready,
+                        observed.Ready,
                         ct
                     )
-            | PostgresDeploymentMode.Operator ->
-                let! native =
-                    client.CustomObjects.GetNamespacedCustomObjectAsync(
-                        "postgresql.cnpg.io",
-                        "v1",
-                        ns,
-                        "clusters",
-                        name,
-                        cancellationToken = ct
-                    )
-
-                match PostgresClusterObservation.tryRead native with
-                | None -> return UnavailableWorkloadObservation("InvalidNativeObservation") :> WorkloadObservation
-                | Some observed ->
-                    let! conforming =
-                        if observed.RequiresPodConformance then
-                            PostgresOperatorReadiness.matchesAsync observed cluster deployment settings client ct
-                        else
-                            Threading.Tasks.Task.FromResult(false)
-
-                    return!
-                        KubernetesWorkloadObservation.PodsAsync(
-                            client,
-                            ns,
-                            identity,
-                            observed.Metadata,
-                            HashSet<string>([ observed.Metadata.Uid ], StringComparer.Ordinal),
-                            deployment.DesiredGeneration,
-                            "pole.io/deployment-generation",
-                            true,
-                            (observed.ReadyCondition || conforming)
-                            && KubernetesWorkloadObservation.Generation(
-                                observed.Metadata,
-                                "pole.io/deployment-generation",
-                                true
-                            ) = deployment.DesiredGeneration,
-                            observed.Desired,
-                            observed.Current,
-                            observed.Ready,
-                            observed.Ready,
-                            observed.Ready,
-                            ct
-                        )
-            | mode -> return invalidOp $"Unsupported PostgreSQL mode '{mode}'."
         }
 
     member private this.ResolveDiagnosticsAsync

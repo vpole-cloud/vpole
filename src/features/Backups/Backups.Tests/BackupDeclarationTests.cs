@@ -1,0 +1,213 @@
+using System.Text.Json;
+using Pole.Features.Backups.Application;
+using Pole.Features.Backups.Application.Declarations;
+using Pole.Features.Backups.Contracts;
+using Pole.Features.GitOps.Contracts;
+using Pole.Features.GitOps.Primitives;
+using Xunit;
+
+namespace Pole.Features.Backups.Tests;
+
+public class BackupDeclarationTests
+{
+    private static DeclarativeBackupDestinationProvider Destination() => new(
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        null!);
+
+    private static DeclarativeBackupPolicyProvider Policy() => new(
+        null!,
+        null!,
+        null!,
+        null!,
+        null!,
+        [new SampleProvider()],
+        null!,
+        null!,
+        null!,
+        null!);
+
+    [Fact]
+    public void Destination_prepares_registered_consumer_before_configuring_its_secret_grant()
+    {
+        var provider = Destination();
+        var address = new ResourceAddress(provider.Kind, "archive");
+        var spec = provider.NormalizeAndValidate(
+            DeclarationJson.Write(
+                new
+                {
+                    resourceGroup = "shop", isolationScope = "data", endpoint = "https://storage.example",
+                    bucket = "tenant-bucket", prefix = "tenant/",
+                    credentials = new
+                        { secret = "archive-keys", accessKeyIdKey = "access", secretAccessKeyKey = "secret" },
+                }));
+        Assert.Equal("tenant", spec.GetProperty("prefix").GetString());
+        var facts = provider.Facts(spec);
+        Assert.Equal(new ResourceAddress("ResourceGroup", "shop"), facts.Scope);
+        Assert.Equal(["access", "secret"], facts.References.Where(r => r.RequiresAccess).Select(r => r.RequiredKey));
+        var steps = provider.Steps(address, spec);
+        Assert.Equal(
+            new DeclarationDependency(new("Secret", "archive-keys"), DeclarationPhase.Prepare),
+            Assert.Single(steps[0].Dependencies, d => d.Resource.Kind == "Secret"));
+        Assert.Equal(new(address, DeclarationPhase.Prepare), Assert.Single(steps[1].Dependencies));
+        Assert.Equal(DeclarationPhase.Configure, steps[1].Phase);
+    }
+
+    [Theory]
+    [InlineData("https://user:pass@s3.example", "logs/", "spec.endpoint")]
+    [InlineData("https://s3.example", "../secret", "spec.prefix")]
+    public void Destination_rejects_credentials_in_urls_and_relative_parent_paths(
+        string endpoint,
+        string prefix,
+        string field)
+    {
+        var error = Assert.Throws<DeclarationSchemaException>(() => Destination()
+            .NormalizeAndValidate(
+                DeclarationJson.Write(
+                    new
+                    {
+                        resourceGroup = "shop", endpoint, bucket = "tenant", prefix,
+                        credentials = new { secret = "archive-keys", accessKeyIdKey = "a", secretAccessKeyKey = "b" },
+                    })));
+        Assert.Equal(field, error.Field);
+    }
+
+    [Fact]
+    public void Policy_uses_contributed_service_kind_and_requires_service_and_destination_configuration()
+    {
+        var provider = Policy();
+        var address = new ResourceAddress(provider.Kind, "daily");
+        var service = new ResourceAddress("OtherService", "store");
+        var spec = provider.NormalizeAndValidate(
+            DeclarationJson.Write(
+                new { service, destination = "archive", schedule = "0 1 * * *", retentionDays = 30 }));
+        var facts = provider.Facts(spec);
+        Assert.Equal(service, Assert.Single(facts.ExclusiveRelations).Left);
+        var step = Assert.Single(provider.Steps(address, spec));
+        Assert.Equal(DeclarationPhase.Configure, step.Phase);
+        Assert.Contains(new(service, DeclarationPhase.Configure), step.Dependencies);
+        Assert.Contains(
+            new(new(BackupDeclarationKinds.Destination, "archive"), DeclarationPhase.Configure),
+            step.Dependencies);
+        Assert.False(spec.GetProperty("suspended").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("Unknown", "0 1 * * *", 30, "spec.service")]
+    [InlineData("OtherService", "invalid", 30, "spec.schedule")]
+    [InlineData("OtherService", "0 1 * * *", 0, "spec.retentionDays")]
+    public void Policy_rejects_invalid_inputs(
+        string kind,
+        string schedule,
+        int retentionDays,
+        string field)
+    {
+        var error = Assert.Throws<DeclarationSchemaException>(() => Policy()
+            .NormalizeAndValidate(
+                DeclarationJson.Write(
+                    new
+                    {
+                        service = new ResourceAddress(kind, "source"), destination = "archive", schedule, retentionDays,
+                    })));
+        Assert.Equal(field, error.Field);
+    }
+
+    [Fact]
+    public void History_and_restore_commands_are_not_declarative_fields() => Assert.Throws<JsonException>(() => Policy()
+        .NormalizeAndValidate(
+            DeclarationJson.Write(
+                new
+                {
+                    service = new ResourceAddress("OtherService", "source"), destination = "archive",
+                    schedule = "0 1 * * *", retentionDays = 7,
+                    restoreTo = "now",
+                })));
+
+    [Fact]
+    public void Concrete_declaration_failures_preserve_the_existing_wire_diagnostics_and_reject_foreign_failures()
+    {
+        var destination = Destination();
+        var policy = Policy();
+        (IDeclarativeResourceProvider Provider, IDeclarationFailure Failure, string Code)[] cases =
+        [
+            (destination, new BackupDeclarationReferenceUnavailable(), "backup-declaration-reference-unavailable"),
+            (destination, new BackupDeclarationDestinationNameExists(), "destination-name-exists"),
+            (destination, new BackupDeclarationScopeUnavailable(), "scope-unavailable"),
+            (destination, new BackupDeclarationRegistrationConflict(), "registration-conflict"),
+            (destination, new BackupDeclarationCredentialGrantDenied(), "credential-grant-denied"),
+            (destination, new BackupDeclarationResourceMissing(), "not-found"),
+            (destination, new BackupDeclarationRevisionConflict(), "revision-conflict"),
+            (destination, new BackupDeclarationDestinationIdentityImmutable(), "destination-identity-immutable"),
+            (destination, new BackupDeclarationDestinationInUse(), "destination-in-use"),
+            (destination, new BackupDeclarationDestinationCleanupPending(), "destination-cleanup-pending"),
+            (policy, new BackupDeclarationSourceUnavailable(), "source-unavailable"),
+            (policy, new BackupDeclarationSourceUnsupported(), "unsupported-provider"),
+            (policy, new BackupDeclarationSourcePlacementUnavailable(), "placement-unavailable"),
+            (policy, new BackupDeclarationSourceRevisionChanged(), "source-revision-changed"),
+            (policy, new BackupDeclarationDestinationPlacementUnavailable(), "destination-placement-unavailable"),
+            (policy, new BackupDeclarationRetentionInvalid(), "backup-positive-retention-required"),
+            (policy, new BackupDeclarationDestinationUnavailable(), "destination-unavailable"),
+            (policy, new BackupDeclarationPolicyNameExists(), "policy-name-exists"),
+            (policy, new BackupDeclarationSourcePolicyExists(), "source-policy-exists"),
+            (policy, new BackupDeclarationPolicyIdentityImmutable(), "policy-identity-immutable"),
+            (policy, new BackupDeclarationPolicyStopping(), "policy-stopping"),
+        ];
+        foreach (var (provider, failure, code) in cases)
+            Assert.Equal(code, provider.DescribeFailure(failure));
+        Assert.Throws<ArgumentException>(() => destination.DescribeFailure(new ForeignDeclarationFailure()));
+        Assert.Throws<ArgumentException>(() => policy.DescribeFailure(new ForeignDeclarationFailure()));
+    }
+
+    private sealed record ForeignDeclarationFailure : IDeclarationFailure;
+
+    private sealed class SampleProvider : IBackupProvider
+    {
+        public string DeclarationKind => "OtherService";
+        public string ResourceType => "example/other";
+        public bool SupportsPointInTimeRecovery => false;
+
+        public ValidateBackupScheduleOutcome ValidateSchedule(BackupSchedule schedule) => schedule.RetentionDays > 0
+            ? new BackupScheduleAccepted()
+            : new BackupRetentionInvalid();
+
+        public Task<DescribeBackupSourceOutcome> DescribeAsync(BackupSourceIdentity source, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<ApplyBackupScheduleOutcome> ApplyScheduleAsync(
+            ApplyBackupScheduleRequest request,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<ReadBackupCatalogOutcome> ListAsync(ListBackupCatalogRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<ReadBackupHistoryOutcome>
+            ReadHistoryAsync(ReadBackupHistoryRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<SuspendBackupArchiveOutcome> SuspendArchiveAsync(
+            SuspendBackupArchiveRequest request,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<ObserveBackupRuntimeOutcome> ObserveAsync(BackupArchiveContext archive, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<ObserveBackupCopyOutcome> ObserveCopyAsync(
+            ObserveBackupCopyRequest request,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<RunBackupCopyOutcome> RunAsync(BackupCopyRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<ObserveBackupRestoreOutcome> ObserveRestoreAsync(
+            ObserveBackupRestoreRequest request,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<RestoreBackupOutcome> RestoreAsync(RestoreBackupRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
+}

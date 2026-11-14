@@ -28,6 +28,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ["ResourceConnections"] = FeatureRole.Platform,
             ["ResourceDeployments"] = FeatureRole.Platform,
             ["ResourceGroups"] = FeatureRole.Platform,
+            ["Backups"] = FeatureRole.Platform,
             ["Search"] = FeatureRole.Platform,
             ["Secrets"] = FeatureRole.Platform,
             ["StorageProfiles"] = FeatureRole.Platform,
@@ -39,6 +40,21 @@ public sealed class ModuleBoundaryArchitectureTests
             ["Postgres"] = FeatureRole.ServiceProvider,
             ["RedisServices"] = FeatureRole.ServiceProvider,
         };
+
+    [Fact]
+    public void Scheduling_IsPure_AndFunctionsDomainHasNoWorkloadDependency()
+    {
+        var root = FindRepositoryRoot();
+        var scheduling = XDocument.Load(Path.Combine(root, "src/shared/Scheduling/Scheduling.csproj"));
+        Assert.Empty(scheduling.Descendants("ProjectReference"));
+        Assert.Empty(scheduling.Descendants("PackageReference"));
+
+        var functions = XDocument.Load(
+            Path.Combine(root, "src/features/Functions/Functions.Domain/Functions.Domain.csproj"));
+        Assert.DoesNotContain(
+            functions.Descendants("ProjectReference"),
+            reference => ((string?)reference.Attribute("Include"))?.Replace('\\', '/').Contains("/Workloads/") == true);
+    }
 
     [Fact]
     public void EveryProductionFeature_HasAnExplicitArchitecturalRole()

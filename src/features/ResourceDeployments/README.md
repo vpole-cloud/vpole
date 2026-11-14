@@ -7,6 +7,18 @@ transactional state/outbox writes, recovery scheduling and adapter/observer cata
 providers own logical configuration and native object selection. RuntimeCells owns namespaces;
 DeploymentTargets owns clients and admission. This feature does not store credentials or audit history.
 
+## Retained projection placements
+
+`RetainProjectionPlacement` lets a registered `IProjectionOnlyPlacementAdapter` keep an authorized
+credential consumer on the exact tenant, source deployment, target, scope and RuntimeCell in the
+caller's Mongo transaction. It copies no running workload and is not a general placement-admission
+bypass. Source/consumer ownership and planning fences still apply. The retained deployment pins the
+namespace after the source disappears; Secrets owns its projected key material.
+
+Backups uses this capability for a destination's archive access. Several archives can share one
+credential placement. Forgetting the last archive requests exact placement deletion with revision
+and compute fences; destination attachment/detachment is serialized in the caller transaction.
+Physical files in the tenant bucket are unaffected.
 
 ## Tenant operations and runtime observation
 
@@ -21,7 +33,7 @@ state and are displayed separately in the WebService Operations section.
 `GET /resource-deployments/{deploymentId}/observation` resolves only that tenant-owned persisted
 placement. Providers contribute `IResourceDeploymentObserver` through a validated descriptor
 catalog; the platform never switches on built-in resource types. WebServices select Deployments,
-Redis StatefulSets, and PostgreSQL its configured StatefulSet or CloudNativePG Cluster.
+Redis StatefulSets, and PostgreSQL its CloudNativePG Cluster.
 The operator signal combines Ready with provider-owned evidence for the current native generation.
 CloudNativePG 1.30 Ready conditions can omit `observedGeneration`, as shown by its
 [pinned status writer](https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.30.0/pkg/resources/status/transactions.go);
@@ -88,7 +100,6 @@ The shared [observation infrastructure](../../shared/Observation/README.md) owns
 source/sampling lifecycle, timing and the Mongo demand/lease/snapshot protocol. This feature retains
 its provider catalog, tenant/placement/context fences, sanitized workload BSON mapping and events.
 StorageProfiles uses the same execution/storage mechanisms through its own target-scoped adapters.
-
 
 Realtime interest creates expiring durable demand for a tenant-owned physical deployment.
 Registered provider change sources establish bounded native LIST/WATCH ownership before the

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <AssemblyName>Pole.Features.Backups.Contracts</AssemblyName>
+        <RootNamespace>Pole.Features.Backups.Contracts</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="MongoDB.Driver"/>
+    </ItemGroup>
+</Project>

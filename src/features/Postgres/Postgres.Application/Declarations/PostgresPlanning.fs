@@ -28,7 +28,6 @@ type PostgresPlanningDependencies =
       Catalog: PostgresCatalogPlanning
       Placements: ResourceDeploymentPlanningSnapshot option
       BootstrapSecretId: string
-      DeploymentMode: PostgresDeploymentMode
       Bootstrap: BootstrapSecretReady option
       Credentials: ConsumerSecretPlanningSnapshot option
       Adoption: ManagedSecretAdoptionSnapshot option }
@@ -138,8 +137,7 @@ type PostgresPlanningReader
         loadPlacements: LoadResourceDeploymentPlanningSnapshot,
         readBootstrap: ReadBootstrapSecret,
         readAdoption: ReadManagedSecretAdoption,
-        loadCredentials: LoadConsumerSecretPlanningSnapshot,
-        settings: PostgresSettings
+        loadCredentials: LoadConsumerSecretPlanningSnapshot
     ) =
 
     let accepted (input: PostgresPlanningInput) kind name = input.Resolve kind name
@@ -317,10 +315,6 @@ type PostgresPlanningReader
                           Catalog = catalog
                           Placements = placement
                           BootstrapSecretId = sourceId
-                          DeploymentMode =
-                            current
-                            |> Option.map _.Spec.DeploymentMode
-                            |> Option.defaultValue settings.DefaultDeploymentMode
                           Bootstrap = None
                           Credentials = None
                           Adoption = None }
@@ -338,7 +332,6 @@ type PostgresPlanningReader
                     | Some bootstrap ->
                         bootstrap.SourceSecretId <> data.BootstrapSecretId
                         || bootstrap.SourceKey <> input.Spec.BootstrapPassword.Key
-                        || bootstrap.Username <> input.Spec.Username
 
                 let changed =
                     current.GroupId <> data.Catalog.Scope.ResourceGroupId
@@ -359,24 +352,10 @@ type PostgresPlanningReader
 
     let checkCapacity (input: PostgresPlanningInput) (data: PostgresPlanningDependencies) =
         task {
-            if
-                data.DeploymentMode = PostgresDeploymentMode.Operator
-                && not (String.IsNullOrWhiteSpace data.Catalog.Compute.Compute.RuntimeClassName)
-            then
+            if not (String.IsNullOrWhiteSpace data.Catalog.Compute.Compute.RuntimeClassName) then
                 return PostgresPlanning.rejected PostgresDeclarationError.ComputeRuntimeClassUnsupported
-            elif
-                data.DeploymentMode = PostgresDeploymentMode.StatefulSet
-                && PostgresDeclarations.instances input.Spec <> 1
-            then
-                return PostgresPlanning.rejected PostgresDeclarationError.StatefulSetInstancesUnsupported
             else
                 match data.Current with
-                | Some current when
-                    not current.IsPrepared
-                    && data.DeploymentMode = PostgresDeploymentMode.StatefulSet
-                    && input.Spec.Storage.SizeGb <> current.Spec.Storage
-                    ->
-                    return PostgresPlanning.rejected PostgresDeclarationError.StatefulSetStorageResizeUnsupported
                 | Some current when not current.IsPrepared && input.Spec.Storage.SizeGb < current.Spec.Storage ->
                     return PostgresPlanning.rejected PostgresDeclarationError.StorageShrinkUnsupported
                 | _ -> return Ok data
@@ -433,7 +412,7 @@ type PostgresPlanningReader
                             PostgresManagedSecret.owner current.Id,
                             current.GroupId,
                             data.Catalog.Scope.IsolationScopeId,
-                            ManagedSecretIdentityExpectation(PostgresManagedSecret.usernameKey, input.Spec.Username)
+                            ManagedSecretIdentityExpectation(PostgresManagedSecret.usernameKey, PostgresManagedSecret.administrator)
                         ),
                         input.Session,
                         input.CancellationToken

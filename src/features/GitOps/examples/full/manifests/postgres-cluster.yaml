@@ -13,5 +13,4 @@ spec:
     profile: { name: demo-storage, revision: 1 }
   version: 16
   instances: 1
-  username: app
   bootstrapPassword: { secret: gitops-mixed-auth, key: password }

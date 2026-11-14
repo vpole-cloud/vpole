@@ -5,9 +5,12 @@ open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.DependencyInjection.Extensions
 open Microsoft.Extensions.Options
+open Pole.Features.Backups.Contracts
+open Pole.Features.Postgres.Application.Backups
 open Pole.Database
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Endpoints
+open Pole.Features.Postgres.Application.Creation
 open Pole.Features.Postgres.Application.Kubernetes
 open Pole.Features.Postgres.Application.Search
 open Pole.Features.Postgres.Domain
@@ -33,12 +36,9 @@ type PostgresFeatureRegistration =
                 Func<PostgresSettings, bool>(fun settings ->
                     settings.SupportedVersions.From > 0
                     && settings.SupportedVersions.``To`` >= settings.SupportedVersions.From
-                    && Enum.IsDefined(typeof<PostgresDeploymentMode>, box settings.DefaultDeploymentMode)
                     && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Server))
-                    && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name))
-                    && not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Server))
-                    && not (String.IsNullOrWhiteSpace(settings.StatefulSetImage.Name))),
-                "PostgreSQL requires a valid deployment mode, ordered positive version bounds, and nonblank image server/name values."
+                    && not (String.IsNullOrWhiteSpace(settings.OperatorImage.Name))),
+                "PostgreSQL requires ordered positive version bounds, and nonblank image server/name values."
             )
             .ValidateOnStart()
         |> ignore
@@ -79,6 +79,9 @@ type PostgresFeatureRegistration =
         )
         |> ignore
 
+        services.AddScoped<PostgresBackupRecovery>() |> ignore
+        services.AddScoped<IBackupProvider, PostgresBackupProvider>() |> ignore
+        services.TryAddScoped<PostgresClusterCreator>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentObserver>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentChangeSource>() |> ignore

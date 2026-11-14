@@ -10,19 +10,6 @@ open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
 open Pole.Features.StorageProfiles.Contracts
 
-type CreatePostgresClusterStateError = PostgresClusterComputeRuntimeClassUnsupported of deploymentTargetId: string
-
-type CreatePostgresClusterError =
-    | CreateState of CreatePostgresClusterStateError
-    | CreateTarget of DeploymentTargetNewWorkloadAdmissionError
-    | CreateCompute of ComputeProfileResolutionError
-    | CreateStorage of StorageProfileResolutionError
-    | CreateCredential of PostgresCredentialError
-    | CreateDeployment of CreateResourceDeploymentError
-    | CreateRegistration of ResourceRegistrationMutationError
-    | CreateNameAlreadyExists of PostgresClusterNameAlreadyExists
-    | CreateQuota of QuotaExecutionError
-
 type DeletePostgresClusterStateError =
     | PostgresClusterDeletionNotFound of clusterId: string
     | PostgresClusterDeletionResourceDeploymentMissing of clusterId: string
@@ -37,8 +24,6 @@ type DeletePostgresClusterError =
 type UpdatePostgresClusterStateError =
     | PostgresClusterUpdateNotFound of clusterId: string
     | PostgresClusterUpdateUnavailable of clusterId: string
-    | PostgresClusterStatefulSetInstancesUnsupported of clusterId: string
-    | PostgresClusterStatefulSetStorageResizeUnsupported of clusterId: string
     | PostgresClusterComputeRuntimeClassUnsupported of clusterId: string
 
 type UpdatePostgresClusterError =
@@ -53,7 +38,6 @@ type UpdatePostgresClusterError =
 type UpdatePostgresClusterPasswordStateError =
     | PostgresClusterPasswordNotFound of clusterId: string
     | PostgresClusterPasswordRotationUnavailable of clusterId: string
-    | PostgresClusterPasswordRotationUnsupported of clusterId: string
 
 type UpdatePostgresClusterPasswordError =
     | PasswordState of UpdatePostgresClusterPasswordStateError

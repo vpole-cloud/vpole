@@ -30,6 +30,7 @@ internal sealed class MongoPersistSecretBinding(
     AdmitResourceScopeReference admitScope,
     FenceRegisteredResource fenceConsumer,
     AdmitResourceDeploymentReferences admitDeployments,
+    SecretBindingConsumerCatalog consumers,
     StoreSecretChange publish,
     TimeProvider clock
 )
@@ -57,6 +58,8 @@ internal sealed class MongoPersistSecretBinding(
                 if (binding.KeyMappings.Keys.Except(current.KeyNames).Any())
                     return tx.Abort(new SecretUnknownKeys());
 
+                if (!consumers.AcceptsBindingPurpose(binding))
+                    return tx.Abort(new SecretReferenceRejected());
                 var type = ResourceTypeId.Create(binding.Consumer.ResourceType);
                 if (await fenceConsumer(
                         new FenceRegisteredResourceRequest(tenantId, type, binding.Consumer.ResourceId),

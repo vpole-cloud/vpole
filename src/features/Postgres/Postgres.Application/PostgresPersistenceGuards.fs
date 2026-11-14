@@ -47,6 +47,19 @@ module PostgresPersistenceGuards =
         if pageSize < 1 then
             invalidArg "pageSize" "Page size must be greater than zero."
 
+    let private bootstrapIdentity (bootstrap: PostgresClusterBootstrap) =
+        match bootstrap with
+        | :? FreshPostgresBootstrap -> None
+        | :? RecoveryPostgresBootstrap as recovery ->
+            let origin = recovery.Origin
+            let target =
+                match origin.Target with
+                | :? PostgresCopyRecoveryTarget as copy -> Choice1Of2 copy.BackupId
+                | :? PostgresTimeRecoveryTarget as time -> Choice2Of2 time.TargetTimeUtc
+                | _ -> invalidOp "Unsupported PostgreSQL recovery target."
+            Some(origin.OperationId, origin.ArchiveId, origin.ServerName, target)
+        | _ -> invalidOp "Unsupported PostgreSQL bootstrap."
+
     let sameIdentity (current: PostgresCluster) (replacement: PostgresCluster) =
         cluster current
         cluster replacement
@@ -60,11 +73,11 @@ module PostgresPersistenceGuards =
 
         if
             current.GroupId <> replacement.GroupId
+            || bootstrapIdentity current.Spec.Bootstrap <> bootstrapIdentity replacement.Spec.Bootstrap
             || current.Spec.Version <> replacement.Spec.Version
-            || current.Spec.DeploymentMode <> replacement.Spec.DeploymentMode
             || current.Spec.StorageProfileId <> replacement.Spec.StorageProfileId
         then
-            invalidOp "A PostgreSQL cluster replacement must preserve group, version, mode, and storage identity."
+            invalidOp "A PostgreSQL cluster replacement must preserve group, version, recovery source, and storage identity."
 
         if current.PlanningFence <> replacement.PlanningFence then
             invalidOp "Only a planning fence operation may change the PostgreSQL planning fence."

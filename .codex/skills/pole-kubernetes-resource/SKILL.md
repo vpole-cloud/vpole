@@ -33,7 +33,7 @@ Use this skill when a feature creates, updates, deletes, or validates Kubernetes
 
 - Web services manage config maps, deployments, services, ingress, secrets, and optional autoscaling.
 - Redis manages stateful sets, services, storage, and optional storage class behavior.
-- Postgres supports operator and StatefulSet deployment modes; keep secret handling and connection-string behavior aligned with current F# modules.
+- Postgres uses CloudNativePG; keep managed administrator credentials, recovery bootstrap and plugin-backed backups aligned with current F# modules.
 - ResourceGroups manages RuntimeCell namespaces and their ownership labels.
 
 ## Testing

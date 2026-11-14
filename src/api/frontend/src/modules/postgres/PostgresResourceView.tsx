@@ -196,10 +196,7 @@ export function PostgresResourceView({
         <div>
           <p className="ui-page-eyebrow">PostgreSQL · {group.resource?.name ?? 'Resource group'}</p>
           <h1>{cluster.name}</h1>
-          <p>
-            PostgreSQL {cluster.spec.version} ·{' '}
-            {cluster.spec.deploymentMode === 'Operator' ? 'CloudNativePG' : 'Native StatefulSet'}
-          </p>
+          <p>PostgreSQL {cluster.spec.version} · CloudNativePG</p>
         </div>
         <div className="row-actions">
           <Button onClick={() => void details.refresh()} disabled={details.status === 'loading'}>
@@ -463,7 +460,6 @@ function PostgresConfiguration({
         mutation.error.code === 'postgres.update.concurrent-change'))
   const awaitingRefresh =
     configuration.accepted && configuration.baseline.revision === cluster.revision
-  const native = cluster.spec.deploymentMode === 'StatefulSet'
   const change = (field: 'instances' | 'storage' | 'computeProfileId', value: number | string) =>
     setConfiguration((current) => ({ ...current, draft: { ...current.draft, [field]: value } }))
   const changes = postgresChanges(configuration)
@@ -472,9 +468,7 @@ function PostgresConfiguration({
       <h2 className="panel__title">Database configuration</h2>
       <p className="field__hint">
         Name, PostgreSQL version, group, target and storage profile are fixed after creation.{' '}
-        {native
-          ? 'Native StatefulSet storage is fixed; compute can be updated.'
-          : 'Operator-managed storage can grow; shrinking is rejected.'}
+        Operator-managed storage can grow; shrinking is rejected.
       </p>
       {conflict && (
         <Notice tone="error">
@@ -576,7 +570,6 @@ function PostgresConfiguration({
                 min="1"
                 step="1"
                 value={instances}
-                disabled={native}
                 onChange={(event) => change('instances', Number(event.target.value))}
               />
               {fieldError('Instances') && (
@@ -590,7 +583,6 @@ function PostgresConfiguration({
                 min={cluster.spec.storage}
                 step="1"
                 value={storage}
-                disabled={native}
                 onChange={(event) => change('storage', Number(event.target.value))}
               />
               {fieldError('Storage') && (

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
+using Pole.Features.Backups.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Outbox.Application;
 using Pole.Features.Outbox.Application.Delivery;
@@ -46,6 +47,9 @@ public sealed class PostgresFeatureHostTests(
             services =>
             {
                 services.AddFeatureMigrations("pole.postgres", typeof(PostgresNameIndexesMigration).Assembly);
+                services.AddSingleton<RecordRestoreTargetCreation>((
+                    _, _,
+                    _) => Task.FromResult(RestoreTargetCreationDecision.OperationUnavailable));
                 services.AddSingleton(fixture.Client);
                 services.AddSingleton(fixture.Database);
                 services.AddScoped<EnsureRuntimeCellIngressBaseline>(_ => (request, ct) =>
@@ -77,7 +81,6 @@ public sealed class PostgresFeatureHostTests(
         using var versionsJson = JsonDocument.Parse(await versions.Content.ReadAsStringAsync());
         Assert.Equal(16, versionsJson.RootElement.GetProperty("from").GetInt32());
         Assert.Equal(18, versionsJson.RootElement.GetProperty("to").GetInt32());
-        Assert.Equal("Operator", versionsJson.RootElement.GetProperty("defaultDeploymentMode").GetString());
         using var invalid = await client.PostAsJsonAsync(
             route,
             PostgresTestData.CreatePostgresClusterRequest("not-an-object-id", "invalid").Body);

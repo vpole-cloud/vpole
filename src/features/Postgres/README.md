@@ -1,18 +1,36 @@
 # PostgreSQL clusters
 
-The frontend PostgreSQL provider uses the existing tenant CRUD, credential and rotation endpoints.
-`GET /api/v1/postgres/supported-versions` returns the version range and additive
-`defaultDeploymentMode` metadata (`Operator` or `StatefulSet`). Creation uses this configured mode;
-the UI does not offer a client-side mode override.
+The PostgreSQL provider exposes tenant-scoped CRUD, administrator credential and rotation endpoints.
+`GET /api/v1/postgres/supported-versions` returns the supported version range.
 
 `Postgres.Tests`
 owns infrastructure-free domain, credential, quota, HTTP-mapping, manifest, registration, and fake
 Kubernetes observation checks. `Postgres.Tests.Integration` owns Mongo and HTTP/outbox checks.
-`Postgres.Tests.Kubernetes` runs live StatefulSet, CloudNativePG, and observation checks against
+`Postgres.Tests.Kubernetes` runs live CloudNativePG and observation checks against
 the reusable lab described in `docs/testing.md`.
 
-The PostgreSQL feature owns tenant-scoped logical database clusters and supports two deployment
-modes: a native Kubernetes StatefulSet and the CloudNativePG operator.
+Pole provisions each logical PostgreSQL cluster through CloudNativePG.
+
+## Backup and recovery
+
+The [Backups feature](../Backups/README.md) owns tenant policies, S3 destinations and operation history.
+The PostgreSQL provider configures a Barman Cloud `ObjectStore`, the WAL archiver plugin on the
+source CNPG `Cluster`, and a `ScheduledBackup`. Its six-field cron starts with zero seconds.
+CloudNativePG 1.30 schedules backups in the operator's local time zone. Run the operator in UTC
+(the stock image default) to execute Pole's UTC schedules. Suspending the schedule keeps WAL archiving,
+retention and manual copies available. Each manual operation uses its ID in the CNPG `Backup` name, so another worker can resume
+observing the same object. Kubernetes resource versions and policy revision annotations fence delayed
+writes. Superseded schedules remain suspended until Kubernetes garbage-collects them with the source.
+
+The control plane reads each catalog directly from the tenant's S3 endpoint. The list contains completed
+Barman backup IDs and their completion times. Failed requests and unreadable catalog entries produce
+an error. The endpoint must be reachable from the control plane as well as from the workload cluster.
+
+Recovery creates a new manually managed PostgreSQL resource in the original RuntimeCell. Its persisted
+bootstrap selects either the exact backup ID and immediate consistency target, or the requested UTC
+timestamp. CNPG replays the available WAL and reports a failed recovery if it cannot reach that target.
+The new cluster receives its own administrator password. Its bootstrap keeps using the source archive
+as a recovery input. A separate backup policy can enable WAL archiving for the new cluster.
 
 ## Workload model
 
@@ -21,8 +39,7 @@ and lifecycle state. Credentials are managed by the [Secrets feature](../Secrets
 stored in `ResourceDeployment`.
 
 Provisioning is separate from deletion lifecycle. Manual creation explicitly initializes `Direct` provisioning.
-The declarative construction path initializes `Prepared` with a pinned bootstrap Secret/key, managed credential ID,
-and username; it stores no password. Prepared clusters cannot produce workload manifests, apply ingress or Secrets,
+The declarative construction path initializes `Prepared` with a pinned bootstrap Secret/key and managed credential ID. Prepared clusters cannot produce workload manifests, apply ingress or Secrets,
 or establish Kubernetes observation sessions. Their placement is deferred and pins the selected catalog revisions.
 
 `PostgresBootstrapInitializer` runs inside the owner mutation transaction. Secrets verifies the bootstrap grant
@@ -31,12 +48,7 @@ and copies the initial password into the encrypted owner credential. Only then d
 is never recopied after password rotation; a missing configured credential blocks instead of restarting bootstrap.
 Every logical mutation also checks `PlanningFence`, preserving conflicts with concurrent planning guards.
 
-The browser keeps native StatefulSet storage fixed after creation. Native reapply preserves the
-existing immutable claim template (including its initial generation labels), so compute changes
-and new pod-template generations do not attempt to mutate that template. Operator-mode storage
-growth remains controlled by CloudNativePG.
-API updates reject native capacity changes before persistence. Existing failed resize requests
-remain failed during reapply rather than reporting unchanged physical storage as applied.
+CloudNativePG manages replica counts and volume growth.
 
 Create resolves the default or requested `ComputeProfile` for the active tenant and target. The
 deployment stores the resulting CPU, memory, extended-resource, and scheduling snapshot. Update
@@ -50,9 +62,8 @@ or mutations; persistence also retains its transaction revision fence. Omitted `
 changed fields and requires explicit review before reapplying a draft to a newer revision.
 
 Quota admission measures the resolved per-instance CPU and memory requests across the requested
-instance count. Native StatefulSet deployments support the complete scheduling snapshot.
-CloudNativePG supports resources, node selection, affinity, and tolerations; because its Cluster
-API does not support runtime class, an incompatible operator-mode request is rejected explicitly.
+instance count. CloudNativePG supports resources, node selection, affinity, and tolerations.
+Its Cluster API rejects profiles that require a runtime class.
 
 The RuntimeCell baseline denies ingress before a PostgreSQL workload starts. Each deployment
 gets a replication policy limited to pods with the same tenant, resource, and deployment IDs on
@@ -64,18 +75,16 @@ blocks reconciliation with a retryable status; Pole does not open an entire plat
 
 `PostgresCluster` declarations use `spec.resourceGroup`, `placement.deploymentTarget`, a pinned
 `placement.computeProfile: {name, revision}`, optional `placement.isolationScope`, and
-`storage: {sizeGb, profile: {name, revision}}`. Version is an integer. `instances` defaults to one;
-`username` and `bootstrapPassword: {secret, key}` are required. Deployment mode comes from server
-configuration when the resource is prepared. A `SecretBinding` for the `PostgresCluster` consumer
+`storage: {sizeGb, profile: {name, revision}}`. Version is an integer. `instances` defaults to one.
+`bootstrapPassword: {secret, key}` supplies the initial password for the SQL superuser `postgres`.
+A `SecretBinding` for the `PostgresCluster` consumer
 must explicitly declare `usage: Bootstrap`; it grants initialization without creating a runtime
 projection of the source Secret.
 
 The provider follows Prepare → Bind → Configure. Prepare creates an inert root and deferred
 placement; Configure accepts the latest desired capacity and encrypted credential together in one
-revision. Group, scope, target, version, username, bootstrap reference and storage profile/revision
-are immutable. Operator instances and storage growth follow the existing workflows. StatefulSet
-instances remain one and storage cannot change after configuration. Compute may move to another
-explicit profile revision without moving the workload.
+revision. Group, scope, target, version, bootstrap reference and storage profile/revision
+are immutable. Instance count, storage growth and switching compute profile revisions follow the ordinary update workflows.
 
 Polling and Sync compare the actual managed placement and capacity with the accepted snapshot,
 including at unchanged commits. A verified no-op keeps business revisions, credentials and events
@@ -85,7 +94,7 @@ recopy an initial password. Missing created roots or initialized credentials blo
 
 The ordinary update and delete paths reject Git-owned configuration inside their transactions.
 Detail/list DTOs expose GitOps metadata; the browser keeps configuration read-only while preserving
-credential operations and the existing deployment-mode restrictions on rotation.
+credential operations.
 
 ## Persistence and reconciliation
 
@@ -94,7 +103,7 @@ operation through the deployment's persisted target, namespace, storage, and com
 PostgreSQL has no separate credential collection or Kubernetes Secret writer. The Secrets feature
 owns encrypted immutable versions, explicit bindings, per-deployment runtime projections and their
 cleanup. PostgreSQL calls its provider-owned contracts and retains only transient credential values
-when needed for the authorized connection-string operation or operator bootstrap username.
+for the authorized connection-string operation.
 
 ## Credential lifecycle
 
@@ -108,16 +117,15 @@ Secret, deployment, quota changes and outbox records together.
 Reconciliation requests the managed projection for the exact tenant, owner and ResourceDeployment.
 Secrets applies its generated native Secret to the persisted target and RuntimeCell namespace.
 Only after that projection is ready does PostgreSQL apply the workload using the returned reference;
-its Kubernetes manager never receives a password or creates/deletes Secrets. StatefulSet reconciliation
-reads no plaintext values. Operator reconciliation asks Secrets for only the bootstrap username after
-projection readiness, immediately before workload apply. A missing projection
+CloudNativePG reads the projected Secret through `spec.superuserSecret` with `spec.enableSuperuserAccess: true`.
+Clients receive a single connection string for the `postgres` superuser and the `postgres` database.
+The owner creates application roles and databases. A missing projection
 returns a retryable deployment failure. Each projection has its own desired/applied version and
 failure status in Secrets; a Kubernetes Secret remains a runtime copy, not the authoritative value.
 
 The password endpoint reads the managed version and prepares a replacement preserving the username.
 Rotation and the ResourceDeployment apply request commit in one Mongo transaction with an expected
-Secret version. Operator-mode rotation remains supported. StatefulSet-mode rotation is rejected:
-changing a native Secret does not update the password in an already initialized PostgreSQL database.
+Secret version. CloudNativePG reconciles the projected superuser password on the cluster.
 Generic Secret mutation cannot bypass the owning PostgreSQL rotation policy.
 
 Final owner deletion releases its managed Secret in the same transaction as resource finalization.

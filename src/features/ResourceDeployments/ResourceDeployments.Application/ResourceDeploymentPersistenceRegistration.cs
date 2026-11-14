@@ -50,6 +50,9 @@ internal static class ResourceDeploymentPersistenceRegistration
         AddCapability<MongoCreateResourceDeployment, CreateResourceDeployment>(
             services,
             implementation => implementation.InvokeAsync);
+        AddCapability<MongoRetainProjectionPlacement, RetainProjectionPlacement>(
+            services,
+            implementation => implementation.InvokeAsync);
         AddCapability<MongoCreateResourceDeploymentSet, CreateResourceDeploymentSet>(
             services,
             implementation => implementation.InvokeAsync);

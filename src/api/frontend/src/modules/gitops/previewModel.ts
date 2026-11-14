@@ -169,7 +169,6 @@ const warnings: Record<string, string> = {
     'Underlying volume retention also depends on the storage class reclaim policy.',
   SecretStoredVersionsDeleted: 'Stored Secret versions are deleted.',
   ReplacementSecretValuesRequired: 'A replacement Secret requires new values supplied outside Git.',
-  PostgresStatefulSetDataClaimDeleted: 'The PostgreSQL StatefulSet data claim is deleted.',
   PostgresOperatorClaimsFollowOperatorPolicy:
     'PostgreSQL claim cleanup follows the operator policy.',
   PostgresReplacementRequiresBootstrap:

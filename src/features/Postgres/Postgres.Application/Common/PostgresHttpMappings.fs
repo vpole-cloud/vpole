@@ -6,6 +6,7 @@ open Pole.ASP.Helpers
 open Pole.Features.ComputeProfiles.Contracts.HttpMapping
 open Pole.Features.DeploymentTargets.Contracts.HttpMapping
 open Pole.Features.Postgres.Application.Endpoints
+open Pole.Features.Postgres.Application.Creation
 open Pole.Features.Postgres.Application.Credentials
 open Pole.Features.Postgres.Application.Lifecycle
 open Pole.Features.Postgres.Application.Clusters
@@ -23,6 +24,12 @@ module PostgresHttpMappings =
 
     let private mapCreateState (error: CreatePostgresClusterStateError) =
         match error with
+        | PostgresClusterRestoreTargetAlreadyCreated ->
+            problem HttpStatusCode.Conflict "postgres.restore-target-already-created" "The restore target was already created" null
+        | PostgresClusterRestoreOperationUnavailable ->
+            problem HttpStatusCode.Conflict "postgres.restore-operation-unavailable" "The restore operation is unavailable" null
+        | PostgresClusterRestorePlacementChanged ->
+            problem HttpStatusCode.Conflict "postgres.restore-placement-changed" "Restore placement revision changed" null
         | CreatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported targetId ->
             let extensions = Dictionary<string, obj>()
             extensions.Add("deploymentTargetId", targetId)
@@ -45,18 +52,6 @@ module PostgresHttpMappings =
                 "postgres.update-unavailable"
                 "PostgreSQL cluster cannot be updated in its current lifecycle"
                 clusterId
-        | PostgresClusterStatefulSetInstancesUnsupported clusterId ->
-            problem
-                HttpStatusCode.UnprocessableEntity
-                "postgres.instances.stateful-set-unsupported"
-                "StatefulSet PostgreSQL supports exactly one instance"
-                clusterId
-        | PostgresClusterStatefulSetStorageResizeUnsupported clusterId ->
-            problem
-                HttpStatusCode.UnprocessableEntity
-                "postgres.storage.stateful-set-resize-unsupported"
-                "Native PostgreSQL storage size is fixed after creation"
-                clusterId
         | UpdatePostgresClusterStateError.PostgresClusterComputeRuntimeClassUnsupported clusterId ->
             problem
                 HttpStatusCode.UnprocessableEntity
@@ -73,12 +68,6 @@ module PostgresHttpMappings =
                 HttpStatusCode.Conflict
                 "postgres.password.rotation-unavailable"
                 "Credentials cannot be rotated while the PostgreSQL cluster is being deleted"
-                clusterId
-        | PostgresClusterPasswordRotationUnsupported clusterId ->
-            problem
-                HttpStatusCode.Conflict
-                "postgres.password.rotation-unsupported"
-                "Password rotation is not supported for StatefulSet PostgreSQL deployments"
                 clusterId
 
     let private mapDeleteState (error: DeletePostgresClusterStateError) =

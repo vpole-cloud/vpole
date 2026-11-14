@@ -16,6 +16,8 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../../src/features/Backups/Backups.Application/Backups.Application.csproj"/>
+        <ProjectReference Include="../../src/features/Backups/Backups.Migrations/Backups.Migrations.csproj"/>
         <ProjectReference Include="../../src/features/GitOps/GitOps.Application/GitOps.Application.csproj"/>
         <ProjectReference Include="../Pole.Tests.ObservationSerializationProbe/Pole.Tests.ObservationSerializationProbe.csproj" ReferenceOutputAssembly="false" IsAspireProjectResource="false"/>
         <ProjectReference Include="../../src/features/PrivateAccess/PrivateAccess.Application/PrivateAccess.Application.csproj"/>

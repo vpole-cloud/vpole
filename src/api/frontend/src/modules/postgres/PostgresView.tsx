@@ -151,8 +151,7 @@ function PostgresCatalog({
             {
               id: 'mode',
               label: 'Provisioning',
-              render: (cluster) =>
-                cluster.spec.deploymentMode === 'Operator' ? 'CloudNativePG' : 'Native StatefulSet',
+              render: () => 'CloudNativePG',
             },
             {
               id: 'status',

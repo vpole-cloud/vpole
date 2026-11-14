@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Contracts;
@@ -9,6 +10,7 @@ namespace Pole.Features.Secrets.Application.References;
 
 internal sealed class ConsumerSecretPlanningSnapshots(
     IMongoCollection<Secret> secrets,
+    SecretBindingConsumerCatalog consumers,
     SecretPlanningFence fence
 )
 {
@@ -36,7 +38,7 @@ internal sealed class ConsumerSecretPlanningSnapshots(
             var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id))
                 .FirstOrDefaultAsync(ct);
             var binding = current?.Bindings.SingleOrDefault(item =>
-                item.Usage == SecretBindingUsage.Runtime && item.Consumer.ResourceType == request.ConsumerType.Value &&
+                consumers.GrantsProjection(item) && item.Consumer.ResourceType == request.ConsumerType.Value &&
                 item.Consumer.ResourceId == request.ConsumerId);
             if (desired.Length > 0)
             {
@@ -51,7 +53,8 @@ internal sealed class ConsumerSecretPlanningSnapshots(
                     return new ConsumerSecretReferenceUnavailable(
                         id,
                         ConsumerSecretReferenceError.SecretKeyUnavailable);
-                if (request.DeploymentIds.Count == 0 || request.DeploymentIds.Any(deployment =>
+                if (request.DeploymentIds.Count == 0 && (!consumers.AllowsBeforePlacement(request.ConsumerType) ||
+                        binding.Selection is not AllSecretDeployments) || request.DeploymentIds.Any(deployment =>
                         !SecretProjectionAuthority.IncludesDeployment(binding.Selection, deployment)))
                     return new ConsumerSecretReferenceUnavailable(
                         id,

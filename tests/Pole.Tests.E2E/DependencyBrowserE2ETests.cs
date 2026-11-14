@@ -78,7 +78,6 @@ public sealed class DependencyBrowserE2ETests(
                     instances = 1,
                     storage = 1,
                     storageProfileId = profileId,
-                    username = "application",
                     password = $"test-{Guid.NewGuid():N}",
                 },
                 ct);
@@ -108,7 +107,7 @@ public sealed class DependencyBrowserE2ETests(
             {
                 ["PGHOST"] = Text(pgEndpoint, "host"),
                 ["PGPORT"] = pgEndpoint.GetProperty("port").GetInt32().ToString(),
-                ["PGDATABASE"] = pgId,
+                ["PGDATABASE"] = "postgres",
                 ["REDISHOST"] = Text(redisEndpoint, "host"),
                 ["REDISPORT"] = redisEndpoint.GetProperty("port").GetInt32().ToString(),
                 ["REDISDB"] = "0",

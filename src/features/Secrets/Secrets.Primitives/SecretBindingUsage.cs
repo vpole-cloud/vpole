@@ -4,4 +4,5 @@ public enum SecretBindingUsage
 {
     Runtime,
     Bootstrap,
+    BackupStorage,
 }

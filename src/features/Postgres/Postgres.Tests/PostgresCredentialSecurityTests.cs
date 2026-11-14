@@ -27,7 +27,7 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal($"postgres-{ClusterId}-credentials", request.Name);
             Assert.Equal(1, request.Version);
             Assert.Equal(ManagedSecretKubernetesType.BasicAuthentication, request.KubernetesType);
-            Assert.Equal("database-user", request.Values["username"]);
+            Assert.Equal("postgres", request.Values["username"]);
             Assert.Equal("private-password", request.Values["password"]);
             return Task.FromResult<PrepareManagedSecretOutcome>(
                 Prepared(
@@ -39,12 +39,7 @@ public sealed class PostgresCredentialSecurityTests
                     request.KubernetesType));
         });
 
-        var result = await creator.InvokeAsync(
-            TestData.TenantId,
-            ClusterId,
-            "database-user",
-            "private-password",
-            default);
+        var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "private-password", default);
 
         Assert.True(result.IsPostgresSuccess);
     }
@@ -84,12 +79,7 @@ public sealed class PostgresCredentialSecurityTests
     {
         var creator = new PostgresCredentialCreator((request, _) =>
             Task.FromResult<PrepareManagedSecretOutcome>(new ManagedSecretEncryptionUnavailable()));
-        var result = await creator.InvokeAsync(
-            TestData.TenantId,
-            ClusterId,
-            "database-user",
-            "private-password",
-            default);
+        var result = await creator.InvokeAsync(TestData.TenantId, ClusterId, "private-password", default);
         Assert.True(result.IsPostgresError);
         Assert.DoesNotContain("private-password", result.ToString());
     }
@@ -110,7 +100,7 @@ public sealed class PostgresCredentialSecurityTests
         var credentials = Assert
             .IsType<PostgresOutcome<PostgresClusterCredentials, PostgresCredentialError>.PostgresSuccess>(result)
             .Item;
-        Assert.Equal("database-user", credentials.Username);
+        Assert.Equal("postgres", credentials.Username);
         Assert.Equal("private-password", credentials.Password);
         Assert.DoesNotContain("private-password", credentials.ToString());
         Assert.DoesNotContain("private-password", Values().ToString());
@@ -130,7 +120,6 @@ public sealed class PostgresCredentialSecurityTests
             FSharpOption<int>.None,
             TestData.DefaultStorageProfileId,
             FSharpOption<string>.None,
-            "database-user",
             "private-password",
             FSharpOption<PlacementRequest>.None);
         Assert.DoesNotContain("private-password", body.ToString());
@@ -140,8 +129,8 @@ public sealed class PostgresCredentialSecurityTests
     }
 
     [Theory]
-    [InlineData(32767, true)]
-    [InlineData(32768, false)]
+    [InlineData(32764, true)]
+    [InlineData(32765, false)]
     public void CreateValidationMeasuresCombinedUtf8Bytes(int characters, bool valid)
     {
         var body = new CreatePostgresClusterRequestBody(
@@ -152,7 +141,6 @@ public sealed class PostgresCredentialSecurityTests
             FSharpOption<int>.None,
             TestData.DefaultStorageProfileId,
             FSharpOption<string>.None,
-            "u",
             new string('é', characters),
             FSharpOption<PlacementRequest>.None);
         var result = new CreatePostgresClusterValidator(new PostgresSettings()).Validate(
@@ -183,7 +171,7 @@ public sealed class PostgresCredentialSecurityTests
         "managed-name",
         ManagedSecretKubernetesType.BasicAuthentication,
         4,
-        ImmutableDictionary<string, string>.Empty.Add("username", "database-user").Add("password", "private-password"));
+        ImmutableDictionary<string, string>.Empty.Add("username", "postgres").Add("password", "private-password"));
 
     private static PreparedManagedSecret Prepared(
         string tenant,

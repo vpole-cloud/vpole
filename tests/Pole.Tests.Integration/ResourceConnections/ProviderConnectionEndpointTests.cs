@@ -134,17 +134,14 @@ public sealed class ProviderConnectionEndpointTests(
         await session.AbortTransactionAsync();
     }
 
-    [Theory]
-    [InlineData(PostgresDeploymentMode.Operator)]
-    [InlineData(PostgresDeploymentMode.StatefulSet)]
-    public async Task PostgresCatalog_PublishesOnlyReadWriteEndpoint_ForBothProviders(PostgresDeploymentMode mode)
+    [Fact]
+    public async Task PostgresCatalog_PublishesAdministratorDatabaseAndOnlyReadWriteEndpoint()
     {
         var postgres = PostgresCluster.Create(
             Data.TenantId,
             "database",
             Id(),
             17,
-            mode,
             Id(),
             new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 5));
         var collection = Fixture.Database.GetCollection<PostgresCluster>("Postgres");
@@ -162,7 +159,11 @@ public sealed class ProviderConnectionEndpointTests(
         Assert.Equal(5432, endpoint.ServicePort.Value);
         Assert.Equal(5432, endpoint.TargetPort.Value);
         Assert.Equal("postgresql", endpoint.Protocol);
-        Assert.Equal(postgres.Id, Assert.Single(endpoint.Configuration).Value);
+        var database = Assert.Single(endpoint.Configuration);
+        Assert.Equal("database", database.Key);
+        Assert.Equal("postgres", database.Value);
+        var advisory = await lookup.LoadAvailableAsync(postgres.TenantId, [postgres.Id]);
+        Assert.Equal("postgres", Assert.Single(Assert.Single(advisory[postgres.Id].Endpoints).Configuration).Value);
         Assert.IsType<ResourceConnectionDestinationMissing>(
             (await lookup.LoadAsync(
                 new LoadResourceConnectionDestinationRequest(TenantId: Id(), ResourceId: postgres.Id),

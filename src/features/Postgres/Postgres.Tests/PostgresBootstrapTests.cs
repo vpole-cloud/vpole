@@ -24,7 +24,7 @@ public sealed class PostgresBootstrapTests
                 Assert.Equal(request.Cluster.Id, input.Owner.ResourceId);
                 Assert.Equal("pole/postgresql", input.Owner.ResourceType);
                 Assert.Equal(request.Placement, input.Placement);
-                Assert.Equal("application", input.Username);
+                Assert.Equal("postgres", input.Username);
                 var bootstrap = Assert.IsType<PreparedPostgresProvisioning>(request.Cluster.Provisioning).Bootstrap;
                 Assert.Equal(bootstrap.SourceSecretId, input.Source.SecretId);
                 Assert.Equal(bootstrap.SourceKey, input.Source.Key);

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FSharp.Core;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Pole.Features.Backups.Contracts;
 using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.DeploymentTargets.Domain;
 using Pole.Features.GitOps.Contracts;
@@ -10,6 +11,7 @@ using Pole.Features.GitOps.Primitives;
 using Pole.Features.Postgres.Application;
 using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application.Creation;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Lifecycle;
 using Pole.Features.Postgres.Domain;
@@ -133,12 +135,29 @@ public sealed class PostgresLifecycleTests(
         await session.AbortTransactionAsync();
     }
 
-    [Fact]
-    public async Task PostgreSQL_adoption_preserves_existing_credential_without_bootstrapping_empty_source()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PostgreSQL_adoption_preserves_existing_credential_and_recovery_origin(bool restored)
     {
         var resource = await Seed("PostgresCluster");
         var resources = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
         var current = await resources.Find(item => item.Id == resource.ResourceId).SingleAsync();
+        if (restored)
+        {
+            var origin = new PostgresRecoveryOrigin(
+                Id(),
+                Id(),
+                "original-server",
+                new PostgresTimeRecoveryTarget(DateTime.UtcNow.AddHours(-1).AddTicks(10)));
+            await resources.UpdateOneAsync(
+                item => item.Id == current.Id,
+                Builders<PostgresCluster>.Update.Set(
+                    item => item.Spec.Bootstrap,
+                    new RecoveryPostgresBootstrap(origin)));
+            current = await resources.Find(item => item.Id == resource.ResourceId).SingleAsync();
+        }
+
         var group = await DbContext.ResourceGroups.Find(item => item.Id == current.GroupId).SingleAsync();
         var deployment = await DbContext.ResourceDeployments.Find(item => item.ResourceId == current.Id).SingleAsync();
         var computes = Services.GetRequiredService<IMongoCollection<ComputeProfile>>();
@@ -172,7 +191,7 @@ public sealed class PostgresLifecycleTests(
                     owner,
                     "existing-credential",
                     1,
-                    new Dictionary<string, string> { ["username"] = "application", ["password"] = "retained-password" },
+                    new Dictionary<string, string> { ["username"] = "postgres", ["password"] = "retained-password" },
                     ManagedSecretKubernetesType.BasicAuthentication),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
@@ -196,7 +215,6 @@ public sealed class PostgresLifecycleTests(
                     storage = new { sizeGb = 10, profile = new { name = storage.TechnicalName, revision = 1 } },
                     version = 17,
                     instances = 1,
-                    username = "application",
                     bootstrapPassword = new { secret = source.Name, key = "password" },
                 }),
             "hash",
@@ -481,19 +499,13 @@ public sealed class PostgresLifecycleTests(
     }
 
     [Theory]
-    [InlineData(PostgresDeploymentMode.Operator, GitLifecycleAction.Remove)]
-    [InlineData(PostgresDeploymentMode.Operator, GitLifecycleAction.Replace)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, GitLifecycleAction.Remove)]
-    [InlineData(PostgresDeploymentMode.StatefulSet, GitLifecycleAction.Replace)]
-    public async Task Lifecycle_warnings_follow_the_stored_deployment_mode_and_bootstrap_policy(
-        PostgresDeploymentMode mode,
+    [InlineData(GitLifecycleAction.Remove)]
+    [InlineData(GitLifecycleAction.Replace)]
+    public async Task Lifecycle_warnings_identify_operator_storage_cleanup_and_bootstrap_policy(
         GitLifecycleAction action)
     {
         var resource = await Seed("PostgresCluster");
         var collection = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
-        await collection.UpdateOneAsync(
-            item => item.Id == resource.ResourceId,
-            Builders<PostgresCluster>.Update.Set(item => item.Spec.DeploymentMode, mode));
         var before = await collection.Find(item => item.Id == resource.ResourceId).SingleAsync();
         var provider = Assert.IsAssignableFrom<IDeclarativeLifecycleWarningProvider>(
             Services.GetServices<IDeclarativeResourceProvider>().Single(item => item.Kind == "PostgresCluster"));
@@ -501,11 +513,7 @@ public sealed class PostgresLifecycleTests(
         session.StartTransaction();
         var request = new ReadLifecycleWarningsRequest(before.TenantId, before.Id, action);
         var codes = await provider.ReadLifecycleWarningsAsync(request, session, default);
-        Assert.Contains(
-            mode == PostgresDeploymentMode.Operator
-                ? "PostgresOperatorManagesStorageCleanup"
-                : "PostgresStatefulSetDataClaimDeleted",
-            codes);
+        Assert.Contains("PostgresOperatorManagesStorageCleanup", codes);
         Assert.Contains("PersistentVolumeReclaimPolicyDeterminesDataRetention", codes);
         Assert.Equal(action == GitLifecycleAction.Replace, codes.Contains("PostgresReplacementRequiresBootstrap"));
         Assert.Equal(action == GitLifecycleAction.Replace ? 3 : 2, codes.Count);
@@ -515,6 +523,200 @@ public sealed class PostgresLifecycleTests(
         Assert.Equal(
             before.ToBsonDocument(),
             (await collection.Find(item => item.Id == before.Id).SingleAsync()).ToBsonDocument());
+    }
+
+    [Fact]
+    public async Task Restore_admits_current_profile_revisions_after_profiles_are_renamed()
+    {
+        var original = await Seed("PostgresCluster");
+        var source = await Services.GetRequiredService<IMongoCollection<PostgresCluster>>()
+            .Find(item => item.Id == original.ResourceId)
+            .SingleAsync();
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == source.Id).SingleAsync();
+        var computes = Services.GetRequiredService<IMongoCollection<ComputeProfile>>();
+        var compute = await computes.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
+        var stores = Services.GetRequiredService<IMongoCollection<StorageProfile>>();
+        var storage = await stores.Find(item => item.Id == TestData.DefaultStorageProfileId).SingleAsync();
+        var renamedCompute = compute.Reconfigure(
+            "Renamed compute",
+            compute.Description,
+            compute.Resources,
+            compute.Architecture,
+            compute.ExtendedResources,
+            compute.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            compute.TenantAccess,
+            compute.TargetMappings,
+            compute.IsEnabled,
+            compute.IsDefault,
+            DateTime.UtcNow);
+        var renamedStorage = storage.Reconfigure(
+            "Renamed storage",
+            storage.Description,
+            storage.MediaType,
+            storage.PerformanceTier,
+            storage.IsEnabled,
+            storage.IsDefault,
+            storage.TargetMappings,
+            storage.AllowedResourceTypes.Select(ResourceTypeId.Create),
+            storage.TenantAccess,
+            storage.SizeLimits,
+            DateTime.UtcNow);
+        await computes.ReplaceOneAsync(item => item.Id == compute.Id, renamedCompute);
+        await stores.ReplaceOneAsync(item => item.Id == storage.Id, renamedStorage);
+        var targetId = Id();
+        var origin = new PostgresRecoveryOrigin(
+            Id(),
+            Id(),
+            "source",
+            new PostgresCopyRecoveryTarget("20261012T130001"));
+        var configuration = new PostgresCreationConfiguration(
+            "restored-after-profile-rename",
+            source.GroupId,
+            17,
+            1,
+            10,
+            storage.Id,
+            compute.Id,
+            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId));
+        RecordRestoreTargetCreation receipt = (
+            _, session,
+            _) =>
+        {
+            Assert.True(session.IsInTransaction);
+            return Task.FromResult(RestoreTargetCreationDecision.Recorded);
+        };
+
+        var result = await Services.GetRequiredService<PostgresClusterCreator>()
+            .CreateAsync(
+                new PostgresCreationCommand(
+                    source.TenantId,
+                    targetId,
+                    configuration,
+                    PostgresCreationAuthority.NewRecovery(
+                        origin,
+                        new PostgresRestorePlacement(placement.RuntimeCellId),
+                        receipt)),
+                default);
+
+        Assert.IsType<PostgresCreationOutcome.Created>(result);
+        var restored = await DbContext.ResourceDeployments.Find(item => item.ResourceId == targetId).SingleAsync();
+        Assert.Equal(placement.RuntimeCellId, restored.RuntimeCellId);
+        Assert.Equal(renamedCompute.Revision, restored.ResolvedPlacement.Compute.ComputeProfileRevision);
+        Assert.Equal(renamedStorage.Revision, restored.ResolvedPlacement.Storage!.StorageProfileRevision);
+    }
+
+    [Fact]
+    public async Task Restore_rejects_current_disabled_compute_before_creating_target_or_credentials()
+    {
+        var original = await Seed("PostgresCluster");
+        var clusters = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
+        var source = await clusters.Find(item => item.Id == original.ResourceId).SingleAsync();
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == source.Id).SingleAsync();
+        var computes = Services.GetRequiredService<IMongoCollection<ComputeProfile>>();
+        var compute = await computes.Find(item => item.Id == TestData.DefaultComputeProfileId).SingleAsync();
+        await computes.ReplaceOneAsync(
+            item => item.Id == compute.Id,
+            compute with
+            {
+                IsEnabled = false, Revision = compute.Revision + 1,
+            });
+        var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
+        var secretCount = await secrets.CountDocumentsAsync(_ => true);
+        var targetId = Id();
+        var origin = new PostgresRecoveryOrigin(
+            Id(),
+            Id(),
+            "source",
+            new PostgresCopyRecoveryTarget("20261012T130001"));
+        var configuration = new PostgresCreationConfiguration(
+            "disabled-profile-restore",
+            source.GroupId,
+            17,
+            1,
+            10,
+            TestData.DefaultStorageProfileId,
+            compute.Id,
+            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId));
+        RecordRestoreTargetCreation receipt = (
+            _, _,
+            _) => throw new InvalidOperationException("Rejected admission must never record a target.");
+
+        var result = await Services.GetRequiredService<PostgresClusterCreator>()
+            .CreateAsync(
+                new PostgresCreationCommand(
+                    source.TenantId,
+                    targetId,
+                    configuration,
+                    PostgresCreationAuthority.NewRecovery(
+                        origin,
+                        new PostgresRestorePlacement(placement.RuntimeCellId),
+                        receipt)),
+                default);
+
+        var rejected = Assert.IsType<PostgresCreationOutcome.Rejected>(result);
+        Assert.IsType<CreatePostgresClusterError.CreateCompute>(rejected.Item);
+        Assert.False(await clusters.Find(item => item.Id == targetId).AnyAsync());
+        Assert.Equal(secretCount, await secrets.CountDocumentsAsync(_ => true));
+    }
+
+    [Fact]
+    public async Task A_recorded_restore_cannot_recreate_a_deleted_cluster_or_issue_another_secret()
+    {
+        var original = await Seed("PostgresCluster");
+        var clusters = Services.GetRequiredService<IMongoCollection<PostgresCluster>>();
+        var source = await clusters.Find(item => item.Id == original.ResourceId).SingleAsync();
+        var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
+        var secretCount = await secrets.CountDocumentsAsync(_ => true);
+        var eventCount = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        var targetId = Id();
+        var origin = new PostgresRecoveryOrigin(
+            Id(),
+            Id(),
+            "source",
+            new PostgresCopyRecoveryTarget("20261012T130001"));
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == source.Id).SingleAsync();
+        var configuration = new PostgresCreationConfiguration(
+            "restored",
+            source.GroupId,
+            17,
+            1,
+            10,
+            TestData.DefaultStorageProfileId,
+            TestData.DefaultComputeProfileId,
+            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId));
+        var creationAttempts = 0;
+        RecordRestoreTargetCreation receipt = async (
+            record, session,
+            ct) =>
+        {
+            Assert.Equal(
+                new RecordRestoreTargetCreationRequest(source.TenantId, origin.OperationId, origin.ArchiveId, targetId),
+                record);
+            Assert.True(session.IsInTransaction);
+            Assert.True(await clusters.Find(session, item => item.Id == targetId).AnyAsync(ct));
+            Assert.True(await secrets.CountDocumentsAsync(session, _ => true, cancellationToken: ct) > secretCount);
+            creationAttempts++;
+            return RestoreTargetCreationDecision.AlreadyRecorded;
+        };
+
+        var outcome = await Services.GetRequiredService<PostgresClusterCreator>()
+            .CreateAsync(
+                new PostgresCreationCommand(
+                    source.TenantId,
+                    targetId,
+                    configuration,
+                    PostgresCreationAuthority.NewRecovery(
+                        origin,
+                        new PostgresRestorePlacement(placement.RuntimeCellId),
+                        receipt)),
+                default);
+        var error = Assert.IsType<PostgresCreationOutcome.Rejected>(outcome).Item;
+        var reason = Assert.IsType<CreatePostgresClusterError.CreateState>(error).Item;
+        Assert.True(reason.IsPostgresClusterRestoreTargetAlreadyCreated);
+        Assert.True(creationAttempts > 0);
+        Assert.False(await clusters.Find(item => item.Id == targetId).AnyAsync());
+        Assert.Equal(secretCount, await secrets.CountDocumentsAsync(_ => true));
+        Assert.Equal(eventCount, await DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
     }
 
     private async Task<GitLifecycleResourceReference> Seed(string kind)
@@ -542,7 +744,6 @@ public sealed class PostgresLifecycleTests(
                     "lifecycle-workload",
                     group.Id,
                     17,
-                    PostgresDeploymentMode.Operator,
                     TestData.DefaultStorageProfileId,
                     new CreatePostgresClusterOptions(FSharpOption<string>.Some(id), 1, 10)));
         using var session = await Fixture.Client.StartSessionAsync();

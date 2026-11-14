@@ -1012,7 +1012,8 @@ public sealed class SecretIntegrationTests(
         var handler = new GetSecretUsageHandler(
             Services.GetRequiredService<LoadSecretById>(),
             Services.GetRequiredService<LoadResourceDeploymentSet>(),
-            Services.GetRequiredService<IGitOpsMutations>());
+            Services.GetRequiredService<IGitOpsMutations>(),
+            Services.GetRequiredService<SecretBindingConsumerCatalog>());
         return Assert.IsType<SecretUsage[]>(
             (await handler.HandleAsync(new GetSecretUsageRequest(secret.Id, secret.TenantId), ct)).Value);
     }

@@ -126,44 +126,37 @@ export function PostgresCredentials({
       )}
       {copyError && <Notice tone="error">{copyError}</Notice>}
       {reveal.error instanceof Error && <Notice tone="error">{reveal.error.message}</Notice>}
-      {cluster.spec.deploymentMode === 'Operator' ? (
-        <form
-          className="database-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (password && !rotate.busy && !reveal.busy) setConfirming(true)
-          }}
-        >
-          <h3>Rotate password</h3>
-          <p className="field__hint">
-            CloudNativePG applies the new managed Secret. Applications using the previous password
-            need updated configuration.
-          </p>
-          <Field label="New database password">
-            <input
-              className="field__control"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              disabled={rotate.busy}
-            />
-            {validationMessage(rotate.error, 'Password') && (
-              <span className="field-error">{validationMessage(rotate.error, 'Password')}</span>
-            )}
-          </Field>
-          <Button type="submit" disabled={!password || rotate.busy || reveal.busy}>
-            Rotate password
-          </Button>
-          {rotate.error instanceof Error && <Notice tone="error">{rotate.error.message}</Notice>}
-        </form>
-      ) : (
-        <Notice>
-          Password rotation is unavailable for native StatefulSet databases. Changing only the
-          Secret does not change an initialized database password.
-        </Notice>
-      )}
+      <form
+        className="database-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (password && !rotate.busy && !reveal.busy) setConfirming(true)
+        }}
+      >
+        <h3>Rotate password</h3>
+        <p className="field__hint">
+          CloudNativePG applies the new managed Secret. Applications using the previous password
+          need updated configuration.
+        </p>
+        <Field label="New database password">
+          <input
+            className="field__control"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            disabled={rotate.busy}
+          />
+          {validationMessage(rotate.error, 'Password') && (
+            <span className="field-error">{validationMessage(rotate.error, 'Password')}</span>
+          )}
+        </Field>
+        <Button type="submit" disabled={!password || rotate.busy || reveal.busy}>
+          Rotate password
+        </Button>
+        {rotate.error instanceof Error && <Notice tone="error">{rotate.error.message}</Notice>}
+      </form>
       {confirming && (
         <ConfirmationDialog
           title={`Rotate password for ${cluster.name}?`}

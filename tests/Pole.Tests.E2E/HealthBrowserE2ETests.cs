@@ -55,6 +55,7 @@ public sealed class HealthBrowserE2ETests(
                 },
                 ct);
             var id = Text(app, "webServiceId");
+            var deploymentId = Text(app.GetProperty("deployments")[0], "deploymentId");
             resources.Defer("delete health browser application", cleanup => DeleteWebServiceAsync(id, cleanup));
             await fixture.WaitForNamespaceCreationAsync(groupId, ct);
             await WaitForObservationAsync(id, false, ct);
@@ -87,11 +88,11 @@ public sealed class HealthBrowserE2ETests(
             await page.GetByLabel("Tenant").SelectOptionAsync(fixture.Alpha.DefaultTenantId);
             await page.GotoAsync(Url("web-services", id, "operations"));
             var content = page.Locator("#app-content");
-            await Assertions.Expect(content.GetByTestId("readiness-status"))
+            var healthTarget = content.GetByTestId($"health-target-{deploymentId}");
+            await Assertions.Expect(healthTarget.GetByTestId("readiness-status"))
                 .ToHaveTextAsync("Not ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
             await Assertions.Expect(content.Locator("[data-testid='operation-status']:visible"))
                 .ToHaveTextAsync("Applied");
-            var healthTarget = content.Locator("[data-testid^='health-target-']:visible");
             var warnings = healthTarget.Locator("details");
             var warningsToggle = healthTarget.GetByText("Pods and warnings");
             await warningsToggle.ClickAsync();
@@ -132,7 +133,7 @@ public sealed class HealthBrowserE2ETests(
                     AriaRole.Button,
                     new LocatorGetByRoleOptions { Name = "Refresh operations", Exact = true })
                 .ClickAsync();
-            await Assertions.Expect(content.GetByTestId("readiness-status"))
+            await Assertions.Expect(healthTarget.GetByTestId("readiness-status"))
                 .ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
             await CaptureAsync(page, "ready", id, "Operations and health");
             const string operationsRoute = "**/api/v1/resource-deployments/operations?*";
@@ -164,19 +165,35 @@ public sealed class HealthBrowserE2ETests(
                         "Previous operation state is stale.",
                         new LocatorGetByTextOptions { Exact = false }))
                 .ToHaveCountAsync(0);
-            await Assertions.Expect(content.GetByTestId("readiness-status"))
+            await Assertions.Expect(healthTarget.GetByTestId("readiness-status"))
                 .ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
             await page.GotoAsync(Url("resource-groups", groupId, "operations"));
-            await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status"))
+            await Assertions.Expect(healthTarget.GetByTestId("readiness-status"))
                 .ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
             await CaptureAsync(page, "group", groupId, "Operations and health");
+
+            var peer = await SendAsync(
+                HttpMethod.Post,
+                "/api/v1/web-services",
+                new
+                {
+                    name = $"health-peer-{suffix}", resourceGroupId = groupId, exposure = "Private",
+                    tags = new[] { "e2e" }, spec = Spec(true),
+                    placement = new { targets = new[] { new { deploymentTargetId = targetId, fixedReplicas = 1 } } },
+                },
+                ct);
+            var peerId = Text(peer, "webServiceId");
+            resources.Defer("delete health browser peer", cleanup => DeleteWebServiceAsync(peerId, cleanup));
+            await WaitForObservationAsync(peerId, true, ct);
+            var peerDeploymentId = Text(peer.GetProperty("deployments")[0], "deploymentId");
             await page.GotoAsync(Url("overview", "catalog"));
             await Assertions.Expect(
                     page.Locator("#app-content")
                         .GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = name, Exact = true })
                         .First)
                 .ToBeVisibleAsync();
-            await Assertions.Expect(page.Locator("#app-content").GetByTestId("readiness-status"))
+            await Assertions.Expect(content.GetByTestId($"health-target-{peerDeploymentId}")).ToBeVisibleAsync();
+            await Assertions.Expect(healthTarget.GetByTestId("readiness-status"))
                 .ToHaveTextAsync("Ready", new LocatorAssertionsToHaveTextOptions { Timeout = 30_000 });
             await CaptureAsync(page, "tenant", "catalog", "Control plane");
         });

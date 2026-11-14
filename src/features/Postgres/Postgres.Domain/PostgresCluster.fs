@@ -5,16 +5,12 @@ open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
 open Pole.Multitenancy.Primitives
 
-type PostgresDeploymentMode =
-    | Operator = 0
-    | StatefulSet = 1
-
 type PostgresClusterSpec =
     { Instances: int
       Storage: int
       StorageProfileId: string
       Version: int
-      DeploymentMode: PostgresDeploymentMode }
+      Bootstrap: PostgresClusterBootstrap }
 
 [<AbstractClass>]
 [<BsonDiscriminator(RootClass = true)>]
@@ -53,7 +49,6 @@ type PostgresCluster =
             name: string,
             groupId: string,
             version: int,
-            deploymentMode: PostgresDeploymentMode,
             storageProfileId: string,
             options: CreatePostgresClusterOptions
         ) =
@@ -72,7 +67,7 @@ type PostgresCluster =
               Storage = options.Storage
               StorageProfileId = storageProfileId
               Version = version
-              DeploymentMode = deploymentMode }
+              Bootstrap = FreshPostgresBootstrap() }
           Revision = 1L
           Lifecycle = ActivePostgresClusterLifecycle()
           Provisioning = DirectPostgresProvisioning()
@@ -84,7 +79,6 @@ type PostgresCluster =
             name: string,
             groupId: string,
             version: int,
-            deploymentMode: PostgresDeploymentMode,
             storageProfileId: string,
             options: CreatePostgresClusterOptions,
             bootstrap: PostgresBootstrapCredential
@@ -93,12 +87,11 @@ type PostgresCluster =
             PostgresBootstrapCredential.Create(
                 bootstrap.SourceSecretId,
                 bootstrap.SourceKey,
-                bootstrap.CredentialId,
-                bootstrap.Username
+                bootstrap.CredentialId
             )
 
         let cluster =
-            PostgresCluster.Create(tenantId, name, groupId, version, deploymentMode, storageProfileId, options)
+            PostgresCluster.Create(tenantId, name, groupId, version, storageProfileId, options)
 
         { cluster with
             Provisioning = PreparedPostgresProvisioning(validated) }
@@ -114,8 +107,7 @@ type PostgresCluster =
             PostgresBootstrapCredential.Create(
                 bootstrap.SourceSecretId,
                 bootstrap.SourceKey,
-                bootstrap.CredentialId,
-                bootstrap.Username
+                bootstrap.CredentialId
             )
 
         match this.Provisioning with

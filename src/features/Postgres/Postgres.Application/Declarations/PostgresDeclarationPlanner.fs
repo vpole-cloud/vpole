@@ -54,10 +54,8 @@ type PostgresDeclarationPlanner
                   IsolationScopeId = placement.IsolationScopeId
                   DeploymentTargetId = placement.DeploymentTargetId
                   Version = current.Spec.Version
-                  DeploymentMode = current.Spec.DeploymentMode
                   BootstrapSecretId = bootstrap.SourceSecretId
                   BootstrapKey = bootstrap.SourceKey
-                  Username = bootstrap.Username
                   StorageProfileId = current.Spec.StorageProfileId
                   Storage = placement.Storage }
               Instances = current.Spec.Instances
@@ -172,10 +170,8 @@ type PostgresDeclarationPlanner
                                   IsolationScopeId = catalog.Scope.IsolationScopeId
                                   DeploymentTargetId = catalog.Target.Target.Id
                                   Version = spec.Version
-                                  DeploymentMode = data.DeploymentMode
                                   BootstrapSecretId = data.BootstrapSecretId
                                   BootstrapKey = spec.BootstrapPassword.Key
-                                  Username = spec.Username
                                   StorageProfileId = catalog.Storage.Storage.ProfileId
                                   Storage = PostgresResourceDeploymentMappings.storage catalog.Storage.Storage }
                               Instances = PostgresDeclarations.instances spec

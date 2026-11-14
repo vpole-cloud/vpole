@@ -5,6 +5,7 @@ using Pole.Features.ComputeProfiles.Domain;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Postgres.Application.Clusters;
 using Pole.Features.Postgres.Application.Common;
+using Pole.Features.Postgres.Application.Creation;
 using Pole.Features.Postgres.Application.Credentials;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.Postgres.Application.Kubernetes;
@@ -18,8 +19,8 @@ using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceDeployments.Domain;
 using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
-using Xunit;
 using Unit = Pole.ResultType.Unit;
+using Xunit;
 
 namespace Pole.Features.Postgres.Tests.Integration;
 
@@ -66,7 +67,6 @@ public sealed class PostgresIntegrationTests(
         var savedCluster = await DbContext.Postgres.Find(cluster => cluster.Id == response.Id).SingleAsync();
         Assert.Equal(resourceGroup.Id, savedCluster.GroupId);
         Assert.Equal(17, savedCluster.Spec.Version);
-        Assert.Equal(PostgresDeploymentMode.Operator, savedCluster.Spec.DeploymentMode);
         Assert.Equal(PostgresTestData.DefaultStorageProfileId, savedCluster.Spec.StorageProfileId);
         Assert.Equal(1, savedCluster.Revision);
         Assert.IsType<ActivePostgresClusterLifecycle>(savedCluster.Lifecycle);
@@ -354,45 +354,6 @@ public sealed class PostgresIntegrationTests(
         Assert.Equal(3, saved.Revision);
     }
 
-    [Theory]
-    [InlineData(2, 20, true)]
-    [InlineData(1, 21, false)]
-    public async Task Update_StatefulSetCluster_RejectsUnsupportedCapacity_FromPersistedMode(
-        int instances,
-        int storage,
-        bool instancesError)
-    {
-        var cluster = PostgresCluster.Create(
-            PostgresTestData.TenantId,
-            "stateful-postgres",
-            ObjectId.GenerateNewId().ToString(),
-            17,
-            PostgresDeploymentMode.StatefulSet,
-            PostgresTestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 20));
-        await DbContext.Postgres.InsertOneAsync(cluster);
-
-        var result = await Mediator.Send(
-            new UpdatePostgresClusterRequest(
-                cluster.Id,
-                new UpdatePostgresClusterRequestBody(
-                    cluster.Revision,
-                    FSharpOption<int>.Some(instances),
-                    FSharpOption<int>.Some(storage),
-                    FSharpOption<string>.None),
-                PostgresTestData.TenantId));
-
-        var outcome = result.AssertSuccess();
-        var error = Assert.IsType<UpdatePostgresClusterOutcome.UpdatePostgresClusterRejected>(outcome).Item;
-        var state = Assert.IsType<UpdatePostgresClusterError.UpdateState>(error).Item;
-        if (instancesError)
-            Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterStatefulSetInstancesUnsupported>(state);
-        else
-            Assert.IsType<UpdatePostgresClusterStateError.PostgresClusterStatefulSetStorageResizeUnsupported>(state);
-        Assert.Equal(1, (await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync()).Spec.Instances);
-        Assert.Equal(20, (await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync()).Spec.Storage);
-    }
-
     [Fact]
     public async Task Update_WithComputeProfile_AdoptsItsCurrentRevisionAndQuotaRequests()
     {
@@ -477,7 +438,6 @@ public sealed class PostgresIntegrationTests(
                 FSharpOption<int>.Some(10),
                 PostgresTestData.DefaultStorageProfileId,
                 FSharpOption<string>.Some(profile.Id),
-                "postgres",
                 "postgres-secret",
                 FSharpOption<PlacementRequest>.None),
             PostgresTestData.TenantId);
@@ -595,35 +555,9 @@ public sealed class PostgresIntegrationTests(
     }
 
     [Fact]
-    public async Task StatefulSetPasswordRotationIsRejectedWithoutChangingManagedSecret()
-    {
-        Services.GetRequiredService<PostgresSettings>().DefaultDeploymentMode = PostgresDeploymentMode.StatefulSet;
-        var (cluster, deployment) = await CreateClusterAsync();
-        var before = await Credentials.Find(ForCluster(cluster.Id)).SingleAsync();
-        var result = await Mediator.Send(
-            new UpdatePostgresClusterPasswordRequest(
-                cluster.Id,
-                new UpdatePostgresClusterPasswordRequestBody("new-password"),
-                PostgresTestData.TenantId));
-        var rejected = Assert
-            .IsType<UpdatePostgresClusterPasswordOutcome.UpdatePostgresClusterPasswordRejected>(result.AssertSuccess())
-            .Item;
-        var state = Assert.IsType<UpdatePostgresClusterPasswordError.PasswordState>(rejected).Item;
-        Assert.IsType<UpdatePostgresClusterPasswordStateError.PostgresClusterPasswordRotationUnsupported>(state);
-        Assert.Equal(
-            before.CurrentVersion,
-            (await Credentials.Find(ForCluster(cluster.Id)).SingleAsync()).CurrentVersion);
-        Assert.Equal(1, await Versions.CountDocumentsAsync(version => version.SecretId == before.Id));
-        Assert.Equal(
-            deployment.DesiredGeneration,
-            (await DbContext.ResourceDeployments.Find(item => item.Id == deployment.Id).SingleAsync())
-            .DesiredGeneration);
-    }
-
-    [Fact]
     public async Task ConnectionString_UsesAppliedEndpointAndDecryptedCredential()
     {
-        var (cluster, deployment) = await CreateClusterAsync(username: "report_user", password: "report-secret");
+        var (cluster, deployment) = await CreateClusterAsync(password: "report-secret");
         const string host = "postgres-rw.target-b.svc.cluster.local";
         await MarkAppliedAsync(deployment, host);
 
@@ -632,7 +566,7 @@ public sealed class PostgresIntegrationTests(
 
         var response = result.AssertConnectionString();
         Assert.Equal(
-            $"Host={host};Port=5432;Database={cluster.Id};Username=report_user;Password=report-secret;SSL Mode=Disable",
+            $"Host={host};Port=5432;Database=postgres;Username=postgres;Password=report-secret;SSL Mode=Disable",
             response.ConnectionString);
     }
 
@@ -741,7 +675,6 @@ public sealed class PostgresIntegrationTests(
                 FSharpOption<int>.Some(10),
                 PostgresTestData.DefaultStorageProfileId,
                 FSharpOption<string>.Some("not-an-object-id"),
-                "postgres",
                 "postgres-secret",
                 FSharpOption<PlacementRequest>.None),
             PostgresTestData.TenantId);
@@ -757,12 +690,11 @@ public sealed class PostgresIntegrationTests(
     }
 
     private async Task<(PostgresCluster Cluster, ResourceDeployment Deployment)> CreateClusterAsync(
-        string username = "postgres",
         string password = "postgres-secret")
     {
         var resourceGroup = await DbContext.InsertResourceGroupAsync(PostgresTestData.SeedResourceGroup());
         var result = await Mediator.Send(
-            PostgresTestData.CreatePostgresClusterRequest(resourceGroup.Id, username: username, password: password));
+            PostgresTestData.CreatePostgresClusterRequest(resourceGroup.Id, password: password));
         var response = result.AssertCreated();
         var cluster = await DbContext.Postgres.Find(item => item.Id == response.Id).SingleAsync();
         var deployment = await DbContext.ResourceDeployments

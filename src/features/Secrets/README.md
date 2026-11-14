@@ -92,16 +92,31 @@ Expected conflicts have distinct problem codes: `secrets.name-already-exists`,
 `secrets.consumer-already-bound`, `secrets.unknown-keys`, and `secrets.bindings-remain`.
 Clients can identify the correction needed without parsing a generic conflict message.
 
+## Consumer capabilities
+
+Resource owners contribute `SecretDeclarationConsumer` through Secrets.Contracts. The capability
+declares binding usage, projection policy, placement requirements and whether the control plane may
+read explicitly granted keys. Secrets Domain does not select behavior by a provider's resource kind.
+Bootstrap grants authorize one-time credential preparation and do not grant runtime projection.
+
+`GrantConsumerSecretAccess` joins the consumer's transaction, fences its registration and validates
+the tenant/group/scope and selected keys. `ReadConsumerSecretValues` requires that purpose-specific
+grant and returns only the requested current values, with a redacted string representation. Ordinary
+runtime consumers have projection-only access. Protocol-specific interpretation, such as pairing S3
+access-key fields, belongs to the consumer feature. Secret values never enter events or metadata DTOs.
+
 ## Mutation and lifecycle flows
 
 1. Create validates the active group/scope through ResourceGroups' provider-owned contract, acquires
    its transaction write fence, and registers the Secret. Metadata, encrypted version and outbox
    event commit together. Any failure rolls all of them back.
-2. Bind validates the registered consumer in the same group and tenant, then validates live
-   deployments belonging to that consumer and scope. Group and deployment write fences serialize
-   admission with unregistration, scope deletion and deployment deletion. A consumer without any
-   live deployment is rejected until its placement exists. Provider-managed creation joins the caller
-   transaction after registration and pending placement are staged, so it needs no running workload.
+2. Ordinary runtime binding validates the registered consumer and its live placements in the same
+   tenant/group/scope. Group and deployment write fences serialize admission with unregistration,
+   scope deletion and deployment deletion. A provider may explicitly contribute a purpose-bound
+   consumer capability that permits grants before its first placement, as Backups does for retained
+   archive credentials. GitOps planning uses that capability rather than assuming every consumer has
+   a workload. Provider-managed creation joins the caller transaction after registration and pending
+   placement are staged, so it needs no running workload.
 3. Rotation checks the expected current version, preserves explicitly mapped keys, and increments
    the version. An aggregate write conflict serializes rotation with binding and deletion. Every
    version has its own encrypted envelope; a rotation never overwrites an earlier version.
@@ -209,9 +224,8 @@ resource-unregistered cleanup also clears management when it removes an owner bi
 ordinary Secret rather than leaving an uneditable credential if an owner uses that fallback path.
 
 Projection readiness means that Kubernetes accepted the desired Secret version. It does not mean a
-running database has adopted that password. PostgreSQL StatefulSet password rotation remains rejected;
-changing an environment-backed native Secret does not rotate a database on an existing volume. The
-owning PostgreSQL workflow defines operator-mode behavior; generic Secret writes cannot bypass it.
+running database has adopted that password. The owning PostgreSQL workflow rotates its managed
+administrator Secret through CloudNativePG; generic Secret writes cannot bypass the owner workflow.
 
 ## Verification
 

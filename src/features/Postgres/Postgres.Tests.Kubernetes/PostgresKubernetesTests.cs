@@ -53,7 +53,7 @@ public sealed class PostgresKubernetesTests(
             plural: "clusters",
             name: PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id));
 
-        Assert.Equal("postgres-user", Encoding.UTF8.GetString(secret.Data["username"]));
+        Assert.Equal("postgres", Encoding.UTF8.GetString(secret.Data["username"]));
         Assert.Equal("initial-secret", Encoding.UTF8.GetString(secret.Data["password"]));
         Assert.NotNull(clusterResource);
     }
@@ -136,7 +136,7 @@ public sealed class PostgresKubernetesTests(
                 projection.Projection.KubernetesName,
                 NamespaceName);
 
-            Assert.Equal("postgres-user", Encoding.UTF8.GetString(secret.Data["username"]));
+            Assert.Equal("postgres", Encoding.UTF8.GetString(secret.Data["username"]));
             Assert.Equal("rotated-secret", Encoding.UTF8.GetString(secret.Data["password"]));
 
             var native = JsonSerializer.SerializeToNode(
@@ -170,12 +170,7 @@ public sealed class PostgresKubernetesTests(
             Compute(),
             Metadata(),
             CancellationToken.None);
-        await manager.DeleteAsync(
-            Kubernetes,
-            cluster.Id,
-            NamespaceName,
-            cluster.Spec.DeploymentMode,
-            CancellationToken.None);
+        await manager.DeleteAsync(Kubernetes, cluster.Id, NamespaceName, CancellationToken.None);
 
         Assert.NotNull(
             await Kubernetes.CoreV1.ReadNamespacedSecretAsync(projection.Projection.KubernetesName, NamespaceName));
@@ -191,125 +186,11 @@ public sealed class PostgresKubernetesTests(
             name: PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id)));
     }
 
-    [KubernetesFact]
-    public async Task StatefulSetCreateAsync_WaitsForPodReadiness_AndExecutesSimpleSql()
-    {
-        var cluster = BuildStatefulSetCluster();
-        var metadata = Metadata();
-        IPostgresClusterDeploymentManager manager = new PostgresClusterDeploymentManager(CreateSettings());
-        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
-        await projection.ApplyAsync("initial-secret");
-
-        await manager.ApplyAsync(
-            Kubernetes,
-            cluster,
-            projection.Credentials,
-            NamespaceName,
-            Target.StorageClassName,
-            Compute(),
-            metadata,
-            CancellationToken.None);
-        await WaitForStatefulSetReadyAsync(PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id));
-
-        var result = await ExecuteSimpleSqlAsync(cluster);
-
-        Assert.Equal(1, result);
-        var nextMetadata = new PostgresResourceDeploymentMetadata(
-            metadata.DeploymentId,
-            metadata.IsolationScopeId,
-            metadata.RuntimeCellId,
-            metadata.DeploymentTargetId,
-            2);
-        var nextCompute = Compute() with { Requests = new KubernetesComputeResourceValues(500, 256) };
-        await manager.ApplyAsync(
-            Kubernetes,
-            cluster,
-            projection.Credentials,
-            NamespaceName,
-            Target.StorageClassName,
-            nextCompute,
-            nextMetadata,
-            CancellationToken.None);
-        var reapplied = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
-            PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id),
-            NamespaceName);
-        Assert.Equal("2", reapplied.Spec.Template.Metadata.Labels["pole.io/deployment-generation"]);
-        Assert.Equal(
-            "1",
-            Assert.Single(reapplied.Spec.VolumeClaimTemplates).Metadata.Labels["pole.io/deployment-generation"]);
-        Assert.Equal(
-            "500m",
-            Assert.Single(reapplied.Spec.Template.Spec.Containers).Resources.Requests["cpu"].ToString());
-        var legacyResize = PostgresCluster.Create(
-            cluster.TenantId,
-            cluster.Name,
-            cluster.GroupId,
-            cluster.Spec.Version,
-            cluster.Spec.DeploymentMode,
-            cluster.Spec.StorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(cluster.Id), 1, cluster.Spec.Storage + 1));
-        await Assert.ThrowsAsync<HttpOperationException>(() => manager.ApplyAsync(
-            Kubernetes,
-            legacyResize,
-            projection.Credentials,
-            NamespaceName,
-            Target.StorageClassName,
-            nextCompute,
-            nextMetadata,
-            CancellationToken.None));
-    }
-
-    [KubernetesFact]
-    public async Task StatefulSetDeleteAsync_LeavesProjectionForItsProviderAndRemovesResources()
-    {
-        var cluster = BuildStatefulSetCluster();
-        IPostgresClusterDeploymentManager manager = new PostgresClusterDeploymentManager(CreateSettings());
-        using var projection = new ManagedProjectionFixture(Kubernetes, cluster, NamespaceName);
-        await projection.ApplyAsync("initial-secret");
-
-        await manager.ApplyAsync(
-            Kubernetes,
-            cluster,
-            projection.Credentials,
-            NamespaceName,
-            Target.StorageClassName,
-            Compute(),
-            Metadata(),
-            CancellationToken.None);
-        await manager.DeleteAsync(
-            Kubernetes,
-            cluster.Id,
-            NamespaceName,
-            cluster.Spec.DeploymentMode,
-            CancellationToken.None);
-
-        Assert.NotNull(
-            await Kubernetes.CoreV1.ReadNamespacedSecretAsync(projection.Projection.KubernetesName, NamespaceName));
-        await projection.ReleaseAsync();
-        await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedSecretAsync(
-            projection.Projection.KubernetesName,
-            NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(
-            PostgresClusterKubernetesBuilder.buildResourceName(cluster.Id),
-            NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
-            PostgresStatefulSetKubernetesBuilder.buildHeadlessServiceName(cluster.Id),
-            NamespaceName));
-        await AssertResourceDeletedAsync(() => Kubernetes.CoreV1.ReadNamespacedServiceAsync(
-            PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id),
-            NamespaceName));
-    }
-
-    private PostgresCluster BuildOperatorCluster() => BuildCluster(PostgresDeploymentMode.Operator);
-
-    private PostgresCluster BuildStatefulSetCluster() => BuildCluster(PostgresDeploymentMode.StatefulSet);
-
-    private static PostgresCluster BuildCluster(PostgresDeploymentMode mode) => PostgresCluster.Create(
+    private static PostgresCluster BuildOperatorCluster() => PostgresCluster.Create(
         PostgresTestData.TenantId,
-        mode == PostgresDeploymentMode.Operator ? "postgres-k8s" : "postgres-sts",
+        "postgres-k8s",
         ObjectId.GenerateNewId().ToString(),
         17,
-        mode,
         PostgresTestData.DefaultStorageProfileId,
         new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 5));
 
@@ -334,7 +215,6 @@ public sealed class PostgresKubernetesTests(
     private static PostgresSettings CreateSettings() => new()
     {
         OperatorImage = new PostgresImageSettings { Server = "ghcr.io", Name = "cloudnative-pg/postgresql" },
-        StatefulSetImage = new PostgresImageSettings { Server = "docker.io", Name = "postgres" },
     };
 
     private async Task WaitForClusterReadyAsync(
@@ -370,24 +250,6 @@ public sealed class PostgresKubernetesTests(
             $"Last status: {lastStatus ?? "<missing>"}");
     }
 
-    private async Task WaitForStatefulSetReadyAsync(string statefulSetName, int timeoutSeconds = 180)
-    {
-        var elapsed = Stopwatch.StartNew();
-
-        while (elapsed.Elapsed < TimeSpan.FromSeconds(timeoutSeconds))
-        {
-            var statefulSet = await Kubernetes.AppsV1.ReadNamespacedStatefulSetAsync(statefulSetName, NamespaceName);
-            var readyReplicas = statefulSet.Status?.ReadyReplicas ?? 0;
-            if (readyReplicas >= 1)
-                return;
-
-            await Task.Delay(TimeSpan.FromSeconds(2));
-        }
-
-        throw await CreateTimeoutExceptionAsync(
-            $"StatefulSet '{statefulSetName}' did not become ready in namespace '{NamespaceName}'.");
-    }
-
     private async Task<object?> ExecuteSimpleSqlAsync(PostgresCluster cluster, int timeoutSeconds = 60)
     {
         var elapsed = Stopwatch.StartNew();
@@ -403,7 +265,7 @@ public sealed class PostgresKubernetesTests(
                     $"service/{PostgresClusterKubernetesBuilder.buildReadWriteServiceName(cluster.Id)}",
                     remotePort: 5432);
                 await using var connection = new NpgsqlConnection(
-                    $"Host=127.0.0.1;Port={portForward.LocalPort};Database={PostgresClusterKubernetesBuilder.buildDatabaseName(cluster.Id)};Username=postgres-user;Password=initial-secret;SSL Mode=Disable;Timeout=5;Command Timeout=15");
+                    $"Host=127.0.0.1;Port={portForward.LocalPort};Database=postgres;Username=postgres;Password=initial-secret;SSL Mode=Disable;Timeout=5;Command Timeout=15");
                 await connection.OpenAsync();
                 await using var command = new NpgsqlCommand("SELECT 1", connection);
                 return await command.ExecuteScalarAsync();

@@ -28,10 +28,9 @@ The suite covers:
 - tenant-scoped global search and contextual commands, keyboard selection, focus restoration,
   and reuse of the existing resource tab after opening a search result.
 - PostgreSQL browser catalog/create/details/configuration, readable single-target placement,
-  native provisioning, compute update/reload and credential UI without secret screenshots.
-  The fixture explicitly selects native StatefulSet mode for these browser scenarios;
-  operator-specific manifest and credential-projection tests run separately in the owning feature
-  suites against CloudNativePG in the full lab.
+  CloudNativePG provisioning, compute update/reload and administrator credential UI without secret screenshots.
+  The backup API journey creates two real Barman copies, reads the catalog after source deletion, and
+  restores both a selected copy and a chosen time before checking customer data with fresh credentials.
 - Redis browser catalog/create/details/configuration, tags update and reload, confirmed
   deletion, readable single-target placement and desktop/mobile light/dark screenshots.
 - Secret browser metadata/create/full-map rotation, version-aware writes, generic resource

@@ -12,9 +12,7 @@ public sealed class PostgresSettingsTests
     [Theory]
     [InlineData("SupportedVersions:From", "0")]
     [InlineData("SupportedVersions:To", "15")]
-    [InlineData("DefaultDeploymentMode", "7")]
     [InlineData("OperatorImage:Server", " ")]
-    [InlineData("StatefulSetImage:Name", "")]
     public void InvalidSettingsFailWhenResolved(string key, string value)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(

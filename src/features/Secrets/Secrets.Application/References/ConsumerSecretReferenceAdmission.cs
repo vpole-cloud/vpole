@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Contracts;
 using Pole.Features.ResourceGroups.Contracts;
+using Pole.Features.Secrets.Application.Bindings;
 using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Contracts;
@@ -14,6 +15,7 @@ internal sealed class ConsumerSecretReferenceAdmission(
     IMongoCollection<Secret> secrets,
     AdmitResourceScopeReference admitScope,
     AdmitResourceDeploymentReferences admitDeployments,
+    SecretBindingConsumerCatalog consumers,
     LoadResourceDeploymentConnectionPlacements loadPlacements
 )
 {
@@ -47,7 +49,7 @@ internal sealed class ConsumerSecretReferenceAdmission(
             var current = await secrets.Find(session, SecretFilters.Identity(request.TenantId, id))
                 .FirstOrDefaultAsync(ct);
             var binding = current?.Bindings.SingleOrDefault(item =>
-                item.Usage == SecretBindingUsage.Runtime && item.Consumer.ResourceType == request.ConsumerType.Value &&
+                consumers.GrantsProjection(item) && item.Consumer.ResourceType == request.ConsumerType.Value &&
                 item.Consumer.ResourceId == request.ConsumerId);
             if (requireAvailable && desired.Length > 0)
             {

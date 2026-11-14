@@ -25,7 +25,7 @@ Testcontainers, and Aspire variables remain overrides.
 
 The default `full` profile contains:
 
-- a topology-capable `default` cluster with monitoring CRDs, cert-manager, CloudNativePG, Harbor,
+- a topology-capable `default` cluster with monitoring CRDs, cert-manager, CloudNativePG with the Barman Cloud plugin, Harbor,
   and BuildKit;
 - `workload-a` and `workload-b` clusters with monitoring CRDs for multi-target tests;
 - a shared local registry and pinned k3d, kubectl, Helm, and buildctl clients.
@@ -103,6 +103,24 @@ accepts no overlay flags.
 ./infrastructure/kubernetes-lab/lab.sh reset multi --overlay monitoring
 ```
 
+When both `cnpg` and `cert-manager` are selected, `up` also installs the pinned Barman Cloud plugin
+in the CNPG operator namespace. Re-run `up` to apply this addition to an existing lab.
+
+Run the backup/recovery acceptance scenario against that lab:
+
+```bash
+bash infrastructure/kubernetes-lab/tests/backup-recovery.sh
+```
+
+The scenario creates its own namespace and S3-compatible RustFS pod, signs S3 requests from the host
+through a loopback port forward, and takes two physical backups. It verifies that the workload can
+back up with the host route down and that the host can still read the catalog when a NetworkPolicy
+isolates workload access to S3. After deleting the source cluster and its administrator Secret it lists
+the two copies, restores the older one by ID and restores the other test cluster to an intermediate
+timestamp. Each restore uses a fresh password and checks the recovered rows over TCP. Teardown checks
+the namespace UID and ownership labels before deletion. The script requires curl with AWS SigV4 support,
+Python 3, OpenSSL, jq, and the same runtime and tooling as `lab.sh`.
+
 Plain `dotnet test` expects the full profile. Use project or trait filters when deliberately working
 with a smaller profile.
 
@@ -124,8 +142,8 @@ before deleting lab infrastructure.
 Harbor credentials are generated locally in a mode-`0600` ignored file and are referenced by path
 from state; secrets are never written into `state.json`. Harbor is HTTP-only and reachable solely
 through the lab's loopback mapping from the host. The test-only `harbor.pole.localhost` name maps
-to loopback on the host and to the default server only inside owned lab nodes and CoreDNS. It is not
-a production trust or registry configuration.
+to loopback on the host and to the default server inside owned lab nodes and pods. For pod DNS,
+`lab.sh up` manages the `pole-lab-harbor.server` entry in the K3s `coredns-custom` ConfigMap.
 
 For rootless Podman, the user service must delegate `cpu`, `cpuset`, `io`, `memory`, and `pids` on
 cgroup v2. If the lab reports a missing `cpuset` controller, stop an active
@@ -157,6 +175,7 @@ Infrastructure-free recovery regression tests:
 
 ```bash
 bash infrastructure/kubernetes-lab/tests/recovery.sh
+bash infrastructure/kubernetes-lab/tests/harbor-dns.sh
 bash infrastructure/kubernetes-lab/tests/verification-port-forward.sh
 ```
 

@@ -72,21 +72,23 @@ Generated runtime objects are never declarations.
 All rows describe implemented provider schemas. Creation-only identity changes require the explicit
 lifecycle decisions of stage 7; they never imply silent adoption or replacement.
 
-| Kind / owner                             | Status and managed fields                                                                                                                        | References / immutable boundaries                                                                                                    | Excluded fields and phases                                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| ResourceGroup / ResourceGroups           | Implemented: description, tags                                                                                                                   | Name is identity                                                                                                                     | Default scope, registrations, lifecycle; Prepare                                                                          |
-| IsolationScope / ResourceGroups          | Implemented: name, parent group                                                                                                                  | Tenant-wide name; parent group immutable; `default` reserved                                                                         | Runtime cells, lifecycle; Prepare after group; create/no-op                                                               |
-| Secret / Secrets                         | Implemented: resourceGroup, isolationScope, purpose, keys                                                                                        | Group/scope immutable; declared key metadata only                                                                                    | Values, ciphertext, value versions, binding state; Prepare                                                                |
-| SecretBinding / Secrets                  | Implemented: secret, consumer kind/name, usage, keyMappings                                                                                      | Secret/consumer/usage immutable; scope admission; Runtime for WebService/FunctionApp, Bootstrap for PostgreSQL                       | Native projections and retained rollout pins; Bind                                                                        |
-| WebService / WebServices                 | Implemented: image, environment, logical secrets, ports, probes, tags, exposure, fixed replicas or autoscaling, pinned compute                   | Group/scope/target immutable; Secret grants required                                                                                 | Connection environment references, registry credentials, generated hostnames, releases, observations; Prepare → Configure |
-| RedisService / RedisServices             | Implemented: tags, pinned compute; storage size/profile and placement on creation                                                                | Group/scope/target and storage profile/revision/size immutable                                                                       | Runtime, timestamps; Prepare → Configure                                                                                  |
-| PostgresCluster / Postgres               | Implemented: version, instances, storage size, username/bootstrap reference, pinned compute/storage, placement                                   | Version, username, bootstrap identity, group/scope/target and storage profile/revision immutable; capacity updates retain mode rules | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
-| FunctionApp / Functions                  | Implemented: functionRoute, image, environment, logical secrets, resources, scaling, handlers/triggers, tags, pinned compute, explicit placement | Route/group/scope/target immutable; runtime Secret grants required                                                                   | Protocol/runtime data, invocations, generated trigger IDs and schedule versions; Prepare → Configure                      |
-| ResourceConnection / ResourceConnections | Implemented: named source, destination, endpoint                                                                                                 | Accepted endpoint IDs and target compatibility; identities immutable                                                                 | Runtime network observations, credentials; Bind after source Prepare and destination Configure                            |
-| DomainZone / Domains                     | Implemented: technical name, target, DNS label                                                                                                   | Target and label immutable; current managed target reservation policy                                                                | Computed DNS name and generated zones; Prepare                                                                            |
-| HostnameBinding / Domains                | Implemented: technical name, zone, workload, target, relative name; attachment repair                                                            | Accepted zone and Public WebService IDs; address/attachment immutable; cross-source references preserve ownership                    | Generated identities and runtime ingress observations; Bind after zone Prepare/workload Configure                         |
-| SourceRepository / GitProviders          | Implemented: technical name, connection, repository ID, branch                                                                                   | Accepted connection ID; location immutable; no mandatory analyzer                                                                    | Display URL/privacy metadata, candidates and credentials; Prepare                                                         |
-| SourceBuildConfiguration / SourceBuilds  | Implemented: technical name, repository, WebService, inline Dockerfile                                                                           | Accepted repository/target IDs immutable; recipe revisions; explicit image authority                                                 | Jobs, application commits, artifacts, logs and credentials; Configure after repository/WebService Prepare                 |
+| Kind / owner                             | Status and managed fields                                                                                                                        | References / immutable boundaries                                                                                                                   | Excluded fields and phases                                                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| ResourceGroup / ResourceGroups           | Implemented: description, tags                                                                                                                   | Name is identity                                                                                                                                    | Default scope, registrations, lifecycle; Prepare                                                                          |
+| IsolationScope / ResourceGroups          | Implemented: name, parent group                                                                                                                  | Tenant-wide name; parent group immutable; `default` reserved                                                                                        | Runtime cells, lifecycle; Prepare after group; create/no-op                                                               |
+| Secret / Secrets                         | Implemented: resourceGroup, isolationScope, purpose, keys                                                                                        | Group/scope immutable; declared key metadata only                                                                                                   | Values, ciphertext, value versions, binding state; Prepare                                                                |
+| SecretBinding / Secrets                  | Implemented: secret, consumer kind/name, usage, keyMappings                                                                                      | Secret/consumer/usage immutable; scope admission; Runtime for WebService/FunctionApp, Bootstrap for PostgreSQL, BackupStorage for BackupDestination | Native projections and retained rollout pins; Bind                                                                        |
+| WebService / WebServices                 | Implemented: image, environment, logical secrets, ports, probes, tags, exposure, fixed replicas or autoscaling, pinned compute                   | Group/scope/target immutable; Secret grants required                                                                                                | Connection environment references, registry credentials, generated hostnames, releases, observations; Prepare → Configure |
+| RedisService / RedisServices             | Implemented: tags, pinned compute; storage size/profile and placement on creation                                                                | Group/scope/target and storage profile/revision/size immutable                                                                                      | Runtime, timestamps; Prepare → Configure                                                                                  |
+| PostgresCluster / Postgres               | Implemented: version, instances, storage size, bootstrap reference, pinned compute/storage, placement                                            | Version, bootstrap identity, group/scope/target and storage profile/revision immutable; CNPG capacity supports growth                               | Credentials, runtime, timestamps; Prepare → Configure with separate Bootstrap binding                                     |
+| BackupDestination / Backups              | Existing S3 endpoint, bucket/prefix and logical credential keys in a tenant group/scope                                                          | Storage identity and placement immutable; explicit BackupStorage binding; retained archive access                                                   | Secret values, catalog, generated native objects; Prepare → Configure                                                     |
+| BackupPolicy / Backups                   | Service reference, destination, five-field UTC cron, suspension and retention days                                                               | One policy per service; service identity fixed; independent cross-source references resolve to tenant IDs                                           | Catalog, manual operations, native observations and restore results; Configure                                            |
+| FunctionApp / Functions                  | Implemented: functionRoute, image, environment, logical secrets, resources, scaling, handlers/triggers, tags, pinned compute, explicit placement | Route/group/scope/target immutable; runtime Secret grants required                                                                                  | Protocol/runtime data, invocations, generated trigger IDs and schedule versions; Prepare → Configure                      |
+| ResourceConnection / ResourceConnections | Implemented: named source, destination, endpoint                                                                                                 | Accepted endpoint IDs and target compatibility; identities immutable                                                                                | Runtime network observations, credentials; Bind after source Prepare and destination Configure                            |
+| DomainZone / Domains                     | Implemented: technical name, target, DNS label                                                                                                   | Target and label immutable; current managed target reservation policy                                                                               | Computed DNS name and generated zones; Prepare                                                                            |
+| HostnameBinding / Domains                | Implemented: technical name, zone, workload, target, relative name; attachment repair                                                            | Accepted zone and Public WebService IDs; address/attachment immutable; cross-source references preserve ownership                                   | Generated identities and runtime ingress observations; Bind after zone Prepare/workload Configure                         |
+| SourceRepository / GitProviders          | Implemented: technical name, connection, repository ID, branch                                                                                   | Accepted connection ID; location immutable; no mandatory analyzer                                                                                   | Display URL/privacy metadata, candidates and credentials; Prepare                                                         |
+| SourceBuildConfiguration / SourceBuilds  | Implemented: technical name, repository, WebService, inline Dockerfile                                                                           | Accepted repository/target IDs immutable; recipe revisions; explicit image authority                                                                | Jobs, application commits, artifacts, logs and credentials; Configure after repository/WebService Prepare                 |
 
 Schemas and phase evidence live with their owners: `DeclarativeResourceGroupProvider`,
 `DeclarativeIsolationScopeProvider`, `DeclarativeSecretProvider`, `DeclarativeSecretBindingProvider`,
@@ -269,23 +271,24 @@ are checked again. Discovery still validates storage-class availability and retu
 Transactional fences cover current policy and the pinned snapshot; history cannot bypass revocation.
 
 `storage.profile: { name, revision }` and the selected class are immutable after workload creation.
-Redis additionally fixes `storage.sizeGb`. PostgreSQL allows only its existing supported resize path:
-StatefulSet mode requires one instance and rejects resize; Operator mode permits supported instance
-changes and growth, rejects shrink and unsupported compute runtime classes. Deployment mode is server
-configuration, never YAML. Version, username and the accepted bootstrap Secret/key remain immutable.
+Redis additionally fixes `storage.sizeGb`. PostgreSQL uses CloudNativePG and permits supported instance
+changes and storage growth, rejects shrink and unsupported compute runtime classes. The administrative
+role is `postgres`. Version and the accepted bootstrap Secret/key remain immutable.
 Compute changes use each owner's admission, quota and revision workflows.
 
 ### Grants, phases and updates
 
 SecretBinding has `secret`, `consumer: { kind, name }`, optional `keyMappings` and `usage`.
 `usage: Runtime` is the default for WebService/FunctionApp. `usage: Bootstrap` grants PostgreSQL
-credential initialization without creating a Kubernetes projection for that grant. An empty
-`keyMappings` grants all expected keys with unchanged names. A reference alone grants no access;
+credential initialization without creating a Kubernetes projection for that grant. For backup storage, `usage: BackupStorage` grants the destination's declared credential keys. The
+consumer capability catalog explicitly permits this grant before deployment; later projections use
+its retained authorized placement. An empty `keyMappings` grants expected keys with unchanged names. A reference alone grants no access;
 current tenant, group/scope and placement admission still apply. The old `webService` field has no alias.
 Removing or remapping a key still required by active/retained consumers is blocked. Move consumers to
 new references and complete their rollout before removing the old grant/key mapping.
 
-PostgreSQL requires `username` and `bootstrapPassword: { secret, key }` plus a Bootstrap grant.
+PostgreSQL requires `bootstrapPassword: { secret, key }` plus a Bootstrap grant and issues the
+`postgres` administrator connection to database `postgres`. Application roles belong to the owner.
 Secrets validates the grant, scope, key and source version, then atomically creates the encrypted
 owner-managed credential. GitOps snapshots, plans, receipts, diagnostics and events never receive
 plaintext. Missing values block Configure; supplying them wakes eligible runs without a new commit.
@@ -423,8 +426,8 @@ Rename is an explicit old-resource/new-address selection, never inferred. The re
 closure may change same-source dependents, but manual or foreign ownership blocks it.
 Replacement uses normal delete then create workflows; it may lose data and does not migrate it.
 Preview reports provider retention, identity loss and downtime. Owners contribute read-only
-consequence codes: Redis deletes PVCs through StatefulSet `WhenDeleted=Delete`; PostgreSQL StatefulSet
-explicitly removes its data claim, while Operator delegates cleanup to CNPG policy. Actual volume data
+consequence codes: Redis deletes PVCs through StatefulSet `WhenDeleted=Delete`; PostgreSQL
+delegates cleanup to CNPG policy. Actual volume data
 retention also depends on the storage class reclaim policy. Secret removal deletes stored versions; replacement
 requires new Secret values and PostgreSQL bootstrap. These warnings describe current owner workflows
 and do not change storage policies. Secret values and credentials are never copied into plans or
@@ -460,15 +463,15 @@ An adoption selects exact existing IDs, without ownership transfer of children:
 
 ```json
 {
-  "intent": "Adoption",
-  "expectedRevision": 3,
-  "resources": [
-    {
-      "kind": "ResourceGroup",
-      "name": "team",
-      "resourceId": "0123456789abcdef01234567"
-    }
-  ]
+    "intent": "Adoption",
+    "expectedRevision": 3,
+    "resources": [
+        {
+            "kind": "ResourceGroup",
+            "name": "team",
+            "resourceId": "0123456789abcdef01234567"
+        }
+    ]
 }
 ```
 
@@ -477,18 +480,18 @@ IDs and includes any necessary same-source dependency changes; the client does n
 
 ```json
 {
-  "intent": "Replacement",
-  "expectedRevision": 3,
-  "replacements": [
-    {
-      "original": {
-        "kind": "ResourceGroup",
-        "name": "old",
-        "resourceId": "0123456789abcdef01234567"
-      },
-      "desired": { "kind": "ResourceGroup", "name": "new" }
-    }
-  ]
+    "intent": "Replacement",
+    "expectedRevision": 3,
+    "replacements": [
+        {
+            "original": {
+                "kind": "ResourceGroup",
+                "name": "old",
+                "resourceId": "0123456789abcdef01234567"
+            },
+            "desired": { "kind": "ResourceGroup", "name": "new" }
+        }
+    ]
 }
 ```
 
@@ -520,3 +523,12 @@ A confirmed run stores claim, removal request, cleanup wait, release and configu
 Cleanup proof records exact owner-fence transitions in the same transaction as finalization. Only
 contiguous transitions belonging to this plan may advance its approved observations; an external
 version change remains stale. This preserves crash recovery without widening approval.
+
+### Service backup declarations
+
+See the [Backups contract](../../Backups/README.md) and
+[backup snapshot](../examples/backups/manifests). The service may be manually managed or owned by a
+different GitOps source. Resolving its name does not adopt it. Destination credentials remain tenant
+Secrets and require a `BackupStorage` binding. Catalog queries, manual backup/restore commands and
+operation status are outside desired state. Restored PostgreSQL resources are manual; explicit
+preview/adopt preserves their managed password and recovery bootstrap.
