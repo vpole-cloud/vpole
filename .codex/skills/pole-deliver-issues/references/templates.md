@@ -5,7 +5,7 @@ Fill only the fields that help the current assignment. Link canonical rules rath
 ## Agent assignment
 
 - **Issue and user outcome:** issue link, problem and observable acceptance criteria.
-- **Scope and decisions:** owning feature, exclusions, approved product decisions and their source.
+- **Scope and decisions:** owning feature, exclusions, the agent-ready part of the issue, agreed decisions with their source, and any question blocking other work.
 - **Workspace:** absolute worktree, branch (if authorized), base commit, owned files/areas and dependencies.
 - **References:** required feature docs and exact compiled canonical files for the boundaries being changed.
 - **Failure cases:** expected errors, tenant boundaries, races, lifecycle/startup behavior relevant to this task.

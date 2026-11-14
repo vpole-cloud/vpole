@@ -30,6 +30,9 @@ An in-memory or standalone database is not evidence for Mongo transaction, repli
 - Follow `docs/aspire-e2e-testing.md` for E2E prerequisites and isolation. Use `$pole-aspire-local` only for production startup wiring or a real cross-service workflow.
 - Do not claim an infrastructure lane passed when its prerequisites were unavailable.
 
+After a failed run, [diagnose it before retrying](../../../docs/agent-delivery.md#diagnose-before-retrying-a-failed-run).
+Use the original run’s evidence to choose the next check.
+
 ## Safe Parallelism
 
 Follow [test scheduling](../../../docs/testing.md#parallelism-across-worktrees).
