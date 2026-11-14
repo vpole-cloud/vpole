@@ -7,6 +7,7 @@ using Pole.Features.Core.Multitenancy;
 using Pole.Features.StorageProfiles.Application.Common;
 using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.Tenants.Application.Common;
+using Pole.Features.Tenants.Application.Endpoints;
 using Pole.Features.Tenants.Application.Endpoints.Members;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Endpoints;
@@ -34,9 +35,38 @@ public sealed class ApiSliceTests(
         Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode);
     }
 
+    [Theory]
+    [InlineData(true, HttpStatusCode.Unauthorized)]
+    [InlineData(false, HttpStatusCode.Forbidden)]
+    public async Task PlatformCreationRequiresMoreThanTenantOwnership(bool anonymous, HttpStatusCode expected)
+    {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        if (anonymous)
+            Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+
+        using var user = await Client.PostAsJsonAsync(
+            "/api/v1/users/",
+            new CreateUserRequestBody("new@example.test", "New", "User"));
+        using var tenant = await Client.PostAsJsonAsync("/api/v1/tenants/", new CreateTenantRequestBody("New tenant"));
+        Assert.Equal(expected, user.StatusCode);
+        Assert.Equal(expected, tenant.StatusCode);
+    }
+
+    [Fact]
+    public async Task PlatformAdminCreatesTenantWithoutSelection()
+    {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/tenants/",
+            new CreateTenantRequestBody("New tenant"));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
     [Fact]
     public async Task CreateUser_ReturnsCreatedForPlatformAdmin()
     {
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
 
         var response = await Client.PostAsJsonAsync(

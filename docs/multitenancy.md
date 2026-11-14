@@ -4,41 +4,41 @@ Pole uses tenant-scoped, shared-storage multitenancy. A tenant is the top-level 
 
 The current implementation uses:
 
-* Keycloak for authentication and user identity.
-* Pole MongoDB records for users, tenants, tenant membership, tenant roles, and resource ownership.
-* The `X-Pole-Tenant-ID` request header to select the active tenant for resource operations.
-* A shared Mongo database with `TenantId` fields on tenant-owned documents.
+- Keycloak for authentication and user identity.
+- Pole MongoDB records for users, tenants, tenant membership, tenant roles, and resource ownership.
+- The `X-Pole-Tenant-ID` request header to select the active tenant for resource operations.
+- A shared Mongo database with `TenantId` fields on tenant-owned documents.
 
 ## Model
 
 `Tenant` records are stored in the `Tenants` collection. A tenant contains its member list inline:
 
-* `Id`
-* `Name`
-* `CreatedAtUtc`
-* `Members`
+- `Id`
+- `Name`
+- `CreatedAtUtc`
+- `Members`
 
 Each `TenantMember` stores:
 
-* `TenantId`
-* `UserId`
-* `Email`
-* `Role`
+- `TenantId`
+- `UserId`
+- `Email`
+- `Role`
 
 `PoleUser` records are stored in the `Users` collection and use the Keycloak user id as `Id`. A user also has a `DefaultTenantId`. Creating a Pole user creates a Keycloak user first, then creates the Pole user record and a personal default tenant in one Mongo transaction.
 
 Tenant roles are ordered by capability:
 
-* `Viewer`: read tenant resources.
-* `Member`: read and write tenant resources.
-* `Admin`: member capabilities plus member management.
-* `Owner`: admin capabilities plus tenant management.
+- `Viewer`: read tenant resources.
+- `Member`: read and write tenant resources.
+- `Admin`: member capabilities plus member management.
+- `Owner`: admin capabilities plus tenant management.
 
 The platform admin role is separate from tenant roles. Pole checks for the `pole-platform-admin` role through the `roles` claim and uses it for platform-level actions such as creating tenants and users.
 
 ## Request Flow
 
-All `/api/v1` routes require authentication. Tenant-owned resource routes also require an active tenant selected by header:
+Control-plane resource routes require authentication and an active tenant selected by header:
 
 ```http
 X-Pole-Tenant-ID: <tenant-id>
@@ -50,14 +50,37 @@ All descendant endpoints require the tenant header by default, including newly a
 Platform administration, tenant/member management and user registration explicitly opt out with
 `WithoutTenantContext()`. This only disables header resolution, not authentication or authorization.
 Technical endpoints and callbacks outside the API group do not inherit this requirement.
+
+### Operational access
+
+In Development, the Hangfire dashboard at `/hangfire` requires a Keycloak access token for
+`pole.control-plane.api` with the `pole-platform-admin` role. Configure the client to send
+`Authorization: Bearer <access-token>` on every dashboard request to the Pole API origin,
+including stylesheets, job details and actions. Direct browser navigation without that header
+returns 401, including on localhost. A valid token without the platform role returns 403.
+The dashboard requires no tenant selection. Hangfire's antiforgery check also applies to job actions.
+Staging and Production do not map the dashboard. Job scheduling and execution run in all environments.
+
+| Surface                                                     | Access                                                                                                                               |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Platform administration, including user and tenant creation | Authenticated platform admin                                                                                                         |
+| `/test-keycloak`                                            | Authenticated console user                                                                                                           |
+| `/health`, `/alive`, OpenAPI and Scalar                     | Development only                                                                                                                     |
+| `/.well-known/pole-cli`                                     | Public CLI authentication discovery                                                                                                  |
+| GitHub setup and OAuth callbacks, webhook                   | Setup state and provider verification for callbacks, signed payload for webhooks                                                     |
+| Realtime                                                    | Bearer-authenticated session creation, dedicated cookie for hub access and session deletion. Disabled session bootstrap returns 404. |
+| Private Access streams and gateways                         | Session tickets, gateway client certificates and authenticated peer relays according to the transport route                          |
+
+### Tenant context resolution
+
 The middleware runs after authentication/authorization and before request binding. It has no
 route-prefix list. The underlying metadata has three modes:
 
-| Mode | Header absent | Header present |
-| --- | --- | --- |
-| `Required` (default) | 400 validation problem | Resolve and authorize the selection |
-| `Optional` | Continue without an active context | Resolve and authorize the selection |
-| `None` | Continue without an active context | Ignore the header; it is not an active selection for this operation |
+| Mode                 | Header absent                      | Header present                                                      |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------- |
+| `Required` (default) | 400 validation problem             | Resolve and authorize the selection                                 |
+| `Optional`           | Continue without an active context | Resolve and authorize the selection                                 |
+| `None`               | Continue without an active context | Ignore the header; it is not an active selection for this operation |
 
 Resolution requires authentication, a nonblank user ID claim, exactly one ObjectId header, an
 existing tenant, and tenant membership or the platform-admin claim. An authenticated token without
@@ -125,25 +148,25 @@ HTTP metadata remain in `Multitenancy`; ownership alone does not grant execution
 
 Tenant-owned domain documents include `TenantId`:
 
-* `ResourceGroup`
-* `ResourceRegistration`
-* `IsolationScope`
-* `RuntimeCell`
-* `WebService`
-* `Redis`
-* `PostgresCluster`
-* `TenantDomainZone`
-* `HostnameBinding`
-* `SearchDocument`
-* `SearchSourceDocument`
-* `SearchProjectionVersionDocument`
-* `OutboxMessage`
+- `ResourceGroup`
+- `ResourceRegistration`
+- `IsolationScope`
+- `RuntimeCell`
+- `WebService`
+- `Redis`
+- `PostgresCluster`
+- `TenantDomainZone`
+- `HostnameBinding`
+- `SearchDocument`
+- `SearchSourceDocument`
+- `SearchProjectionVersionDocument`
+- `OutboxMessage`
 
 Handlers mark tenant-scoped requests with one of:
 
-* `ITenantReadOperation`
-* `ITenantWriteOperation`
-* `ITenantCreateOperation`
+- `ITenantReadOperation`
+- `ITenantWriteOperation`
+- `ITenantCreateOperation`
 
 `TenantAuthorizationBehavior` uses these marker interfaces to enforce role
 checks and require explicit tenant selection. Handlers take tenant id from the
@@ -187,11 +210,11 @@ deployment target.
 
 Runtime-cell namespaces are labeled with:
 
-* `pole.io/tenant-id`
-* `pole.io/resource-group-id`
-* `pole.io/isolation-scope-id`
-* `pole.io/runtime-cell-id`
-* `pole.io/deployment-target-id`
+- `pole.io/tenant-id`
+- `pole.io/resource-group-id`
+- `pole.io/isolation-scope-id`
+- `pole.io/runtime-cell-id`
+- `pole.io/deployment-target-id`
 
 All scope and runtime-cell queries combine tenant, resource-group, and object identity.
 Events carry `EventCore.TenantId`; consumers never depend on ambient HTTP tenant context.
@@ -204,27 +227,27 @@ see [workload placement](workload-placement.md).
 
 Tenant and user control-plane endpoints:
 
-* `GET /api/v1/tenants`: returns tenants where the current user is a member, including role and default-tenant flag.
-* `POST /api/v1/tenants`: creates a tenant owned by the current user; requires platform admin policy.
-* `GET /api/v1/tenants/{tenantId}/members`: lists members for a tenant.
-* `POST /api/v1/tenants/{tenantId}/members`: adds a member.
-* `PUT /api/v1/tenants/{tenantId}/members/{memberId}`: changes a member role.
-* `DELETE /api/v1/tenants/{tenantId}/members/{memberId}`: removes a member.
-* `POST /api/v1/users`: creates a Keycloak user, Pole user, and personal default tenant.
+- `GET /api/v1/tenants`: returns tenants where the current user is a member, including role and default-tenant flag.
+- `POST /api/v1/tenants`: creates a tenant owned by the current user; requires platform admin policy.
+- `GET /api/v1/tenants/{tenantId}/members`: lists members for a tenant.
+- `POST /api/v1/tenants/{tenantId}/members`: adds a member.
+- `PUT /api/v1/tenants/{tenantId}/members/{memberId}`: changes a member role.
+- `DELETE /api/v1/tenants/{tenantId}/members/{memberId}`: removes a member.
+- `POST /api/v1/users`: creates a Keycloak user, Pole user, and personal default tenant.
 
 Tenant member endpoints are protected by mediator authorization:
 
-* Listing members requires tenant membership with `Viewer` or higher.
-* Adding, updating, and deleting members requires `Admin` or higher.
-* Granting `Owner`, changing an existing `Owner`, or removing an existing `Owner` requires `Owner`.
-* Platform admins bypass tenant membership checks but still cannot remove or demote the last tenant owner.
+- Listing members requires tenant membership with `Viewer` or higher.
+- Adding, updating, and deleting members requires `Admin` or higher.
+- Granting `Owner`, changing an existing `Owner`, or removing an existing `Owner` requires `Owner`.
+- Platform admins bypass tenant membership checks but still cannot remove or demote the last tenant owner.
 
 Frontend tenant behavior:
 
-* The SPA loads `GET /api/v1/tenants` after login.
-* It stores the active tenant id in `localStorage` under `pole.activeTenantId`.
-* It sends `X-Pole-Tenant-ID` on resource API calls.
-* It shows the active tenant and role in the top band.
+- The SPA loads `GET /api/v1/tenants` after login.
+- It stores the active tenant id in `localStorage` under `pole.activeTenantId`.
+- It sends `X-Pole-Tenant-ID` on resource API calls.
+- It shows the active tenant and role in the top band.
 
 Membership mutations and their `Tenants.Events` outbox hints commit atomically, including personal
 tenant creation. The own-subject `tenant-access` realtime subscription remains available after

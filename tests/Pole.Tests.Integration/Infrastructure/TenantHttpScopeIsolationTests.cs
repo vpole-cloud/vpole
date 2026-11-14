@@ -13,6 +13,25 @@ public sealed class TenantHttpScopeIsolationTests(
 ) : ApiIntegrationTestBase(fixture)
 {
     [Fact]
+    public async Task PlatformAdminReadsAnUnjoinedTenantOnlyWhenItIsSelected()
+    {
+        var other = IntegrationTestScope.Create(Fixture);
+        await other.SeedAsync();
+        var group = await new ResourceGroupTestData(Fixture.Database).CreateAsync(other.TenantId, "admin-selection");
+        var route = "/api/v1/resource-groups/" + group.Id;
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+
+        using var hidden = await Client.GetAsync(route);
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        Client.DefaultRequestHeaders.Remove(TenantHeaders.TenantId);
+        using var missing = await Client.GetAsync(route);
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Client.DefaultRequestHeaders.Add(TenantHeaders.TenantId, other.TenantId);
+        using var selected = await Client.GetAsync(route);
+        Assert.Equal(HttpStatusCode.OK, selected.StatusCode);
+    }
+
+    [Fact]
     public async Task IndependentHttpIdentitiesCannotReadUpdateOrDeleteTheOtherTenant()
     {
         var other = IntegrationTestScope.Create(Fixture);

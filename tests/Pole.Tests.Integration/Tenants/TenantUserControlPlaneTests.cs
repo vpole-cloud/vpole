@@ -118,10 +118,12 @@ public sealed class TenantUserControlPlaneTests(
         Assert.DoesNotContain(tenants, t => t.Id == hiddenTenant.Id);
     }
 
-    [Fact]
-    public async Task TenantMemberAuthorization_MemberCannotAddMembers()
+    [Theory]
+    [InlineData(TenantRole.Viewer)]
+    [InlineData(TenantRole.Member)]
+    public async Task TenantMemberAuthorization_ReadOnlyMembershipCannotAddMembers(TenantRole role)
     {
-        var tenant = await InsertTenantAsync(TenantRole.Member);
+        var tenant = await InsertTenantAsync(role);
         var request = new AddTenantMemberRequest(
             tenant.Id,
             new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
