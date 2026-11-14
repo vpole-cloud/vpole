@@ -58,6 +58,11 @@ Use the repo's normal code-review stance:
 
 When this skill is used by the same agent that implemented the task:
 
+- Complete the [structure and pattern pass](../../../docs/review-checklist.md#structure-and-pattern-pass),
+  verifying the [first-slice comparison](../../../docs/agent-delivery.md#review-the-first-slice-before-repeating-it)
+  where applicable. Record concrete verified facts in the review record.
+- Follow [repeated findings](../../../docs/review-checklist.md#repeated-findings) across the entire
+  affected scope before closing a finding about a shared pattern.
 - Fix clear, local defects before final handoff when doing so is within the original task scope.
 - Re-run the relevant validation after fixes.
 - Follow the agreed commit grouping for findings and hand the user a committed result with SHAs; do not infer permission to commit or publish from this skill.

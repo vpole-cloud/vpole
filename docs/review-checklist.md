@@ -15,13 +15,40 @@ record its scope; do not restrict it to the user's example or expand it into unr
 
 For every manual area below, record one disposition:
 
-- **Checked:** name the inspected paths or behavior and the supporting evidence.
+- **Checked:** state the concrete fact verified, the inspected paths and the supporting evidence.
 - **Finding:** give a file/line, the violated rule, failure mechanism and consequence.
 - **Not applicable:** explain why the area does not apply; related areas may share one explanation.
 - **Unverified:** state the missing evidence or prerequisite and its effect on readiness.
 
 A checked box means the reviewer inspected the applicable behavior. Passing tests alone do not
 complete the manual checks. Keep the record concise; link existing evidence instead of copying logs.
+An area label such as "Mongo checked" is not a conclusion: name which collection's validator matches
+which stored variants and where that was inspected or tested.
+
+## Structure and pattern pass
+
+Make a separate pass over the complete changed-file list, project-reference diff and affected
+feature layouts. Use it to support R1, R3, R4 and R5 below, including changes in supporting features.
+Compare the implementation with the exact maintained references selected at the
+[first-slice checkpoint](agent-delivery.md#review-the-first-slice-before-repeating-it).
+Record the observed matches and justify differences against the canonical rules.
+
+- **Project references:** for each added or changed reference, identify the capability or types
+  requiring it and verify the allowed project-role direction. Explain why a narrower provider
+  contract or dependency-leaf primitive would not suffice when introducing a broader dependency.
+- **Application structure:** compare workflow ownership and endpoint grouping with a feature that
+  has the same needs. Check endpoint/transport/validator/handler colocation, dedicated Consumers
+  and Jobs folders, and thin adapters with Mongo work kept in scenario workflows.
+- **Background work:** identify the existing Hangfire scheduler, consumer and outbox mechanisms that fit
+  the work. Justify a custom scheduler or hosted worker against those mechanisms, including retry,
+  recovery and cancellation behavior.
+- **Collections and BSON:** trace each new collection or changed stored variant to its frozen
+  schema validator, required indexes and host migration registration. Inspect the actual BSON
+  shape and schema/index regression assertions; index definitions alone do not prove schema coverage.
+
+Use the normal dispositions for inapplicable areas. Group equivalent items only when the record
+still identifies their coverage; a general statement that the feature follows existing patterns
+does not replace this pass.
 
 ## Manual checks
 
@@ -73,6 +100,16 @@ complete the manual checks. Keep the record concise; link existing evidence inst
       [delivery and review fixes](agent-delivery.md#review-record-and-review-fixes) and the
       [publication gate](agent-delivery.md#local-and-ci-gate-profiles).
 
+## Repeated findings
+
+When a finding exposes an incorrect repeated pattern, inspect its other occurrences across the
+complete diff, related callers and alternate write paths in every affected feature. Record the
+search scope and result, then fix all in-scope occurrences before closing the finding. Report
+unrelated pre-existing occurrences separately; this does not authorize repository-wide refactoring.
+For a recurring mechanically checkable defect, add a focused regression, semantic check or formatter
+rule, or extend the existing safeguard to cover the missed case. Do not replace a semantic rule with
+a broad naming or text-search heuristic.
+
 ## Automated evidence and its limits
 
 Use the [actual diagnostic catalog](agent-delivery.md#automated-rules) and checks present in the
@@ -109,9 +146,12 @@ not an unconditional full gate. Record any reused tested SHA, new SHA and safe-d
 
 ```text
 Target: request/scope; base SHA; head SHA; working-tree state
+Pattern comparison: exact references; first-slice checkpoint; observed matches and justified differences
+Structural pass: project references, Application layout, background work, collections; concrete conclusions
 Automated evidence: commands, current results, report paths and missing checks
-Manual dispositions: R1–R8, with inspected evidence or a reason for non-applicability
+Manual dispositions: R1–R8, with verified facts and inspected evidence or a reason for non-applicability
 Findings: priority; file/line; canonical rule; failure mechanism; proposed correction
+Finding propagation: searched scope; other occurrences; fixes or remaining findings
 Exceptions and unknowns: justification, scope and remaining readiness impact
 Conclusion: unresolved findings or explicitly none; authorization needed for next action
 ```

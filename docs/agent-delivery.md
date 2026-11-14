@@ -46,10 +46,16 @@ starter does not supply workload admission or lifecycle behavior.
 
 ## Review the first slice before repeating it
 
-For a new feature or repeated endpoint family, implement one representative
-endpoint with its domain operation, persistence capability and meaningful test.
-The primary agent inspects that slice before delegating or repeating the pattern.
-Record the review and selected references in the local ignored task notes.
+Before implementing a new feature or repeated endpoint family, name the affected patterns and
+their exact maintained, compiled and tested reference files. Choose references with matching
+semantics; explain intentional differences against the canonical engineering and module rules.
+
+Implement one representative endpoint with its domain operation, persistence capability and
+meaningful test. The primary agent compares that completed slice with the selected references
+before delegating or repeating the pattern. Record the inspected snapshot, concrete matches,
+justified differences and corrections in the local ignored task notes. A list of reference paths
+without the comparison does not complete this checkpoint. Correct findings before expanding the
+same pattern to other operations.
 
 Check the request/outcome boundary, possible errors, factory/default ownership,
 mutable data ownership, tenant predicates, transaction/outbox boundary, and test
@@ -64,6 +70,11 @@ base/head, actual automated evidence, manual dispositions, findings and justifie
 Keep the policy in the linked engineering documents; a private history of observations is source
 material, not an additional rulebook. Deferred proposals and task-specific commands do not become
 requirements through repetition in notes.
+
+Complete the checklist's [structure and pattern pass](review-checklist.md#structure-and-pattern-pass)
+over the whole diff and record concrete conclusions, including supporting-feature changes.
+Apply [repeated-finding review](review-checklist.md#repeated-findings) before treating a local fix
+as closure of a pattern-level finding. Passing automated checks does not replace either inspection.
 
 Fix each review finding in its own commit by default, including its needed regression tests and
 documentation. Combine findings only when the user has agreed to that grouping. Do not hide

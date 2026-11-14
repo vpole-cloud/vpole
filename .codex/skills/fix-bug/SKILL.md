@@ -18,6 +18,8 @@ Accept a GitHub issue ID or a concrete bug report.
 ## Fix And Verify
 
 - After approval, if the user authorized branch creation, verify the working tree and create or switch to the task branch before implementation edits.
+- Use the [first-slice checkpoint](../../../docs/agent-delivery.md#review-the-first-slice-before-repeating-it)
+  when introducing a new or repeated pattern; isolated fixes retain its documented exemption.
 - Add a focused regression test and run it to demonstrate the expected failure before changing production code.
 - Make the smallest change that addresses the demonstrated cause, not adjacent cleanup.
 - Make the regression test pass and run the focused owning suite selected through `$pole-test-runner`.
@@ -33,5 +35,3 @@ Do not commit, push, create a branch, or open a pull request without explicit us
 Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
 
 If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.
-
-Before implementation, name the exact canonical compiled/tested files for the affected patterns. The primary agent reviews one representative slice against those references before the pattern is repeated; this is an internal checkpoint, not another user approval. Add a focused automated safeguard for recurring mistakes where the invariant is mechanically checkable. Existing explicit user approval satisfies the corresponding approval gate.
