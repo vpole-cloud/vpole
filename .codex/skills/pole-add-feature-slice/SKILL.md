@@ -28,6 +28,11 @@ slice. For Kubernetes resources or more complex workflows, choose the maintained
 references rather than treating the metadata example as complete admission/lifecycle behavior.
 Rules stay in the canonical docs; the starter is an executable example, not another rulebook.
 
+Use the [first-slice checkpoint](../../../docs/agent-delivery.md#review-the-first-slice-before-repeating-it)
+to record selected references, the inspected slice and its comparison before repeating the pattern.
+Complete the [structure and pattern pass](../../../docs/review-checklist.md#structure-and-pattern-pass)
+over the resulting diff, including supporting features.
+
 When changing the starter or generator, run `python3 scripts/check_feature_template.py`: it tests
 the materialized projects with production analyzers, the existing architecture suite and real
 Mongo/API tests. For proven template formatting use `--format-only`; README-only changes use structural checks.
@@ -48,5 +53,3 @@ Load the focused Pole skill when the slice touches tenant scoping, outbox delive
 Follow `docs/agent-delivery.md` for selection from the complete PR diff. Run `python3 scripts/quality_gate.py plan` and `run --profile pr`: docs/proven formatting use structural checks; templates use generated-code checks; behavioral or unproven changes retain complete PR suites. Use `--profile full` for broad/infrastructure work or explicitly fresh all-lane evidence. Selected tests require zero failures/skips; unavailable unselected infrastructure does not block reduced verification. Reuse behavioral results only through the gate's committed same-base safe-delta proof, recording both SHAs; never relabel stale results manually. Use `record-review`, `verify` and the authorized publication wrapper.
 
 If tests fail, the first sentence of every summary must identify the failing tests and explain the known cause (or say it is still unknown). Report unavailable selected infrastructure as a blocker, never as a passed test.
-
-Before implementation, name the exact canonical compiled/tested files for the affected patterns. The primary agent reviews one representative slice against those references before the pattern is repeated; this is an internal checkpoint, not another user approval. Add a focused automated safeguard for recurring mistakes where the invariant is mechanically checkable. Existing explicit user approval satisfies the corresponding approval gate.
