@@ -22,9 +22,11 @@ public sealed class TenantInvitationHttpTests(
 ) : IsolatedApiIntegrationTestBase(fixture)
 {
     private int _setupCalls;
+    private readonly InvitationRaceClock _clock = new();
 
     protected override void ConfigureTestServices(IServiceCollection services)
     {
+        services.AddSingleton<TimeProvider>(_clock);
         services.AddSingleton<IOptions<InvitationOptions>>(
             Options.Create(
                 new InvitationOptions
@@ -110,9 +112,9 @@ public sealed class TenantInvitationHttpTests(
         using var own = await Client.GetAsync($"/api/v1/tenants/{current.Id}/invitations");
         Assert.Equal(HttpStatusCode.OK, own.StatusCode);
         var invitation = Assert.Single((await own.Content.ReadFromJsonAsync<InvitationDto[]>())!);
-        using var wrongRoute = await Client.PostAsync(
+        using var wrongRoute = await Client.PostAsJsonAsync(
             $"/api/v1/tenants/{other.Id}/invitations/{invitation.Id}/revoke",
-            null);
+            new InvitationRevisionBody(invitation.Revision));
         Assert.Equal(HttpStatusCode.Forbidden, wrongRoute.StatusCode);
     }
 
@@ -190,8 +192,8 @@ public sealed class TenantInvitationHttpTests(
         {
             var path = $"/api/v1/tenants/{tenant.Id}/invitations/{id}";
             using var response = operation == "update"
-                ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member))
-                : await Client.PostAsync(path + "/" + operation, null);
+                ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member, 1))
+                : await Client.PostAsJsonAsync(path + "/" + operation, new InvitationRevisionBody(1));
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
 
@@ -351,9 +353,115 @@ public sealed class TenantInvitationHttpTests(
         Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
         var path = $"/api/v1/tenants/{tenant.Id}/invitations/{invitation.Id}";
         using var response = operation == "update"
-            ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member))
-            : await Client.PostAsync(path + "/" + operation, null);
+            ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member, 1))
+            : await Client.PostAsJsonAsync(path + "/" + operation, new InvitationRevisionBody(1));
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("resend", false)]
+    [InlineData("revoke", false)]
+    [InlineData("update", false)]
+    [InlineData("resend", true)]
+    [InlineData("revoke", true)]
+    [InlineData("update", true)]
+    public async Task StaleRevisionCannotChangeRotatedOrRecreatedInvitation(string operation, bool recreate)
+    {
+        await CreateInvitation();
+        var collection = Fixture.Database.GetCollection<TenantInvitation>("TenantInvitations");
+        var original = await collection.Find(item => item.TenantId == Data.TenantId).SingleAsync();
+        var path = $"/api/v1/tenants/{Data.TenantId}/invitations/{original.Id}";
+        using var changed = await Client.PostAsJsonAsync(
+            path + (recreate ? "/revoke" : "/resend"),
+            new InvitationRevisionBody(original.Revision));
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        if (recreate)
+            await CreateInvitation();
+        var current = await collection.Find(item => item.Id == original.Id).SingleAsync();
+        Assert.True(current.Revision > original.Revision);
+        var before = await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        using var response = operation == "update"
+            ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Admin, original.Revision))
+            : await Client.PostAsJsonAsync(path + "/" + operation, new InvitationRevisionBody(original.Revision));
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("tenants.invitation.revision-conflict", await response.Content.ReadAsStringAsync());
+        var retained = await collection.Find(item => item.Id == original.Id).SingleAsync();
+        Assert.Equal(current.Revision, retained.Revision);
+        Assert.Equal(current.TokenHash, retained.TokenHash);
+        Assert.Equal(current.Role, retained.Role);
+        Assert.Equal(current.Status, retained.Status);
+        Assert.Equal(before, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
+    }
+
+    [Theory]
+    [InlineData("resend", 0)]
+    [InlineData("revoke", -1)]
+    [InlineData("update", 0)]
+    public async Task ManagementRequiresPositiveExpectedRevision(string operation, long revision)
+    {
+        await CreateInvitation();
+        var invitation = await Fixture.Database
+            .GetCollection<TenantInvitation>("TenantInvitations")
+            .Find(item => item.TenantId == Data.TenantId)
+            .SingleAsync();
+        var path = $"/api/v1/tenants/{Data.TenantId}/invitations/{invitation.Id}";
+        using var response = operation == "update"
+            ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member, revision))
+            : await Client.PostAsJsonAsync(path + "/" + operation, new InvitationRevisionBody(revision));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("resend")]
+    [InlineData("update")]
+    public async Task ConcurrentRotationAfterTransactionReadReturnsRevisionConflict(string operation)
+    {
+        await CreateInvitation();
+        var collection = Fixture.Database.GetCollection<TenantInvitation>("TenantInvitations");
+        var original = await collection.Find(item => item.TenantId == Data.TenantId).SingleAsync();
+        var before = await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
+        var triggered = false;
+        // RotateAsync reads its clock after loading the invitation and encrypting its replacement,
+        // immediately before its first transactional write. Commit another rotation in that gap.
+        _clock.BeforeRead = () =>
+        {
+            triggered = true;
+            using var scope = ApiServices.CreateScope();
+            var result = scope.ServiceProvider
+                .GetRequiredService<ManageInvitation>()
+                .ResendAsync(
+                    new ManageInvitationRequest(
+                        original.TenantId,
+                        original.Id,
+                        original.Revision,
+                        new InvitationActor(Data.UserId)),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            Assert.IsType<InvitationDto>(result.Value);
+        };
+        var path = $"/api/v1/tenants/{Data.TenantId}/invitations/{original.Id}";
+        using var response = operation == "update"
+            ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Admin, original.Revision))
+            : await Client.PostAsJsonAsync(path + "/resend", new InvitationRevisionBody(original.Revision));
+        Assert.True(triggered);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("tenants.invitation.revision-conflict", await response.Content.ReadAsStringAsync());
+        var current = await collection.Find(item => item.Id == original.Id).SingleAsync();
+        Assert.Equal(original.Revision + 1, current.Revision);
+        Assert.Equal(original.Role, current.Role);
+        Assert.Equal(before + 2, await Fixture.DbContext.OutboxMessages.CountDocumentsAsync(_ => true));
+    }
+
+    private sealed class InvitationRaceClock : TimeProvider
+    {
+        public Action? BeforeRead;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            Interlocked.Exchange(ref BeforeRead, null)?.Invoke();
+            return DateTimeOffset.UtcNow;
+        }
     }
 
     private async Task<string> CreateInvitation()

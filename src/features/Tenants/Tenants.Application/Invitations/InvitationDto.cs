@@ -8,6 +8,7 @@ public sealed record InvitationDto(
     string TenantId,
     string Email,
     TenantRole Role,
+    long Revision,
     DateTime ExpiresAtUtc,
     TenantInvitationStatus Status,
     InvitationDeliveryStatus DeliveryStatus
@@ -18,6 +19,7 @@ public sealed record InvitationDto(
         invitation.TenantId,
         invitation.Email,
         invitation.Role,
+        invitation.Revision,
         invitation.ExpiresAtUtc,
         invitation.Status,
         invitation.DeliveryStatus);
@@ -26,4 +28,8 @@ public sealed record InvitationDto(
 public sealed record InvitationAcceptedDto(
     string TenantId,
     string DefaultTenantId
+);
+
+public sealed record InvitationRevisionBody(
+    long ExpectedRevision
 );

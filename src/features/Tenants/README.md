@@ -14,7 +14,10 @@ operations retain their documented platform-admin authorization.
 normalized email has one durable slot, with at most one active invitation. A duplicate active
 invitation returns 409. List invitations with GET on the same route; POST `/{id}/resend` rotates
 the secret and expiry, POST `/{id}/revoke` invalidates it, and PUT `/{id}` changes its role and
-sends a replacement link. Only authorized managers can read this list. The Members screen shows
+sends a replacement link. Each management request includes positive `expectedRevision` from the
+listed invitation `revision`; a stale revision returns safe `409 tenants.invitation.revision-conflict`
+before mutation or outbox writes, including after resend or reuse of the tenant/email slot.
+Only authorized managers can read this list. The Members screen shows
 current members, pending/expired invitations, delivery state and last-owner protection.
 
 There is no direct-add member endpoint or implementation. New and existing identities must use

@@ -24,6 +24,11 @@ internal static class InvitationHttpProblems
         "identity-conflict",
         "The invited identity conflicts with an existing account.");
 
+    public static HttpProblem RevisionConflict(InvitationRevisionConflict _) => Problem(
+        409,
+        "revision-conflict",
+        "This invitation changed. Refresh and review it before continuing.");
+
     public static HttpProblem Pending(InvitationAlreadyPending _) => Problem(
         409,
         "already-pending",

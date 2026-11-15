@@ -43,6 +43,7 @@ export const changeTenantInvitation = (
   tenantId: string,
   invitationId: string,
   action: 'resend' | 'revoke' | TenantRole,
+  expectedRevision: number,
   token?: string,
   signal?: AbortSignal,
 ) => {
@@ -52,7 +53,7 @@ export const changeTenantInvitation = (
     {
       method: roleUpdate ? 'PUT' : 'POST',
       headers: buildHeaders(token),
-      body: roleUpdate ? JSON.stringify({ role: action }) : undefined,
+      body: JSON.stringify(roleUpdate ? { role: action, expectedRevision } : { expectedRevision }),
       signal,
     },
   )

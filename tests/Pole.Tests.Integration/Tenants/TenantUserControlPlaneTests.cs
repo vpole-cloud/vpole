@@ -151,6 +151,7 @@ public sealed class TenantUserControlPlaneTests(
                             tenant.Id,
                             "other@example.com",
                             TenantRole.Member,
+                            1,
                             DateTime.UtcNow.AddDays(7),
                             TenantInvitationStatus.Pending,
                             InvitationDeliveryStatus.Pending)));
@@ -187,6 +188,7 @@ public sealed class TenantUserControlPlaneTests(
                             tenant.Id,
                             "other@example.com",
                             TenantRole.Member,
+                            1,
                             DateTime.UtcNow.AddDays(7),
                             TenantInvitationStatus.Pending,
                             InvitationDeliveryStatus.Pending)));
@@ -219,6 +221,7 @@ public sealed class TenantUserControlPlaneTests(
                         tenant.Id,
                         "other@example.com",
                         TenantRole.Owner,
+                        1,
                         DateTime.UtcNow.AddDays(7),
                         TenantInvitationStatus.Pending,
                         InvitationDeliveryStatus.Pending))),

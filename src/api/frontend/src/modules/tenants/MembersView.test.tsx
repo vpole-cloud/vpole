@@ -153,6 +153,7 @@ it('never shows another tenants late invitation response', async () => {
             expiresAtUtc: '2030-01-01',
             status: 'Pending',
             deliveryStatus: 'Sent',
+            revision: 1,
           },
         ]),
       ),
@@ -176,4 +177,77 @@ it('preserves platform-admin member controls without allowing Viewer invitations
   current = { ...current, auth: { ...current.auth, isPlatformAdmin: false } }
   await render()
   expect(container.querySelector('button.button--danger')).toBeNull()
+})
+
+it('rejects a rotated invitation at preflight even when its slot, role and status repeat', async () => {
+  let reads = 0
+  const fallback = requests.fetch.getMockImplementation()!
+  requests.fetch.mockImplementation((url, init) => {
+    if (String(url).endsWith('/invitations'))
+      return jsonResponse([
+        {
+          id: 'slot',
+          tenantId: 'alpha',
+          email: 'invite@example.test',
+          role: 'Viewer',
+          revision: ++reads,
+          status: 'Pending',
+          deliveryStatus: 'Sent',
+          expiresAtUtc: '2030-01-01',
+        },
+      ])
+    return fallback(url, init)
+  })
+  await render()
+  const resend = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Resend',
+  )!
+  await act(async () => {
+    resend.click()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  })
+  expect(container.textContent).toContain('This invitation changed. Review it before continuing.')
+  expect(requests.fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+})
+
+it('sends the captured revision and shows a conflict when rotation races after preflight', async () => {
+  const fallback = requests.fetch.getMockImplementation()!
+  let sent: unknown
+  requests.fetch.mockImplementation((url, init) => {
+    if (String(url).endsWith('/invitations'))
+      return jsonResponse([
+        {
+          id: 'slot',
+          tenantId: 'alpha',
+          email: 'invite@example.test',
+          role: 'Viewer',
+          revision: 3,
+          status: 'Pending',
+          deliveryStatus: 'Sent',
+          expiresAtUtc: '2030-01-01',
+        },
+      ])
+    if (String(url).endsWith('/invitations/slot/revoke')) {
+      sent = JSON.parse(init!.body as string)
+      return jsonResponse(
+        {
+          title: 'This invitation changed. Refresh and review it before continuing.',
+          code: 'tenants.invitation.revision-conflict',
+        },
+        409,
+      )
+    }
+    return fallback(url, init)
+  })
+  await render()
+  const revoke = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Revoke',
+  )!
+  await act(async () => {
+    revoke.click()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  })
+  expect(sent).toEqual({ expectedRevision: 3 })
+  expect(container.textContent).toContain('Refresh and review it before continuing.')
+  expect(current.notifications.publish).not.toHaveBeenCalled()
 })

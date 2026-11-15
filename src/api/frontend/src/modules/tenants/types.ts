@@ -9,6 +9,7 @@ export interface TenantMember {
   isDefault: boolean
 }
 export interface TenantInvitation {
+  revision: number
   id: string
   tenantId: string
   email: string

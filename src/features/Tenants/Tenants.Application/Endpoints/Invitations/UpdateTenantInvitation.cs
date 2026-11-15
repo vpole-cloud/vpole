@@ -12,7 +12,8 @@ using Pole.Mediator;
 namespace Pole.Features.Tenants.Application.Endpoints.Invitations;
 
 public sealed record UpdateTenantInvitationBody(
-    TenantRole Role
+    TenantRole Role,
+    long ExpectedRevision
 );
 
 public sealed record UpdateTenantInvitationRequest(
@@ -26,6 +27,7 @@ public sealed record UpdateTenantInvitationRequest(
 public union UpdateTenantInvitationOutcome(
     InvitationDto,
     InvitationNotFound,
+    InvitationRevisionConflict,
     InvitationForbidden,
     InvitationUnavailable,
     InvitationEncryptionUnavailable);
@@ -37,6 +39,7 @@ public sealed class UpdateTenantInvitationValidator : AbstractValidator<UpdateTe
         RuleFor(request => request.Role).IsInEnum();
         RuleFor(request => request.Invitation.TenantId).Must(value => ObjectId.TryParse(value, out _));
         RuleFor(request => request.Invitation.InvitationId).InvitationId();
+        RuleFor(request => request.Invitation.ExpectedRevision).GreaterThan(0);
     }
 }
 
@@ -53,6 +56,7 @@ public sealed class UpdateTenantInvitationHandler(
         {
             InvitationDto invitation => invitation,
             InvitationNotFound error => error,
+            InvitationRevisionConflict error => error,
             InvitationForbidden error => error,
             InvitationUnavailable error => error,
             InvitationEncryptionUnavailable error => error,
@@ -73,13 +77,18 @@ public static class UpdateTenantInvitationEndpoint
                 {
                     var result = await mediator.Send(
                         new UpdateTenantInvitationRequest(
-                            new ManageInvitationRequest(tenantId, invitationId, new InvitationActor(currentUserId)),
+                            new ManageInvitationRequest(
+                                tenantId,
+                                invitationId,
+                                body.ExpectedRevision,
+                                new InvitationActor(currentUserId)),
                             body.Role),
                         ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationDto invitation => Results.Ok(invitation),
                         InvitationNotFound error => InvitationHttpProblems.NotFound(error),
+                        InvitationRevisionConflict error => InvitationHttpProblems.RevisionConflict(error),
                         InvitationForbidden error => InvitationHttpProblems.Forbidden(error),
                         InvitationUnavailable error => InvitationHttpProblems.Unavailable(error),
                         InvitationEncryptionUnavailable error => InvitationHttpProblems.EncryptionUnavailable(error),

@@ -14,6 +14,7 @@ namespace Pole.Features.Tenants.Application.Invitations;
 public sealed record ManageInvitationRequest(
     string TenantId,
     string InvitationId,
+    long ExpectedRevision,
     InvitationActor Actor
 );
 
@@ -43,6 +44,8 @@ public sealed class ManageInvitation(
                     return context.Abort(new InvitationNotFound());
                 if (!InvitationIdentity.CanGrant(tenant, request.Actor, invitation.Role))
                     return context.Abort(new InvitationForbidden());
+                if (invitation.Revision != request.ExpectedRevision)
+                    return context.Abort(new InvitationRevisionConflict());
                 if (invitation.Status != TenantInvitationStatus.Pending)
                     return context.Abort(new InvitationUnavailable());
                 await tenants.UpdateOneAsync(
@@ -51,11 +54,13 @@ public sealed class ManageInvitation(
                     Builders<Tenant>.Update.Inc(item => item.ReferenceFence, 1),
                     cancellationToken: cancellationToken);
                 var revoked = invitation with { Status = TenantInvitationStatus.Revoked };
-                await invitations.ReplaceOneAsync(
+                var replaced = await invitations.ReplaceOneAsync(
                     context.Session,
-                    InvitationFilters.ForTenantById(tenant.Id, invitation.Id),
+                    InvitationFilters.ForTenantAtRevision(tenant.Id, invitation.Id, request.ExpectedRevision),
                     revoked,
                     cancellationToken: cancellationToken);
+                if (replaced.MatchedCount == 0)
+                    return context.Abort(new InvitationRevisionConflict());
                 await storeOutboxWrites(context.Session, [Changed(tenant.Id)], cancellationToken);
                 return context.Commit(InvitationDto.From(revoked));
             },
@@ -85,6 +90,8 @@ public sealed class ManageInvitation(
             if (!InvitationIdentity.CanGrant(tenant, request.Actor, invitation.Role) ||
                 !InvitationIdentity.CanGrant(tenant, request.Actor, role))
                 return context.Abort(new InvitationForbidden());
+            if (invitation.Revision != request.ExpectedRevision)
+                return context.Abort(new InvitationRevisionConflict());
             if (invitation.Status != TenantInvitationStatus.Pending)
                 return context.Abort(new InvitationUnavailable());
             var token = InvitationIdentity.CreateToken();
@@ -112,11 +119,13 @@ public sealed class ManageInvitation(
                 TenantFilters.ById(tenant.Id),
                 Builders<Tenant>.Update.Inc(item => item.ReferenceFence, 1),
                 cancellationToken: cancellationToken);
-            await invitations.ReplaceOneAsync(
+            var replaced = await invitations.ReplaceOneAsync(
                 context.Session,
-                InvitationFilters.ForTenantById(tenant.Id, invitation.Id),
+                InvitationFilters.ForTenantAtRevision(tenant.Id, invitation.Id, request.ExpectedRevision),
                 updated,
                 cancellationToken: cancellationToken);
+            if (replaced.MatchedCount == 0)
+                return context.Abort(new InvitationRevisionConflict());
             await storeOutboxWrites(
                 context.Session,
                 [

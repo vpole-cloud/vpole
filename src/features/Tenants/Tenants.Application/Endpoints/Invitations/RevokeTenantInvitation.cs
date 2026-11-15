@@ -3,6 +3,7 @@ using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Invitations;
@@ -20,6 +21,7 @@ public sealed record RevokeTenantInvitationRequest(
 public union RevokeTenantInvitationOutcome(
     InvitationDto,
     InvitationNotFound,
+    InvitationRevisionConflict,
     InvitationForbidden,
     InvitationUnavailable);
 
@@ -29,6 +31,7 @@ public sealed class RevokeTenantInvitationValidator : AbstractValidator<RevokeTe
     {
         RuleFor(request => request.Invitation.TenantId).Must(value => ObjectId.TryParse(value, out _));
         RuleFor(request => request.Invitation.InvitationId).InvitationId();
+        RuleFor(request => request.Invitation.ExpectedRevision).GreaterThan(0);
     }
 }
 
@@ -49,17 +52,22 @@ public static class RevokeTenantInvitationEndpoint
                 "/{tenantId}/invitations/{invitationId}/revoke",
                 async (
                     string tenantId, string invitationId,
-                    [FromClaim(Claims.UserId)] ClaimValue currentUserId, IMediator mediator,
-                    CancellationToken ct) =>
+                    [FromBody] InvitationRevisionBody body, [FromClaim(Claims.UserId)] ClaimValue currentUserId,
+                    IMediator mediator, CancellationToken ct) =>
                 {
                     var result = await mediator.Send(
                         new RevokeTenantInvitationRequest(
-                            new ManageInvitationRequest(tenantId, invitationId, new InvitationActor(currentUserId))),
+                            new ManageInvitationRequest(
+                                tenantId,
+                                invitationId,
+                                body.ExpectedRevision,
+                                new InvitationActor(currentUserId))),
                         ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationDto invitation => Results.Ok(invitation),
                         InvitationNotFound error => InvitationHttpProblems.NotFound(error),
+                        InvitationRevisionConflict error => InvitationHttpProblems.RevisionConflict(error),
                         InvitationForbidden error => InvitationHttpProblems.Forbidden(error),
                         InvitationUnavailable error => InvitationHttpProblems.Unavailable(error),
                     });

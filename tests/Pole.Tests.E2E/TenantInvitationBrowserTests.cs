@@ -249,10 +249,22 @@ public sealed class TenantInvitationBrowserTests(
 
     private async Task RevokeAsync(string invite, CancellationToken ct)
     {
+        using var read = fixture.CreateAuthenticatedRequest(
+            HttpMethod.Get,
+            $"/api/v1/tenants/{fixture.Alpha.DefaultTenantId}/invitations",
+            fixture.Alpha);
+        using var current = await fixture.Api.SendAsync(read, ct);
+        current.EnsureSuccessStatusCode();
+        var invitations = await current.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var revision = invitations.EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == invite)
+            .GetProperty("revision")
+            .GetInt64();
         using var request = fixture.CreateAuthenticatedRequest(
             HttpMethod.Post,
             $"/api/v1/tenants/{fixture.Alpha.DefaultTenantId}/invitations/{invite}/revoke",
             fixture.Alpha);
+        request.Content = JsonContent.Create(new { expectedRevision = revision });
         using var response = await fixture.Api.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }

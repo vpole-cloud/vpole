@@ -27,7 +27,7 @@ public sealed class TenantInvitationValidationTests
     public void AllManagementValidatorsRequireTheSameCanonicalInvitationId(string id, bool valid)
     {
         Assert.Equal(64, ValidInvitationId.Length);
-        var invitation = new ManageInvitationRequest(TenantId, id, new InvitationActor("actor"));
+        var invitation = new ManageInvitationRequest(TenantId, id, 1, new InvitationActor("actor"));
         Assert.Equal(
             valid,
             new RevokeTenantInvitationValidator().Validate(new RevokeTenantInvitationRequest(invitation)).IsValid);

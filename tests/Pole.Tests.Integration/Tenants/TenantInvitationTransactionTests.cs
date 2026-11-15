@@ -209,7 +209,7 @@ public sealed class TenantInvitationTransactionTests(
         var before = await Invitations.Find(item => item.TenantId == tenant.Id).SingleAsync();
         var result = await Services.GetRequiredService<ManageInvitation>()
             .ResendAsync(
-                new ManageInvitationRequest(tenant.Id, before.Id, new InvitationActor("issuer")),
+                new ManageInvitationRequest(tenant.Id, before.Id, 1, new InvitationActor("issuer")),
                 CancellationToken.None);
         Assert.IsType<InvitationDto>(result.Value);
         var current = await Invitations.Find(item => item.Id == before.Id).SingleAsync();
@@ -274,7 +274,7 @@ public sealed class TenantInvitationTransactionTests(
         Assert.Empty(_delivered);
         await Services.GetRequiredService<ManageInvitation>()
             .RevokeAsync(
-                new ManageInvitationRequest(tenant.Id, invitation.Id, new InvitationActor("issuer")),
+                new ManageInvitationRequest(tenant.Id, invitation.Id, 1, new InvitationActor("issuer")),
                 CancellationToken.None);
         await delivery.InvokeAsync(
             new TenantInvitationDeliveryRequested(invitation.Id, invitation.Revision, EventCore.Create(tenant.Id)),
@@ -338,7 +338,7 @@ public sealed class TenantInvitationTransactionTests(
         _outboxFails = false;
         await Invite(tenant);
         var before = await Invitations.Find(item => item.TenantId == tenant.Id).SingleAsync();
-        var request = new ManageInvitationRequest(tenant.Id, before.Id, new InvitationActor("issuer"));
+        var request = new ManageInvitationRequest(tenant.Id, before.Id, 1, new InvitationActor("issuer"));
         _outboxFails = true;
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Services.GetRequiredService<ManageInvitation>().ResendAsync(request, CancellationToken.None));
@@ -471,7 +471,7 @@ public sealed class TenantInvitationTransactionTests(
         Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<InvitationDto>>(listed.Value));
         var revoked = await Services.GetRequiredService<ManageInvitation>()
             .RevokeAsync(
-                new ManageInvitationRequest(tenant.Id.ToUpperInvariant(), stored.Id, new InvitationActor("issuer")),
+                new ManageInvitationRequest(tenant.Id.ToUpperInvariant(), stored.Id, 1, new InvitationActor("issuer")),
                 CancellationToken.None);
         Assert.IsType<InvitationDto>(revoked.Value);
         Assert.Equal(

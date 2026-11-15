@@ -184,19 +184,31 @@ function MembersContent() {
       (!owner && (invitation.role === 'Owner' || action === 'Owner'))
     )
       return
+    const command = {
+      id: invitation.id,
+      revision: invitation.revision,
+      role: invitation.role,
+      action,
+    }
     void mutation
       .run(async (signal) => {
         const current = await invitations.refresh()
         if (!origin.isCurrent() || !current)
           throw new Error('Refresh invitations before changing them.')
-        const selected = current.find((item) => item.id === invitation.id)
-        if (!selected || selected.role !== invitation.role || selected.status !== 'Pending')
+        const selected = current.find((item) => item.id === command.id)
+        if (
+          !selected ||
+          selected.revision !== command.revision ||
+          selected.role !== command.role ||
+          selected.status !== 'Pending'
+        )
           throw new Error('This invitation changed. Review it before continuing.')
         return changeTenantInvitation(
           api.baseUrl,
           id,
-          invitation.id,
-          action,
+          command.id,
+          command.action,
+          command.revision,
           origin.credential(),
           signal,
         )
@@ -357,7 +369,7 @@ function MembersContent() {
                         Revoke
                       </Button>
                       <RoleActions
-                        key={`${invitation.id}:${invitation.role}`}
+                        key={`${invitation.id}:${invitation.revision}:${invitation.role}`}
                         current={invitation.role}
                         owner={owner}
                         label={`Invitation role for ${invitation.email}`}
