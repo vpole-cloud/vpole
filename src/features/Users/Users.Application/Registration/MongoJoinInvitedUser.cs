@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Pole.Database;
 using Pole.Features.Users.Application.Mongo;
 using Pole.Features.Users.Contracts;
 using Pole.Features.Users.Domain;
@@ -38,12 +39,22 @@ internal sealed class MongoJoinInvitedUser(
             .Set(item => item.DefaultTenantId, defaultTenantId)
             .SetOnInsert(item => item.CreatedAtUtc, timeProvider.GetUtcNow().UtcDateTime)
             .Inc(item => item.MembershipFence, 1);
-        var user = await users.FindOneAndUpdateAsync(
-            session,
-            UserFilters.ById(request.Subject),
-            update,
-            new FindOneAndUpdateOptions<PoleUser> { IsUpsert = true, ReturnDocument = ReturnDocument.After },
-            cancellationToken);
-        return new InvitedUserJoined(user.DefaultTenantId);
+        try
+        {
+            var user = await users.FindOneAndUpdateAsync(
+                session,
+                UserFilters.ById(request.Subject),
+                update,
+                new FindOneAndUpdateOptions<PoleUser> { IsUpsert = true, ReturnDocument = ReturnDocument.After },
+                cancellationToken);
+            return new InvitedUserJoined(user.DefaultTenantId);
+        }
+        catch (Exception error) when (MongoDuplicateKey.IsForIndex(
+                                          error,
+                                          UserIndexes.Email,
+                                          users.CollectionNamespace.CollectionName))
+        {
+            return new InvitedUserIdentityConflict();
+        }
     }
 }
