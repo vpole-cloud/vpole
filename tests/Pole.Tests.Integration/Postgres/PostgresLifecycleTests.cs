@@ -182,7 +182,7 @@ public sealed class PostgresLifecycleTests(
             ["password"],
             DateTime.UtcNow);
         await secrets.InsertOneAsync(source);
-        var owner = new ManagedSecretOwner("pole/postgresql", current.Id);
+        var owner = new ManagedSecretOwner("pole/postgresql", current.Id, ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -192,7 +192,8 @@ public sealed class PostgresLifecycleTests(
                     "existing-credential",
                     1,
                     new Dictionary<string, string> { ["username"] = "postgres", ["password"] = "retained-password" },
-                    ManagedSecretKubernetesType.BasicAuthentication),
+                    ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -577,7 +578,8 @@ public sealed class PostgresLifecycleTests(
             10,
             storage.Id,
             compute.Id,
-            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId));
+            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId),
+            null);
         RecordRestoreTargetCreation receipt = (
             _, session,
             _) =>
@@ -636,7 +638,8 @@ public sealed class PostgresLifecycleTests(
             10,
             TestData.DefaultStorageProfileId,
             compute.Id,
-            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId));
+            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId),
+            null);
         RecordRestoreTargetCreation receipt = (
             _, _,
             _) => throw new InvalidOperationException("Rejected admission must never record a target.");
@@ -683,7 +686,8 @@ public sealed class PostgresLifecycleTests(
             10,
             TestData.DefaultStorageProfileId,
             TestData.DefaultComputeProfileId,
-            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId));
+            new PlacementRequest(placement.IsolationScopeId, placement.ResolvedPlacement.DeploymentTargetId),
+            null);
         var creationAttempts = 0;
         RecordRestoreTargetCreation receipt = async (
             record, session,
@@ -745,7 +749,11 @@ public sealed class PostgresLifecycleTests(
                     group.Id,
                     17,
                     TestData.DefaultStorageProfileId,
-                    new CreatePostgresClusterOptions(FSharpOption<string>.Some(id), 1, 10)));
+                    new CreatePostgresClusterOptions(
+                        FSharpOption<string>.Some(id),
+                        1,
+                        10,
+                        PostgresReplicationMode.Asynchronous)));
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         Assert.IsType<RegisteredResource>(

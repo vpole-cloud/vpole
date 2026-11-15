@@ -83,6 +83,7 @@ internal sealed class SecretBindingExecution(
             return transition switch
             {
                 Secret updated => await PersistAsync(updated),
+                SecretBindingSharingDenied => Rejected(SecretBindingDeclarationError.SecretUnavailable),
                 SecretBindingUsageChanged => Rejected(SecretBindingDeclarationError.ImmutableBindingChange),
                 SecretBindingConsumerChanged => Rejected(SecretBindingDeclarationError.ImmutableBindingChange),
                 SecretBindingConsumerConflict => Rejected(SecretBindingDeclarationError.ExplicitAdoptionRequired),

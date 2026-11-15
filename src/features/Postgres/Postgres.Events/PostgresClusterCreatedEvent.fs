@@ -7,7 +7,8 @@ type PostgresClusterSpecSnapshot =
     { Instances: int
       Storage: int
       StorageProfileId: string
-      Version: int }
+      Version: int
+      ReplicationMode: string }
 
 [<EntityName("pole.postgres/v1/postgres-cluster-created")>]
 type PostgresClusterCreatedEvent =

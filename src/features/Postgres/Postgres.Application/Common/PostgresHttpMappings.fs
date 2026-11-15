@@ -44,6 +44,12 @@ module PostgresHttpMappings =
 
     let private mapUpdateState (error: UpdatePostgresClusterStateError) =
         match error with
+        | PostgresClusterSynchronousHaRequired clusterId ->
+            problem
+                HttpStatusCode.BadRequest
+                "postgres.synchronous-ha-required"
+                "Synchronous HA PostgreSQL requires at least three instances"
+                clusterId
         | PostgresClusterUpdateNotFound clusterId ->
             problem HttpStatusCode.NotFound "postgres.not-found" "PostgreSQL cluster not found" clusterId
         | PostgresClusterUpdateUnavailable clusterId ->
@@ -150,6 +156,9 @@ module PostgresHttpMappings =
 
     let private mapUpdateConflict (error: PostgresClusterUpdateConflict) =
         match error.Reason with
+        | PostgresMutationConflictReason.ManagedDatabaseDependency ->
+            problem HttpStatusCode.Conflict "postgres.managed-database-dependency"
+                "Managed databases still depend on this synchronous HA PostgreSQL cluster" error.ClusterId
         | PostgresMutationConflictReason.GitOwnedConfiguration ->
             problem
                 HttpStatusCode.Conflict
@@ -172,6 +181,9 @@ module PostgresHttpMappings =
                 "postgres.secret-bindings-removal-required"
                 "Remove Git-owned Secret bindings before deleting the PostgreSQL cluster"
                 error.ClusterId
+        | PostgresMutationConflictReason.ManagedDatabaseDependency ->
+            problem HttpStatusCode.Conflict "postgres.managed-database-dependency"
+                "Managed databases still depend on this synchronous HA PostgreSQL cluster" error.ClusterId
         | PostgresMutationConflictReason.GitOwnedConfiguration ->
             problem
                 HttpStatusCode.Conflict

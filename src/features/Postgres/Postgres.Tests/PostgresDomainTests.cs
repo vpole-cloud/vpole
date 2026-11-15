@@ -35,7 +35,10 @@ public sealed class PostgresDomainTests
         Assert.Equal(2, deleting.Revision);
         Assert.IsType<DeletingPostgresClusterLifecycle>(deleting.Lifecycle);
         Assert.Same(deleting, deleting.BeginDeletion(DateTime.UtcNow.AddMinutes(1)));
-        Assert.Throws<InvalidOperationException>(() => deleting.UpdateDesiredState(2, 20));
+        Assert.Throws<InvalidOperationException>(() => deleting.UpdateDesiredState(
+            2,
+            20,
+            deleting.Spec.ReplicationMode));
     }
 
     private static PostgresCluster Create() => PostgresCluster.Create(
@@ -44,5 +47,9 @@ public sealed class PostgresDomainTests
         ObjectId.GenerateNewId().ToString(),
         17,
         TestData.DefaultStorageProfileId,
-        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 10));
+        new CreatePostgresClusterOptions(
+            FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+            1,
+            10,
+            PostgresReplicationMode.Asynchronous));
 }

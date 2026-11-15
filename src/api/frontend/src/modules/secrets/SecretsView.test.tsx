@@ -55,6 +55,7 @@ let container: HTMLDivElement
 let secret: SecretMetadata
 let conflict: boolean
 let managed: boolean
+let sharingPolicy: 'Shareable' | 'OwnerOnly'
 let bindingUsage: 'Runtime' | 'Bootstrap'
 let placements: ResourcePlacement[]
 const requests = strictFetch()
@@ -89,6 +90,7 @@ beforeEach(() => {
   secret = structuredClone(initial)
   conflict = false
   managed = false
+  sharingPolicy = 'Shareable'
   bindingUsage = 'Runtime'
   placements = [placement]
   fetchMock.mockReset().mockImplementation((input, init) => {
@@ -109,6 +111,8 @@ beforeEach(() => {
                 resourceType: 'test/stateful',
                 resourceId: 'consumer',
                 bindingId: 'owner',
+                purpose: 'credentials',
+                sharingPolicy,
               },
             }
           : secret,
@@ -357,6 +361,35 @@ it('keeps managed owner bindings protected and viewer actions unavailable', asyn
   expect(text()).not.toContain('Add binding')
   await click('Rotate values')
   expect(container.querySelector('input[type=password]')).toBeNull()
+})
+
+it('keeps owner-only credentials private while allowing ordinary managed secrets to be shared', async () => {
+  managed = true
+  sharingPolicy = 'OwnerOnly'
+  await open('Overview')
+  expect(text()).toContain(
+    'This credential is reserved for its owning resource and cannot be shared.',
+  )
+  expect(text()).not.toContain('Additional sharing bindings can be managed here.')
+  await click('Bindings')
+  expect(text()).toContain('Protected owner binding')
+  expect(text()).not.toContain('Add binding')
+  expect(text()).not.toContain('Detach binding')
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+})
+
+it('allows new sharing bindings for shareable managed credentials', async () => {
+  managed = true
+  await open('Bindings')
+  expect(text()).toContain('Add binding')
+  await click('Add binding')
+  await fill('Consuming resource', 'registration')
+  await click('Create binding')
+  expect(
+    fetchMock.mock.calls.some(
+      ([url, init]) => String(url).endsWith('/bindings') && init?.method === 'POST',
+    ),
+  ).toBe(true)
 })
 
 it('uses generic consumer inventory and rejects deployments spanning isolation scopes', async () => {

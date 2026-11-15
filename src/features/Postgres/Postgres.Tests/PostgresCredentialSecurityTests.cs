@@ -23,7 +23,9 @@ public sealed class PostgresCredentialSecurityTests
         {
             Assert.Equal(TestData.TenantId, request.TenantId);
             Assert.True(ObjectId.TryParse(request.SecretId, out _));
-            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), request.Owner);
+            Assert.Equal(
+                new ManagedSecretOwner("pole/postgresql", ClusterId, ManagedSecretPurposes.Credentials),
+                request.Owner);
             Assert.Equal($"postgres-{ClusterId}-credentials", request.Name);
             Assert.Equal(1, request.Version);
             Assert.Equal(ManagedSecretKubernetesType.BasicAuthentication, request.KubernetesType);
@@ -55,7 +57,9 @@ public sealed class PostgresCredentialSecurityTests
             Assert.Equal(current.Name, request.Name);
             Assert.Equal(current.Version + 1, request.Version);
             Assert.Equal(current.KubernetesType, request.KubernetesType);
-            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), request.Owner);
+            Assert.Equal(
+                new ManagedSecretOwner("pole/postgresql", ClusterId, ManagedSecretPurposes.Credentials),
+                request.Owner);
             Assert.Equal(current.Values["username"], request.Values["username"]);
             Assert.Equal("rotated-password", request.Values["password"]);
             return Task.FromResult<PrepareManagedSecretOutcome>(
@@ -92,7 +96,9 @@ public sealed class PostgresCredentialSecurityTests
             ct) =>
         {
             Assert.Equal(TestData.TenantId, tenant);
-            Assert.Equal(new ManagedSecretOwner("pole/postgresql", ClusterId), owner);
+            Assert.Equal(
+                new ManagedSecretOwner("pole/postgresql", ClusterId, ManagedSecretPurposes.Credentials),
+                owner);
             return Task.FromResult<ReadManagedSecretOutcome>(Values());
         });
         var resolver = new ManagedResolvePostgresClusterCredentials(new LoadPostgresCredential(loader.InvokeAsync));
@@ -121,7 +127,8 @@ public sealed class PostgresCredentialSecurityTests
             TestData.DefaultStorageProfileId,
             FSharpOption<string>.None,
             "private-password",
-            FSharpOption<PlacementRequest>.None);
+            FSharpOption<PlacementRequest>.None,
+            null);
         Assert.DoesNotContain("private-password", body.ToString());
         Assert.DoesNotContain(
             "private-password",
@@ -142,7 +149,8 @@ public sealed class PostgresCredentialSecurityTests
             TestData.DefaultStorageProfileId,
             FSharpOption<string>.None,
             new string('é', characters),
-            FSharpOption<PlacementRequest>.None);
+            FSharpOption<PlacementRequest>.None,
+            null);
         var result = new CreatePostgresClusterValidator(new PostgresSettings()).Validate(
             new CreatePostgresClusterRequest(body, TestData.TenantId));
         Assert.Equal(valid, result.IsValid);
@@ -179,5 +187,14 @@ public sealed class PostgresCredentialSecurityTests
         ManagedSecretOwner owner,
         string name,
         long version,
-        ManagedSecretKubernetesType type) => new(id, tenant, owner, name, type, version, ["username", "password"], []);
+        ManagedSecretKubernetesType type) => new(
+        id,
+        tenant,
+        owner,
+        name,
+        type,
+        version,
+        ["username", "password"],
+        [],
+        ManagedSecretSharingPolicy.Shareable);
 }

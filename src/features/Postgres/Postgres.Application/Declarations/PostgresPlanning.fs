@@ -10,6 +10,7 @@ open Pole.Features.GitOps.Contracts
 open Pole.Features.GitOps.Primitives
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.ManagedDatabases
 open Pole.Features.Postgres.Application.Credentials
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
@@ -137,7 +138,8 @@ type PostgresPlanningReader
         loadPlacements: LoadResourceDeploymentPlanningSnapshot,
         readBootstrap: ReadBootstrapSecret,
         readAdoption: ReadManagedSecretAdoption,
-        loadCredentials: LoadConsumerSecretPlanningSnapshot
+        loadCredentials: LoadConsumerSecretPlanningSnapshot,
+        databaseGuard: PostgresManagedDatabaseGuard
     ) =
 
     let accepted (input: PostgresPlanningInput) kind name = input.Resolve kind name
@@ -291,7 +293,16 @@ type PostgresPlanningReader
                         | _ -> return invalidOp "Unsupported PostgreSQL placement planning outcome."
                     }
 
+            let! dependencyBlocksUpdate =
+                match current with
+                | Some resource when PostgresDeclarations.replicationMode input.Spec <> PostgresReplicationMode.SynchronousHa ||
+                                     PostgresDeclarations.instances input.Spec < 3 ->
+                    databaseGuard.HasLiveDependenciesAsync(resource.TenantId, resource.Id, input.Session, input.CancellationToken)
+                | _ -> Task.FromResult false
+
             match current, placement with
+            | Some _, _ when dependencyBlocksUpdate ->
+                return PostgresPlanning.rejected PostgresDeclarationError.ManagedDatabaseDependency
             | Some resource, _ when (resource.Lifecycle :? DeletingPostgresClusterLifecycle) ->
                 return PostgresPlanning.rejected PostgresDeclarationError.ResourceDeleting
             | Some resource, _ when resource.Name <> input.Declaration.Address.Name ->
@@ -439,7 +450,8 @@ type PostgresPlanningReader
                             )
                           Capacity =
                             { Instances = PostgresDeclarations.instances input.Spec
-                              Storage = input.Spec.Storage.SizeGb } }
+                              Storage = input.Spec.Storage.SizeGb
+                              ReplicationMode = PostgresDeclarations.replicationMode input.Spec } }
 
                 let! loaded = readBootstrap.Invoke(request, input.Session, input.CancellationToken)
 

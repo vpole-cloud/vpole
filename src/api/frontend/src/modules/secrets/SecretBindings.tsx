@@ -78,6 +78,7 @@ export function SecretBindings({
   const mutation = useScopedMutation(scope)
   const [detaching, setDetaching] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const allowsSharing = secret.managedBy?.sharingPolicy !== 'OwnerOnly'
   const resourceName = (type: string, id: string) =>
     inventory.resource?.find((item) => item.resourceTypeId === type && item.resourceId === id)
       ?.displayName ?? 'Unavailable resource'
@@ -95,12 +96,15 @@ export function SecretBindings({
             environment configuration and network access are separate.
           </p>
         </div>
-        {canWrite && (
+        {canWrite && allowsSharing && (
           <Button variant="primary" onClick={() => setAdding(true)}>
             Add binding
           </Button>
         )}
       </header>
+      {!allowsSharing && (
+        <Notice>This credential is reserved for its owning resource and cannot be shared.</Notice>
+      )}
       {usage.error && <Notice tone="error">{usage.error} Last fetched usage is shown.</Notice>}
       {!usage.resource?.length ? (
         <EmptyState
@@ -186,7 +190,7 @@ export function SecretBindings({
       >
         Refresh bindings
       </Button>
-      {adding && canWrite && (
+      {adding && canWrite && allowsSharing && (
         <BindingForm
           secret={secret}
           resources={inventory.resource ?? []}
@@ -311,7 +315,7 @@ function BindingForm({
       className="database-form panel"
       onSubmit={(event) => {
         event.preventDefault()
-        if (mutation.busy) return
+        if (mutation.busy || secret.managedBy?.sharingPolicy === 'OwnerOnly') return
         const keyMappings = bindingKeyMappings(aliases, mapping)
         if (
           !consumer ||

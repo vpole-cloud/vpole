@@ -474,7 +474,11 @@ internal sealed class PostgresNativeTestApi : DelegatingHandler
             "507f1f77bcf86cd799439012",
             17,
             "profile",
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some("scope"), 1, 1));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some("scope"),
+                1,
+                1,
+                PostgresReplicationMode.Asynchronous));
         _identity = new WorkloadIdentityLabels(
             Resource.TenantId,
             Resource.GroupId,

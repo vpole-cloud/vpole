@@ -146,7 +146,9 @@ public sealed class PostgresFeatureHostTests(
             .GetCollection<BsonDocument>("__migrations")
             .Find(new BsonDocument("_id", new BsonRegularExpression("^pole.postgres/")))
             .ToListAsync();
-        Assert.Equal("pole.postgres/6a700003b213917a38c38001", Assert.Single(history)["_id"].AsString);
+        Assert.Equal(
+            ["pole.postgres/6a700003b213917a38c38001", "pole.postgres/6a700056b213917a38c38056"],
+            history.Select(item => item["_id"].AsString).Order(StringComparer.Ordinal));
         Assert.Equal(
             0,
             await fixture.Database

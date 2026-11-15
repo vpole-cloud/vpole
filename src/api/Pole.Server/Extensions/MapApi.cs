@@ -4,6 +4,7 @@ using Pole.Features.Functions.Application.Common;
 using Pole.Features.GitProviders.Application.Common;
 using Pole.Features.Postgres.Application.Endpoints;
 using Pole.Features.RedisServices.Application.Common;
+using Pole.Features.SeaweedFS.Application.Common;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.WebServices.Application.Common;
 using Pole.Platform.Hosting;
@@ -23,6 +24,7 @@ public static class MapApi
             .MapWebServiceEndpoints()
             .MapBackupsEndpoints()
             .MapRedisServiceEndpoints()
+            .MapSeaweedFSEndpoints()
             .MapResourceConnectionEndpoints()
             .MapPostgresClusterEndpoints();
         return app;

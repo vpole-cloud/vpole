@@ -9,6 +9,8 @@ import { useUnsavedChanges } from '../../shell/useUnsavedChanges'
 import { Button, Field, Notice } from '../../ui/components'
 import type { WorkspaceActions } from '../../ui/ResourceWorkspace'
 import type { PostgresSection } from './workspaceState'
+import type { PostgresReplicationMode } from './types'
+import { postgresReplicationLabels } from './configurationModel'
 
 const resourceType = 'pole/postgresql'
 
@@ -62,6 +64,7 @@ export function NewPostgresView({
   const [version, setVersion] = useState<number | null>(null)
   const selectedVersion = version ?? capabilities.resource?.to ?? 0
   const [instances, setInstances] = useState(1)
+  const [replicationMode, setReplicationMode] = useState<PostgresReplicationMode>('Asynchronous')
   const [size, setSize] = useState(1)
   const [password, setPassword] = useState('')
   const [validation, setValidation] = useState('')
@@ -80,6 +83,7 @@ export function NewPostgresView({
       storageId ||
       version ||
       instances !== 1 ||
+      replicationMode !== 'Asynchronous' ||
       size !== 1,
     )
   useUnsavedChanges(dirty, 'New PostgreSQL database')
@@ -127,7 +131,8 @@ export function NewPostgresView({
             !Number.isInteger(size) ||
             size < 1 ||
             !Number.isInteger(instances) ||
-            instances < 1
+            instances < 1 ||
+            (replicationMode === 'SynchronousHa' && instances < 3)
           ) {
             setValidation('Complete required fields and select available placement and profiles.')
             return
@@ -143,6 +148,7 @@ export function NewPostgresView({
                     groupId: group,
                     version: selectedVersion,
                     instances,
+                    replicationMode,
                     storage: size,
                     storageProfileId: storageProfile,
                     computeProfileId: computeProfile,
@@ -272,6 +278,24 @@ export function NewPostgresView({
               {fieldError('Version') && (
                 <span className="field-error">{fieldError('Version')}</span>
               )}
+            </Field>
+            <Field
+              label="Replication mode"
+              hint="Synchronous HA requires at least three instances on separate worker hosts and waits for a standby before acknowledging writes."
+            >
+              <select
+                className="field__control"
+                value={replicationMode}
+                onChange={(event) =>
+                  setReplicationMode(event.target.value as PostgresReplicationMode)
+                }
+              >
+                {Object.entries(postgresReplicationLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="Instances">
               <input

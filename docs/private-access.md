@@ -1,15 +1,15 @@
 # Private Access operations
 
-Private Access forwards a local database client's TCP connection to a provider-owned Kubernetes
-Service. Pole owns the authorization, destination, and gateway lifecycle; the user supplies
-database credentials to their database client separately. The [feature README](../src/features/PrivateAccess/README.md)
+Private Access forwards a local client's TCP connection to a provider-owned Kubernetes
+Service. Pole manages authorization, the destination and the gateway. The client authenticates
+to PostgreSQL, Redis or SeaweedFS with its own service credentials. The [feature README](../src/features/PrivateAccess/README.md)
 documents the API and lease rules, and the [CLI README](../src/tools/Pole.Cli/README.md) documents
 the commands.
 
 ## Request flow
 
 1. A tenant Owner or Admin grants a current tenant member access to an exact resource deployment
-   and provider endpoint. The grant contains no destination address or database credential.
+   and provider endpoint. The grant contains no destination address or service credential.
 2. Pole reconciles one Access Gateway Deployment per `(tenant, deployment target)` that has an
    active, applicable grant. It uses the target's existing Kubernetes credentials to create a
    separate restricted namespace, identity Secret, default-deny policy, exact destination rules,
@@ -72,27 +72,27 @@ rejects new sessions, allows existing ones a 20-second drain window, then closes
 Private Access is disabled by default. When enabled, configure these server settings and expose
 the gateway listener to the target cluster:
 
-| Setting | Example | Purpose |
-| --- | --- | --- |
-| `PrivateAccess__Enabled` | `true` | Enables session transport and gateway reconciliation. |
-| `PrivateAccess__GatewayPort` | `9444` | Dedicated mTLS gateway listener port. |
-| `PrivateAccess__GatewayImage` | `registry.example/pole-access-gateway:VERSION` | Explicit versioned image; `:latest` is rejected. |
-| `PrivateAccess__BrokerUri` | `https://pole.example/` | Public HTTPS server origin. The gateway listener uses this host and `GatewayPort`. |
-| `PrivateAccess__BrokerAddresses__0` | `203.0.113.10` | Exact reachable IP for gateway egress policy; add indexed values for all addresses. |
-| `PrivateAccess__MaximumSessions` | `64` | Concurrent user TCP session limit. |
-| `PrivateAccess__MaximumGatewayControls` | `1024` | Concurrent direct or forwarded gateway control connections per Server replica. |
-| `PrivateAccess__InstanceId` | `pole-server-0` | Unique identity for this Server process; do not reuse concurrently. |
-| `PrivateAccess__InternalPort` | `9445` | Dedicated HTTPS listener for Server-to-Server forwarding. |
-| `PrivateAccess__InternalOrigin` | `https://pole-server-0.pole-server-internal:9445` | Stable private origin advertised by this replica. |
-| `PrivateAccess__InternalPeerOrigins__0` | `https://pole-server-0.pole-server-internal:9445` | Exact allowed peer origin; include every replica, including this one, on all replicas. |
-| `PrivateAccess__InternalCertificatePath` | `/run/secrets/pole-server-peer.pfx` | Shared Server peer certificate with client and server TLS use. |
-| `PrivateAccess__InternalCertificatePassword` | secret reference | Password for the peer PKCS#12 file. |
-| `PrivateAccess__InternalCertificateSha256Pin` | 64 lowercase hex characters | Exact SHA-256 pin for inbound peer clients and outbound peer servers. |
-| `Kestrel__Endpoints__PrivateAccessGateway__Url` | `https://0.0.0.0:9444` | mTLS listener URL; port must equal `GatewayPort`. |
-| `Kestrel__Endpoints__PrivateAccessInternal__Url` | `https://0.0.0.0:9445` | Private peer listener URL; port must equal `InternalPort`. |
-| `Kestrel__Endpoints__PrivateAccessGateway__Certificate__Path` | `/run/secrets/pole-gateway-listener.pfx` | Server TLS certificate. |
-| `Kestrel__Endpoints__PrivateAccessGateway__Certificate__Password` | secret reference | Certificate password from the deployment secret mechanism. |
-| `Cli__Issuer` | `https://identity.example/realms/pole.control-plane` | Public OIDC issuer returned by `/.well-known/pole-cli`. |
+| Setting                                                           | Example                                              | Purpose                                                                                |
+| ----------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `PrivateAccess__Enabled`                                          | `true`                                               | Enables session transport and gateway reconciliation.                                  |
+| `PrivateAccess__GatewayPort`                                      | `9444`                                               | Dedicated mTLS gateway listener port.                                                  |
+| `PrivateAccess__GatewayImage`                                     | `registry.example/pole-access-gateway:VERSION`       | Explicit versioned image; `:latest` is rejected.                                       |
+| `PrivateAccess__BrokerUri`                                        | `https://pole.example/`                              | Public HTTPS server origin. The gateway listener uses this host and `GatewayPort`.     |
+| `PrivateAccess__BrokerAddresses__0`                               | `203.0.113.10`                                       | Exact reachable IP for gateway egress policy; add indexed values for all addresses.    |
+| `PrivateAccess__MaximumSessions`                                  | `64`                                                 | Concurrent user TCP session limit.                                                     |
+| `PrivateAccess__MaximumGatewayControls`                           | `1024`                                               | Concurrent direct or forwarded gateway control connections per Server replica.         |
+| `PrivateAccess__InstanceId`                                       | `pole-server-0`                                      | Unique identity for this Server process; do not reuse concurrently.                    |
+| `PrivateAccess__InternalPort`                                     | `9445`                                               | Dedicated HTTPS listener for Server-to-Server forwarding.                              |
+| `PrivateAccess__InternalOrigin`                                   | `https://pole-server-0.pole-server-internal:9445`    | Stable private origin advertised by this replica.                                      |
+| `PrivateAccess__InternalPeerOrigins__0`                           | `https://pole-server-0.pole-server-internal:9445`    | Exact allowed peer origin; include every replica, including this one, on all replicas. |
+| `PrivateAccess__InternalCertificatePath`                          | `/run/secrets/pole-server-peer.pfx`                  | Shared Server peer certificate with client and server TLS use.                         |
+| `PrivateAccess__InternalCertificatePassword`                      | secret reference                                     | Password for the peer PKCS#12 file.                                                    |
+| `PrivateAccess__InternalCertificateSha256Pin`                     | 64 lowercase hex characters                          | Exact SHA-256 pin for inbound peer clients and outbound peer servers.                  |
+| `Kestrel__Endpoints__PrivateAccessGateway__Url`                   | `https://0.0.0.0:9444`                               | mTLS listener URL; port must equal `GatewayPort`.                                      |
+| `Kestrel__Endpoints__PrivateAccessInternal__Url`                  | `https://0.0.0.0:9445`                               | Private peer listener URL; port must equal `InternalPort`.                             |
+| `Kestrel__Endpoints__PrivateAccessGateway__Certificate__Path`     | `/run/secrets/pole-gateway-listener.pfx`             | Server TLS certificate.                                                                |
+| `Kestrel__Endpoints__PrivateAccessGateway__Certificate__Password` | secret reference                                     | Certificate password from the deployment secret mechanism.                             |
+| `Cli__Issuer`                                                     | `https://identity.example/realms/pole.control-plane` | Public OIDC issuer returned by `/.well-known/pole-cli`.                                |
 
 Build the gateway image from the repository root so the build sees the pinned SDK and central
 package versions:

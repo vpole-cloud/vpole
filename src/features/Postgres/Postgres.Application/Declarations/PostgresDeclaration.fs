@@ -30,6 +30,7 @@ type PostgresDeclaration =
       Storage: PostgresDeclarationStorage
       Version: int
       Instances: Nullable<int>
+      ReplicationMode: string
       BootstrapPassword: PostgresDeclaredBootstrap }
 
 type PostgresDeclarationError =
@@ -51,6 +52,7 @@ type PostgresDeclarationError =
     | BootstrapValuesTooLarge = 15
     | StorageShrinkUnsupported = 18
     | ComputeRuntimeClassUnsupported = 19
+    | ManagedDatabaseDependency = 20
 
 type PostgresDeclarationRejected =
     { Reason: PostgresDeclarationError }
@@ -75,6 +77,7 @@ type PostgresManagedIdentity =
 type PostgresProjectionInput =
     { Identity: PostgresManagedIdentity
       Instances: int
+      ReplicationMode: PostgresReplicationMode
       StorageSizeGb: int
       FixedReplicas: int
       Compute: ResourceDeploymentComputeConfiguration }
@@ -94,6 +97,12 @@ module PostgresDeclarations =
 
     let instances (spec: PostgresDeclaration) =
         spec.Instances.GetValueOrDefault(PostgresCluster.DefaultInstances)
+
+    let replicationMode (spec: PostgresDeclaration) =
+        match spec.ReplicationMode with
+        | null | "Asynchronous" -> PostgresReplicationMode.Asynchronous
+        | "SynchronousHa" -> PostgresReplicationMode.SynchronousHa
+        | _ -> invalidArg "replicationMode" "Unsupported PostgreSQL replication mode."
 
     let private validProfile (profile: PostgresPinnedProfile) =
         not (isNull (box profile))
@@ -130,6 +139,10 @@ module PostgresDeclarations =
         DeclarationJson.Require(validProfile value.Storage.Profile, DeclarationFieldPaths.StorageProfile)
         DeclarationJson.Require(PostgresSettings.isSupportedVersion settings value.Version, "spec.version")
         DeclarationJson.Require(instances value > 0, "spec.instances")
+        DeclarationJson.Require(
+            isNull value.ReplicationMode || value.ReplicationMode = "Asynchronous" || value.ReplicationMode = "SynchronousHa",
+            "spec.replicationMode")
+        DeclarationJson.Require(PostgresReplication.valid (instances value) (replicationMode value), "spec.replicationMode")
 
         DeclarationJson.Require(not (isNull (box value.BootstrapPassword)), BootstrapPasswordField)
         DeclarationJson.Require(DeclarationNames.Valid value.BootstrapPassword.Secret, "spec.bootstrapPassword.secret")
@@ -141,7 +154,8 @@ module PostgresDeclarations =
 
         DeclarationJson.Write
             { value with
-                Instances = Nullable(instances value) }
+                Instances = Nullable(instances value)
+                ReplicationMode = (replicationMode value).ToString() }
 
     let facts (spec: JsonElement) =
         let value = DeclarationJson.Read<PostgresDeclaration> spec
@@ -246,6 +260,7 @@ module PostgresDeclarations =
             else
                 DeclarationJson.Write
                     {| Instances = input.Instances
+                       ReplicationMode = input.ReplicationMode.ToString()
                        StorageSizeGb = input.StorageSizeGb
                        FixedReplicas = input.FixedReplicas
                        ComputeProfileId = input.Compute.ComputeProfileId

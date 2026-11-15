@@ -8,7 +8,9 @@ public sealed class SecretProjectionIndexesMigration : IMigration
 {
     public ObjectId Id => new("6a700043b213917a38c38043");
     public string Name => "Secret projection and managed owner identity";
-    public string Description => "Per-deployment projection lookup and unique live managed owner.";
+
+    public string Description =>
+        "Per-deployment projection lookup and unique live managed owner and credential purpose.";
 
     public async Task Up(IMongoDatabase context, CancellationToken cancellationToken = default)
     {
@@ -25,10 +27,11 @@ public sealed class SecretProjectionIndexesMigration : IMigration
                     Builders<BsonDocument>.IndexKeys
                         .Ascending("TenantId")
                         .Ascending("Management.ResourceType")
-                        .Ascending("Management.ResourceId"),
+                        .Ascending("Management.ResourceId")
+                        .Ascending("Management.Purpose"),
                     new CreateIndexOptions<BsonDocument>
                     {
-                        Name = "UX_Secrets_ManagedOwner",
+                        Name = "UX_Secrets_ManagedOwnerPurpose",
                         Unique = true,
                         PartialFilterExpression = new BsonDocument("Management._t", "ProviderManagedSecret"),
                     }),

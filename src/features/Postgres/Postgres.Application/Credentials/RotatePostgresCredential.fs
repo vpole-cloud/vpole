@@ -34,7 +34,8 @@ type PostgresCredentialRotator(prepareSecret: PrepareManagedSecret) =
                             credential.Name,
                             Checked.(+) credential.Version 1L,
                             values,
-                            credential.KubernetesType
+                            credential.KubernetesType,
+                            ManagedSecretSharingPolicy.Shareable
                         ),
                         cancellationToken
                     )

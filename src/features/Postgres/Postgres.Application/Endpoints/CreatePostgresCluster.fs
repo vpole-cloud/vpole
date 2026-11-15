@@ -28,7 +28,8 @@ type CreatePostgresClusterRequestBody =
       StorageProfileId: string
       ComputeProfileId: string option
       Password: string
-      Placement: PlacementRequest option }
+      Placement: PlacementRequest option
+      ReplicationMode: PostgresReplicationMode option }
 
     override _.ToString() =
         "CreatePostgresClusterRequestBody([REDACTED])"
@@ -64,7 +65,8 @@ type CreatePostgresClusterHandler(creator: PostgresClusterCreator) =
                           Storage = body.Storage
                           StorageProfileId = body.StorageProfileId
                           ComputeProfileId = body.ComputeProfileId
-                          Placement = body.Placement }
+                          Placement = body.Placement
+                          ReplicationMode = body.ReplicationMode }
                       Authority = PostgresCreationAuthority.NewCluster body.Password }
                 let! outcome = creator.CreateAsync(command, cancellationToken)
                 return
@@ -91,6 +93,14 @@ type CreatePostgresClusterValidator(settings: PostgresSettings) as this =
             .NotEmpty()
             .WithMessage("StorageProfileId is required.")
             .MongoObjectId("Storage profile ID")
+        |> ignore
+
+        this.RuleFor(_.Body)
+            .Must(fun body ->
+                PostgresReplication.valid
+                    (defaultArg body.Instances PostgresCluster.DefaultInstances)
+                    (defaultArg body.ReplicationMode PostgresReplicationMode.Asynchronous))
+            .WithMessage("Synchronous HA PostgreSQL requires at least three instances.")
         |> ignore
 
         this.RuleFor(_.Body.Password).NotEmpty().WithMessage("Password is required.")

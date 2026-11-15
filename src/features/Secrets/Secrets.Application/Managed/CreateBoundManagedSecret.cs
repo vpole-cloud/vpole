@@ -71,9 +71,16 @@ internal sealed class MongoCreateBoundManagedSecret(
             "Provider-managed credentials",
             request.Prepared.Keys,
             binding,
+            ProviderManagedSecret.RequirePurpose(request.Prepared.Owner.Purpose),
             request.Prepared.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication
                 ? KubernetesSecretType.BasicAuthentication
                 : KubernetesSecretType.Opaque,
+            request.Prepared.SharingPolicy switch
+            {
+                ManagedSecretSharingPolicy.Shareable => ManagedSecretSharing.Shareable,
+                ManagedSecretSharingPolicy.OwnerOnly => ManagedSecretSharing.OwnerOnly,
+                _ => throw new ArgumentOutOfRangeException(nameof(request.Prepared.SharingPolicy)),
+            },
             now);
         if (await registrar.RegisterAsync(
                 new RegisterResourceRequest(

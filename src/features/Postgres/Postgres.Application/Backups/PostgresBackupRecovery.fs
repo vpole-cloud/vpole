@@ -145,7 +145,8 @@ type PostgresBackupRecovery
                   Storage = Some(request.Resource.StorageGiB.GetValueOrDefault(request.Archive.Service.StorageGiB))
                   StorageProfileId = placement.StorageProfileId
                   ComputeProfileId = Some placement.ComputeProfileId
-                  Placement = Some(PlacementRequest(placement.IsolationScopeId, placement.DeploymentTargetId)) }
+                  Placement = Some(PlacementRequest(placement.IsolationScopeId, placement.DeploymentTargetId))
+                  ReplicationMode = Some PostgresReplicationMode.Asynchronous }
             let command =
                 { TenantId = request.Archive.Source.TenantId
                   ResourceId = request.Resource.Id

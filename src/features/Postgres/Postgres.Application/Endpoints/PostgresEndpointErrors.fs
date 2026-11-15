@@ -25,6 +25,7 @@ type UpdatePostgresClusterStateError =
     | PostgresClusterUpdateNotFound of clusterId: string
     | PostgresClusterUpdateUnavailable of clusterId: string
     | PostgresClusterComputeRuntimeClassUnsupported of clusterId: string
+    | PostgresClusterSynchronousHaRequired of clusterId: string
 
 type UpdatePostgresClusterError =
     | UpdateState of UpdatePostgresClusterStateError

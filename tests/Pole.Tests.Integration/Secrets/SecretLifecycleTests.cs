@@ -181,8 +181,10 @@ public sealed class SecretLifecycleTests(
             Management = new ProviderManagedSecret(
                 "pole/postgresql",
                 Id(),
+                "credentials",
                 Id(),
-                KubernetesSecretType.BasicAuthentication),
+                KubernetesSecretType.BasicAuthentication,
+                ManagedSecretSharing.Shareable),
         };
         await Secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret);
         using var session = await Fixture.Client.StartSessionAsync();

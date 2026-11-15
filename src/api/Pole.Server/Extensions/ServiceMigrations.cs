@@ -3,6 +3,7 @@ using System.Reflection;
 using Pole.Features.Functions.Migrations;
 using Pole.Features.Postgres.Migrations;
 using Pole.Features.RedisServices.Migrations;
+using Pole.Features.SeaweedFS.Migrations;
 using Pole.Features.ResourceConnections.Migrations;
 using Pole.Features.WebServices.Migrations;
 using Pole.Platform.Hosting;
@@ -23,5 +24,6 @@ public static class ServiceMigrations
     public static IServiceCollection AddServiceMigrations(this IServiceCollection services) => services
         .AddMigrations(ApplicationMigrationAssemblies)
         .AddFeatureMigrations("pole.redis", typeof(RedisSchemaValidationMigration).Assembly)
+        .AddFeatureMigrations("pole.seaweedfs", typeof(SeaweedFSSchemaMigration).Assembly)
         .AddFeatureMigrations("pole.postgres", typeof(PostgresNameIndexesMigration).Assembly);
 }

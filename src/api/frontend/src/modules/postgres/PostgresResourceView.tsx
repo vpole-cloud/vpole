@@ -44,6 +44,7 @@ import {
   isPostgresDirty,
   postgresChanges,
   postgresConfiguration,
+  postgresReplicationLabels,
   reapplyPostgresChanges,
 } from './configurationModel'
 
@@ -257,6 +258,10 @@ export function PostgresResourceView({
               </dd>
             </div>
             <div>
+              <dt>Replication mode</dt>
+              <dd>{postgresReplicationLabels[cluster.spec.replicationMode]}</dd>
+            </div>
+            <div>
               <dt>Instances</dt>
               <dd>{cluster.spec.instances}</dd>
             </div>
@@ -439,7 +444,7 @@ function PostgresConfiguration({
       ),
   })
   const [configuration, setConfiguration] = useState(() => postgresConfiguration(cluster))
-  const { instances, storage, computeProfileId } = configuration.draft
+  const { instances, storage, computeProfileId, replicationMode } = configuration.draft
   const dirty = isPostgresDirty(configuration)
   if (!dirty && configuration.baseline.revision !== cluster.revision)
     setConfiguration(postgresConfiguration(cluster))
@@ -460,8 +465,10 @@ function PostgresConfiguration({
         mutation.error.code === 'postgres.update.concurrent-change'))
   const awaitingRefresh =
     configuration.accepted && configuration.baseline.revision === cluster.revision
-  const change = (field: 'instances' | 'storage' | 'computeProfileId', value: number | string) =>
-    setConfiguration((current) => ({ ...current, draft: { ...current.draft, [field]: value } }))
+  const change = (
+    field: 'instances' | 'storage' | 'computeProfileId' | 'replicationMode',
+    value: number | string,
+  ) => setConfiguration((current) => ({ ...current, draft: { ...current.draft, [field]: value } }))
   const changes = postgresChanges(configuration)
   return (
     <section className="panel">
@@ -483,6 +490,13 @@ function PostgresConfiguration({
               <dt>Instances: server / draft</dt>
               <dd>
                 {cluster.spec.instances} / {instances}
+              </dd>
+            </div>
+            <div>
+              <dt>Replication mode: server / draft</dt>
+              <dd>
+                {postgresReplicationLabels[cluster.spec.replicationMode]} /{' '}
+                {postgresReplicationLabels[replicationMode]}
               </dd>
             </div>
             <div>
@@ -520,6 +534,7 @@ function PostgresConfiguration({
           if (
             !Number.isInteger(instances) ||
             instances < 1 ||
+            (replicationMode === 'SynchronousHa' && instances < 3) ||
             !Number.isInteger(storage) ||
             storage < cluster.spec.storage ||
             (computeProfileId &&
@@ -563,6 +578,22 @@ function PostgresConfiguration({
       >
         <fieldset disabled={mutation.busy || awaitingRefresh}>
           <div className="form-grid">
+            <Field
+              label="Replication mode"
+              hint="Synchronous HA requires three or more instances on separate worker hosts. Active metadata dependencies prevent downgrading this setting."
+            >
+              <select
+                className="field__control"
+                value={replicationMode}
+                onChange={(event) => change('replicationMode', event.target.value)}
+              >
+                {Object.entries(postgresReplicationLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Instances">
               <input
                 className="field__control"

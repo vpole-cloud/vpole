@@ -29,7 +29,11 @@ public sealed class PostgresObservationTests
             ObjectId.GenerateNewId().ToString(),
             17,
             TestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 1));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+                1,
+                1,
+                PostgresReplicationMode.Asynchronous));
         var targetId = TestData.DefaultDeploymentTargetId;
         var deploymentId = ObjectId.GenerateNewId().ToString();
         var identity = new WorkloadIdentityLabels(

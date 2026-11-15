@@ -19,6 +19,11 @@ open Pole.Features.ResourceConnections.Contracts
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.Search.Contracts
 open Pole.Features.Realtime.Contracts
+open Pole.Features.Postgres.Application.Jobs
+open System.Linq.Expressions
+open System.Threading
+open System.Threading.Tasks
+open Hangfire
 
 [<AbstractClass; Sealed>]
 type PostgresFeatureRegistration =
@@ -82,6 +87,7 @@ type PostgresFeatureRegistration =
         services.AddScoped<PostgresBackupRecovery>() |> ignore
         services.AddScoped<IBackupProvider, PostgresBackupProvider>() |> ignore
         services.TryAddScoped<PostgresClusterCreator>() |> ignore
+        services.AddScoped<PostgresManagedDatabaseRecoveryJob>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentAdapter>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentObserver>() |> ignore
         services.TryAddScoped<PostgresResourceDeploymentChangeSource>() |> ignore
@@ -108,4 +114,14 @@ type PostgresFeatureRegistration =
         services.AddSingleton<ResourceIngressPolicyDefinition>(PostgresIngressPolicyDefinitions.Operator)
         |> ignore
 
+        services
+
+
+    [<System.Runtime.CompilerServices.Extension>]
+    static member SchedulePostgresManagedDatabaseRecurringJobs(services: IServiceProvider) =
+        let parameter = Expression.Parameter(typeof<PostgresManagedDatabaseRecoveryJob>, "job")
+        let call = Expression.Call(parameter, "RecoverAsync", null, Expression.Constant(CancellationToken.None))
+        let expression = Expression.Lambda<Func<PostgresManagedDatabaseRecoveryJob, Task>>(call, parameter)
+        RecurringJob.AddOrUpdate<PostgresManagedDatabaseRecoveryJob>(
+            "reconcile-postgres-managed-databases", expression, Cron.Minutely)
         services

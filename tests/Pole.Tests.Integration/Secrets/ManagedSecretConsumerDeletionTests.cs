@@ -62,8 +62,10 @@ public sealed partial class ManagedSecretIntegrationTests
             Management = new ProviderManagedSecret(
                 type.Value,
                 consumer,
+                "credentials",
                 secret.Bindings.Single().Id,
-                KubernetesSecretType.BasicAuthentication),
+                KubernetesSecretType.BasicAuthentication,
+                ManagedSecretSharing.Shareable),
         };
         var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
         await secrets.ReplaceOneAsync(item => item.Id == secret.Id, secret);

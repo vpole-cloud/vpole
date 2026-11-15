@@ -185,7 +185,11 @@ public sealed class PostgresApplyConcurrencyTests
             "507f1f77bcf86cd799439012",
             17,
             TestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some("507f1f77bcf86cd799439013"), 1, 20));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some("507f1f77bcf86cd799439013"),
+                1,
+                20,
+                PostgresReplicationMode.Asynchronous));
         IPostgresClusterDeploymentManager manager = new PostgresClusterDeploymentManager(
             new PostgresSettings
             {

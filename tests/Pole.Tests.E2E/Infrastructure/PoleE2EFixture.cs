@@ -890,6 +890,20 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
             throw new InvalidOperationException("Harbor returned an artifact without a digest.");
     }
 
+    internal async Task<KubernetesPortForwardSession> ForwardSeaweedFSForTestAsync(
+        string groupId,
+        string id,
+        CancellationToken ct)
+    {
+        await WaitForNamespaceCreationAsync(groupId, ct);
+        return await KubernetesPortForwardSession.StartAsync(
+            _kubernetesTarget,
+            _kubernetesNamespaces[groupId].Name,
+            $"service/sw-{id}-s3",
+            8333,
+            ct);
+    }
+
     public async Task WaitForNamespaceDeletionAsync(string resourceGroupId, CancellationToken cancellationToken)
     {
         if (!_kubernetesNamespaces.TryGetValue(resourceGroupId, out var recorded))
@@ -1475,7 +1489,8 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
 
     private void ConfigureLabDeploymentTarget(IResourceBuilder<ProjectResource> api)
     {
-        api.WithEnvironment("DeploymentTargets__Bootstrap__Mode", "Kubeconfig")
+        api.WithEnvironment("SeaweedFS__DeletionRetention", "00:01:00")
+            .WithEnvironment("DeploymentTargets__Bootstrap__Mode", "Kubeconfig")
             .WithEnvironment("DeploymentTargets__Bootstrap__KubeconfigPath", _kubernetesTarget.KubeconfigPath)
             .WithEnvironment("DeploymentTargets__Bootstrap__KubeconfigContext", _kubernetesTarget.Context)
             .WithEnvironment(
@@ -1501,7 +1516,16 @@ public sealed partial class PoleE2EFixture : IAsyncLifetime
                 "pole-lab-cnpg")
             .WithEnvironment(
                 "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__postgres/operator__PodLabels__app.kubernetes.io/instance",
-                "pole-lab-cnpg");
+                "pole-lab-cnpg")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__seaweedfs/operator__Namespace",
+                "pole-lab-seaweedfs")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__seaweedfs/operator__PodLabels__app.kubernetes.io/name",
+                "seaweedfs-operator")
+            .WithEnvironment(
+                "DeploymentTargets__Bootstrap__WorkloadConfiguration__NetworkSources__Pods__seaweedfs/operator__PodLabels__app.kubernetes.io/instance",
+                "pole-lab-seaweedfs");
     }
 
     internal static async Task WaitForStartupAsync(

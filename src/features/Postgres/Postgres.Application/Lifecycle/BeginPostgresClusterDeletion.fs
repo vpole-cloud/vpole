@@ -6,6 +6,7 @@ open System.Threading.Tasks
 open MongoDB.Driver
 open Pole.Features.Postgres.Application
 open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.ManagedDatabases
 open Pole.Features.Postgres.Domain
 open Pole.Features.GitOps.Contracts
 open Pole.Features.GitOps.Primitives
@@ -38,7 +39,8 @@ type MongoBeginPostgresClusterDeletion
         fenceRegisteredResource: FenceRegisteredResource,
         cascadeConnections: CascadeConnectionsForResourceDeletion,
         git: IGitOpsMutations,
-        ensureBindingsRemovable: EnsureConsumerSecretBindingRemoval
+        ensureBindingsRemovable: EnsureConsumerSecretBindingRemoval,
+        databaseGuard: PostgresManagedDatabaseGuard
     ) =
     let revisionConflict clusterId : PostgresOutcome<unit, PostgresClusterDeletionConflict> =
         PostgresError
@@ -51,6 +53,9 @@ type MongoBeginPostgresClusterDeletion
             let replacement = request.Replacement
             PostgresPersistenceGuards.transaction session "PostgreSQL deletion start"
             PostgresPersistenceGuards.deletionTransition current replacement
+
+            let! hasDependencies =
+                databaseGuard.HasLiveDependenciesAsync(current.TenantId, current.Id, session, cancellationToken)
 
             let! authorized =
                 if not (isNull request.Authority) && isNull request.ReviewedConnections then
@@ -72,7 +77,9 @@ type MongoBeginPostgresClusterDeletion
                         cancellationToken
                     )
 
-            if not authorized then
+            if hasDependencies then
+                return PostgresError { ClusterId = current.Id; Reason = PostgresMutationConflictReason.ManagedDatabaseDependency }
+            elif not authorized then
                 return
                     PostgresError
                         { ClusterId = current.Id

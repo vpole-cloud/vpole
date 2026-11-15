@@ -143,7 +143,11 @@ public sealed class ProviderConnectionEndpointTests(
             Id(),
             17,
             Id(),
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 5));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some(Id()),
+                1,
+                5,
+                PostgresReplicationMode.Asynchronous));
         var collection = Fixture.Database.GetCollection<PostgresCluster>("Postgres");
         await collection.InsertOneAsync(postgres);
         var lookup = Destination("pole/postgresql");

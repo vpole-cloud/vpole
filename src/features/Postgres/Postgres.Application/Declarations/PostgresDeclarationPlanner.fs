@@ -59,6 +59,7 @@ type PostgresDeclarationPlanner
                   StorageProfileId = current.Spec.StorageProfileId
                   Storage = placement.Storage }
               Instances = current.Spec.Instances
+              ReplicationMode = current.Spec.ReplicationMode
               StorageSizeGb = current.Spec.Storage
               FixedReplicas = placement.FixedReplicas
               Compute = placement.Compute }
@@ -175,6 +176,7 @@ type PostgresDeclarationPlanner
                                   StorageProfileId = catalog.Storage.Storage.ProfileId
                                   Storage = PostgresResourceDeploymentMappings.storage catalog.Storage.Storage }
                               Instances = PostgresDeclarations.instances spec
+                              ReplicationMode = PostgresDeclarations.replicationMode spec
                               StorageSizeGb = spec.Storage.SizeGb
                               FixedReplicas = PostgresDeclarations.instances spec
                               Compute = PostgresResourceDeploymentMappings.compute catalog.Compute.Compute }

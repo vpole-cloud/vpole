@@ -52,5 +52,5 @@ public sealed class PostgresNameResolutionTests
         "group-1",
         17,
         "storage-profile-1",
-        new CreatePostgresClusterOptions(FSharpOption<string>.Some(id), 1, 10));
+        new CreatePostgresClusterOptions(FSharpOption<string>.Some(id), 1, 10, PostgresReplicationMode.Asynchronous));
 }

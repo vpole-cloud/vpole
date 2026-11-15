@@ -1,6 +1,8 @@
 import type { GitOpsStatus } from '../../data/gitOps'
 import type { ResourcePlacement } from '../../types'
 
+export type PostgresReplicationMode = 'Asynchronous' | 'SynchronousHa'
+
 export interface PostgresCluster {
   id: string
   name: string
@@ -12,6 +14,7 @@ export interface PostgresCluster {
     storage: number
     storageProfileId: string
     version: number
+    replicationMode: PostgresReplicationMode
   }
   placement: ResourcePlacement
   gitOps?: GitOpsStatus | null
@@ -27,6 +30,7 @@ export interface PostgresInput {
   groupId: string
   version: number
   instances: number
+  replicationMode: PostgresReplicationMode
   storage: number
   storageProfileId: string
   computeProfileId?: string
@@ -37,6 +41,17 @@ export interface PostgresInput {
 export interface PostgresUpdateInput {
   expectedRevision: number
   instances?: number
+  replicationMode?: PostgresReplicationMode
   storage?: number
   computeProfileId?: string
+}
+
+export interface PostgresManagedDatabaseCandidate {
+  id: string
+  name: string
+  deploymentTargetId: string
+  resourceGroupId: string
+  isolationScopeId: string
+  instances: number
+  replicationMode: PostgresReplicationMode
 }

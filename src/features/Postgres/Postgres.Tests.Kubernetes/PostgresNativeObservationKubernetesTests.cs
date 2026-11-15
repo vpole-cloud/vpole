@@ -38,7 +38,11 @@ public sealed class PostgresNativeObservationKubernetesTests(
             Id(),
             17,
             PostgresTestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(Id()), 1, 1));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some(Id()),
+                1,
+                1,
+                PostgresReplicationMode.Asynchronous));
         var targetId = PostgresTestData.DefaultDeploymentTargetId;
         var metadata = new PostgresResourceDeploymentMetadata(Id(), Id(), Id(), targetId, 1);
         var identity = new WorkloadIdentityLabels(

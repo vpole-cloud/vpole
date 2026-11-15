@@ -55,7 +55,7 @@ module PostgresClusterKubernetesBuilder =
         {| requests = toResourceDictionary resources.Requests
            limits = toResourceDictionary resources.Limits |}
 
-    let private buildAffinity (compute: KubernetesComputeConfiguration) =
+    let private buildAffinity (compute: KubernetesComputeConfiguration) replicationMode =
         let affinity = Dictionary<string, obj>()
         let nodeSelector = compute.ToNodeSelector()
 
@@ -71,6 +71,11 @@ module PostgresClusterKubernetesBuilder =
 
         if not (isNull tolerations) then
             affinity["tolerations"] <- tolerations
+
+        if replicationMode = PostgresReplicationMode.SynchronousHa then
+            affinity["enablePodAntiAffinity"] <- true
+            affinity["podAntiAffinityType"] <- "required"
+            affinity["topologyKey"] <- "kubernetes.io/hostname"
 
         if affinity.Count = 0 then None else Some affinity
 
@@ -98,9 +103,17 @@ module PostgresClusterKubernetesBuilder =
 
         spec["resources"] <- buildResources compute
 
-        match buildAffinity compute with
+        match buildAffinity compute cluster.Spec.ReplicationMode with
         | Some affinity -> spec["affinity"] <- affinity
         | None -> ()
+
+        if cluster.Spec.ReplicationMode = PostgresReplicationMode.SynchronousHa then
+            spec["postgresql"] <-
+                {| synchronous =
+                    {| method = "any"
+                       number = 1
+                       dataDurability = "required"
+                       failoverQuorum = true |} |}
 
         spec["enableSuperuserAccess"] <- true
         spec["superuserSecret"] <- {| name = clusterSecretName |}

@@ -98,7 +98,9 @@ public sealed class SecretProjectionTests
             source.Purpose,
             source.KeyNames,
             binding,
+            "credentials",
             KubernetesSecretType.BasicAuthentication,
+            ManagedSecretSharing.Shareable,
             source.CreatedAtUtc);
         var owner = SecretProjectionFactory.Create(secret, binding, "owner-deployment", "cell", "target", "namespace");
         var shared = SecretProjectionFactory.Create(

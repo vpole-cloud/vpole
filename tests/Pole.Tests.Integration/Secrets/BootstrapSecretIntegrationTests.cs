@@ -113,10 +113,36 @@ public sealed partial class ManagedSecretIntegrationTests
                 .CountDocumentsAsync(item => item.SecretId == request.CredentialId));
     }
 
+    [Fact]
+    public async Task Owner_only_credentials_cannot_be_copied_through_a_bootstrap_grant()
+    {
+        var request = await PrepareBootstrapAsync(SecretBindingUsage.Bootstrap);
+        var secrets = Services.GetRequiredService<IMongoCollection<Secret>>();
+        var source = await secrets.Find(item => item.Id == request.Source.SecretId).SingleAsync();
+        await secrets.ReplaceOneAsync(
+            item => item.Id == source.Id,
+            source with
+            {
+                Management = new ProviderManagedSecret(
+                    request.Owner.ResourceType,
+                    request.Owner.ResourceId,
+                    "admin",
+                    source.Bindings[0].Id,
+                    KubernetesSecretType.Opaque,
+                    ManagedSecretSharing.OwnerOnly),
+            });
+        using var session = await Fixture.Client.StartSessionAsync();
+        session.StartTransaction();
+        Assert.IsType<BootstrapSecretUnavailable>(
+            (await Services.GetRequiredService<ReadBootstrapSecret>()(request, session, default)).Value);
+        await session.AbortTransactionAsync();
+        Assert.Null(await Services.GetRequiredService<LoadManagedSecret>()(request.TenantId, request.Owner, default));
+    }
+
     private async Task<BootstrapSecretRequest> PrepareBootstrapAsync(SecretBindingUsage usage)
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         string deploymentId;
         using (var session = await Fixture.Client.StartSessionAsync())
         {

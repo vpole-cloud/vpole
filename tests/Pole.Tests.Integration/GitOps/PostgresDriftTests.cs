@@ -111,11 +111,12 @@ public sealed class PostgresDriftTests(
                 new PrepareManagedSecretRequest(
                     resource.TenantId,
                     bootstrap.CredentialId,
-                    new ManagedSecretOwner("pole/postgresql", resource.Id),
+                    new ManagedSecretOwner("pole/postgresql", resource.Id, ManagedSecretPurposes.Credentials),
                     ownerCredential.Name,
                     ownerCredential.CurrentVersion + 1,
                     new Dictionary<string, string> { ["username"] = "postgres", ["password"] = "rotated-owner" },
-                    ManagedSecretKubernetesType.BasicAuthentication),
+                    ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -156,7 +157,10 @@ public sealed class PostgresDriftTests(
         session.StartTransaction();
         var update = await Services.GetRequiredService<PersistUpdatedPostgresCluster>()
             .Invoke(
-                new PersistUpdatedPostgresClusterRequest(resource, resource.UpdateDesiredState(1, 4), null),
+                new PersistUpdatedPostgresClusterRequest(
+                    resource,
+                    resource.UpdateDesiredState(1, 4, resource.Spec.ReplicationMode),
+                    null),
                 session,
                 default);
         Assert.Equal(

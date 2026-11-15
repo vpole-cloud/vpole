@@ -157,7 +157,8 @@ public sealed class PostgresManifestTests
             source.Spec.Storage,
             source.Spec.StorageProfileId,
             source.Spec.Version,
-            new RecoveryPostgresBootstrap(origin));
+            new RecoveryPostgresBootstrap(origin),
+            PostgresReplicationMode.Asynchronous);
         var cluster = new PostgresCluster(
             source.Id,
             source.TenantId,
@@ -168,7 +169,8 @@ public sealed class PostgresManifestTests
             source.Lifecycle,
             source.Provisioning,
             source.PlanningFence);
-        var restored = BsonSerializer.Deserialize<PostgresCluster>(cluster.ToBsonDocument()).UpdateDesiredState(3, 40);
+        var restored = BsonSerializer.Deserialize<PostgresCluster>(cluster.ToBsonDocument())
+            .UpdateDesiredState(3, 40, cluster.Spec.ReplicationMode);
         var restoredOrigin = Assert.IsType<RecoveryPostgresBootstrap>(restored.Spec.Bootstrap).Origin;
         Assert.Equal(origin.OperationId, restoredOrigin.OperationId);
         if (byTime)
@@ -207,6 +209,33 @@ public sealed class PostgresManifestTests
         Assert.Null(specNode["plugins"]);
     }
 
+    [Fact]
+    public void SynchronousHa_requires_one_standby_and_hard_host_separation()
+    {
+        var (cluster, settings) = CreateOperatorSubject();
+        cluster = cluster.UpdateDesiredState(3, 20, PostgresReplicationMode.SynchronousHa);
+        var manifest = JsonSerializer.SerializeToNode(
+            PostgresClusterKubernetesBuilder.buildCluster(
+                cluster,
+                Projection(),
+                "pole-data",
+                "fast-db",
+                MinimalCompute(),
+                Metadata(),
+                settings))!;
+        var spec = manifest["spec"]!;
+        Assert.Equal("required", spec["affinity"]!["podAntiAffinityType"]!.GetValue<string>());
+        Assert.Equal("kubernetes.io/hostname", spec["affinity"]!["topologyKey"]!.GetValue<string>());
+        Assert.Equal("any", spec["postgresql"]!["synchronous"]!["method"]!.GetValue<string>());
+        Assert.Equal(1, spec["postgresql"]!["synchronous"]!["number"]!.GetValue<int>());
+        Assert.Equal("required", spec["postgresql"]!["synchronous"]!["dataDurability"]!.GetValue<string>());
+        Assert.True(spec["postgresql"]!["synchronous"]!["failoverQuorum"]!.GetValue<bool>());
+        Assert.Throws<ArgumentException>(() => cluster.UpdateDesiredState(
+            2,
+            20,
+            PostgresReplicationMode.SynchronousHa));
+    }
+
     [Theory]
     [InlineData("0123456789abcdef01234567", "pg-0123456789abcdef01234567")]
     [InlineData("abcdef0123456789abcdef01", "pg-abcdef0123456789abcdef01")]
@@ -229,7 +258,11 @@ public sealed class PostgresManifestTests
             ObjectId.GenerateNewId().ToString(),
             17,
             TestData.DefaultStorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some("0123456789abcdef01234567"), 2, 20));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some("0123456789abcdef01234567"),
+                2,
+                20,
+                PostgresReplicationMode.Asynchronous));
         return (cluster, CreateSettings());
     }
 

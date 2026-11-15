@@ -3,6 +3,7 @@ using Pole.Database;
 using Pole.Features.GitOps.Contracts;
 using Pole.Features.Secrets.Application.Mongo;
 using Pole.Features.Secrets.Application.Values;
+using Pole.Features.Secrets.Contracts;
 using Pole.Features.Secrets.Domain;
 using Pole.Features.Secrets.Events;
 using Pole.ResultType;
@@ -21,6 +22,7 @@ internal sealed class MongoRemoveConsumerSecretBindings(
     IMongoCollection<Secret> secrets,
     MongoRunTransaction transactions,
     StoreSecretChange publish,
+    ReleaseManagedSecret releaseManaged,
     IGitOpsMutations git,
     TimeProvider clock
 )
@@ -60,6 +62,21 @@ internal sealed class MongoRemoveConsumerSecretBindings(
                             removable.Add(binding);
                     if (removable.Count == 0)
                         return tx.Commit(Unit.Value);
+
+                    if (current.Management is ProviderManagedSecret { Sharing: ManagedSecretSharing.OwnerOnly } owner &&
+                        removable.Any(binding => binding.Id == owner.BindingId))
+                    {
+                        var released = await releaseManaged(
+                            new ReleaseManagedSecretRequest(
+                                tenantId,
+                                new ManagedSecretOwner(owner.ResourceType, owner.ResourceId, owner.Purpose)),
+                            tx.Session,
+                            token);
+                        if (released is not ManagedSecretMutationSucceeded)
+                            throw new InvalidOperationException(
+                                "Owner-only credential cleanup could not release its Secret.");
+                        return tx.Commit(Unit.Value);
+                    }
 
                     var updated = current;
                     foreach (var binding in removable)

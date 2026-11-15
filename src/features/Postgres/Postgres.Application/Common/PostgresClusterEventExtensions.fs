@@ -10,7 +10,8 @@ module PostgresClusterEvents =
         { Instances = spec.Instances
           Storage = spec.Storage
           StorageProfileId = spec.StorageProfileId
-          Version = spec.Version }
+          Version = spec.Version
+          ReplicationMode = spec.ReplicationMode.ToString() }
 
     let created (cluster: PostgresCluster) : PostgresClusterCreatedEvent =
         { EventCore = EventCore.Create(cluster.TenantId)

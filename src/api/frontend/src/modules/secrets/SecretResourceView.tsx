@@ -182,7 +182,10 @@ export function SecretResourceView({
                 {resourceTypes.find((type) => type.id === secret.managedBy!.resourceType)?.label ??
                   'resource'}
               </a>
-              . Change its credentials there. Additional sharing bindings can be managed here.
+              . Change its credentials there.{' '}
+              {secret.managedBy.sharingPolicy === 'OwnerOnly'
+                ? 'This credential is reserved for its owning resource and cannot be shared.'
+                : 'Additional sharing bindings can be managed here.'}
             </Notice>
           )}
         </section>

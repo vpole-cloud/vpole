@@ -205,6 +205,8 @@ type PostgresDeclarationAdoption
                     PostgresDeclarations.instances spec
                 else
                     current.Spec.Instances
+              ReplicationMode =
+                if desired then PostgresDeclarations.replicationMode spec else current.Spec.ReplicationMode
               StorageSizeGb =
                 if desired then
                     spec.Storage.SizeGb

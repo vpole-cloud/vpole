@@ -10,6 +10,7 @@ import {
 } from './platform/PlatformModules'
 import { webServicesModule } from './web-services/WebServicesModule'
 import { postgresModule } from './postgres/PostgresModule'
+import { seaweedFSModule } from './seaweedfs/SeaweedFSModule'
 import { redisModule } from './redis/RedisModule'
 import { secretModule } from './secrets/SecretModule'
 
@@ -20,6 +21,7 @@ export const appRegistry = createAppRegistry([
   webServicesModule,
   postgresModule,
   redisModule,
+  seaweedFSModule,
   secretModule,
   domainsModule,
   integrationsModule,

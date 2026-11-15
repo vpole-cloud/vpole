@@ -50,4 +50,40 @@ module PostgresFilters =
                 candidate.Lifecycle)
         )
 
+    let synchronousHa tenantId =
+        clusters.And(
+            visibleToTenant tenantId,
+            clusters.Eq((fun (item: PostgresCluster) -> item.Spec.ReplicationMode), PostgresReplicationMode.SynchronousHa),
+            clusters.Gte((fun (item: PostgresCluster) -> item.Spec.Instances), 3),
+            clusters.OfType<PostgresClusterLifecycle, ActivePostgresClusterLifecycle>(fun item -> item.Lifecycle),
+            clusters.Not(clusters.OfType<PostgresProvisioningState, PreparedPostgresProvisioning>(fun item -> item.Provisioning)))
+
     let forList tenantId : FilterDefinition<PostgresCluster> = visibleToTenant tenantId
+
+
+[<RequireQualifiedAccess>]
+module PostgresDatabaseFilters =
+    let private claims = Builders<PostgresManagedDatabase>.Filter
+
+    let owner (tenantId: string) resourceType resourceId =
+        claims.And(
+            claims.ForTenant tenantId,
+            claims.Eq((fun (item: PostgresManagedDatabase) -> item.Owner.ResourceType), resourceType),
+            claims.Eq((fun (item: PostgresManagedDatabase) -> item.Owner.ResourceId), resourceId))
+
+    let identity (tenantId: string) id =
+        claims.And(claims.ForTenant tenantId, claims.Eq((fun (item: PostgresManagedDatabase) -> item.Id), id))
+
+    let atRevision (claim: PostgresManagedDatabase) =
+        claims.And(identity claim.TenantId claim.Id,
+            claims.Eq((fun (item: PostgresManagedDatabase) -> item.Revision), claim.Revision))
+
+    let liveForCluster (tenantId: string) clusterId =
+        claims.And(claims.ForTenant tenantId,
+            claims.Eq((fun (item: PostgresManagedDatabase) -> item.ClusterId), clusterId),
+            claims.Not(claims.OfType<PostgresManagedDatabaseState, PurgedPostgresManagedDatabase>(fun item -> item.State)))
+
+    let recoveryCandidates after =
+        match after with
+        | None -> claims.Empty
+        | Some id -> claims.Gt((fun (item: PostgresManagedDatabase) -> item.Id), id)

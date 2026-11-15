@@ -34,9 +34,15 @@ internal sealed class MongoRotateManagedSecret(
             = ((ProviderManagedSecret)current.Management).KubernetesType == KubernetesSecretType.BasicAuthentication
                 ? ManagedSecretKubernetesType.BasicAuthentication
                 : ManagedSecretKubernetesType.Opaque;
-        if (kubernetesType != request.Prepared.KubernetesType || current.Id != request.Prepared.SecretId ||
-            current.CurrentVersion != request.ExpectedVersion || current.Name != request.Prepared.Name ||
-            current.Bindings.Any(x =>
+        var sharing = ((ProviderManagedSecret)current.Management).Sharing switch
+        {
+            ManagedSecretSharing.Shareable => ManagedSecretSharingPolicy.Shareable,
+            ManagedSecretSharing.OwnerOnly => ManagedSecretSharingPolicy.OwnerOnly,
+            _ => throw new InvalidOperationException("Unknown managed Secret sharing policy."),
+        };
+        if (sharing != request.Prepared.SharingPolicy || kubernetesType != request.Prepared.KubernetesType ||
+            current.Id != request.Prepared.SecretId || current.CurrentVersion != request.ExpectedVersion ||
+            current.Name != request.Prepared.Name || current.Bindings.Any(x =>
                 x.KeyMappings.Keys.Concat(x.Pins.ProtectedKeys).Except(request.Prepared.Keys).Any()))
             return new ManagedSecretChanged();
         var now = clock.GetUtcNow().UtcDateTime;

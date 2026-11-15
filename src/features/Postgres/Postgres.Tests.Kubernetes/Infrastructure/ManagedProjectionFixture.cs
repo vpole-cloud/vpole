@@ -39,7 +39,9 @@ internal sealed class ManagedProjectionFixture : IDisposable
             "credentials",
             ["username", "password"],
             _binding,
+            "credentials",
             KubernetesSecretType.BasicAuthentication,
+            ManagedSecretSharing.Shareable,
             DateTime.UtcNow);
         Projection = SecretProjectionFactory.Create(
             _authority,

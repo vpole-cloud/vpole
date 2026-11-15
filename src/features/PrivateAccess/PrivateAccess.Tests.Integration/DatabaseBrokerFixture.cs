@@ -36,6 +36,8 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
     private readonly CancellationTokenSource lifetime = new(TimeSpan.FromSeconds(60));
     private readonly string peerCertificatePath;
     private readonly Uri publicOrigin;
+    private readonly string resourceType;
+    private readonly string endpointId;
     private readonly X509Certificate2 serverCertificate;
     private readonly ConcurrentDictionary<string, PrivateAccessLeaseSnapshot> sessions = new();
     private Task controlReader = Task.CompletedTask;
@@ -52,7 +54,9 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         ClientWebSocket control,
         Uri publicOrigin,
         Uri gatewayOrigin,
-        int backendPort)
+        int backendPort,
+        string resourceType,
+        string endpointId)
     {
         this.app = app;
         this.serverCertificate = serverCertificate;
@@ -62,6 +66,8 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         this.publicOrigin = publicOrigin;
         this.gatewayOrigin = gatewayOrigin;
         this.BackendPort = backendPort;
+        this.resourceType = resourceType;
+        this.endpointId = endpointId;
     }
 
     public int StartedSessions => Volatile.Read(ref started);
@@ -97,7 +103,10 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
         lifetime.Dispose();
     }
 
-    public static async Task<DatabaseBrokerFixture> StartAsync(int backendPort)
+    public static async Task<DatabaseBrokerFixture> StartAsync(
+        int backendPort,
+        string resourceType = "postgresql",
+        string endpointId = "endpoint-a")
     {
         var serverCertificate = Certificate("localhost", true);
         var gatewayCertificate = Certificate("gateway", false);
@@ -267,7 +276,9 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             control,
             new Uri($"wss://127.0.0.1:{publicPort}"),
             new Uri($"wss://127.0.0.1:{gatewayPort}"),
-            backendPort);
+            backendPort,
+            resourceType,
+            endpointId);
         fixture.controlReader = fixture.ReadControlAsync();
         fixture.controlRenewal = fixture.RenewControlAsync();
         return fixture;
@@ -339,10 +350,10 @@ internal sealed class DatabaseBrokerFixture : IAsyncDisposable
             "user-a",
             "grant-a",
             $"session-{id}",
-            "postgresql",
+            resourceType,
             "resource-a",
             "deployment-a",
-            "endpoint-a",
+            endpointId,
             "target-a",
             "cell-a",
             "scope-a",

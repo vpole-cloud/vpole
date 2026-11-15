@@ -39,7 +39,7 @@ public sealed partial class ManagedSecretIntegrationTests(
     public async Task Staged_owner_placement_and_bound_secret_commit_atomically_and_protect_provider_mutations()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -49,7 +49,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "database-credentials",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["password"] = "private-value" },
-                    KubernetesType: ManagedSecretKubernetesType.Opaque),
+                    KubernetesType: ManagedSecretKubernetesType.Opaque,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -117,7 +118,7 @@ public sealed partial class ManagedSecretIntegrationTests(
     public async Task Aborting_owner_creation_removes_encrypted_secret_binding_registration_and_outbox()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -127,7 +128,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "abort-credentials",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["password"] = "private-value" },
-                    KubernetesType: ManagedSecretKubernetesType.Opaque),
+                    KubernetesType: ManagedSecretKubernetesType.Opaque,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -158,7 +160,7 @@ public sealed partial class ManagedSecretIntegrationTests(
     public async Task Owner_release_deletes_unshared_credentials_but_retains_shared_secret_as_unmanaged(bool shared)
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -168,7 +170,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "shared-credentials",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["password"] = "private-value" },
-                    KubernetesType: ManagedSecretKubernetesType.Opaque),
+                    KubernetesType: ManagedSecretKubernetesType.Opaque,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -182,7 +185,7 @@ public sealed partial class ManagedSecretIntegrationTests(
                     DeploymentId: deployment.Id),
                 session: session,
                 ct: default)).Value);
-        var consumer = new ManagedSecretOwner("pole/web-service", Id());
+        var consumer = new ManagedSecretOwner("pole/web-service", Id(), ManagedSecretPurposes.Credentials);
         await StageConsumer(group, consumer, session);
         await session.CommitTransactionAsync();
         if (shared)
@@ -233,7 +236,7 @@ public sealed partial class ManagedSecretIntegrationTests(
     public async Task Owner_cannot_resolve_another_consumers_projection_from_shared_secret()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -243,7 +246,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "owner-credentials",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["password"] = "value" },
-                    KubernetesType: ManagedSecretKubernetesType.Opaque),
+                    KubernetesType: ManagedSecretKubernetesType.Opaque,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -301,7 +305,9 @@ public sealed partial class ManagedSecretIntegrationTests(
             "credentials",
             ["password"],
             binding,
+            "credentials",
             KubernetesSecretType.Opaque,
+            ManagedSecretSharing.Shareable,
             DateTime.UtcNow);
         // Preserve all other metadata to prove identity itself is fenced, independently of binding/version checks.
         var recreated = original with
@@ -339,7 +345,10 @@ public sealed partial class ManagedSecretIntegrationTests(
         var result = await isolated.GetRequiredService<EnsureManagedSecretProjection>()(
             new EnsureManagedSecretProjectionRequest(
                 TenantId: original.TenantId,
-                Owner: new ManagedSecretOwner(binding.Consumer.ResourceType, binding.Consumer.ResourceId),
+                Owner: new ManagedSecretOwner(
+                    binding.Consumer.ResourceType,
+                    binding.Consumer.ResourceId,
+                    ManagedSecretPurposes.Credentials),
                 DeploymentId: projection.DeploymentId),
             ct: default);
         Assert.IsType<ManagedSecretUnavailable>(result.Value);
@@ -350,7 +359,7 @@ public sealed partial class ManagedSecretIntegrationTests(
     public async Task Managed_rotation_keeps_immutable_history_and_rejects_stale_version_and_duplicate_owner()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepare = Services.GetRequiredService<PrepareManagedSecret>();
         var first = Assert.IsType<PreparedManagedSecret>(
             (await prepare(
@@ -361,7 +370,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "rotate-managed",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["username"] = "user", ["password"] = "first" },
-                    KubernetesType: ManagedSecretKubernetesType.BasicAuthentication),
+                    KubernetesType: ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -385,7 +395,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: first.Name,
                     Version: 2,
                     Values: new Dictionary<string, string> { ["username"] = "user", ["password"] = "second" },
-                    KubernetesType: ManagedSecretKubernetesType.BasicAuthentication),
+                    KubernetesType: ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         session.StartTransaction();
         Assert.IsType<ManagedSecretMutationSucceeded>(
@@ -426,7 +437,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "duplicate-owner",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["password"] = "value" },
-                    KubernetesType: ManagedSecretKubernetesType.Opaque),
+                    KubernetesType: ManagedSecretKubernetesType.Opaque,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         session.StartTransaction();
         var duplicateResult = await Services.GetRequiredService<CreateBoundManagedSecret>()(
@@ -447,7 +459,7 @@ public sealed partial class ManagedSecretIntegrationTests(
     public async Task Managed_envelope_rejects_changed_context_or_corrupted_ciphertext(bool changeContext)
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -457,7 +469,8 @@ public sealed partial class ManagedSecretIntegrationTests(
                     Name: "integrity",
                     Version: 1,
                     Values: new Dictionary<string, string> { ["password"] = "private-value" },
-                    KubernetesType: ManagedSecretKubernetesType.Opaque),
+                    KubernetesType: ManagedSecretKubernetesType.Opaque,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct: default)).Value);
         if (changeContext)
         {

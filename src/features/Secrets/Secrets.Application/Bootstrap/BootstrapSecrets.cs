@@ -38,7 +38,8 @@ internal sealed class BootstrapSecrets(
             binding.Usage == SecretBindingUsage.Bootstrap &&
             binding.Consumer.ResourceType == request.Owner.ResourceType &&
             binding.Consumer.ResourceId == request.Owner.ResourceId);
-        if (source is null || grant is null || source.ResourceGroupId != request.Placement.ResourceGroupId ||
+        if (source is null || !source.AllowsSharing || grant is null ||
+            source.ResourceGroupId != request.Placement.ResourceGroupId ||
             source.IsolationScopeId != request.Placement.IsolationScopeId ||
             !SecretProjectionAuthority.IncludesDeployment(grant.Selection, request.Placement.DeploymentId))
             return new BootstrapSecretUnavailable(ConsumerSecretReferenceError.SecretBindingUnavailable);
@@ -113,7 +114,8 @@ internal sealed class BootstrapSecrets(
                     request.CredentialName,
                     1,
                     credentials,
-                    ManagedSecretKubernetesType.BasicAuthentication),
+                    ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 ct);
             if (prepared is ManagedSecretEncryptionUnavailable encryptionFailure)
                 return encryptionFailure;

@@ -14,7 +14,13 @@ export interface SecretMetadata {
   lifecycle: string
   createdAtUtc: string
   updatedAtUtc: string
-  managedBy?: { resourceType: string; resourceId: string; bindingId: string } | null
+  managedBy?: {
+    resourceType: string
+    resourceId: string
+    bindingId: string
+    purpose: string
+    sharingPolicy: 'Shareable' | 'OwnerOnly'
+  } | null
 }
 
 export interface SecretInput {

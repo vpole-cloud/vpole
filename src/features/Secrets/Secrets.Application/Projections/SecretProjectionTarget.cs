@@ -50,7 +50,7 @@ internal sealed class KubernetesSecretProjectionTarget(
         var current = ((SecretProjectionRead)read.Value).Secret;
         var authority = await loadSecret(projection.TenantId, projection.SecretId, ct);
         if (authority?.Revision != projection.DesiredRevision ||
-            !authority.Bindings.Any(x => x.Id == projection.BindingId) ||
+            !authority.Bindings.Any(x => x.Id == projection.BindingId && authority.AllowsBinding(x)) ||
             !await HasAuthorizedConsumerAsync(authority, projection, ct))
             return new SecretProjectionDesiredStateChanged();
         if (current is not null && !IsOwned(current, projection))
@@ -210,7 +210,7 @@ internal sealed class KubernetesSecretProjectionTarget(
             return false;
         // A newly authorized binding for the same consumer must survive old cleanup.
         if (!secret.Bindings.Any(binding =>
-                SecretProjectionAuthority.MatchesConsumer(binding, projection) &&
+                secret.AllowsBinding(binding) && SecretProjectionAuthority.MatchesConsumer(binding, projection) &&
                 SecretProjectionAuthority.IncludesDeployment(binding.Selection, projection.DeploymentId)))
             return false;
         var placement = await loadPlacement(

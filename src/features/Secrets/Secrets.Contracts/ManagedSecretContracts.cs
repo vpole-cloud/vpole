@@ -9,10 +9,23 @@ public enum ManagedSecretKubernetesType
     BasicAuthentication,
 }
 
+public enum ManagedSecretSharingPolicy
+{
+    Shareable,
+    OwnerOnly,
+}
+
+/// <summary>Resource identity plus the exact provider-owned credential purpose; purpose is never a Secret ID.</summary>
 public sealed record ManagedSecretOwner(
     string ResourceType,
-    string ResourceId
+    string ResourceId,
+    string Purpose
 );
+
+public static class ManagedSecretPurposes
+{
+    public const string Credentials = "credentials";
+}
 
 public sealed record PreparedManagedSecret(
     string SecretId,
@@ -22,7 +35,8 @@ public sealed record PreparedManagedSecret(
     ManagedSecretKubernetesType KubernetesType,
     long Version,
     ImmutableArray<string> Keys,
-    ImmutableArray<byte> EncryptedValues
+    ImmutableArray<byte> EncryptedValues,
+    ManagedSecretSharingPolicy SharingPolicy
 )
 {
     public override string ToString() => $"PreparedManagedSecret({SecretId}, {Version})";
@@ -101,7 +115,7 @@ public delegate Task<ManagedSecretMutationOutcome> RotateManagedSecret(
     IClientSessionHandle session,
     CancellationToken ct);
 
-/// <summary>Removes the owner; shared Secrets remain as ordinary tenant Secrets.</summary>
+/// <summary>Releases only the selected purpose; shared Secrets remain as ordinary tenant Secrets.</summary>
 public delegate Task<ManagedSecretMutationOutcome> ReleaseManagedSecret(
     ReleaseManagedSecretRequest request,
     IClientSessionHandle session,
@@ -129,7 +143,8 @@ public sealed record PrepareManagedSecretRequest(
     string Name,
     long Version,
     IReadOnlyDictionary<string, string> Values,
-    ManagedSecretKubernetesType KubernetesType
+    ManagedSecretKubernetesType KubernetesType,
+    ManagedSecretSharingPolicy SharingPolicy
 )
 {
     public override string ToString() => $"PrepareManagedSecretRequest({SecretId}, {Version}, [REDACTED])";

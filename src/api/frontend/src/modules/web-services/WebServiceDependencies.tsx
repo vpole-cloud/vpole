@@ -278,6 +278,14 @@ export function WebServiceDependencies({
             Create Redis
           </Button>
           <Button
+            onClick={() =>
+              navigation.openResource({ resourceTypeId: 'pole/seaweedfs', resourceId: 'create' })
+            }
+            disabled={!canWrite}
+          >
+            Create SeaweedFS
+          </Button>
+          <Button
             onClick={() => {
               void connections.refresh()
               void secrets.refresh()
@@ -676,6 +684,7 @@ function DependencySecretAccess({
   )
   const eligible = Boolean(
     secret &&
+    secret.managedBy?.sharingPolicy !== 'OwnerOnly' &&
     secret.resourceGroupId === service.resourceGroupId &&
     secret.isolationScopeId === service.isolationScopeId &&
     live.length &&
@@ -753,8 +762,13 @@ function DependencySecretAccess({
         >
           <option value="">Select a Secret or leave this step optional</option>
           {secrets.map((item) => (
-            <option key={item.id} value={item.id}>
+            <option
+              key={item.id}
+              value={item.id}
+              disabled={item.managedBy?.sharingPolicy === 'OwnerOnly'}
+            >
               {item.name}
+              {item.managedBy?.sharingPolicy === 'OwnerOnly' ? ' · owner only' : ''}
               {item.resourceGroupId !== service.resourceGroupId ||
               item.isolationScopeId !== service.isolationScopeId
                 ? ' · unavailable in this application scope'
@@ -782,7 +796,12 @@ function DependencySecretAccess({
           <p>
             Current version {secret.currentVersion} · available keys: {secret.keyNames.join(', ')}
           </p>
-          {!eligible && (
+          {secret.managedBy?.sharingPolicy === 'OwnerOnly' && (
+            <Notice>
+              This credential is reserved for its owning resource and cannot be shared.
+            </Notice>
+          )}
+          {!eligible && secret.managedBy?.sharingPolicy !== 'OwnerOnly' && (
             <Notice tone="error">
               Secret bindings require the same resource group and isolation scope on every
               application deployment. Network permission uses different rules. Select an eligible

@@ -72,4 +72,35 @@ public sealed class SecretBindingPlanningTests(
                 session,
                 default));
     }
+
+    [Fact]
+    public async Task Declarative_binding_planning_rejects_owner_only_managed_credentials()
+    {
+        await Apply();
+        var declaration = Services.GetRequiredService<ManifestCompiler>()
+            .Compile(Snapshot())
+            .Declarations
+            .Single(item => item.Address.Kind == "SecretBinding");
+        var secret = await Secrets.Find(item => item.TenantId == Data.TenantId).SingleAsync();
+        var binding = Assert.Single(secret.Bindings);
+        await Secrets.ReplaceOneAsync(
+            item => item.Id == secret.Id,
+            secret with
+            {
+                Bindings = [],
+                Management = new ProviderManagedSecret(
+                    binding.Consumer.ResourceType,
+                    binding.Consumer.ResourceId,
+                    "admin",
+                    Id(),
+                    KubernetesSecretType.Opaque,
+                    ManagedSecretSharing.OwnerOnly),
+            });
+        using var session = await Fixture.Database.Client.StartSessionAsync();
+        var request = new PlanDeclarationRequest(
+            new DeclarationPlanningScope(Data.TenantId, source, null),
+            declaration);
+        Assert.IsType<BlockedDeclarationPlan>(
+            await Services.GetRequiredService<DeclarativeResourcePlanner>().PlanAsync(request, session, default));
+    }
 }

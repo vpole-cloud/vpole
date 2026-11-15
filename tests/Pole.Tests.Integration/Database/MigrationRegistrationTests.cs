@@ -42,8 +42,10 @@ public sealed class MigrationRegistrationTests
             new[]
             {
                 "pole.postgres/6a700003b213917a38c38001",
+                "pole.postgres/6a700056b213917a38c38056",
                 "pole.redis/6a700001b213917a38c38001",
                 "pole.redis/6a700002b213917a38c38001",
+                "pole.seaweedfs/6a700026b213917a38c38001",
             },
             scoped.Select(migration => migration.DurableId).Order(StringComparer.Ordinal));
         Assert.Equal(

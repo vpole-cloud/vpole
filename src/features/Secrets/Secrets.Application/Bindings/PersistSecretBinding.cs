@@ -49,6 +49,8 @@ internal sealed class MongoPersistSecretBinding(
                     .FirstOrDefaultAsync(token);
                 if (current is null)
                     return tx.Abort(new SecretMissing());
+                if (!current.AllowsSharing)
+                    return tx.Abort(new SecretReferenceRejected());
                 if (current.Bindings.Length >= Secret.MaximumBindings)
                     return tx.Abort(new SecretBindingLimitReached());
                 if (current.Bindings.Any(x =>

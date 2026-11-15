@@ -53,7 +53,7 @@ public sealed class PostgresBootstrapTests
     {
         var request = Request();
         request = new PostgresBootstrapRequest(
-            request.Cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)),
+            request.Cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous)),
             request.Placement,
             request.Capacity);
         var initializer = new PostgresBootstrapInitializer(
@@ -75,7 +75,7 @@ public sealed class PostgresBootstrapTests
     {
         var request = Request();
         request = new PostgresBootstrapRequest(
-            request.Cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)),
+            request.Cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous)),
             request.Placement,
             request.Capacity);
         var initializer = new PostgresBootstrapInitializer(
@@ -121,7 +121,7 @@ public sealed class PostgresBootstrapTests
                 cluster.GroupId,
                 ObjectId.GenerateNewId().ToString(),
                 ObjectId.GenerateNewId().ToString()),
-            new PostgresDesiredCapacity(1, 20));
+            new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous));
     }
 
     private static IClientSessionHandle Session() => DispatchProxy.Create<IClientSessionHandle, TransactionSession>();

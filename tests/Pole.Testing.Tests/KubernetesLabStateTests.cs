@@ -189,11 +189,29 @@ public sealed class KubernetesLabStateTests
         Assert.False(state.Runtime.TestcontainersRyukDisabled);
         Assert.True(state.GetRequiredTarget("default").HasCapability("topology"));
         Assert.True(state.GetRequiredTarget("default").HasCapability("harbor"));
+        Assert.True(state.GetRequiredTarget("default").HasCapability("seaweedfs"));
+        Assert.False(state.GetRequiredTarget("workload-a").HasCapability("seaweedfs"));
         Assert.True(state.GetRequiredTarget("workload-a").HasCapability("monitoring"));
         Assert.False(state.GetRequiredTarget("workload-a").HasCapability("harbor"));
         Assert.Equal("harbor.pole.localhost:5002", state.Services!.Harbor.RegistryHost);
         Assert.Equal("buildkit", state.Services.BuildKit.Service);
         Assert.Equal(Path.Combine(environment.Root, "bin", "buildctl"), state.BuildctlPath);
+    }
+
+    [Fact]
+    public void Full_profile_rejects_missing_seaweedfs_even_when_target_capabilities_agree()
+    {
+        using var environment = new LabEnvironment();
+        var statePath = environment.WriteFullState();
+        var state = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
+        state["overlays"] = new JsonArray("monitoring", "cert-manager", "cnpg", "harbor", "buildkit");
+        var capabilities = state["targets"]![0]!["capabilities"]!.AsArray();
+        var seaweedfs = capabilities.Single(value => value!.GetValue<string>() == "seaweedfs");
+        capabilities.Remove(seaweedfs);
+        File.WriteAllText(statePath, state.ToJsonString());
+
+        var exception = Assert.Throws<InvalidOperationException>(() => KubernetesLabState.Load(statePath));
+        Assert.Contains("exact checked-in overlay contract", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -430,7 +448,7 @@ public sealed class KubernetesLabStateTests
                 profile = "full",
                 phase = "ready",
                 runtime = DockerRuntime(),
-                overlays = new[] { "monitoring", "cert-manager", "cnpg", "harbor", "buildkit" },
+                overlays = new[] { "monitoring", "cert-manager", "cnpg", "seaweedfs", "harbor", "buildkit" },
                 tools = new { kubectlPath, buildctlPath },
                 registry = new
                 {
@@ -465,7 +483,10 @@ public sealed class KubernetesLabStateTests
                         6552,
                         8089,
                         8449,
-                        [.. baseline, "topology", "monitoring", "cert-manager", "cnpg", "harbor", "buildkit"]),
+                        [
+                            .. baseline, "topology", "monitoring", "cert-manager", "cnpg", "seaweedfs", "harbor",
+                            "buildkit"
+                        ]),
                     Target("workload-a", "pole-lab-workload-a", 6553, 8090, 8450, [.. baseline, "monitoring"]),
                     Target("workload-b", "pole-lab-workload-b", 6554, 8091, 8451, [.. baseline, "monitoring"]),
                 },

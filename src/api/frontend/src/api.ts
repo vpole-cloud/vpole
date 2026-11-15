@@ -71,6 +71,7 @@ export {
 } from './modules/redis/api'
 export {
   fetchPostgresClusters,
+  fetchPostgresManagedDatabaseCandidates,
   fetchPostgresCluster,
   fetchPostgresCapabilities,
   createPostgresCluster,
@@ -118,3 +119,16 @@ export {
   deleteResourceConnection,
 } from './modules/web-services/connectionApi'
 export { RuntimeLogUnavailableError, readResourceRuntimeLogs } from './api/runtimeLogApi'
+
+export {
+  createSeaweedFS,
+  getSeaweedFS,
+  listSeaweedFS,
+  getSeaweedFSCapacity,
+  updateSeaweedFSTags,
+  listSeaweedFSBuckets,
+  createSeaweedFSBucket,
+  updateSeaweedFSLifecycle,
+  rotateSeaweedFSBucketKey,
+  revealSeaweedFSCredential,
+} from './modules/seaweedfs/api'

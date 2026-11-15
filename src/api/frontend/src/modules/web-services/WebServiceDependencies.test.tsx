@@ -100,7 +100,9 @@ const secret = {
 let connectionItems: unknown[]
 let writesFail: boolean
 let endpointLabel: string
-let currentSecret: typeof secret & { managedBy?: { bindingId: string } }
+let currentSecret: typeof secret & {
+  managedBy?: { bindingId: string; sharingPolicy?: 'Shareable' | 'OwnerOnly' }
+}
 let liveConnection: FakeConnection
 let usageItems: SecretUsage[]
 let heldChoices: Promise<Response> | undefined
@@ -679,6 +681,24 @@ it.each([
     expect(secretWrites()).toHaveLength(0)
   },
 )
+
+it('excludes owner-only credentials from application Secret authorization', async () => {
+  currentSecret = {
+    ...currentSecret,
+    managedBy: { bindingId: 'owner', sharingPolicy: 'OwnerOnly' },
+  }
+  await selectedSecret(false)
+  expect(container.querySelector<HTMLOptionElement>('option[value="secret"]')?.disabled).toBe(true)
+  expect(container.textContent).toContain(
+    'This credential is reserved for its owning resource and cannot be shared.',
+  )
+  expect(
+    [...container.querySelectorAll('button')].some(
+      (item) => item.textContent === 'Authorize Secret for all application deployments',
+    ),
+  ).toBe(false)
+  expect(secretWrites()).toHaveLength(0)
+})
 
 it('requires initial usage and current permission/scope for Secret commands', async () => {
   usageItems = []

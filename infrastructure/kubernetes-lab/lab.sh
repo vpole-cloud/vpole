@@ -67,7 +67,7 @@ kubeconfig, and never switches the user's current context.
 
 The default full profile installs every required overlay on the default target and
 monitoring on both workload targets. Focused profiles accept optional overlays:
-monitoring, cert-manager, cnpg. Harbor and BuildKit belong to the full profile.
+monitoring, cert-manager, cnpg, seaweedfs. Harbor and BuildKit belong to the full profile.
 EOF
 }
 
@@ -179,11 +179,11 @@ parse_profile_and_overlays() {
     if [[ "${PROFILE}" == full ]]; then
         [[ "${#requested_overlays[@]}" -eq 0 ]] \
             || die "The full profile has a fixed target-scoped overlay contract; do not pass --overlay."
-        PROFILE_OVERLAYS=(monitoring cert-manager cnpg harbor buildkit)
+        PROFILE_OVERLAYS=(monitoring cert-manager cnpg seaweedfs harbor buildkit)
         return
     fi
     local candidate
-    for candidate in monitoring cert-manager cnpg harbor buildkit; do
+    for candidate in monitoring cert-manager cnpg seaweedfs harbor buildkit; do
         local requested
         for requested in "${requested_overlays[@]}"; do
             [[ "${requested}" == "${candidate}" ]] && PROFILE_OVERLAYS+=("${candidate}")
@@ -192,7 +192,7 @@ parse_profile_and_overlays() {
     local requested
     for requested in "${requested_overlays[@]}"; do
         case "${requested}" in
-            monitoring|cert-manager|cnpg) ;;
+            monitoring|cert-manager|cnpg|seaweedfs) ;;
             harbor|buildkit) die "Overlay '${requested}' is part of the fixed full profile and is not available on focused profiles." ;;
             *) die "Unknown overlay '${requested}'." ;;
         esac
@@ -870,7 +870,7 @@ validate_state_contract() {
     local -A seen_overlays=()
     for overlay in "${PROFILE_OVERLAYS[@]}"; do
         case "${overlay}" in
-            monitoring|cert-manager|cnpg|harbor|buildkit) ;;
+            monitoring|cert-manager|cnpg|seaweedfs|harbor|buildkit) ;;
             *) die "Lab state contains unknown overlay '${overlay}'." ;;
         esac
         [[ -z "${seen_overlays[${overlay}]:-}" ]] \
@@ -884,7 +884,7 @@ validate_state_contract() {
     if [[ "${PROFILE}" == full ]]; then
         local actual_full_overlays
         actual_full_overlays="$(jq --compact-output '.overlays | sort' "${LAB_STATE_FILE}")"
-        [[ "${actual_full_overlays}" == '["buildkit","cert-manager","cnpg","harbor","monitoring"]' ]] \
+        [[ "${actual_full_overlays}" == '["buildkit","cert-manager","cnpg","harbor","monitoring","seaweedfs"]' ]] \
             || die "The full lab state does not contain the exact checked-in overlay contract."
     fi
 
@@ -1168,6 +1168,33 @@ install_cnpg_overlay() {
     fi
 }
 
+# The release archive is checked against the upstream Helm index SHA-256 before use.
+# This helper also serves the isolated SeaweedFS acceptance runner.
+ensure_seaweedfs_chart() {
+    local chart="${LAB_STATE_ROOT}/charts/seaweedfs-operator-${SEAWEEDFS_OPERATOR_CHART_VERSION}.tgz"
+    mkdir -p -- "$(dirname -- "${chart}")"
+    if [[ ! -f "${chart}" ]] || ! printf '%s  %s\n' "${SEAWEEDFS_OPERATOR_CHART_SHA256}" "${chart}" | sha256sum --check --status; then
+        curl --fail --location --silent --show-error \
+            "https://github.com/seaweedfs/seaweedfs-operator/releases/download/seaweedfs-operator-${SEAWEEDFS_OPERATOR_CHART_VERSION}/seaweedfs-operator-${SEAWEEDFS_OPERATOR_CHART_VERSION}.tgz" \
+            --output "${chart}.download"
+        printf '%s  %s\n' "${SEAWEEDFS_OPERATOR_CHART_SHA256}" "${chart}.download" | sha256sum --check --status \
+            || die "SeaweedFS operator chart failed its pinned SHA-256 check."
+        mv -- "${chart}.download" "${chart}"
+    fi
+    printf '%s' "${chart}"
+}
+
+install_seaweedfs_overlay() {
+    local index="$1"
+    local chart
+    chart="$(ensure_seaweedfs_chart)"
+    run_helm_for_target "${index}" upgrade --install pole-lab-seaweedfs "${chart}" \
+        --namespace pole-lab-seaweedfs --create-namespace --wait --timeout 5m \
+        --set fullnameOverride=pole-lab-seaweedfs \
+        --set image.tag="${SEAWEEDFS_OPERATOR_VERSION}" \
+        --set grafanaDashboard.enabled=false
+}
+
 install_harbor_overlay() {
     local index="$1"
     need openssl
@@ -1266,6 +1293,7 @@ install_overlays() {
                 monitoring) install_monitoring_overlay "${index}" ;;
                 cert-manager) install_cert_manager_overlay "${index}" ;;
                 cnpg) install_cnpg_overlay "${index}" ;;
+                seaweedfs) install_seaweedfs_overlay "${index}" ;;
                 harbor) install_harbor_overlay "${index}" ;;
                 buildkit) install_buildkit_overlay "${index}" ;;
             esac
@@ -1631,6 +1659,12 @@ verify_lab() {
                         "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" --namespace pole-lab-cnpg \
                             rollout status deployment/plugin-barman-cloud --timeout=90s >/dev/null
                     fi
+                    ;;
+                seaweedfs)
+                    "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" \
+                        wait --for=condition=Established crd/seaweeds.seaweed.seaweedfs.com --timeout=90s >/dev/null
+                    "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" --namespace pole-lab-seaweedfs \
+                        rollout status deployment/pole-lab-seaweedfs --timeout=90s >/dev/null
                     ;;
                 harbor)
                     "${KUBECTL_BIN}" --kubeconfig "${kubeconfig_path}" --context "${context}" --namespace pole-lab-harbor wait --for=condition=Available deployment --all --timeout=180s >/dev/null

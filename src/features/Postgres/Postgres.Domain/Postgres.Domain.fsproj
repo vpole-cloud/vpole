@@ -16,6 +16,7 @@
         <Compile Include="PostgresProvisioning.fs"/>
         <Compile Include="PostgresRecovery.fs"/>
         <Compile Include="PostgresCluster.fs"/>
+        <Compile Include="PostgresManagedDatabase.fs"/>
     </ItemGroup>
 
     <ItemGroup>
