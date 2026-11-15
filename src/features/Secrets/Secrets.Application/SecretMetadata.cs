@@ -36,12 +36,19 @@ public sealed record SecretMetadata(
         secret.UpdatedAtUtc,
         secret.KeyNames.Where(key => !secret.HasValue(key)).ToArray(),
         ManagedBy: secret.Management is ProviderManagedSecret owner
-            ? new SecretManagedOwnerMetadata(owner.ResourceType, owner.ResourceId, owner.BindingId)
+            ? new SecretManagedOwnerMetadata(
+                owner.ResourceType,
+                owner.ResourceId,
+                owner.BindingId,
+                owner.Purpose,
+                owner.Sharing.ToString())
             : null);
 }
 
 public sealed record SecretManagedOwnerMetadata(
     string ResourceType,
     string ResourceId,
-    string BindingId
+    string BindingId,
+    string Purpose,
+    string SharingPolicy
 );

@@ -39,6 +39,7 @@ public sealed class ModuleBoundaryArchitectureTests
             ["WebServices"] = FeatureRole.BuiltIn,
             ["Postgres"] = FeatureRole.ServiceProvider,
             ["RedisServices"] = FeatureRole.ServiceProvider,
+            ["SeaweedFS"] = FeatureRole.ServiceProvider,
         };
 
     [Fact]

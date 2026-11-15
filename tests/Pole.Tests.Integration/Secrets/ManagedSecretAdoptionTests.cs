@@ -18,7 +18,7 @@ public sealed partial class ManagedSecretIntegrationTests
     public async Task Unnamed_binding_preview_uses_selected_id_and_preserves_pins_without_writes()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
         await StageConsumer(group, owner, session);
@@ -90,7 +90,7 @@ public sealed partial class ManagedSecretIntegrationTests
     public async Task Adoption_checks_identity_inside_Secrets_and_returns_only_fenced_metadata()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -101,7 +101,8 @@ public sealed partial class ManagedSecretIntegrationTests
                     1,
                     new Dictionary<string, string>
                         { ["username"] = "application", ["password"] = "protected-password" },
-                    ManagedSecretKubernetesType.BasicAuthentication),
+                    ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();
@@ -149,7 +150,7 @@ public sealed partial class ManagedSecretIntegrationTests
     public async Task Adoption_fence_rejects_rotation_since_preview()
     {
         var group = await DbContext.InsertResourceGroupAsync(Data.SeedResourceGroup());
-        var owner = new ManagedSecretOwner("pole/postgresql", Id());
+        var owner = new ManagedSecretOwner("pole/postgresql", Id(), ManagedSecretPurposes.Credentials);
         var prepared = Assert.IsType<PreparedManagedSecret>(
             (await Services.GetRequiredService<PrepareManagedSecret>()(
                 new PrepareManagedSecretRequest(
@@ -159,7 +160,8 @@ public sealed partial class ManagedSecretIntegrationTests
                     "adoption-rotation",
                     1,
                     new Dictionary<string, string> { ["username"] = "application", ["password"] = "old-password" },
-                    ManagedSecretKubernetesType.BasicAuthentication),
+                    ManagedSecretKubernetesType.BasicAuthentication,
+                    ManagedSecretSharingPolicy.Shareable),
                 default)).Value);
         using var session = await Fixture.Client.StartSessionAsync();
         session.StartTransaction();

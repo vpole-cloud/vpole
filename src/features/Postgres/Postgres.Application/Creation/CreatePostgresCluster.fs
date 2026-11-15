@@ -25,7 +25,8 @@ type PostgresCreationConfiguration =
       Storage: int option
       StorageProfileId: string
       ComputeProfileId: string option
-      Placement: PlacementRequest option }
+      Placement: PlacementRequest option
+      ReplicationMode: PostgresReplicationMode option }
 
 type PostgresRestorePlacement = { RuntimeCellId: string }
 
@@ -183,7 +184,8 @@ module private CreatePostgresClusterWorkflow =
                                 request.Configuration.StorageProfileId,
                                 { Id = Some request.ResourceId
                                   Instances = defaultArg request.Configuration.Instances PostgresCluster.DefaultInstances
-                                  Storage = requestedStorage }
+                                  Storage = requestedStorage
+                                  ReplicationMode = defaultArg request.Configuration.ReplicationMode PostgresReplicationMode.Asynchronous }
                             )
 
                         let cluster = { cluster with Spec = { cluster.Spec with Bootstrap = bootstrap } }
@@ -273,7 +275,9 @@ module private CreatePostgresClusterWorkflow =
                                             plan.Target,
                                             plan.Compute,
                                             plan.Storage,
-                                            ResourcePlacementCapability.SingleTarget
+                                            ResourcePlacementCapability.SingleTarget,
+                                            FixedReplicas = plan.Cluster.Spec.Instances,
+                                            ResourceRevision = plan.Cluster.Revision
                                         ),
                                         transaction.Session,
                                         ct

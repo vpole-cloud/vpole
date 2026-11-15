@@ -60,7 +60,7 @@ internal sealed class SecretBindingPlanning(
             binding.DeclarationName != request.Address.Name)
             return new DeclarationReadBlocked(new DeclarationIdentityChanged());
 
-        if (binding.Selection is not AllSecretDeployments || !consumers.All.Any(item =>
+        if (!secret.AllowsSharing || binding.Selection is not AllSecretDeployments || !consumers.All.Any(item =>
                 item.ResourceType.Value == binding.Consumer.ResourceType && item.Usage == binding.Usage))
             return new DeclarationReadBlocked(
                 new SecretBindingDeclarationRejected(SecretBindingDeclarationError.ImmutableBindingChange));
@@ -104,6 +104,10 @@ internal sealed class SecretBindingPlanning(
             cancellationToken);
         if (secretId is null)
             return new DeclarationReadBlocked(new DeclarationReferenceUnavailable(secretAddress));
+        var secret = await secrets.Find(session, SecretFilters.Identity(request.TenantId, secretId))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (secret is null || !secret.AllowsSharing)
+            return BindingPlanningBlocked(SecretBindingDeclarationError.SecretUnavailable);
 
         var consumerAddress = spec.Consumer;
         var consumerId = await git.ResolveAsync(
@@ -177,7 +181,7 @@ internal sealed class SecretBindingPlanning(
 
         var secret = await secrets.Find(session, SecretFilters.Identity(operation.Context.TenantId, secretId))
             .FirstOrDefaultAsync(ct);
-        if (secret is null)
+        if (secret is null || !secret.AllowsSharing)
             return BindingPlanningBlocked(SecretBindingDeclarationError.SecretUnavailable);
         if (spec.KeyMappings.Keys.Any(key => !secret.KeyNames.Contains(key)))
             return BindingPlanningBlocked(SecretBindingDeclarationError.SecretKeyUnavailable);

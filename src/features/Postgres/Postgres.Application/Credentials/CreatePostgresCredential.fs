@@ -32,7 +32,8 @@ type PostgresCredentialCreator(prepareSecret: PrepareManagedSecret) =
                         PostgresManagedSecret.name clusterId,
                         1L,
                         values,
-                        ManagedSecretKubernetesType.BasicAuthentication
+                        ManagedSecretKubernetesType.BasicAuthentication,
+                        ManagedSecretSharingPolicy.Shareable
                     ),
                     cancellationToken
                 )

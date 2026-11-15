@@ -562,13 +562,23 @@ public sealed class PostgresBackupReconciliationTests
             "group",
             17,
             "storage",
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some("service"), 1, 10));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some("service"),
+                1,
+                10,
+                PostgresReplicationMode.Asynchronous));
         var cluster = new PostgresCluster(
             created.Id,
             created.TenantId,
             created.Name,
             created.GroupId,
-            new PostgresClusterSpec(1, 10, "storage", 17, new RecoveryPostgresBootstrap(origin)),
+            new PostgresClusterSpec(
+                1,
+                10,
+                "storage",
+                17,
+                new RecoveryPostgresBootstrap(origin),
+                PostgresReplicationMode.Asynchronous),
             created.Revision,
             created.Lifecycle,
             created.Provisioning,

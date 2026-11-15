@@ -1,3 +1,5 @@
+using System.Reflection;
+using Pole.Features.Postgres.Domain;
 using Xunit;
 
 namespace Pole.Tests.Integration.ResourceDeployments;
@@ -8,6 +10,7 @@ public sealed class PlacementAwareAdopterArchitectureTests
     [InlineData("WebServices")]
     [InlineData("RedisServices")]
     [InlineData("Postgres")]
+    [InlineData("SeaweedFS")]
     [InlineData("Functions")]
     public void PlacementAwareAdopter_DoesNotUseTransitionalDefaultTargetOrGroupLookup(string featureName)
     {
@@ -37,26 +40,52 @@ public sealed class PlacementAwareAdopterArchitectureTests
     }
 
     [Theory]
-    [InlineData("WebServices", "WebServices.Domain")]
-    [InlineData("RedisServices", "RedisServices.Domain")]
-    [InlineData("Postgres", "Postgres.Domain")]
-    [InlineData("Functions", "Functions.Domain")]
-    public void LogicalResourceDomain_DoesNotOwnKubernetesNamespace(string featureName, string domainProject)
+    [InlineData(typeof(Pole.Features.WebServices.Domain.WebService))]
+    [InlineData(typeof(Pole.Features.RedisServices.Domain.Redis))]
+    [InlineData(typeof(PostgresCluster))]
+    [InlineData(typeof(Pole.Features.SeaweedFS.Domain.SeaweedFSService))]
+    [InlineData(typeof(Pole.Features.Functions.Domain.FunctionApp))]
+    public void LogicalResourceDomain_DoesNotOwnKubernetesNamespace(Type resourceType)
     {
-        var domainPath = Path.Combine(FindRepositoryRoot(), "src", "features", featureName, domainProject);
-        var offenders = Directory.EnumerateFiles(domainPath, "*", SearchOption.AllDirectories)
-            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal) ||
-                path.EndsWith(".fs", StringComparison.Ordinal))
-            .Where(path => File.ReadAllText(path).Contains("KubernetesNamespace", StringComparison.Ordinal))
+        var properties = resourceType.Assembly
+            .GetTypes()
+            .SelectMany(type =>
+                type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .ToArray();
+        // Placement belongs to ResourceDeployments. Only the provider's independent cleanup record
+        // retains the old destination so it can finish deleting native objects after teardown.
+        var namespaceOwners = properties.Where(property => property.Name == "KubernetesNamespace")
+            .Select(property => property.DeclaringType)
+            .ToArray();
+        if (resourceType == typeof(PostgresCluster))
+            Assert.Equal(typeof(PostgresDatabaseTarget), Assert.Single(namespaceOwners));
+        else
+            Assert.Empty(namespaceOwners);
 
-        Assert.Empty(offenders);
+        var references = properties.Where(property =>
+                RefersTo(property.PropertyType, typeof(PostgresDatabaseTarget)) || RefersTo(
+                    property.PropertyType,
+                    typeof(PostgresManagedDatabase)))
+            .ToArray();
+        if (resourceType == typeof(PostgresCluster))
+        {
+            var cleanupTarget = Assert.Single(references);
+            Assert.Equal(typeof(PostgresManagedDatabase), cleanupTarget.DeclaringType);
+            Assert.Equal(nameof(PostgresManagedDatabase.Target), cleanupTarget.Name);
+        }
+        else
+            Assert.Empty(references);
     }
+
+    private static bool RefersTo(Type propertyType, Type target) => propertyType == target ||
+        propertyType.IsArray && RefersTo(propertyType.GetElementType()!, target) || propertyType.IsGenericType &&
+        propertyType.GetGenericArguments().Any(argument => RefersTo(argument, target));
 
     [Theory]
     [InlineData("WebServices", "WebServices.Application", "WebServices.Application.csproj")]
     [InlineData("RedisServices", "RedisServices.Application", "RedisServices.Application.csproj")]
     [InlineData("Postgres", "Postgres.Application", "Postgres.Application.fsproj")]
+    [InlineData("SeaweedFS", "SeaweedFS.Application", "SeaweedFS.Application.csproj")]
     [InlineData("Functions", "Functions.Application", "Functions.Application.csproj")]
     public void PlacementAwareAdopter_ReferencesComputeProfileContractsNotApplication(
         string featureName,

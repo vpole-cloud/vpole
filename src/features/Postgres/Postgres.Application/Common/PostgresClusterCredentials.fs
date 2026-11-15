@@ -13,7 +13,7 @@ type PostgresClusterCredentials =
 [<RequireQualifiedAccess>]
 module PostgresManagedSecret =
     let owner clusterId =
-        ManagedSecretOwner(PostgresResourceDeployment.ResourceType.Value, clusterId)
+        ManagedSecretOwner(PostgresResourceDeployment.ResourceType.Value, clusterId, ManagedSecretPurposes.Credentials)
 
     let name clusterId = $"postgres-{clusterId}-credentials"
     [<Literal>]

@@ -17,6 +17,8 @@ using Pole.Features.Postgres.Events;
 using Pole.Features.PrivateAccess.Runtime;
 using Pole.Features.Realtime.Application;
 using Pole.Features.RedisServices.Application;
+using Pole.Features.SeaweedFS.Application;
+using Pole.Features.SeaweedFS.Events;
 using Pole.Features.RedisServices.Events;
 using Pole.Features.ResourceConnections.Application;
 using Pole.Features.ResourceConnections.Events;
@@ -40,6 +42,7 @@ Assembly[] serviceAssemblies =
     typeof(FunctionRuntimeFeature).Assembly,
     typeof(BackupsFeature).Assembly,
     typeof(RedisServicesFeatureRegistration).Assembly,
+    typeof(SeaweedFSFeatureRegistration).Assembly,
     typeof(ResourceConnectionsFeature).Assembly,
     typeof(PostgresFeatureRegistration).Assembly,
 ];
@@ -49,6 +52,7 @@ Assembly[] serviceEventAssemblies =
     typeof(FunctionAppCreatedEvent).Assembly,
     typeof(BackupConfigurationChangedEvent).Assembly,
     typeof(RedisServiceCreatedEvent).Assembly,
+    typeof(SeaweedFSServiceCreatedEvent).Assembly,
     typeof(ResourceConnectionCreatedEvent).Assembly,
     typeof(PostgresClusterCreatedEvent).Assembly,
 ];
@@ -74,6 +78,7 @@ builder.Services
     .AddWebServicesFeature()
     .AddBackupsFeature()
     .AddRedisServicesFeature()
+    .AddSeaweedFSFeature()
     .AddResourceConnectionsFeature()
     .AddPostgresFeature(configuration)
     .AddServiceMigrations()
@@ -136,6 +141,8 @@ app.Services
     .ScheduleResourceDeploymentRecurringJobs()
     .ScheduleResourceConnectionRecurringJobs()
     .ScheduleSecretProjectionRecurringJobs()
+    .SchedulePostgresManagedDatabaseRecurringJobs()
+    .ScheduleSeaweedFSRecurringJobs()
     .ScheduleContainerRegistryRecurringJobs();
 
 app.MapPoleCliDiscovery(configuration);

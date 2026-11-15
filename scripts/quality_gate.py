@@ -434,6 +434,19 @@ def run_backend(directory, steps=None, tests=None, profile="full", limits=None,
                 raise
 
 
+def run_shell_tests(profile, directory, steps):
+    if profile == "pr":
+        # Only these scripts exercise fixtures without starting or connecting to a cluster.
+        lab_tests = ROOT / "infrastructure/kubernetes-lab/tests"
+        scripts = [lab_tests / name for name in (
+            "harbor-dns.sh", "lifecycle-lock.sh", "recovery.sh", "seaweedfs-overlay.sh", "verification-port-forward.sh",
+        )]
+    else:
+        scripts = sorted((ROOT / "infrastructure").glob("**/tests/*.sh"))
+    for index, script in enumerate(scripts):
+        execute(f"shell-{index}-{script.stem}", ["bash", str(script)], directory, steps)
+
+
 def run_full(base, profile="full", config=None):
     started = time.monotonic()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
@@ -451,12 +464,11 @@ def run_full(base, profile="full", config=None):
         projects = selected_projects(profile)
         receipt["projects"] = projects
         execute("automation", [sys.executable, "scripts/run_script_tests.py", str(directory / "scripts.json")], directory, steps)
-        for index, shell_test in enumerate(sorted((ROOT / "infrastructure").glob("**/tests/*.sh"))):
-            execute(f"shell-{index}", ["bash", str(shell_test)], directory, steps)
         if profile == "full":
             capture_headroom(directory, "before-lab", include_lab=False)
             execute("lab-verify", ["bash", "infrastructure/kubernetes-lab/lab.sh", "verify"], directory, steps)
             capture_headroom(directory, "after-lab")
+        run_shell_tests(profile, directory, steps)
         execute("frontend-install", ["npm", "ci", "--prefix", "src/api/frontend"], directory, steps)
         execute("restore", ["dotnet", "restore", "Pole.slnx", *build_options(settings["buildMaxCpuCount"])], directory, steps)
         execute("build", ["dotnet", "build", "Pole.slnx", "--no-restore", *build_options(settings["buildMaxCpuCount"])], directory, steps)
@@ -596,6 +608,8 @@ def main():
         if name == "run":
             sub.add_argument("--profile", choices=PROFILES, default="pr")
             sub.add_argument("--config", type=Path)
+    shell = commands.add_parser("shell-tests")
+    shell.add_argument("--profile", choices=PROFILES, required=True)
     commands.add_parser("verify")
     commands.add_parser("check-ci")
     for name in ("plan", "checks"):
@@ -655,6 +669,10 @@ def main():
         elif args.command == "check-ci":
             required = scope.validate_ci_needs(json.loads(os.environ["GATE_CI_NEEDS"]))
             print(json.dumps({job: "passed" if selected else "not required" for job, selected in required.items()}))
+        elif args.command == "shell-tests":
+            directory = ARTIFACTS / str(time.time_ns())
+            directory.mkdir(parents=True)
+            run_shell_tests(args.profile, directory, [])
         elif args.command == "backend":
             settings = gate_settings(args.config)
             run_backend(args.results_directory, profile=args.profile,

@@ -47,7 +47,7 @@ public sealed class PostgresProvisioningTests
         Assert.Same(storage, request.Storage);
         Assert.Same(compute, request.Compute);
         Assert.Throws<ArgumentException>(() => PostgresPreparedPlacements.createRequest(
-            cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)),
+            cluster.ConfigurePrepared(new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous)),
             placement));
     }
 
@@ -62,7 +62,7 @@ public sealed class PostgresProvisioningTests
         Assert.True(cluster.IsPrepared);
         Assert.Equal("password", prepared.Bootstrap.SourceKey);
         Assert.Throws<InvalidOperationException>(cluster.EnsureConfigured);
-        Assert.Throws<InvalidOperationException>(() => cluster.UpdateDesiredState(2, 30));
+        Assert.Throws<InvalidOperationException>(() => cluster.UpdateDesiredState(2, 30, cluster.Spec.ReplicationMode));
         Assert.DoesNotContain(
             typeof(PostgresBootstrapCredential).GetProperties(),
             property => property.Name is "Password" or "Value" or "Values");
@@ -72,13 +72,16 @@ public sealed class PostgresProvisioningTests
     public void ConfigureTransitionsOnceAndPreservesBootstrapThroughUpdates()
     {
         var prepared = Prepared();
-        var configured = prepared.ConfigurePrepared(new PostgresDesiredCapacity(1, 20));
+        var configured
+            = prepared.ConfigurePrepared(new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous));
         configured.EnsureConfigured();
 
         Assert.Equal(2, configured.Revision);
         Assert.False(configured.IsPrepared);
-        Assert.Same(configured, configured.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)));
-        var changed = configured.UpdateDesiredState(3, 30);
+        Assert.Same(
+            configured,
+            configured.ConfigurePrepared(new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous)));
+        var changed = configured.UpdateDesiredState(3, 30, configured.Spec.ReplicationMode);
         Assert.Equal(3, changed.Revision);
         Assert.Equal(30, changed.Spec.Storage);
         Assert.Equal(
@@ -97,7 +100,11 @@ public sealed class PostgresProvisioningTests
             prepared.GroupId,
             prepared.Spec.Version,
             prepared.Spec.StorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(prepared.Id), 3, 40));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some(prepared.Id),
+                3,
+                40,
+                PostgresReplicationMode.Asynchronous));
 
         var adopted = direct.AdoptConfigured(bootstrap);
 
@@ -111,8 +118,11 @@ public sealed class PostgresProvisioningTests
             Assert.IsType<ConfiguredPostgresProvisioning>(adopted.Provisioning).Bootstrap.CredentialId);
         Assert.Same(adopted, adopted.AdoptConfigured(bootstrap));
         adopted.EnsureConfigured();
-        Assert.Same(adopted, adopted.ConfigurePrepared(new PostgresDesiredCapacity(3, 40)));
-        Assert.Throws<InvalidOperationException>(() => adopted.ConfigurePrepared(new PostgresDesiredCapacity(4, 40)));
+        Assert.Same(
+            adopted,
+            adopted.ConfigurePrepared(new PostgresDesiredCapacity(3, 40, PostgresReplicationMode.Asynchronous)));
+        Assert.Throws<InvalidOperationException>(() =>
+            adopted.ConfigurePrepared(new PostgresDesiredCapacity(4, 40, PostgresReplicationMode.Asynchronous)));
         Assert.Throws<InvalidOperationException>(() => adopted.AdoptConfigured(
             PostgresBootstrapCredential.Create(
                 bootstrap.SourceSecretId,
@@ -135,7 +145,11 @@ public sealed class PostgresProvisioningTests
             prepared.GroupId,
             prepared.Spec.Version,
             prepared.Spec.StorageProfileId,
-            new CreatePostgresClusterOptions(FSharpOption<string>.Some(prepared.Id), 1, 20));
+            new CreatePostgresClusterOptions(
+                FSharpOption<string>.Some(prepared.Id),
+                1,
+                20,
+                PostgresReplicationMode.Asynchronous));
         Assert.Throws<InvalidOperationException>(() =>
             direct.BeginDeletion(DateTime.UtcNow).AdoptConfigured(bootstrap));
     }
@@ -144,13 +158,16 @@ public sealed class PostgresProvisioningTests
     public void ConfigureAcceptsLatestCapacityInOneRevisionBeforeActivation()
     {
         var prepared = Prepared();
-        var configured = prepared.ConfigurePrepared(new PostgresDesiredCapacity(2, 30));
+        var configured
+            = prepared.ConfigurePrepared(new PostgresDesiredCapacity(2, 30, PostgresReplicationMode.Asynchronous));
         Assert.Equal(prepared.Revision + 1, configured.Revision);
         Assert.Equal(2, configured.Spec.Instances);
         Assert.Equal(30, configured.Spec.Storage);
-        Assert.Same(configured, configured.ConfigurePrepared(new PostgresDesiredCapacity(2, 30)));
+        Assert.Same(
+            configured,
+            configured.ConfigurePrepared(new PostgresDesiredCapacity(2, 30, PostgresReplicationMode.Asynchronous)));
         Assert.Throws<InvalidOperationException>(() =>
-            configured.ConfigurePrepared(new PostgresDesiredCapacity(3, 30)));
+            configured.ConfigurePrepared(new PostgresDesiredCapacity(3, 30, PostgresReplicationMode.Asynchronous)));
     }
 
     [Fact]
@@ -158,7 +175,8 @@ public sealed class PostgresProvisioningTests
     {
         var deleting = Prepared().BeginDeletion(DateTime.UtcNow);
         Assert.IsType<DeletingPostgresClusterLifecycle>(deleting.Lifecycle);
-        Assert.Throws<InvalidOperationException>(() => deleting.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)));
+        Assert.Throws<InvalidOperationException>(() =>
+            deleting.ConfigurePrepared(new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous)));
         Assert.Throws<InvalidOperationException>(deleting.EnsureConfigured);
     }
 
@@ -172,14 +190,19 @@ public sealed class PostgresProvisioningTests
         var cluster = state switch
         {
             "prepared" => prepared,
-            "configured" => prepared.ConfigurePrepared(new PostgresDesiredCapacity(1, 20)),
+            "configured" => prepared.ConfigurePrepared(
+                new PostgresDesiredCapacity(1, 20, PostgresReplicationMode.Asynchronous)),
             "direct" => PostgresCluster.Create(
                 prepared.TenantId,
                 prepared.Name,
                 prepared.GroupId,
                 prepared.Spec.Version,
                 prepared.Spec.StorageProfileId,
-                new CreatePostgresClusterOptions(FSharpOption<string>.Some(prepared.Id), 1, 20)),
+                new CreatePostgresClusterOptions(
+                    FSharpOption<string>.Some(prepared.Id),
+                    1,
+                    20,
+                    PostgresReplicationMode.Asynchronous)),
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
         };
         var bson = cluster.ToBsonDocument();
@@ -199,7 +222,11 @@ public sealed class PostgresProvisioningTests
         ObjectId.GenerateNewId().ToString(),
         17,
         TestData.DefaultStorageProfileId,
-        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 20),
+        new CreatePostgresClusterOptions(
+            FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+            1,
+            20,
+            PostgresReplicationMode.Asynchronous),
         PostgresBootstrapCredential.Create(
             ObjectId.GenerateNewId().ToString(),
             "password",

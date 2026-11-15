@@ -160,6 +160,7 @@
         <Project Path="src/features/ResourceConnections/ResourceConnections.Tests/ResourceConnections.Tests.csproj"/>
     </Folder>
     <Folder Name="/features/Postgres/">
+        <Project Path="src/features/Postgres/Postgres.Contracts/Postgres.Contracts.csproj"/>
         <Project Path="src/features/Postgres/Postgres.Migrations/Postgres.Migrations.fsproj"/>
         <Project Path="src/features/Postgres/Postgres.Tests/Postgres.Tests.csproj"/>
         <Project Path="src/features/Postgres/Postgres.Tests.Integration/Postgres.Tests.Integration.csproj"/>
@@ -274,5 +275,13 @@
         <Project Path="src/tools/Pole.Cli.Tests/Pole.Cli.Tests.csproj"/>
         <Project Path="src/tools/Pole.AccessGateway/Pole.AccessGateway.csproj"/>
         <Project Path="src/tools/Pole.AccessGateway.Tests/Pole.AccessGateway.Tests.csproj"/>
+    </Folder>
+    <Folder Name="/features/SeaweedFS/">
+        <Project Path="src/features/SeaweedFS/SeaweedFS.Domain/SeaweedFS.Domain.csproj"/>
+        <Project Path="src/features/SeaweedFS/SeaweedFS.Application/SeaweedFS.Application.csproj"/>
+        <Project Path="src/features/SeaweedFS/SeaweedFS.Events/SeaweedFS.Events.csproj"/>
+        <Project Path="src/features/SeaweedFS/SeaweedFS.Migrations/SeaweedFS.Migrations.csproj"/>
+        <Project Path="src/features/SeaweedFS/SeaweedFS.Tests/SeaweedFS.Tests.csproj"/>
+        <Project Path="src/features/SeaweedFS/SeaweedFS.Tests.Integration/SeaweedFS.Tests.Integration.csproj"/>
     </Folder>
 </Solution>

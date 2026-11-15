@@ -31,7 +31,8 @@ public static class PostgresTestData
             DefaultStorageProfileId,
             FSharpOption<string>.None,
             password,
-            FSharpOption<PlacementRequest>.None),
+            FSharpOption<PlacementRequest>.None,
+            null),
         tenantId ?? TenantId);
 
     public static StorageProfile SeedStorageProfile(

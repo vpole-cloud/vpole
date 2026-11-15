@@ -71,6 +71,46 @@ TCP 5432. CloudNativePG mode also requires an explicit target `PostgresOperator`
 and grants that source TCP 5432 and 8000. Missing operator identity or a failed policy write
 blocks reconciliation with a retryable status; Pole does not open an entire platform namespace.
 
+## Replication and shared metadata hosting
+
+Replication defaults to `Asynchronous`. Three asynchronous replicas do not qualify as a SeaweedFS
+metadata host. Select `SynchronousHa` explicitly, with at least three instances, to require placement
+on separate Kubernetes hosts and one synchronous standby. Writes wait for that standby; a host or
+network outage can therefore pause writes instead of accepting an unsafe asynchronous fallback.
+The selected compute profile must leave enough eligible hosts for every instance. Each instance
+consumes the configured CPU, memory, and persistent storage, so enabling this mode increases capacity
+and storage costs. Repository declarations use `spec.replicationMode: SynchronousHa` and the same
+minimum instance count.
+
+A replicated SeaweedFS resource may select an existing, healthy `SynchronousHa` PostgreSQL resource
+in its tenant and deployment target. Resources may belong to different groups or isolation scopes.
+The candidate list is a preview: admission and runtime verification recheck the owner, current
+placement, three distinct ready hosts, the primary's quorum, and an actual bounded SQL connection.
+A pending quorum, credential projection, or SQL probe keeps SeaweedFS pending.
+
+PostgreSQL owns a separate database and login role for each consumer's stable identity. Generated
+names use the durable claim ID. The login owns only its database, has no superuser, role creation,
+database creation, replication, inherited membership, or RLS bypass privileges, and receives a
+separate encrypted owner-only credential. The database uses UTF-8 with C collation. Before use, a
+bounded provider Job revokes PUBLIC CONNECT, CREATE and TEMPORARY privileges on that owned database
+and verifies the catalog, login, and temporary-table write. It does not alter unrelated databases or
+cluster-wide policies. Access to other databases still follows those databases' own PostgreSQL ACLs.
+
+The Job follows the PostgreSQL compute profile, uses a Secret reference, and has a temporary network
+grant, bounded resources, and a 60-second deadline. It is an admission/recovery check rather than a
+steady workload. The lasting network grant permits TCP 5432 only from that consumer's exact filer
+pods and namespace to the selected PostgreSQL deployment.
+
+An active or purging claim prevents deleting its PostgreSQL host, disabling synchronous HA, or
+reducing the host below three instances. Manual and repository-managed updates share these guards.
+SeaweedFS soft deletion retains the claim, role, database and credential so restore can reuse them.
+Final purge removes only that consumer's owned database, then its role and credential; it preserves
+the host, sibling consumers, and unrelated user data. Purge waits for native deletion to finish.
+A durable tombstone and a recurring recovery job retry interrupted provisioning and cleanup,
+including delayed native writes after a purge. Credential loss or unavailable encryption blocks
+provisioning rather than generating a replacement identity. Retrying a pending consumer converges
+on the existing claim; changing its selected host requires a new consumer identity.
+
 ## Repository GitOps
 
 `PostgresCluster` declarations use `spec.resourceGroup`, `placement.deploymentTarget`, a pinned

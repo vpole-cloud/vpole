@@ -27,6 +27,15 @@
         <Compile Include="PostgresOutcome.fs"/>
         <Compile Include="Mongo\PostgresFilters.fs"/>
         <Compile Include="PostgresPersistenceGuards.fs"/>
+        <Compile Include="ManagedDatabases/PostgresManagedDatabaseGuard.fs"/>
+        <Compile Include="ManagedDatabases/ClaimPostgresManagedDatabase.fs"/>
+        <Compile Include="ManagedDatabases/ReadPostgresManagedDatabaseCandidates.fs"/>
+        <Compile Include="ManagedDatabases/PostgresManagedDatabaseStateStore.fs"/>
+        <Compile Include="ManagedDatabases/PostgresManagedDatabaseManifests.fs"/>
+        <Compile Include="ManagedDatabases/PostgresManagedDatabaseNative.fs"/>
+        <Compile Include="ManagedDatabases/PostgresManagedDatabaseProbe.fs"/>
+        <Compile Include="ManagedDatabases/EnsurePostgresManagedDatabase.fs"/>
+        <Compile Include="ManagedDatabases/PurgePostgresManagedDatabase.fs"/>
         <Compile Include="Connections\PostgresConnectionEndpoints.fs"/>
         <Compile Include="Clusters\LoadPostgresClusterById.fs"/>
         <Compile Include="Clusters\LoadPostgresConnectionEndpoints.fs"/>
@@ -67,6 +76,7 @@
         <Compile Include="Endpoints\GetSupportedPostgresVersions.fs"/>
         <Compile Include="Endpoints\GetPostgresClusterById.fs"/>
         <Compile Include="Endpoints\GetPostgresClusters.fs"/>
+        <Compile Include="Endpoints/GetPostgresManagedDatabaseCandidates.fs"/>
         <Compile Include="Endpoints\AllPostgresEndpoints.fs"/>
         <Compile Include="Kubernetes/PostgresClusterObservation.fs"/>
         <Compile Include="Kubernetes/PostgresOperatorReadiness.fs"/>
@@ -83,6 +93,7 @@
         <Compile Include="Backups/PostgresBackupHistory.fs"/>
         <Compile Include="Backups/PostgresBackupRecovery.fs"/>
         <Compile Include="Backups/PostgresBackupProvider.fs"/>
+        <Compile Include="Jobs/PostgresManagedDatabaseRecoveryJob.fs"/>
         <Compile Include="PostgresFeatureRegistration.fs"/>
     </ItemGroup>
 
@@ -97,6 +108,7 @@
         <PackageReference Include="FluentValidation"/>
         <PackageReference Include="KubernetesClient"/>
         <PackageReference Include="AWSSDK.S3"/>
+        <PackageReference Include="Hangfire.Core"/>
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="../../Backups/Backups.Contracts/Backups.Contracts.csproj"/>
@@ -121,6 +133,7 @@
         <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
         <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj"/>
         <ProjectReference Include="..\Postgres.Domain\Postgres.Domain.fsproj"/>
+        <ProjectReference Include="../Postgres.Contracts/Postgres.Contracts.csproj"/>
         <ProjectReference Include="..\Postgres.Events\Postgres.Events.fsproj"/>
         <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
         <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>

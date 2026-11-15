@@ -51,7 +51,9 @@ public sealed class SecretProjectionKubernetesTests(
             "live projection",
             ["username", "password"],
             binding,
+            "credentials",
             KubernetesSecretType.BasicAuthentication,
+            ManagedSecretSharing.Shareable,
             DateTime.UtcNow);
 
         SecretProjection Projection() => SecretProjectionFactory.Create(

@@ -13,6 +13,7 @@ open Pole.Features.Postgres.Application
 open Pole.Features.Postgres.Application.Clusters
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.ManagedDatabases
 open Pole.Features.Postgres.Application.Lifecycle
 open Pole.Features.Postgres.Domain
 open Pole.Features.Quotas.Contracts
@@ -30,7 +31,8 @@ type PostgresDeclarationLifecycle
         git: IGitOpsMutations,
         guard: IGitLifecyclePlanGuard,
         loadCascade: LoadResourceConnectionCascadePlanning,
-        clock: TimeProvider
+        clock: TimeProvider,
+        databaseGuard: PostgresManagedDatabaseGuard
     ) =
 
     let placementVersions (item: ResourceDeploymentPlanningItem) (current: PostgresCluster) =
@@ -119,7 +121,11 @@ type PostgresDeclarationLifecycle
                     .Find(session, PostgresFilters.byId request.TenantId request.Resource.ResourceId)
                     .FirstOrDefaultAsync(ct)
 
-            if isNull (box current) then
+            let! hasDependencies =
+                databaseGuard.HasLiveDependenciesAsync(request.TenantId, request.Resource.ResourceId, session, ct)
+            if hasDependencies then
+                return ReadLifecycleResourceOutcome(DeclarationReadBlocked(GitLifecycleDependencyRetained()))
+            elif isNull (box current) then
                 return ReadLifecycleResourceOutcome(GitLifecycleResourceAbsent())
             elif
                 request.Resource.Address.Kind <> PostgresDeclarations.Kind
@@ -265,7 +271,8 @@ type PostgresDeclarationLifecycle
 
                                 match removed with
                                 | PostgresError conflict when
-                                    conflict.Reason = PostgresMutationConflictReason.SecretBindingsRequireRemoval
+                                    (conflict.Reason = PostgresMutationConflictReason.SecretBindingsRequireRemoval ||
+                                     conflict.Reason = PostgresMutationConflictReason.ManagedDatabaseDependency)
                                     ->
                                     return
                                         RemoveLifecycleResourceOutcome(

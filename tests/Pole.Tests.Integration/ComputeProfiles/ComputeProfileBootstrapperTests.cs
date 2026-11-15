@@ -50,7 +50,7 @@ public sealed class ComputeProfileBootstrapperTests
         Assert.Equal(1024, profile.Resources.Limits.MemoryMi);
         Assert.Empty(profile.ExtendedResources);
         Assert.Equal(
-            ["pole/function-app", "pole/postgresql", "pole/redis", "pole/web-service"],
+            ["pole/function-app", "pole/postgresql", "pole/redis", "pole/seaweedfs", "pole/web-service"],
             profile.AllowedResourceTypes.Order(StringComparer.Ordinal));
         Assert.Equal(DeploymentTargetId, profile.TargetMappings.Single().DeploymentTargetId);
     }

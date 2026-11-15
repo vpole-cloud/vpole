@@ -131,8 +131,11 @@ public sealed class RepositoryAdoptionCandidateApiTests(
                 "consumerKind=WebService&consumerName=demo-api")).Items);
     }
 
-    [Fact]
-    public async Task Candidate_search_omits_provider_managed_credentials_and_system_default_scopes()
+    [Theory]
+    [InlineData(ManagedSecretSharing.Shareable)]
+    [InlineData(ManagedSecretSharing.OwnerOnly)]
+    public async Task Candidate_search_omits_provider_managed_credentials_and_system_default_scopes(
+        ManagedSecretSharing sharing)
     {
         var source = await Create();
         await Run(source.Id);
@@ -147,8 +150,10 @@ public sealed class RepositoryAdoptionCandidateApiTests(
                 Management = new ProviderManagedSecret(
                     binding.Consumer.ResourceType,
                     binding.Consumer.ResourceId,
+                    "credentials",
                     binding.Id,
-                    KubernetesSecretType.Opaque),
+                    KubernetesSecretType.Opaque,
+                    sharing),
             });
         Assert.Empty((await Candidates(source.Id, "kind=Secret&name=demo-api-credentials")).Items);
         Assert.Empty((await Candidates(source.Id, "kind=IsolationScope&name=default")).Items);

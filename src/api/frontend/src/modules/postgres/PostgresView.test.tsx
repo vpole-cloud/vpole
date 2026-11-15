@@ -29,6 +29,7 @@ const initial: PostgresCluster = {
   lifecycle: 'Active',
   spec: {
     version: 17,
+    replicationMode: 'Asynchronous',
     instances: 1,
     storage: 1,
     storageProfileId: 'disk',
@@ -314,6 +315,56 @@ it('registers typed resource routing, pages the catalog and discovers PostgreSQL
   await tab('New PostgreSQL')
   expect(field('Database password').value).toBe('')
   expect(field('Name').value).toBe('new-database')
+})
+
+it('requires an explicit synchronous HA selection and at least three instances', async () => {
+  await render()
+  await click('New PostgreSQL')
+  expect(field('Replication mode').value).toBe('Asynchronous')
+  await fill('Name', 'metadata-host')
+  await fill('Database password', 'test-only-password')
+  await fill('Replication mode', 'SynchronousHa')
+  await act(async () =>
+    field('Instances')
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+  )
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+  await fill('Instances', '3')
+  await act(async () =>
+    field('Instances')
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+  )
+  const created = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
+  expect(JSON.parse(created[1]!.body as string)).toMatchObject({
+    instances: 3,
+    replicationMode: 'SynchronousHa',
+  })
+})
+
+it('saves synchronous HA explicitly and preserves it in a conflicting draft', async () => {
+  await open()
+  await tab('Configuration')
+  await fill('Replication mode', 'SynchronousHa')
+  await fill('Instances', '3')
+  cluster = { ...cluster, revision: 2, spec: { ...cluster.spec, storage: 5 } }
+  await click('Refresh database')
+  expect(field('Replication mode').value).toBe('SynchronousHa')
+  await click('Review and reapply draft')
+  await click('Reapply changes')
+  expect(field('Replication mode').value).toBe('SynchronousHa')
+  await act(async () =>
+    field('Instances')
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+  )
+  const saved = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!
+  expect(JSON.parse(saved[1]!.body as string)).toEqual({
+    expectedRevision: 2,
+    instances: 3,
+    replicationMode: 'SynchronousHa',
+  })
 })
 
 it('preserves configuration drafts through sections and refresh, confirms dirty close and maps field errors', async () => {

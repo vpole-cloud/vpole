@@ -44,7 +44,7 @@ After envelope-encryption initialization and database migrations, startup runs a
 
 Bootstrap network sources are explicit under `DeploymentTargets:Bootstrap:WorkloadConfiguration:NetworkSources`.
 `Pods` maps each provider-owned source name (for example, `public-ingress`,
-`functions/gateway`, or `postgres/operator`) to a required namespace and nonempty pod-label map.
+`functions/gateway`, `seaweedfs/operator`, or `postgres/operator`) to a required namespace and nonempty pod-label map.
 `Cidrs` maps source names to a canonical
 IPv4 or IPv6 CIDR; validation rejects the unrestricted `/0` prefix, and the administrator
 must limit the range to the required CNI-visible source addresses. A purpose may occur in
@@ -53,25 +53,25 @@ startup. Empty maps configure no source. For example:
 
 ```json
 {
-  "DeploymentTargets": {
-    "Bootstrap": {
-      "TechnicalName": "local",
-      "WorkloadConfiguration": {
-        "NetworkSources": {
-          "Pods": {
-            "public-ingress": {
-              "Namespace": "kube-system",
-              "PodLabels": {
-                "app.kubernetes.io/name": "traefik",
-                "app.kubernetes.io/instance": "traefik-kube-system"
-              }
+    "DeploymentTargets": {
+        "Bootstrap": {
+            "TechnicalName": "local",
+            "WorkloadConfiguration": {
+                "NetworkSources": {
+                    "Pods": {
+                        "public-ingress": {
+                            "Namespace": "kube-system",
+                            "PodLabels": {
+                                "app.kubernetes.io/name": "traefik",
+                                "app.kubernetes.io/instance": "traefik-kube-system"
+                            }
+                        }
+                    },
+                    "Cidrs": {}
+                }
             }
-          },
-          "Cidrs": {}
         }
-      }
     }
-  }
 }
 ```
 
@@ -145,9 +145,9 @@ A platform administrator records an operator attestation with
 
 ```json
 {
-  "enforcement": "Supported",
-  "allowIsolationNotEnforced": false,
-  "revision": 1
+    "enforcement": "Supported",
+    "allowIsolationNotEnforced": false,
+    "revision": 1
 }
 ```
 

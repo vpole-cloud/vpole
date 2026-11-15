@@ -29,7 +29,7 @@ internal sealed class MongoReleaseManagedSecret(
             return new ManagedSecretMutationSucceeded();
         var management = (ProviderManagedSecret)current.Management;
         var released = current.Detach(management.BindingId, clock.GetUtcNow().UtcDateTime);
-        if (!released.Bindings.IsEmpty)
+        if (current.AllowsSharing && !released.Bindings.IsEmpty)
         {
             await secrets.ReplaceOneAsync(
                 session,

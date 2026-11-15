@@ -123,6 +123,6 @@ internal static class ConsumerSecretReferenceAuthority
     internal static bool IncludesKey(
         Secret secret,
         SecretBinding binding,
-        string key) => secret.KeyNames.Contains(key) &&
+        string key) => secret.AllowsBinding(binding) && secret.KeyNames.Contains(key) &&
         (binding.KeyMappings.Count == 0 || binding.KeyMappings.ContainsKey(key));
 }

@@ -25,7 +25,7 @@ Testcontainers, and Aspire variables remain overrides.
 
 The default `full` profile contains:
 
-- a topology-capable `default` cluster with monitoring CRDs, cert-manager, CloudNativePG with the Barman Cloud plugin, Harbor,
+- a topology-capable `default` cluster with monitoring CRDs, cert-manager, CloudNativePG with the Barman Cloud plugin, SeaweedFS Community operator, Harbor,
   and BuildKit;
 - `workload-a` and `workload-b` clusters with monitoring CRDs for multi-target tests;
 - a shared local registry and pinned k3d, kubectl, Helm, and buildctl clients.
@@ -94,7 +94,7 @@ Smaller profiles remain available for focused local work:
 | `multi`    | `pole-lab-default`, `pole-lab-workload-a`, `pole-lab-workload-b` | Multi-target behavior.            |
 | `topology` | `pole-lab-topology` with three agents                            | Scheduling and topology behavior. |
 
-Focused profiles accept repeated `--overlay` values for `monitoring`, `cert-manager`, and `cnpg`.
+Focused profiles accept repeated `--overlay` values for `monitoring`, `cert-manager`, `cnpg`, and `seaweedfs`.
 Harbor and BuildKit are coupled shared services and belong only to the fixed `full` profile, which
 accepts no overlay flags.
 
@@ -197,3 +197,53 @@ claims an old manifest exists, skips rewriting its content, and produces
 is applied on every `up`, including existing generated values. The unchanged
 BuildKit scratch-image push/pull verification exercises the affected path; Redis
 data is not flushed as a recovery shortcut.
+
+## SeaweedFS Community
+
+The `seaweedfs` overlay installs the official operator chart `0.1.47` (operator `1.0.44`).
+The chart archive is verified against the checked-in upstream Helm index SHA-256 before Helm
+runs. The full profile installs it on the default target and requires the current six-overlay contract.
+Focused profiles select it explicitly:
+
+```bash
+./infrastructure/kubernetes-lab/lab.sh up minimal --overlay seaweedfs
+bash infrastructure/kubernetes-lab/tests/seaweedfs-overlay.sh
+```
+
+The overlay provides the controller and CRDs. Workload data is created only by a feature or an
+acceptance fixture. It does not provision shared object-storage credentials or buckets.
+
+The separate acceptance runner creates its own randomly named cluster, network, loopback API
+port, kubeconfig, namespace, and credentials. It does not read or change shared lab `state.json`,
+reset shared services, or stop shared nodes. Its three-node mode uses three independent worker
+nodes plus a dedicated tainted control-plane node, so an abrupt worker loss leaves the API server
+available. Run modes sequentially after coordinating host capacity:
+
+```bash
+bash infrastructure/kubernetes-lab/tests/seaweedfs.sh 1
+bash infrastructure/kubernetes-lab/tests/seaweedfs.sh 3
+```
+
+Both modes exercise real S3 content, bucket-scoped access, in-place rotation of a complete
+externally owned credential Secret, revocation of its old key, and bucket retirement enforced
+against both the managed identity and an additional ordinary identity while a sibling bucket
+remains readable. Three-node mode additionally installs the pinned CloudNativePG controller,
+uses a synchronous three-instance metadata database with required durability and failover
+quorum, verifies node separation and physical two-copy volume placement, abruptly stops only
+its own metadata-primary worker, checks pre-loss content and new writes through a surviving
+gateway, and waits for scheduled repair to restore redundancy before restarting that worker.
+Missing or failed HA assertions fail the command; S3 success alone is not HA evidence.
+
+The runner requires the lab tools, Python 3, jq, OpenSSL, and curl with AWS SigV4 support.
+Temporary state and redacted diagnostics remain under `.tmp/kubernetes-lab/seaweedfs-<run>/`;
+credential files are removed at exit. Cluster teardown first verifies the exact lab-instance
+ownership labels. See the [SeaweedFS operator contract](seaweedfs.md) for the production shape,
+metadata prerequisites, storage accounting, and administrative trust boundary.
+
+For an additional existing-metadata provider scenario, set `POLE_SEAWEEDFS_POST_HA_HOOK` to an
+absolute executable local script while running three-node acceptance. The hook runs only after
+HA and S3 assertions pass. It receives explicit `POLE_SEAWEEDFS_TEST_KUBECONFIG`, `CONTEXT`,
+`KUBECTL`, `NAMESPACE`, `METADATA_CLUSTER`, `NATIVE_CLUSTER`, and `WORK` variables (each prefixed
+with `POLE_SEAWEEDFS_TEST_`). It must use these isolated resources and its own owned objects.
+Hook failure still triggers the runner's exact cluster cleanup; this option does not leave a
+cluster running or allow access to shared lab state.

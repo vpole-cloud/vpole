@@ -60,7 +60,8 @@ type PostgresDeclarationExecution
                     catalog.Storage.Storage.ProfileId,
                     { Id = Some operation.ResourceId
                       Instances = PostgresDeclarations.instances spec
-                      Storage = spec.Storage.SizeGb },
+                      Storage = spec.Storage.SizeGb
+                      ReplicationMode = PostgresDeclarations.replicationMode spec },
                     PostgresBootstrapCredential.Create(
                         data.BootstrapSecretId,
                         spec.BootstrapPassword.Key,
@@ -122,10 +123,11 @@ type PostgresDeclarationExecution
 
             let capacity =
                 { Instances = PostgresDeclarations.instances spec
-                  Storage = spec.Storage.SizeGb }
+                  Storage = spec.Storage.SizeGb
+                  ReplicationMode = PostgresDeclarations.replicationMode spec }
 
             if not current.IsPrepared then
-                return Ok(current.UpdateDesiredState(capacity.Instances, capacity.Storage))
+                return Ok(current.UpdateDesiredState(capacity.Instances, capacity.Storage, capacity.ReplicationMode))
             else
                 let placement = (input.Dependencies.Placements |> Option.get).Items[0]
 

@@ -8,7 +8,8 @@ type PostgresClusterSpecDto =
     { Instances: int
       Storage: int
       StorageProfileId: string
-      Version: int }
+      Version: int
+      ReplicationMode: PostgresReplicationMode }
 
 type PostgresClusterDto =
     { Id: string
@@ -41,6 +42,7 @@ module PostgresClusterDto =
             { Instances = cluster.Spec.Instances
               Storage = cluster.Spec.Storage
               StorageProfileId = cluster.Spec.StorageProfileId
-              Version = cluster.Spec.Version }
+              Version = cluster.Spec.Version
+              ReplicationMode = cluster.Spec.ReplicationMode }
           Placement = placement
           GitOps = gitOps }

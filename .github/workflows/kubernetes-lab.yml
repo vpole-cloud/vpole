@@ -156,12 +156,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Test delivery automation and lab recovery
-        run: |
-          python3 scripts/run_script_tests.py
-          for test_script in infrastructure/kubernetes-lab/tests/*.sh; do
-            bash "$test_script"
-          done
+      - name: Test delivery automation
+        run: python3 scripts/run_script_tests.py
 
       - name: Start and verify the full lab
         if: github.event_name == 'workflow_dispatch'
@@ -170,6 +166,9 @@ jobs:
           ./infrastructure/kubernetes-lab/lab.sh up
           ./infrastructure/kubernetes-lab/lab.sh verify
           python3 scripts/quality_gate.py headroom --results-directory .artifacts/coverage/backend/raw --phase after-lab
+
+      - name: Run shell tests for the selected profile
+        run: python3 scripts/quality_gate.py shell-tests --profile "${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}"
 
       - name: Run selected backend suites with coverage
         run: python3 scripts/quality_gate.py backend --results-directory .artifacts/coverage/backend/raw --profile "${{ github.event_name == 'workflow_dispatch' && 'full' || 'pr' }}"

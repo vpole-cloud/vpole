@@ -33,7 +33,8 @@ public sealed class SecretProjectionReconciler(
         var secret = await loadSecret(tenantId, secretId, ct);
         var desired = new Dictionary<string, SecretProjection>();
         if (secret is not null)
-            foreach (var binding in secret.Bindings.Where(binding => consumers.GrantsProjection(binding)))
+            foreach (var binding in secret.Bindings.Where(binding =>
+                         secret.AllowsBinding(binding) && consumers.GrantsProjection(binding)))
             {
                 var deployments = await loadDeployments(
                     new LoadResourceDeploymentSetRequest(
@@ -82,7 +83,8 @@ public sealed class SecretProjectionReconciler(
     {
         var current = await loadSecret(projection.TenantId, projection.SecretId, ct);
         var binding = current?.Bindings.SingleOrDefault(x => x.Id == projection.BindingId);
-        if (current is null || binding is null || !consumers.GrantsProjection(binding))
+        if (current is null || binding is null || !current.AllowsBinding(binding) ||
+            !consumers.GrantsProjection(binding))
             return null;
         if (!SecretProjectionAuthority.MatchesScope(current, projection))
             return null;

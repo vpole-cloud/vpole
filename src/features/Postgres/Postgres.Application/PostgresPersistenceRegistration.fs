@@ -15,6 +15,8 @@ open Pole.Features.Secrets.Contracts
 open Pole.Features.Secrets.Primitives
 open Pole.Features.GitOps.Contracts
 open Pole.Features.Postgres.Application.Declarations
+open Pole.Features.Postgres.Application.ManagedDatabases
+open Pole.Features.Postgres.Contracts
 
 [<RequireQualifiedAccess>]
 module PostgresPersistenceRegistration =
@@ -24,6 +26,26 @@ module PostgresPersistenceRegistration =
                 serviceProvider.GetRequiredService<IMongoDatabase>().GetCollection<PostgresCluster>("Postgres"))
         )
         |> ignore
+
+        services.TryAddSingleton<IMongoCollection<PostgresManagedDatabase>>(
+            Func<IServiceProvider, IMongoCollection<PostgresManagedDatabase>>(fun provider ->
+                provider.GetRequiredService<IMongoDatabase>().GetCollection<PostgresManagedDatabase>("PostgresManagedDatabases"))) |> ignore
+        services.AddScoped<PostgresManagedDatabaseGuard>() |> ignore
+        services.AddScoped<PostgresManagedDatabaseStateStore>() |> ignore
+        services.AddScoped<PostgresManagedDatabaseNative>() |> ignore
+        services.AddScoped<PostgresManagedDatabaseProbe>() |> ignore
+        services.AddScoped<ReconcilePostgresManagedDatabase>() |> ignore
+        services.AddScoped<PurgeOwnedPostgresManagedDatabase>() |> ignore
+        services.AddScoped<EnsurePostgresManagedDatabase>(Func<IServiceProvider, EnsurePostgresManagedDatabase>(fun provider ->
+            EnsurePostgresManagedDatabase(fun request ct -> provider.GetRequiredService<ReconcilePostgresManagedDatabase>().InvokeAsync(request, ct)))) |> ignore
+        services.AddScoped<PurgePostgresManagedDatabase>(Func<IServiceProvider, PurgePostgresManagedDatabase>(fun provider ->
+            PurgePostgresManagedDatabase(fun request ct -> provider.GetRequiredService<PurgeOwnedPostgresManagedDatabase>().InvokeAsync(request, ct)))) |> ignore
+        services.AddScoped<MongoClaimPostgresManagedDatabase>() |> ignore
+        services.AddScoped<ClaimPostgresManagedDatabase>(Func<IServiceProvider, ClaimPostgresManagedDatabase>(fun provider ->
+            ClaimPostgresManagedDatabase(fun request session ct -> provider.GetRequiredService<MongoClaimPostgresManagedDatabase>().InvokeAsync(request, session, ct)))) |> ignore
+        services.AddScoped<MongoReadPostgresManagedDatabaseCandidates>() |> ignore
+        services.AddScoped<ReadPostgresManagedDatabaseCandidates>(Func<IServiceProvider, ReadPostgresManagedDatabaseCandidates>(fun provider ->
+            ReadPostgresManagedDatabaseCandidates(fun tenantId targetId ct -> provider.GetRequiredService<MongoReadPostgresManagedDatabaseCandidates>().InvokeAsync(tenantId, targetId, ct)))) |> ignore
 
         services.AddScoped<IResourceConnectionDestinationCapability, MongoLoadPostgresConnectionEndpoints>()
         |> ignore

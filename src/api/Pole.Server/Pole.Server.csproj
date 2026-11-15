@@ -19,6 +19,8 @@
         <PackageReference Include="Microsoft.Orleans.Hosting.Kubernetes"/>
         <PackageReference Include="Newtonsoft.Json"/>
         <PackageReference Include="Orleans.Providers.MongoDB"/>
+        <ProjectReference Include="../../features/SeaweedFS/SeaweedFS.Application/SeaweedFS.Application.csproj"/>
+        <ProjectReference Include="../../features/SeaweedFS/SeaweedFS.Migrations/SeaweedFS.Migrations.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

@@ -10,6 +10,7 @@ open Pole.Features.Outbox.Contracts
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application
 open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.ManagedDatabases
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceDeployments.Contracts
 open Pole.Features.ResourceGroups.Contracts
@@ -35,7 +36,8 @@ type MongoFinalizePostgresClusterDeletion
         purgeDeployments: PurgeDeletedResourceDeployments,
         resourceRegistrar: IResourceRegistrar,
         runMongoTransaction: RunMongoOutcomeTransaction<PostgresOutcome<unit, PostgresClusterDeletionFinalizationError>>,
-        storeOutboxWrites: StoreOutboxWrites
+        storeOutboxWrites: StoreOutboxWrites,
+        databaseGuard: PostgresManagedDatabaseGuard
     ) =
 
     member _.InvokeAsync(tenantId, clusterId, cancellationToken: CancellationToken) =
@@ -55,7 +57,11 @@ type MongoFinalizePostgresClusterDeletion
                                 .Find(transaction.Session, clusterFilter)
                                 .FirstOrDefaultAsync(transactionCancellationToken)
 
-                        if isNull (box cluster) then
+                        let! hasDependencies =
+                            databaseGuard.HasLiveDependenciesAsync(tenantId, clusterId, transaction.Session, transactionCancellationToken)
+                        if hasDependencies then
+                            return transaction.Abort(PostgresError(PostgresClusterDeletionFinalizationConflict clusterId))
+                        elif isNull (box cluster) then
                             return transaction.Commit(PostgresSuccess())
                         else
                             let! readiness =

@@ -4,7 +4,24 @@ open System
 open MongoDB.Bson
 open MongoDB.Bson.Serialization.Attributes
 
-type PostgresDesiredCapacity = { Instances: int; Storage: int }
+type PostgresReplicationMode =
+    | Asynchronous = 0
+    | SynchronousHa = 1
+
+[<RequireQualifiedAccess>]
+module PostgresReplication =
+    let valid instances mode =
+        Enum.IsDefined mode && (mode <> PostgresReplicationMode.SynchronousHa || instances >= 3)
+
+    let require instances mode =
+        if not (valid instances mode) then
+            invalidArg "replicationMode" "Synchronous HA PostgreSQL requires at least three instances."
+
+
+type PostgresDesiredCapacity =
+    { Instances: int
+      Storage: int
+      ReplicationMode: PostgresReplicationMode }
 
 type PostgresBootstrapCredential =
     { [<BsonRepresentation(BsonType.ObjectId)>]

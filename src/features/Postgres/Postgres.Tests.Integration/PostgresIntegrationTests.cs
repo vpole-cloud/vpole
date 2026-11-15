@@ -143,7 +143,10 @@ public sealed class PostgresIntegrationTests(
         var outcome = await DbContext.RunOutcomeInTransactionAsync<bool>(async (transaction, ct) =>
         {
             var result = await persist.Invoke(
-                new PersistUpdatedPostgresClusterRequest(current, current.UpdateDesiredState(2, 30), null),
+                new PersistUpdatedPostgresClusterRequest(
+                    current,
+                    current.UpdateDesiredState(2, 30, current.Spec.ReplicationMode),
+                    null),
                 transaction.Session,
                 ct);
             return transaction.Commit(result.IsPostgresError);
@@ -227,7 +230,8 @@ public sealed class PostgresIntegrationTests(
                 cluster.Revision,
                 FSharpOption<int>.Some(3),
                 FSharpOption<int>.Some(25),
-                FSharpOption<string>.None),
+                FSharpOption<string>.None,
+                null),
             PostgresTestData.TenantId);
 
         var result = await Mediator.Send(updateRequest);
@@ -242,10 +246,47 @@ public sealed class PostgresIntegrationTests(
             .Find(item => item.Id == deployment.Id)
             .SingleAsync();
         Assert.Equal(2, updatedDeployment.DesiredGeneration);
+        Assert.Equal(updated.Spec.Instances, updatedDeployment.FixedReplicas);
+        Assert.Equal(updated.Revision, updatedDeployment.ResourceRevision);
         Assert.Equal(
             deployment.ResolvedPlacement.DeploymentTargetId,
             updatedDeployment.ResolvedPlacement.DeploymentTargetId);
         Assert.Equal(deployment.ResolvedPlacement.Compute, updatedDeployment.ResolvedPlacement.Compute);
+    }
+
+    [Fact]
+    public async Task Create_and_update_synchronous_ha_preserve_replica_and_resource_revision_metadata()
+    {
+        var group = await DbContext.InsertResourceGroupAsync(PostgresTestData.SeedResourceGroup());
+        var original = PostgresTestData.CreatePostgresClusterRequest(group.Id);
+        var body = original.Body;
+        var created = (await Mediator.Send(
+            new CreatePostgresClusterRequest(
+                new CreatePostgresClusterRequestBody(
+                    body.Name,
+                    body.GroupId,
+                    body.Version,
+                    FSharpOption<int>.Some(3),
+                    body.Storage,
+                    body.StorageProfileId,
+                    body.ComputeProfileId,
+                    body.Password,
+                    body.Placement,
+                    FSharpOption<PostgresReplicationMode>.Some(PostgresReplicationMode.SynchronousHa)),
+                original.TenantId))).AssertCreated();
+        var placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == created.Id).SingleAsync();
+        Assert.Equal(3, placement.FixedReplicas);
+        Assert.Equal(1, placement.ResourceRevision);
+        var updated = (await Mediator.Send(
+            new UpdatePostgresClusterRequest(
+                created.Id,
+                new UpdatePostgresClusterRequestBody(1, FSharpOption<int>.Some(4), null, null, null),
+                original.TenantId))).AssertUpdated();
+        placement = await DbContext.ResourceDeployments.Find(item => item.ResourceId == created.Id).SingleAsync();
+        Assert.Equal(4, placement.FixedReplicas);
+        Assert.Equal(2, placement.ResourceRevision);
+        Assert.Equal(2, placement.DesiredGeneration);
+        Assert.Equal(4, updated.Placement.FixedReplicas);
     }
 
     [Fact]
@@ -258,7 +299,8 @@ public sealed class PostgresIntegrationTests(
                 cluster.Revision,
                 FSharpOption<int>.Some(3),
                 FSharpOption<int>.Some(25),
-                FSharpOption<string>.None),
+                FSharpOption<string>.None,
+                null),
             PostgresTestData.TenantId);
         _ = (await Mediator.Send(request)).AssertUpdated();
         var messagesBefore = await DbContext.OutboxMessages.CountDocumentsAsync(_ => true);
@@ -273,7 +315,8 @@ public sealed class PostgresIntegrationTests(
                         cluster.Revision,
                         FSharpOption<int>.Some(8),
                         FSharpOption<int>.Some(50),
-                        FSharpOption<string>.None),
+                        FSharpOption<string>.None,
+                        null),
                     cluster.TenantId))).AssertSuccess());
         Assert.IsType<UpdatePostgresClusterError.UpdateConflict>(rejected.Item);
         var saved = await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync();
@@ -299,7 +342,8 @@ public sealed class PostgresIntegrationTests(
                         cluster.Revision,
                         FSharpOption<int>.None,
                         FSharpOption<int>.Some(storage),
-                        FSharpOption<string>.None),
+                        FSharpOption<string>.None,
+                        null),
                     cluster.TenantId))));
         var results = outcomes.Select(result => result.AssertSuccess()).ToArray();
         Assert.Single(results.OfType<UpdatePostgresClusterOutcome.PostgresClusterUpdated>());
@@ -335,7 +379,8 @@ public sealed class PostgresIntegrationTests(
                     cluster.Revision,
                     FSharpOption<int>.Some(3),
                     FSharpOption<int>.Some(25),
-                    FSharpOption<string>.None),
+                    FSharpOption<string>.None,
+                    null),
                 cluster.TenantId))).AssertUpdated();
         var profile = CreateComputeProfile(requestedCpuMillis: 600, requestedMemoryMi: 700);
         await DbContext.Database.GetCollection<ComputeProfile>("ComputeProfiles").InsertOneAsync(profile);
@@ -346,7 +391,8 @@ public sealed class PostgresIntegrationTests(
                     cluster.Revision + 1,
                     FSharpOption<int>.None,
                     FSharpOption<int>.None,
-                    FSharpOption<string>.Some(profile.Id)),
+                    FSharpOption<string>.Some(profile.Id),
+                    null),
                 cluster.TenantId))).AssertUpdated();
         var saved = await DbContext.Postgres.Find(item => item.Id == cluster.Id).SingleAsync();
         Assert.Equal(3, saved.Spec.Instances);
@@ -368,7 +414,8 @@ public sealed class PostgresIntegrationTests(
                     cluster.Revision,
                     FSharpOption<int>.Some(2),
                     FSharpOption<int>.None,
-                    FSharpOption<string>.Some(profile.Id)),
+                    FSharpOption<string>.Some(profile.Id),
+                    null),
                 PostgresTestData.TenantId));
 
         _ = result.AssertUpdated();
@@ -411,7 +458,8 @@ public sealed class PostgresIntegrationTests(
                     cluster.Revision,
                     FSharpOption<int>.None,
                     FSharpOption<int>.None,
-                    FSharpOption<string>.Some(currentProfile.Id)),
+                    FSharpOption<string>.Some(currentProfile.Id),
+                    null),
                 PostgresTestData.TenantId));
 
         _ = result.AssertUpdated();
@@ -439,7 +487,8 @@ public sealed class PostgresIntegrationTests(
                 PostgresTestData.DefaultStorageProfileId,
                 FSharpOption<string>.Some(profile.Id),
                 "postgres-secret",
-                FSharpOption<PlacementRequest>.None),
+                FSharpOption<PlacementRequest>.None,
+                null),
             PostgresTestData.TenantId);
 
         var result = await Mediator.Send(request);
@@ -466,7 +515,8 @@ public sealed class PostgresIntegrationTests(
                     cluster.Revision,
                     FSharpOption<int>.Some(2),
                     FSharpOption<int>.None,
-                    FSharpOption<string>.Some(profile.Id)),
+                    FSharpOption<string>.Some(profile.Id),
+                    null),
                 PostgresTestData.TenantId));
 
         var outcome = result.AssertSuccess();
@@ -507,7 +557,7 @@ public sealed class PostgresIntegrationTests(
         Assert.Equal(2, await Versions.CountDocumentsAsync(item => item.SecretId == before.Id));
         var managedValues = await Services.GetRequiredService<ReadManagedSecret>()(
             PostgresTestData.TenantId,
-            new ManagedSecretOwner("pole/postgresql", cluster.Id),
+            new ManagedSecretOwner("pole/postgresql", cluster.Id, ManagedSecretPurposes.Credentials),
             default);
         var values = Assert.IsType<ManagedSecretValues>(managedValues.Value);
         Assert.Equal("postgres", values.Values["username"]);
@@ -676,7 +726,8 @@ public sealed class PostgresIntegrationTests(
                 PostgresTestData.DefaultStorageProfileId,
                 FSharpOption<string>.Some("not-an-object-id"),
                 "postgres-secret",
-                FSharpOption<PlacementRequest>.None),
+                FSharpOption<PlacementRequest>.None,
+                null),
             PostgresTestData.TenantId);
 
         var result = await Mediator.Send(request);

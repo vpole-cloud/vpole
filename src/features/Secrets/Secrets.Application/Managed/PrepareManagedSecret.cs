@@ -4,6 +4,7 @@ using System.Text.Json;
 using Pole.Encryption;
 using Pole.Features.Secrets.Application.Endpoints;
 using Pole.Features.Secrets.Contracts;
+using Pole.Features.Secrets.Domain;
 using Pole.Workloads;
 
 namespace Pole.Features.Secrets.Application.Managed;
@@ -19,6 +20,8 @@ internal sealed class EnvelopePrepareManagedSecret(
         if (!SecretValuesValidation.Valid(request.Values.ToDictionary()))
             throw new ArgumentException("Managed Secret values are invalid.", nameof(request.Values));
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Name);
+        if (!Enum.IsDefined(request.SharingPolicy))
+            throw new ArgumentOutOfRangeException(nameof(request.SharingPolicy));
         if (!Enum.IsDefined(request.KubernetesType) ||
             (request.KubernetesType == ManagedSecretKubernetesType.BasicAuthentication &&
                 (!request.Values.ContainsKey("username") || !request.Values.ContainsKey("password"))))
@@ -31,7 +34,8 @@ internal sealed class EnvelopePrepareManagedSecret(
             SecretId = SecretIdentity.ObjectId(request.SecretId),
             Owner = new ManagedSecretOwner(
                 ResourceTypeId.Create(request.Owner.ResourceType).Value,
-                SecretIdentity.ObjectId(request.Owner.ResourceId)),
+                SecretIdentity.ObjectId(request.Owner.ResourceId),
+                ProviderManagedSecret.RequirePurpose(request.Owner.Purpose)),
         };
         var bytes = JsonSerializer.SerializeToUtf8Bytes(request.Values);
         try
@@ -55,7 +59,8 @@ internal sealed class EnvelopePrepareManagedSecret(
                     request.KubernetesType,
                     request.Version,
                     request.Values.Keys.Order().ToImmutableArray(),
-                    JsonSerializer.SerializeToUtf8Bytes(encrypted).ToImmutableArray()),
+                    JsonSerializer.SerializeToUtf8Bytes(encrypted).ToImmutableArray(),
+                    request.SharingPolicy),
                 EnvelopeEncryptionFailed => new ManagedSecretEncryptionUnavailable(),
             };
         }

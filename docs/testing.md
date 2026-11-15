@@ -508,7 +508,8 @@ Infrastructure-free tests of CI configuration, lab state parsing and cleanup hel
 `python3 scripts/quality_gate.py run --profile pr` selects checks by the complete PR diff.
 When behavioral suites are required it runs Fast and Services plus frontend. `--profile full`
 forces all groups, including Kubernetes and E2E. CI uses the same classification; manual
-workflow_dispatch forces full.
+workflow_dispatch forces full. PR shell tests exercise local fixtures. Live PostgreSQL backup
+recovery and SeaweedFS acceptance run in the full profile after lab verification.
 Plain `dotnet test` still discovers all .NET projects in Pole.slnx.
 
 Each group runs with a separate project concurrency limit. Local defaults are Fast 4,

@@ -8,6 +8,7 @@ open Pole.Features.Outbox.Contracts
 open Pole.Features.Postgres.Application.Common
 open Pole.Features.Postgres.Application
 open Pole.Features.Postgres.Application.Mongo
+open Pole.Features.Postgres.Application.ManagedDatabases
 open Pole.Features.Postgres.Domain
 open Pole.Features.ResourceGroups.Contracts
 
@@ -15,6 +16,7 @@ type PostgresMutationConflictReason =
     | ExpectedRevisionConflict = 0
     | GitOwnedConfiguration = 1
     | SecretBindingsRequireRemoval = 2
+    | ManagedDatabaseDependency = 3
 
 type PostgresClusterUpdateConflict =
     { ClusterId: string
@@ -37,7 +39,8 @@ type MongoPersistUpdatedPostgresCluster
         clusters: IMongoCollection<PostgresCluster>,
         storeOutboxWrites: StoreOutboxWrites,
         git: IGitOpsMutations,
-        fenceRegistration: FenceRegisteredResource
+        fenceRegistration: FenceRegisteredResource,
+        databaseGuard: PostgresManagedDatabaseGuard
     ) =
 
     member _.InvokeAsync(request: PersistUpdatedPostgresClusterRequest, session, cancellationToken: CancellationToken) =
@@ -46,6 +49,12 @@ type MongoPersistUpdatedPostgresCluster
             let replacement = request.Replacement
             PostgresPersistenceGuards.transaction session "PostgreSQL update"
             PostgresPersistenceGuards.activeUpdate current replacement
+
+            let! dependencyBlocksUpdate =
+                if replacement.Spec.ReplicationMode = PostgresReplicationMode.SynchronousHa && replacement.Spec.Instances >= 3 then
+                    System.Threading.Tasks.Task.FromResult false
+                else
+                    databaseGuard.HasLiveDependenciesAsync(current.TenantId, current.Id, session, cancellationToken)
 
             let! authorized =
                 git.AuthorizeAsync(
@@ -59,7 +68,9 @@ type MongoPersistUpdatedPostgresCluster
                     cancellationToken
                 )
 
-            if not authorized then
+            if dependencyBlocksUpdate then
+                return PostgresError { ClusterId = current.Id; Reason = PostgresMutationConflictReason.ManagedDatabaseDependency }
+            elif not authorized then
                 return
                     PostgresError
                         { ClusterId = current.Id

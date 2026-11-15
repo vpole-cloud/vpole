@@ -10,7 +10,9 @@ type PostgresClusterSpec =
       Storage: int
       StorageProfileId: string
       Version: int
-      Bootstrap: PostgresClusterBootstrap }
+      Bootstrap: PostgresClusterBootstrap
+      [<BsonRepresentation(BsonType.String)>]
+      ReplicationMode: PostgresReplicationMode }
 
 [<AbstractClass>]
 [<BsonDiscriminator(RootClass = true)>]
@@ -55,6 +57,8 @@ type PostgresCluster =
         if options.Instances < 1 then
             invalidArg (nameof options) "PostgreSQL instances must be positive."
 
+        PostgresReplication.require options.Instances options.ReplicationMode
+
         if options.Storage < 1 then
             invalidArg (nameof options) "PostgreSQL storage must be positive."
 
@@ -67,7 +71,8 @@ type PostgresCluster =
               Storage = options.Storage
               StorageProfileId = storageProfileId
               Version = version
-              Bootstrap = FreshPostgresBootstrap() }
+              Bootstrap = FreshPostgresBootstrap()
+              ReplicationMode = options.ReplicationMode }
           Revision = 1L
           Lifecycle = ActivePostgresClusterLifecycle()
           Provisioning = DirectPostgresProvisioning()
@@ -135,35 +140,41 @@ type PostgresCluster =
         if capacity.Instances < 1 || capacity.Storage < 1 then
             invalidArg "capacity" "PostgreSQL instances and storage must be positive."
 
+        PostgresReplication.require capacity.Instances capacity.ReplicationMode
+
         match this.Provisioning with
         | :? PreparedPostgresProvisioning as prepared ->
             { this with
                 Spec =
                     { this.Spec with
                         Instances = capacity.Instances
-                        Storage = capacity.Storage }
+                        Storage = capacity.Storage
+                        ReplicationMode = capacity.ReplicationMode }
                 Provisioning = ConfiguredPostgresProvisioning(prepared.Bootstrap)
                 Revision = PostgresCluster.incrementRevision this.Revision }
         | :? ConfiguredPostgresProvisioning when
-            this.Spec.Instances = capacity.Instances && this.Spec.Storage = capacity.Storage
+            this.Spec.Instances = capacity.Instances && this.Spec.Storage = capacity.Storage &&
+            this.Spec.ReplicationMode = capacity.ReplicationMode
             ->
             this
         | _ -> invalidOp "Only a prepared declarative PostgreSQL cluster can complete bootstrap."
 
-    member this.UpdateDesiredState(instances: int, storage: int) =
+    member this.UpdateDesiredState(instances: int, storage: int, replicationMode: PostgresReplicationMode) =
         if instances < 1 then
             invalidArg (nameof instances) "PostgreSQL instances must be positive."
 
         if storage < 1 then
             invalidArg (nameof storage) "PostgreSQL storage must be positive."
 
+        PostgresReplication.require instances replicationMode
         this.EnsureConfigured()
 
         { this with
             Spec =
                 { this.Spec with
                     Instances = instances
-                    Storage = storage }
+                    Storage = storage
+                    ReplicationMode = replicationMode }
             Revision = PostgresCluster.incrementRevision this.Revision }
 
     member this.BeginDeletion(requestedAtUtc: DateTime) =
@@ -189,7 +200,8 @@ type PostgresCluster =
 and CreatePostgresClusterOptions =
     { Id: string option
       Instances: int
-      Storage: int }
+      Storage: int
+      ReplicationMode: PostgresReplicationMode }
 
 [<RequireQualifiedAccess>]
 module PostgresCluster =

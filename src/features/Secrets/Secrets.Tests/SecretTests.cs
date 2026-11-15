@@ -37,6 +37,58 @@ public sealed class SecretTests
             ["password"] = "PASSWORD",
         });
 
+    [Theory]
+    [InlineData(ManagedSecretSharing.OwnerOnly)]
+    [InlineData(ManagedSecretSharing.Shareable)]
+    public void Managed_sharing_policy_and_purpose_round_trip_and_control_imperative_and_declarative_bindings(
+        ManagedSecretSharing sharing)
+    {
+        var source = NewSecret();
+        var owner = Binding("owner", "database");
+        var secret = SecretFactory.CreateManaged(
+            source.Id,
+            source.TenantId,
+            source.ResourceGroupId,
+            source.IsolationScopeId,
+            source.Name,
+            "Free-text description",
+            source.KeyNames,
+            owner,
+            "bucket:stable-id",
+            KubernetesSecretType.Opaque,
+            sharing,
+            source.CreatedAtUtc);
+        var stored = BsonSerializer.Deserialize<Secret>(secret.ToBson());
+        var management = Assert.IsType<ProviderManagedSecret>(stored.Management);
+        Assert.Equal("bucket:stable-id", management.Purpose);
+        Assert.Equal(sharing, management.Sharing);
+        Assert.Equal(sharing.ToString(), SecretMetadata.From(stored).ManagedBy!.SharingPolicy);
+        Assert.Equal("Free-text description", stored.Purpose);
+        Assert.True(stored.AllowsBinding(owner));
+        var consumer = Binding("consumer", "application");
+        if (sharing == ManagedSecretSharing.OwnerOnly)
+        {
+            Assert.False(stored.AllowsBinding(consumer));
+            Assert.Throws<InvalidOperationException>(() => stored.Bind(consumer, DateTime.UtcNow));
+            Assert.IsType<SecretBindingSharingDenied>(stored.DeclareBinding(consumer, DateTime.UtcNow).Value);
+            Assert.IsType<SecretBindingSharingDenied>(stored.DeclareBinding(owner, DateTime.UtcNow).Value);
+        }
+        else
+        {
+            Assert.True(stored.AllowsBinding(consumer));
+            Assert.Equal(2, stored.Bind(consumer, DateTime.UtcNow).Bindings.Length);
+            Assert.IsType<Secret>(stored.DeclareBinding(consumer, DateTime.UtcNow).Value);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("bucket:with space")]
+    [InlineData("bucket/unstable")]
+    public void Managed_purpose_rejects_blank_or_unstable_identifiers(string purpose) =>
+        Assert.Throws<ArgumentException>(() => ProviderManagedSecret.RequirePurpose(purpose));
+
     [Fact]
     public void Binding_usage_is_explicit_persisted_and_cannot_change_under_an_existing_identity()
     {

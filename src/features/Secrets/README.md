@@ -204,8 +204,13 @@ PostgreSQL is the first adopter. Its create transaction stages the registered Po
 ResourceDeployment, then creates the encrypted managed Secret and protected owner binding in that same
 session. Admission reads and fences the staged records, avoiding a placement-versus-credential startup
 cycle. Secrets is the authoritative encrypted store; workloads consume generated projection references.
-The internal read operation selects a credential through its tenant-scoped managed owner, not an
-arbitrary Secret ID. PostgreSQL retains the existing role controls on its connection-string operation.
+The internal read operation selects a credential through its tenant-scoped managed owner and exact
+credential purpose, not an arbitrary Secret ID. The unique identity is tenant, resource type, resource ID
+and purpose. A workload can own several independent Secrets, each with its own versions, protected owner
+binding and projections. The purpose is a stable ASCII identifier (`admin`, `bucket:<stable-bucket-id>`)
+and is distinct from the Secret's free-text purpose description. PostgreSQL uses `credentials` explicitly;
+its read, rotate, adoption, projection and release operations select only that purpose. PostgreSQL retains
+the existing role controls on its connection-string operation.
 
 `Secret.Management` is required aggregate state. `SecretFactory.Create` constructs an unmanaged Secret;
 `CreateManaged` constructs provider ownership together with its binding. `KubernetesSecretType` describes
@@ -213,15 +218,23 @@ the native Secret format: the PostgreSQL owner projection uses `kubernetes.io/ba
 and remapped shared projections use `Opaque`. The provider contract represents this as
 `ManagedSecretKubernetesType`.
 
-Metadata exposes `managedBy` with owner type, resource ID and protected binding ID. Generic rotation and
-detaching that binding return `secrets.managed-by-provider`; use the owner operation. Same-scope sharing
-through additional bindings is allowed, and those bindings may be detached normally. Provider deletion
-removes its binding atomically. If other consumers remain, the Secret and encrypted versions are retained
+Metadata exposes `managedBy` with owner type, resource ID, credential purpose, sharing policy and protected
+binding ID. Generic rotation and detaching that binding return `secrets.managed-by-provider`; use the owner
+operation. The provider selects an immutable
+sharing policy on creation. `Shareable` credentials allow same-scope sharing through additional bindings,
+and those bindings may be detached normally. `OwnerOnly` credentials reject generic and declarative
+binding creation/adoption and bootstrap source copying. Only their protected owner binding can authorize
+runtime projections; application consumers cannot obtain an administrator Secret through generic access.
+Rotation cannot downgrade the sharing policy. PostgreSQL and bucket credentials are shareable; the
+SeaweedFS administrator credential is owner-only. Provider release
+removes only the selected purpose and its binding atomically. Resource deletion must release every owned
+purpose. If other consumers remain, the Secret and encrypted versions are retained
 and management is cleared: it becomes an ordinary tenant Secret with the same immutable identity/name.
 If no consumers remain, the transaction unregisters and deletes the Secret and versions. Secret writes
 serialize deletion with concurrent sharing, so a committed binding cannot be orphaned. The generic
 resource-unregistered cleanup also clears management when it removes an owner binding, retaining the
 ordinary Secret rather than leaving an uneditable credential if an owner uses that fallback path.
+Owner-only fallback cleanup deletes its encrypted Secret instead of making private credentials shareable.
 
 Projection readiness means that Kubernetes accepted the desired Secret version. It does not mean a
 running database has adopted that password. The owning PostgreSQL workflow rotates its managed

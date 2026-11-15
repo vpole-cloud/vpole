@@ -62,6 +62,7 @@ requirement when adding or changing one feature.
 - [Service backups and PostgreSQL restore](../src/features/Backups/README.md)
 - [PostgreSQL clusters](../src/features/Postgres/README.md)
 - [Redis services](../src/features/RedisServices/README.md)
+- [SeaweedFS instances and buckets](../src/features/SeaweedFS/README.md)
 - [Tenant secrets](../src/features/Secrets/README.md)
 - [Repository GitOps API and durable execution](../src/features/GitOps/README.md)
 - [Web services](../src/features/WebServices/README.md)

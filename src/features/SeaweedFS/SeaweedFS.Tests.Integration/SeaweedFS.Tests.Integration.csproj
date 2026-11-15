@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Pole.Features.SeaweedFS.Tests.Integration</AssemblyName>
+        <RootNamespace>Pole.Features.SeaweedFS.Tests.Integration</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk"/>
+        <PackageReference Include="Hangfire.Mongo"/>
+        <PackageReference Include="xunit"/>
+        <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all"/>
+        <ProjectReference Include="../SeaweedFS.Application/SeaweedFS.Application.csproj"/>
+        <ProjectReference Include="../SeaweedFS.Migrations/SeaweedFS.Migrations.csproj"/>
+        <ProjectReference Include="../../../api/Pole.Testing/Pole.Testing.csproj"/>
+        <ProjectReference Include="../../ResourceConnections/ResourceConnections.Application/ResourceConnections.Application.csproj"/>
+        <ProjectReference Include="../../Outbox/Outbox.Domain/Outbox.Domain.csproj"/>
+        <ProjectReference Include="../../Outbox/Outbox.Application/Outbox.Application.csproj"/>
+        <ProjectReference Include="../../../tools/Pole.Cli/Pole.Cli.csproj"/>
+            <ProjectReference Include="../../ResourceGroups/ResourceGroups.Testing/ResourceGroups.Testing.csproj"/>
+    </ItemGroup>
+</Project>

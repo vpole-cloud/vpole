@@ -15,6 +15,30 @@ namespace Pole.Features.Secrets.Tests;
 public sealed class SecretProjectionReconciliationTests
 {
     [Fact]
+    public async Task Owner_only_credentials_project_only_to_owner_and_revoke_stale_foreign_bindings()
+    {
+        var fixture = new Fixture();
+        await fixture.Run();
+        Assert.Equal(2, fixture.Target.Manifests.Count);
+        fixture.Secret = fixture.Secret with
+        {
+            Management = new ProviderManagedSecret(
+                "pole/postgresql",
+                "resource-a",
+                "admin",
+                "binding-a",
+                KubernetesSecretType.Opaque,
+                ManagedSecretSharing.OwnerOnly),
+        };
+        await fixture.Run();
+        Assert.Single(fixture.Target.Manifests);
+        Assert.True(fixture.Target.Manifests.ContainsKey("deployment-a"));
+        Assert.False(fixture.Target.Manifests.ContainsKey("deployment-b"));
+        Assert.IsType<ReadySecretProjection>(fixture.Rows["deployment-a"].State);
+        Assert.IsType<DeletedSecretProjection>(fixture.Rows["deployment-b"].State);
+    }
+
+    [Fact]
     public async Task Bootstrap_grants_never_create_native_projections()
     {
         var fixture = new Fixture();

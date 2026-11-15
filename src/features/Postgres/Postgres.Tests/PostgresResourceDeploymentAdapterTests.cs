@@ -207,7 +207,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
             (request, ct) =>
             {
                 Assert.Equal(TenantId, request.TenantId);
-                Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), request.Owner);
+                Assert.Equal(
+                    new ManagedSecretOwner("pole/postgresql", ResourceId, ManagedSecretPurposes.Credentials),
+                    request.Owner);
                 Assert.Equal(DeploymentId, request.DeploymentId);
                 return Task.FromResult<EnsureManagedSecretProjectionOutcome>(new ManagedSecretUnavailable());
             },
@@ -231,7 +233,9 @@ public sealed class PostgresResourceDeploymentAdapterTests
         CancellationToken ct)
     {
         Assert.Equal(TenantId, request.TenantId);
-        Assert.Equal(new ManagedSecretOwner("pole/postgresql", ResourceId), request.Owner);
+        Assert.Equal(
+            new ManagedSecretOwner("pole/postgresql", ResourceId, ManagedSecretPurposes.Credentials),
+            request.Owner);
         Assert.Equal(DeploymentId, request.DeploymentId);
         return Task.FromResult<EnsureManagedSecretProjectionOutcome>(
             new SecretProjectionReference("secret-id", "provider-generated-secret", 3));
@@ -289,7 +293,11 @@ public sealed class PostgresResourceDeploymentAdapterTests
         ResourceGroupId,
         17,
         StorageProfileId,
-        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ResourceId), 1, 20));
+        new CreatePostgresClusterOptions(
+            FSharpOption<string>.Some(ResourceId),
+            1,
+            20,
+            PostgresReplicationMode.Asynchronous));
 
     private static Kubernetes CreateKubernetes() => new(
         new KubernetesClientConfiguration

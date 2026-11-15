@@ -5,6 +5,7 @@ import type {
   PostgresCapabilities,
   PostgresInput,
   PostgresUpdateInput,
+  PostgresManagedDatabaseCandidate,
 } from './types'
 
 export async function fetchPostgresClusters(
@@ -128,5 +129,19 @@ export async function rotatePostgresPassword(
       body: JSON.stringify({ password }),
       signal,
     },
+  )
+}
+
+export const fetchPostgresManagedDatabaseCandidates = (
+  apiBaseUrl: string,
+  deploymentTargetId: string,
+  token?: string,
+  tenantId?: string,
+  signal?: AbortSignal,
+) => {
+  const query = new URLSearchParams({ deploymentTargetId })
+  return fetchJson<PostgresManagedDatabaseCandidate[]>(
+    `${apiBaseUrl}/api/v1/postgres/managed-database-candidates?${query}`,
+    { headers: buildHeaders(token, tenantId), signal },
   )
 }

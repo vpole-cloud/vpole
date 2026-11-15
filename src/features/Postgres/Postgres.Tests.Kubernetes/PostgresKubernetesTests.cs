@@ -192,7 +192,11 @@ public sealed class PostgresKubernetesTests(
         ObjectId.GenerateNewId().ToString(),
         17,
         PostgresTestData.DefaultStorageProfileId,
-        new CreatePostgresClusterOptions(FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()), 1, 5));
+        new CreatePostgresClusterOptions(
+            FSharpOption<string>.Some(ObjectId.GenerateNewId().ToString()),
+            1,
+            5,
+            PostgresReplicationMode.Asynchronous));
 
     private static PostgresResourceDeploymentMetadata Metadata() => new(
         "507f1f77bcf86cd799439044",

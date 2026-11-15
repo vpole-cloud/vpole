@@ -144,6 +144,13 @@ public sealed record Secret(
     public const long MetadataOnlyVersion = 0;
     public const long FirstValueVersion = 1;
 
+    [BsonIgnore]
+    public bool AllowsSharing => Management is not ProviderManagedSecret { Sharing: ManagedSecretSharing.OwnerOnly };
+
+    public bool AllowsBinding(SecretBinding binding) => Management is not ProviderManagedSecret owner ||
+        owner.Sharing == ManagedSecretSharing.Shareable || (binding.Id == owner.BindingId &&
+            binding.Consumer.ResourceType == owner.ResourceType && binding.Consumer.ResourceId == owner.ResourceId);
+
     public bool HasValue(string key) => CurrentVersion >= FirstValueVersion &&
         (DeclaredKeys ? SuppliedKeys.Contains(key) : KeyNames.Contains(key));
 
@@ -169,6 +176,8 @@ public sealed record Secret(
 
     public DeclareSecretBindingOutcome DeclareBinding(SecretBinding binding, DateTime now)
     {
+        if (!AllowsSharing)
+            return new SecretBindingSharingDenied();
         var current = Bindings.SingleOrDefault(item => item.Id == binding.Id);
         if (current is not null && current.Usage != binding.Usage)
             return new SecretBindingUsageChanged();
@@ -237,6 +246,8 @@ public sealed record Secret(
 
     public Secret Bind(SecretBinding binding, DateTime now)
     {
+        if (!AllowsBinding(binding))
+            throw new InvalidOperationException("Owner-only credentials cannot be shared.");
         if (Bindings.Length >= MaximumBindings)
             throw new InvalidOperationException("Secret binding limit reached.");
         if (Bindings.Any(x =>
@@ -307,7 +318,9 @@ public static class SecretFactory
         string purpose,
         IEnumerable<string> keys,
         SecretBinding ownerBinding,
+        string managedPurpose,
         KubernetesSecretType kubernetesType,
+        ManagedSecretSharing sharing,
         DateTime now) => CreateCore(
             id,
             tenantId,
@@ -319,8 +332,10 @@ public static class SecretFactory
             new ProviderManagedSecret(
                 ownerBinding.Consumer.ResourceType,
                 ownerBinding.Consumer.ResourceId,
+                ProviderManagedSecret.RequirePurpose(managedPurpose),
                 ownerBinding.Id,
-                kubernetesType),
+                kubernetesType,
+                Enum.IsDefined(sharing) ? sharing : throw new ArgumentOutOfRangeException(nameof(sharing))),
             now)
         .Bind(ownerBinding, now);
 
@@ -381,7 +396,10 @@ public sealed record SecretBindingKeysInUse(
     ImmutableArray<string> Keys
 );
 
+public sealed record SecretBindingSharingDenied;
+
 public union DeclareSecretBindingOutcome(
+    SecretBindingSharingDenied,
     Secret,
     SecretBindingConsumerChanged,
     SecretBindingUsageChanged,

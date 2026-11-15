@@ -16,7 +16,9 @@ internal static class ManagedSecretFilters
             x => ((ProviderManagedSecret)x.Management).ResourceType,
             ResourceTypeId.Create(owner.ResourceType).Value) & Builders<Secret>.Filter.Eq(
             x => ((ProviderManagedSecret)x.Management).ResourceId,
-            SecretIdentity.ObjectId(owner.ResourceId));
+            SecretIdentity.ObjectId(owner.ResourceId)) & Builders<Secret>.Filter.Eq(
+            x => ((ProviderManagedSecret)x.Management).Purpose,
+            ProviderManagedSecret.RequirePurpose(owner.Purpose));
 
     public static FilterDefinition<Secret> Adoption(ManagedSecretAdoptionSnapshot request) =>
         Owner(request.Request.TenantId, request.Request.Owner) &

@@ -45,7 +45,7 @@ internal sealed class SecretBindingAdoption(
             .SingleOrDefault(item => item.Address == new ResourceAddress("Secret", spec.Secret))
             ?.ResourceId;
         var consumerId = request.References.SingleOrDefault(item => item.Address == spec.Consumer)?.ResourceId;
-        if (secret is null || binding is null || secretId is null || consumerId is null)
+        if (secret is null || !secret.AllowsSharing || binding is null || secretId is null || consumerId is null)
             return SecretBindingPlanning.BindingPlanningBlocked(
                 SecretBindingDeclarationError.BindingPrerequisiteUnavailable);
 

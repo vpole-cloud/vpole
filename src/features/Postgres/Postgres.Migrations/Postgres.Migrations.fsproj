@@ -14,5 +14,6 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="PostgresNameIndexesMigration.fs"/>
+        <Compile Include="PostgresManagedDatabaseIndexesMigration.fs"/>
     </ItemGroup>
 </Project>

@@ -29,6 +29,8 @@ module PostgresPersistenceGuards =
         if cluster.Spec.Instances < 1 then
             invalidArg "cluster" "PostgreSQL instance count must be positive."
 
+        PostgresReplication.require cluster.Spec.Instances cluster.Spec.ReplicationMode
+
         if cluster.Spec.Storage < 1 then
             invalidArg "cluster" "PostgreSQL storage must be positive."
 

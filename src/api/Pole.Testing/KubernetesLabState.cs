@@ -356,7 +356,7 @@ public sealed class KubernetesLabState
             .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
             .ToArray();
         var allowedOverlays = new HashSet<string>(
-            ["monitoring", "cert-manager", "cnpg", "harbor", "buildkit"],
+            ["monitoring", "cert-manager", "cnpg", "seaweedfs", "harbor", "buildkit"],
             StringComparer.Ordinal);
         if (overlays.Any(item => string.IsNullOrWhiteSpace(item) || !allowedOverlays.Contains(item!)) ||
             overlays.Distinct(StringComparer.Ordinal).Count() != overlays.Length)
