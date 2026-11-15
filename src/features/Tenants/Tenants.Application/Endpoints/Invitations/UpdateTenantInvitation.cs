@@ -1,27 +1,30 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
-using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Invitations;
 
 public sealed record UpdateTenantInvitationBody(
-    TenantRole Role,
+    [property: JsonRequired] TenantRole Role,
     long ExpectedRevision
 );
 
 public sealed record UpdateTenantInvitationRequest(
-    ManageInvitationRequest Invitation,
-    TenantRole Role
+    [FromRoute] string TenantId,
+    [FromRoute] string InvitationId,
+    [FromBody] UpdateTenantInvitationBody Body,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
 ) : IMediatorRequest<UpdateTenantInvitationOutcome>, ITenantMemberRoleOperation
 {
-    public string TenantId => Invitation.TenantId;
+    public TenantRole Role => Body.Role;
 }
 
 public union UpdateTenantInvitationOutcome(
@@ -36,10 +39,10 @@ public sealed class UpdateTenantInvitationValidator : AbstractValidator<UpdateTe
 {
     public UpdateTenantInvitationValidator()
     {
-        RuleFor(request => request.Role).IsInEnum();
-        RuleFor(request => request.Invitation.TenantId).Must(value => ObjectId.TryParse(value, out _));
-        RuleFor(request => request.Invitation.InvitationId).InvitationId();
-        RuleFor(request => request.Invitation.ExpectedRevision).GreaterThan(0);
+        RuleFor(request => request.Body.Role).IsInEnum();
+        RuleFor(request => request.TenantId).RouteObjectId();
+        RuleFor(request => request.InvitationId).InvitationId();
+        RuleFor(request => request.Body.ExpectedRevision).GreaterThan(0);
     }
 }
 
@@ -51,7 +54,14 @@ public sealed class UpdateTenantInvitationHandler(
         UpdateTenantInvitationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await management.RotateAsync(request.Invitation, request.Role, cancellationToken);
+        var result = await management.RotateAsync(
+            new ManageInvitationRequest(
+                request.TenantId,
+                request.InvitationId,
+                request.Body.ExpectedRevision,
+                new InvitationActor(request.CurrentUserId)),
+            request.Role,
+            cancellationToken);
         return result switch
         {
             InvitationDto invitation => invitation,
@@ -69,21 +79,12 @@ public static class UpdateTenantInvitationEndpoint
     public static IEndpointRouteBuilder MapUpdateTenantInvitationEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapPut(
-                "/{tenantId}/invitations/{invitationId}",
+                "/{TenantId}/invitations/{InvitationId}",
                 async (
-                    string tenantId, string invitationId,
-                    [FromBody] UpdateTenantInvitationBody body, [FromClaim(Claims.UserId)] ClaimValue currentUserId,
-                    IMediator mediator, CancellationToken ct) =>
+                    [AsParameters] UpdateTenantInvitationRequest request, IMediator mediator,
+                    CancellationToken ct) =>
                 {
-                    var result = await mediator.Send(
-                        new UpdateTenantInvitationRequest(
-                            new ManageInvitationRequest(
-                                tenantId,
-                                invitationId,
-                                body.ExpectedRevision,
-                                new InvitationActor(currentUserId)),
-                            body.Role),
-                        ct);
+                    var result = await mediator.Send(request, ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationDto invitation => Results.Ok(invitation),

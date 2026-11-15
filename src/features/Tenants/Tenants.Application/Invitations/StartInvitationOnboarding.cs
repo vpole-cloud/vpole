@@ -25,42 +25,47 @@ public sealed class StartInvitationOnboarding(
         var identity = await startIdentity(
             new StartInvitedIdentityRequest(invitation.Email, links.SetupCallback()),
             ct);
-        if (identity is InvitedIdentityUnavailable)
-            return new InvitationIdentitySetupUnavailable();
-        if (identity is not InvitedIdentityStarted started)
-            throw new InvalidOperationException("Unexpected invitation identity outcome.");
-        return await transaction.InvokeOutcomeAsync<StartInvitationOnboardingOutcome>(
-            async (context, cancellationToken) =>
-            {
-                var current = await invitations.Find(context.Session, InvitationFilters.ById(invitation.Id))
-                    .SingleOrDefaultAsync(cancellationToken);
-                if (current is null || current.Revision != invitation.Revision ||
-                    current.TokenHash != invitation.TokenHash || current.Status != TenantInvitationStatus.Pending ||
-                    current.ExpiresAtUtc <= timeProvider.GetUtcNow().UtcDateTime)
-                    return context.Abort(new InvitationUnavailable());
-                var tenant = await tenants.Find(context.Session, TenantFilters.ById(current.TenantId))
-                    .SingleOrDefaultAsync(cancellationToken);
-                if (tenant is null || !InvitationIdentity.CanGrant(
-                        tenant,
-                        new InvitationActor(current.IssuerId),
-                        current.Role))
-                    return context.Abort(new InvitationUnavailable());
-                if (current.OnboardingSubject is not null && current.OnboardingSubject != started.Subject)
-                    return context.Abort(new InvitationUnavailable());
-                await tenants.UpdateOneAsync(
-                    context.Session,
-                    TenantFilters.ById(tenant.Id),
-                    Builders<Tenant>.Update.Inc(item => item.ReferenceFence, 1),
-                    cancellationToken: cancellationToken);
-                await invitations.UpdateOneAsync(
-                    context.Session,
-                    InvitationFilters.AtRevision(current.Id, current.Revision),
-                    Builders<TenantInvitation>.Update.Set(item => item.OnboardingSubject, started.Subject),
-                    cancellationToken: cancellationToken);
-                return context.Commit(new InvitationOnboardingDto(started.SetupEmailSent));
-            },
-            ct);
+        return identity switch
+        {
+            InvitedIdentityStarted started => await RecordOnboardingAsync(invitation, started, ct),
+            InvitedIdentityUnavailable => new InvitationIdentitySetupUnavailable(),
+        };
     }
+
+    private Task<StartInvitationOnboardingOutcome> RecordOnboardingAsync(
+        TenantInvitation invitation,
+        InvitedIdentityStarted started,
+        CancellationToken ct) => transaction.InvokeOutcomeAsync<StartInvitationOnboardingOutcome>(
+        async (context, cancellationToken) =>
+        {
+            var current = await invitations.Find(context.Session, InvitationFilters.ById(invitation.Id))
+                .SingleOrDefaultAsync(cancellationToken);
+            if (current is null || current.Revision != invitation.Revision ||
+                current.TokenHash != invitation.TokenHash || current.Status != TenantInvitationStatus.Pending ||
+                current.ExpiresAtUtc <= timeProvider.GetUtcNow().UtcDateTime)
+                return context.Abort(new InvitationUnavailable());
+            var tenant = await tenants.Find(context.Session, TenantFilters.ById(current.TenantId))
+                .SingleOrDefaultAsync(cancellationToken);
+            if (tenant is null || !InvitationIdentity.CanGrant(
+                    tenant,
+                    new InvitationActor(current.IssuerId),
+                    current.Role))
+                return context.Abort(new InvitationUnavailable());
+            if (current.OnboardingSubject is not null && current.OnboardingSubject != started.Subject)
+                return context.Abort(new InvitationUnavailable());
+            await tenants.UpdateOneAsync(
+                context.Session,
+                TenantFilters.ById(tenant.Id),
+                Builders<Tenant>.Update.Inc(item => item.ReferenceFence, 1),
+                cancellationToken: cancellationToken);
+            await invitations.UpdateOneAsync(
+                context.Session,
+                InvitationFilters.AtRevision(current.Id, current.Revision),
+                Builders<TenantInvitation>.Update.Set(item => item.OnboardingSubject, started.Subject),
+                cancellationToken: cancellationToken);
+            return context.Commit(new InvitationOnboardingDto(started.SetupEmailSent));
+        },
+        ct);
 }
 
 public sealed record InvitationOnboardingDto(

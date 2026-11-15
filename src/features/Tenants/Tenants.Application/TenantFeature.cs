@@ -5,7 +5,6 @@ using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Realtime.Contracts;
-using Pole.Features.Tenants.Application.Endpoints.Invitations;
 using Pole.Features.Tenants.Application.Identity;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Features.Tenants.Application.Members;
@@ -53,8 +52,6 @@ public static class TenantFeature
         services.AddOutcomeTransaction<Unit>();
         services.TryAddScoped<ITenantContextAccessor, TenantContextAccessor>();
         services.AddHttpProblemMappings(TenantMemberAuthorizationHttpProblemMappings.All);
-        services.AddHttpProblemMappings(
-            [HttpProblemMapping.For<InvitationIdentityMismatch>(InvitationHttpProblems.IdentityMismatch)]);
 
         services.TryAddScoped<MongoLoadTenant>();
         services.TryAddScoped<LoadTenant>(provider => provider.GetRequiredService<MongoLoadTenant>().InvokeAsync);
@@ -102,12 +99,14 @@ public static class TenantFeature
         where TOutcome : notnull => services.TryAddScoped<RunMongoOutcomeTransaction<TOutcome>>(provider =>
         provider.GetRequiredService<MongoRunTransaction>().InvokeOutcomeAsync);
 
-    /// <summary>Registers feature authorization after request validation and active-tenant authorization.</summary>
-    public static IServiceCollection AddTenantFeatureAuthorizationBehaviors(this IServiceCollection services)
+    /// <summary>
+    ///     Adds the tenant-member authorization stage after the common mediator stages.
+    ///     The composition root invokes this separately so its position in the pipeline
+    ///     remains validation, tenant authorization, then tenant-member authorization.
+    /// </summary>
+    public static IServiceCollection AddTenantMemberAuthorizationBehavior(this IServiceCollection services)
     {
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantMemberAuthorizationBehavior<,>));
-        services.AddScoped<IPipelineBehavior<AcceptTenantInvitationRequest, AcceptTenantInvitationHttpOutcome>,
-            InvitationRecipientAuthorizationBehavior>();
         return services;
     }
 }

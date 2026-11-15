@@ -1,5 +1,6 @@
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Application.Endpoints.Invitations;
+using Pole.ASP.Helpers;
 using Pole.Features.Tenants.Application.Invitations;
 using Xunit;
 
@@ -27,17 +28,24 @@ public sealed class TenantInvitationValidationTests
     public void AllManagementValidatorsRequireTheSameCanonicalInvitationId(string id, bool valid)
     {
         Assert.Equal(64, ValidInvitationId.Length);
-        var invitation = new ManageInvitationRequest(TenantId, id, 1, new InvitationActor("actor"));
+        var actor = new ClaimValue("actor");
+        var body = new InvitationRevisionBody(1);
         Assert.Equal(
             valid,
-            new RevokeTenantInvitationValidator().Validate(new RevokeTenantInvitationRequest(invitation)).IsValid);
+            new RevokeTenantInvitationValidator().Validate(new RevokeTenantInvitationRequest(TenantId, id, body, actor))
+                .IsValid);
         Assert.Equal(
             valid,
-            new ResendTenantInvitationValidator().Validate(new ResendTenantInvitationRequest(invitation)).IsValid);
+            new ResendTenantInvitationValidator().Validate(new ResendTenantInvitationRequest(TenantId, id, body, actor))
+                .IsValid);
         Assert.Equal(
             valid,
-            new UpdateTenantInvitationValidator()
-                .Validate(new UpdateTenantInvitationRequest(invitation, TenantRole.Member))
+            new UpdateTenantInvitationValidator().Validate(
+                    new UpdateTenantInvitationRequest(
+                        TenantId,
+                        id,
+                        new UpdateTenantInvitationBody(TenantRole.Member, 1),
+                        actor))
                 .IsValid);
     }
 

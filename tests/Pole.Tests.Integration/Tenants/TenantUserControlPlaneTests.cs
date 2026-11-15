@@ -133,7 +133,7 @@ public sealed class TenantUserControlPlaneTests(
         var request = new CreateTenantInvitationRequest(
             tenant.Id,
             new CreateTenantInvitationBody("other@example.com", TenantRole.Member),
-            new InvitationActor("user-1"));
+            new ClaimValue("user-1"));
         var behavior
             = CreateTenantMemberAuthorizationBehavior<CreateTenantInvitationRequest, CreateTenantInvitationOutcome>(
                 "user-1");
@@ -170,7 +170,7 @@ public sealed class TenantUserControlPlaneTests(
         var request = new CreateTenantInvitationRequest(
             tenant.Id,
             new CreateTenantInvitationBody("other@example.com", TenantRole.Member),
-            new InvitationActor("user-1"));
+            new ClaimValue("user-1"));
         var behavior
             = CreateTenantMemberAuthorizationBehavior<CreateTenantInvitationRequest, CreateTenantInvitationOutcome>(
                 "user-1");
@@ -207,7 +207,7 @@ public sealed class TenantUserControlPlaneTests(
         var request = new CreateTenantInvitationRequest(
             tenant.Id,
             new CreateTenantInvitationBody("other@example.com", TenantRole.Owner),
-            new InvitationActor("user-1"));
+            new ClaimValue("user-1"));
         var behavior
             = CreateTenantMemberAuthorizationBehavior<CreateTenantInvitationRequest, CreateTenantInvitationOutcome>(
                 "user-1");

@@ -1,11 +1,12 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
-using MongoDB.Bson;
-using Pole.ASP.Helpers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
@@ -14,13 +15,13 @@ namespace Pole.Features.Tenants.Application.Endpoints.Invitations;
 
 public sealed record CreateTenantInvitationBody(
     string Email,
-    TenantRole Role
+    [property: JsonRequired] TenantRole Role
 );
 
 public sealed record CreateTenantInvitationRequest(
-    string TenantId,
-    CreateTenantInvitationBody Body,
-    InvitationActor Actor
+    [FromRoute] string TenantId,
+    [FromBody] CreateTenantInvitationBody Body,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
 ) : IMediatorRequest<CreateTenantInvitationOutcome>, ITenantMemberRoleOperation
 {
     public TenantRole Role => Body.Role;
@@ -43,7 +44,11 @@ public sealed class CreateTenantInvitationHandler(
         CancellationToken cancellationToken = default)
     {
         return await persist(
-            new CreateTenantInvitation(request.TenantId, request.Body.Email, request.Body.Role, request.Actor),
+            new CreateTenantInvitation(
+                request.TenantId,
+                request.Body.Email,
+                request.Body.Role,
+                new InvitationActor(request.CurrentUserId)),
             cancellationToken);
     }
 }
@@ -52,7 +57,7 @@ public sealed class CreateTenantInvitationValidator : AbstractValidator<CreateTe
 {
     public CreateTenantInvitationValidator()
     {
-        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
+        RuleFor(request => request.TenantId).RouteObjectId();
         RuleFor(request => request.Body.Email).NotEmpty().EmailAddress().MaximumLength(254);
         RuleFor(request => request.Body.Role).IsInEnum();
     }
@@ -63,19 +68,16 @@ public static class CreateTenantInvitationEndpoint
     public static IEndpointRouteBuilder MapCreateTenantInvitationEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapPost(
-                "/{tenantId}/invitations",
+                "/{TenantId}/invitations",
                 async (
-                    string tenantId, [FromBody] CreateTenantInvitationBody body,
-                    [FromClaim(Claims.UserId)] ClaimValue currentUserId, IMediator mediator,
+                    [AsParameters] CreateTenantInvitationRequest request, IMediator mediator,
                     CancellationToken ct) =>
                 {
-                    var result = await mediator.Send(
-                        new CreateTenantInvitationRequest(tenantId, body, new InvitationActor(currentUserId)),
-                        ct);
+                    var result = await mediator.Send(request, ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationDto invitation => Results.Created(
-                            $"/api/v1/tenants/{tenantId}/invitations/{invitation.Id}",
+                            $"/api/v1/tenants/{request.TenantId}/invitations/{invitation.Id}",
                             invitation),
                         TenantNotFound error => MapTenantNotFound(error),
                         InvitationForbidden error => InvitationHttpProblems.Forbidden(error),

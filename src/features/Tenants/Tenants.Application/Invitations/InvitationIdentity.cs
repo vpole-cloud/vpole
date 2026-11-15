@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
-using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Invitations;
 
@@ -42,7 +41,7 @@ public sealed record InvitationRecipientAlreadyMember;
 
 public sealed record InvitationUnavailable;
 
-public sealed record InvitationIdentityMismatch : IMediatorRejection;
+public sealed record InvitationIdentityMismatch;
 
 public sealed record InvitationIdentityConflict;
 

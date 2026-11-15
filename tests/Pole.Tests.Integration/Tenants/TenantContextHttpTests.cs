@@ -18,6 +18,7 @@ using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
+using Pole.Mediator;
 using Pole.Platform.Hosting;
 using Pole.Server.Extensions;
 using Xunit;
@@ -76,6 +77,21 @@ public sealed class TenantContextHttpTests
                 var route = endpoint.RoutePattern.RawText!;
                 var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods;
                 var method = methods?.Count == 1 ? methods[0] : null;
+                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.Ordinal) ||
+                    route.StartsWith("/api/v1/tenants/{TenantId}/invitations", StringComparison.Ordinal) ||
+                    route.StartsWith("/api/v1/tenant-invitations/", StringComparison.Ordinal))
+                {
+                    var parameters = endpoint.Metadata.GetMetadata<MethodInfo>()!.GetParameters();
+                    var input = Assert.Single(
+                        parameters,
+                        parameter => parameter.ParameterType != typeof(IMediator) &&
+                            parameter.ParameterType != typeof(CancellationToken));
+                    Assert.True(input.IsDefined(typeof(AsParametersAttribute)), route);
+                    Assert.Contains(
+                        input.ParameterType.GetInterfaces(),
+                        type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IMediatorRequest<>));
+                }
+
                 var githubCallback
                     = (method, route) is ("GET", "/api/v1/integrations/github/oauth-callback"
                     or "/api/v1/integrations/github/setup-complete") or ("POST", "/api/v1/integrations/github/webhook");

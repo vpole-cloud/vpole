@@ -41,6 +41,34 @@ public sealed class TenantInvitationHttpTests(
     }
 
     [Fact]
+    public async Task OmittedRoleIsRejectedForInvitationCreationAndBothRoleUpdates()
+    {
+        var path = $"/api/v1/tenants/{Data.TenantId}";
+        using var create = await Client.PostAsJsonAsync(path + "/invitations", new { email = "missing@example.test" });
+        Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
+
+        await CreateInvitation();
+        var invitations = Fixture.Database.GetCollection<TenantInvitation>("TenantInvitations");
+        var invitation = await invitations.Find(item => item.TenantId == Data.TenantId).SingleAsync();
+        using var changeInvitation = await Client.PutAsJsonAsync(
+            $"{path}/invitations/{invitation.Id}",
+            new { expectedRevision = invitation.Revision });
+        Assert.Equal(HttpStatusCode.BadRequest, changeInvitation.StatusCode);
+        var retained = await invitations.Find(item => item.Id == invitation.Id).SingleAsync();
+        Assert.Equal(invitation.Role, retained.Role);
+        Assert.Equal(invitation.Revision, retained.Revision);
+
+        var member = TenantFactory.CreateMember(Data.TenantId, "target", "target@example.test", TenantRole.Admin);
+        await Fixture.DbContext.Tenants.UpdateOneAsync(
+            item => item.Id == Data.TenantId,
+            Builders<Tenant>.Update.Push(item => item.Members, member));
+        using var changeMember = await Client.PutAsJsonAsync($"{path}/members/{member.Id}", new { });
+        Assert.Equal(HttpStatusCode.BadRequest, changeMember.StatusCode);
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
+        Assert.Equal(TenantRole.Admin, tenant.Members.Single(item => item.Id == member.Id).Role);
+    }
+
+    [Fact]
     public async Task PreviewAndExplicitOnboardingNeverGrantAccessAndAcceptanceNeedsVerifiedMatchingIdentity()
     {
         var token = await CreateInvitation();

@@ -114,7 +114,7 @@ public sealed class TenantInvitationIndexesMigration : IMigration
 
     private static BsonDocument Type(string type) => new("bsonType", type);
     private static BsonDocument Text() => new() { ["bsonType"] = "string", ["minLength"] = 1 };
-    private static BsonDocument Hash() => new() { ["bsonType"] = "string", ["pattern"] = "^[0-9A-F]{64}$" };
+    private static BsonDocument Hash() => new() { ["bsonType"] = "string", ["pattern"] = @"\A[0-9A-F]{64}\z" };
     private static BsonDocument PositiveLong() => new() { ["bsonType"] = "long", ["minimum"] = 1 };
     private static BsonDocument Choice(params int[] values) => new("enum", new BsonArray(values));
 }

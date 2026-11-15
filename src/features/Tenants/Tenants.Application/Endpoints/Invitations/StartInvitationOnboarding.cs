@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Invitations;
 
 public sealed record StartInvitationOnboardingRequest(
-    InvitationTokenBody Body
+    [FromBody] InvitationTokenBody Body
 ) : IMediatorRequest<StartInvitationOnboardingOutcome>;
 
 public union StartInvitationOnboardingOutcome(
@@ -39,10 +40,10 @@ public static class StartInvitationOnboardingEndpoint
         app.MapPost(
                 "/tenant-invitations/onboarding",
                 async (
-                    [FromBody] InvitationTokenBody body, IMediator mediator,
+                    [AsParameters] StartInvitationOnboardingRequest request, IMediator mediator,
                     CancellationToken ct) =>
                 {
-                    var result = await mediator.Send(new StartInvitationOnboardingRequest(body), ct);
+                    var result = await mediator.Send(request, ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationOnboardingDto setup => Results.Ok(setup),

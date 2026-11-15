@@ -395,6 +395,11 @@ public sealed class TenantInvitationTransactionTests(
         malformed.Remove("IssuerId");
         var validation = await Assert.ThrowsAsync<MongoWriteException>(() => raw.InsertOneAsync(malformed));
         Assert.Equal(121, validation.WriteError.Code);
+        var paddedHash = bson.DeepClone().AsBsonDocument;
+        paddedHash["_id"] = new string('A', 64);
+        paddedHash["TokenHash"] = new string('C', 64) + "\n";
+        validation = await Assert.ThrowsAsync<MongoWriteException>(() => raw.InsertOneAsync(paddedHash));
+        Assert.Equal(121, validation.WriteError.Code);
         var duplicate = bson.DeepClone().AsBsonDocument;
         duplicate["_id"] = new string('B', 64);
         duplicate["TokenHash"] = new string('C', 64);

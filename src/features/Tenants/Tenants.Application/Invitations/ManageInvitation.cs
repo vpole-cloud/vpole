@@ -111,7 +111,7 @@ public sealed class ManageInvitation(
             {
                 Role = role, IssuerId = request.Actor.Subject, TokenHash = InvitationIdentity.Hash(token),
                 DeliveryToken = encrypted, Revision = revision,
-                ExpiresAtUtc = timeProvider.GetUtcNow().UtcDateTime.AddDays(7),
+                ExpiresAtUtc = timeProvider.GetUtcNow().UtcDateTime + TenantInvitation.Lifetime,
                 DeliveryStatus = InvitationDeliveryStatus.Pending,
             };
             await tenants.UpdateOneAsync(

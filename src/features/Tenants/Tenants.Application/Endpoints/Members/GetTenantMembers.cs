@@ -1,5 +1,4 @@
 using FluentValidation;
-using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -21,8 +20,7 @@ public union GetTenantMembersOutcome(IReadOnlyCollection<TenantMemberDto>, Tenan
 
 public sealed class GetTenantMembersValidator : AbstractValidator<GetTenantMembersRequest>
 {
-    public GetTenantMembersValidator() =>
-        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
+    public GetTenantMembersValidator() => RuleFor(request => request.TenantId).RouteObjectId();
 }
 
 public sealed class GetTenantMembersHandler(

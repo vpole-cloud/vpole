@@ -60,7 +60,7 @@ internal sealed class MongoPersistTenantInvitation(
                 ct);
             if (protectedToken is not EncryptedValue encrypted)
                 return context.Abort(new InvitationEncryptionUnavailable());
-            var invitation = new TenantInvitation(
+            var invitation = TenantInvitation.CreatePending(
                 id,
                 tenant.Id,
                 email,
@@ -69,11 +69,7 @@ internal sealed class MongoPersistTenantInvitation(
                 InvitationIdentity.Hash(token),
                 encrypted,
                 revision,
-                now,
-                now.AddDays(7),
-                TenantInvitationStatus.Pending,
-                InvitationDeliveryStatus.Pending,
-                null);
+                now);
 
             // Any concurrent issuer downgrade/removal conflicts with this same tenant write.
             await tenants.UpdateOneAsync(

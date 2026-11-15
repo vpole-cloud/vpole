@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 
@@ -60,32 +61,21 @@ public union AcceptTenantInvitationHttpOutcome(
     InvitationIdentityMismatch,
     InvitationIdentityConflict);
 
-public sealed class InvitationRecipientAuthorizationBehavior(
-    IValidator<InvitationRecipient> validator
-) : IPipelineBehavior<AcceptTenantInvitationRequest, AcceptTenantInvitationHttpOutcome>
-{
-    public async Task<MediatorResult<AcceptTenantInvitationHttpOutcome>> Handle(
-        AcceptTenantInvitationRequest request,
-        RequestHandlerDelegate<AcceptTenantInvitationHttpOutcome> next,
-        CancellationToken cancellationToken)
-    {
-        if (!(await validator.ValidateAsync(request.Recipient, cancellationToken)).IsValid)
-            return new PipelineRejected(new InvitationIdentityMismatch());
-
-        return await next();
-    }
-}
-
 public sealed class AcceptTenantInvitationHandler(
-    PersistAcceptedTenantInvitation persist
+    PersistAcceptedTenantInvitation persist,
+    IValidator<InvitationRecipient> recipientValidator
 ) : IMediatorOutcomeHandler<AcceptTenantInvitationRequest, AcceptTenantInvitationHttpOutcome>
 {
-    public Task<AcceptTenantInvitationHttpOutcome> HandleAsync(
+    public async Task<AcceptTenantInvitationHttpOutcome> HandleAsync(
         AcceptTenantInvitationRequest request,
         CancellationToken cancellationToken = default)
     {
         var recipient = request.Recipient;
-        return persist(
+        var validation = await recipientValidator.ValidateAsync(recipient, cancellationToken);
+        if (!validation.IsValid)
+            return new InvitationIdentityMismatch();
+
+        return await persist(
             new AcceptTenantInvitation(
                 request.Body.Token,
                 recipient.Subject,

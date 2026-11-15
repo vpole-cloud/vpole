@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Invitations;
 
 public sealed record PreviewTenantInvitationRequest(
-    InvitationTokenBody Body
+    [FromBody] InvitationTokenBody Body
 ) : IMediatorRequest<PreviewTenantInvitationOutcome>;
 
 public union PreviewTenantInvitationOutcome(InvitationPreviewDto, InvitationUnavailable);
@@ -40,10 +41,10 @@ public static class PreviewTenantInvitationEndpoint
         app.MapPost(
                 "/tenant-invitations/preview",
                 async (
-                    [FromBody] InvitationTokenBody body, IMediator mediator,
+                    [AsParameters] PreviewTenantInvitationRequest request, IMediator mediator,
                     CancellationToken ct) =>
                 {
-                    var result = await mediator.Send(new PreviewTenantInvitationRequest(body), ct);
+                    var result = await mediator.Send(request, ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationPreviewDto preview => Results.Ok(preview),

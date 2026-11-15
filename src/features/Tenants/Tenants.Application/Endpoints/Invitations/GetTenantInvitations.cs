@@ -1,11 +1,11 @@
 using FluentValidation;
-using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 
@@ -23,8 +23,7 @@ public union GetTenantInvitationsOutcome(
 
 public sealed class GetTenantInvitationsValidator : AbstractValidator<GetTenantInvitationsRequest>
 {
-    public GetTenantInvitationsValidator() =>
-        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
+    public GetTenantInvitationsValidator() => RuleFor(request => request.TenantId).RouteObjectId();
 }
 
 public sealed class GetTenantInvitationsHandler(

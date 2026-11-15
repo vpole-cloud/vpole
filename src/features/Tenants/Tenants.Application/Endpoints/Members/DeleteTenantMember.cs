@@ -1,11 +1,11 @@
 using FluentValidation;
-using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Members;
 using Pole.Mediator;
 using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
@@ -30,8 +30,8 @@ public sealed class DeleteTenantMemberValidator : AbstractValidator<DeleteTenant
 {
     public DeleteTenantMemberValidator()
     {
-        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
-        RuleFor(request => request.MemberId).Must(value => ObjectId.TryParse(value, out _));
+        RuleFor(request => request.TenantId).RouteObjectId();
+        RuleFor(request => request.MemberId).RouteObjectId();
     }
 }
 

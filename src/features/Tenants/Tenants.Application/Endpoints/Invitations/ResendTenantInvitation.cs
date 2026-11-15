@@ -1,22 +1,22 @@
 using FluentValidation;
-using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Mediator;
 
 namespace Pole.Features.Tenants.Application.Endpoints.Invitations;
 
 public sealed record ResendTenantInvitationRequest(
-    ManageInvitationRequest Invitation
-) : IMediatorRequest<ResendTenantInvitationOutcome>, ITenantMemberManageOperation
-{
-    public string TenantId => Invitation.TenantId;
-}
+    [FromRoute] string TenantId,
+    [FromRoute] string InvitationId,
+    [FromBody] InvitationRevisionBody Body,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId
+) : IMediatorRequest<ResendTenantInvitationOutcome>, ITenantMemberManageOperation;
 
 public union ResendTenantInvitationOutcome(
     InvitationDto,
@@ -30,9 +30,9 @@ public sealed class ResendTenantInvitationValidator : AbstractValidator<ResendTe
 {
     public ResendTenantInvitationValidator()
     {
-        RuleFor(request => request.Invitation.TenantId).Must(value => ObjectId.TryParse(value, out _));
-        RuleFor(request => request.Invitation.InvitationId).InvitationId();
-        RuleFor(request => request.Invitation.ExpectedRevision).GreaterThan(0);
+        RuleFor(request => request.TenantId).RouteObjectId();
+        RuleFor(request => request.InvitationId).InvitationId();
+        RuleFor(request => request.Body.ExpectedRevision).GreaterThan(0);
     }
 }
 
@@ -42,7 +42,13 @@ public sealed class ResendTenantInvitationHandler(
 {
     public Task<ResendTenantInvitationOutcome> HandleAsync(
         ResendTenantInvitationRequest request,
-        CancellationToken cancellationToken = default) => management.ResendAsync(request.Invitation, cancellationToken);
+        CancellationToken cancellationToken = default) => management.ResendAsync(
+        new ManageInvitationRequest(
+            request.TenantId,
+            request.InvitationId,
+            request.Body.ExpectedRevision,
+            new InvitationActor(request.CurrentUserId)),
+        cancellationToken);
 }
 
 public static class ResendTenantInvitationEndpoint
@@ -50,20 +56,12 @@ public static class ResendTenantInvitationEndpoint
     public static IEndpointRouteBuilder MapResendTenantInvitationEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapPost(
-                "/{tenantId}/invitations/{invitationId}/resend",
+                "/{TenantId}/invitations/{InvitationId}/resend",
                 async (
-                    string tenantId, string invitationId,
-                    [FromBody] InvitationRevisionBody body, [FromClaim(Claims.UserId)] ClaimValue currentUserId,
-                    IMediator mediator, CancellationToken ct) =>
+                    [AsParameters] ResendTenantInvitationRequest request, IMediator mediator,
+                    CancellationToken ct) =>
                 {
-                    var result = await mediator.Send(
-                        new ResendTenantInvitationRequest(
-                            new ManageInvitationRequest(
-                                tenantId,
-                                invitationId,
-                                body.ExpectedRevision,
-                                new InvitationActor(currentUserId))),
-                        ct);
+                    var result = await mediator.Send(request, ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationDto invitation => Results.Ok(invitation),

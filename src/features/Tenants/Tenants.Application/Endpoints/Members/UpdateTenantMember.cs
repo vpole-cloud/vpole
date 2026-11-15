@@ -1,5 +1,5 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
-using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +26,7 @@ public sealed record UpdateTenantMemberRequest(
 }
 
 public sealed record UpdateTenantMemberRequestBody(
-    TenantRole Role
+    [property: JsonRequired] TenantRole Role
 );
 
 public union UpdateTenantMemberOutcome(
@@ -40,8 +40,8 @@ public sealed class UpdateTenantMemberValidator : AbstractValidator<UpdateTenant
 {
     public UpdateTenantMemberValidator()
     {
-        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
-        RuleFor(request => request.MemberId).Must(value => ObjectId.TryParse(value, out _));
+        RuleFor(request => request.TenantId).RouteObjectId();
+        RuleFor(request => request.MemberId).RouteObjectId();
         RuleFor(request => request.Body.Role).IsInEnum();
     }
 }

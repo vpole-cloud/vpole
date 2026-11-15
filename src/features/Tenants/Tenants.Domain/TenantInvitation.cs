@@ -22,7 +22,34 @@ public sealed record TenantInvitation(
     TenantInvitationStatus Status,
     InvitationDeliveryStatus DeliveryStatus,
     string? OnboardingSubject
-);
+)
+{
+    public static readonly TimeSpan Lifetime = TimeSpan.FromDays(7);
+
+    public static TenantInvitation CreatePending(
+        string id,
+        string tenantId,
+        string email,
+        TenantRole role,
+        string issuerId,
+        string tokenHash,
+        EncryptedValue deliveryToken,
+        long revision,
+        DateTime nowUtc) => new(
+        id,
+        tenantId,
+        email,
+        role,
+        issuerId,
+        tokenHash,
+        deliveryToken,
+        revision,
+        nowUtc,
+        nowUtc + Lifetime,
+        TenantInvitationStatus.Pending,
+        InvitationDeliveryStatus.Pending,
+        null);
+}
 
 /// <summary>Immutable receipt remains valid after rotation or membership removal, without re-granting access.</summary>
 public sealed record TenantInvitationAcceptance(
