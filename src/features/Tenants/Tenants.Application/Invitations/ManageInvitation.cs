@@ -32,11 +32,14 @@ public sealed class ManageInvitation(
             {
                 var tenant = await tenants.Find(context.Session, TenantFilters.ById(request.TenantId))
                     .SingleOrDefaultAsync(cancellationToken);
+                if (tenant is null || !InvitationIdentity.CanGrant(tenant, request.Actor, TenantRole.Viewer))
+                    return context.Abort(new InvitationForbidden());
+
                 var invitation = await invitations.Find(
                         context.Session,
-                        InvitationFilters.ForTenantById(tenant?.Id ?? request.TenantId, request.InvitationId))
+                        InvitationFilters.ForTenantById(tenant.Id, request.InvitationId))
                     .SingleOrDefaultAsync(cancellationToken);
-                if (tenant is null || invitation is null)
+                if (invitation is null)
                     return context.Abort(new InvitationNotFound());
                 if (!InvitationIdentity.CanGrant(tenant, request.Actor, invitation.Role))
                     return context.Abort(new InvitationForbidden());
@@ -69,11 +72,14 @@ public sealed class ManageInvitation(
         {
             var tenant = await tenants.Find(context.Session, TenantFilters.ById(request.TenantId))
                 .SingleOrDefaultAsync(cancellationToken);
+            if (tenant is null || !InvitationIdentity.CanGrant(tenant, request.Actor, TenantRole.Viewer))
+                return context.Abort(new InvitationForbidden());
+
             var invitation = await invitations.Find(
                     context.Session,
-                    InvitationFilters.ForTenantById(tenant?.Id ?? request.TenantId, request.InvitationId))
+                    InvitationFilters.ForTenantById(tenant.Id, request.InvitationId))
                 .SingleOrDefaultAsync(cancellationToken);
-            if (tenant is null || invitation is null)
+            if (invitation is null)
                 return context.Abort(new InvitationNotFound());
             var role = requestedRole ?? invitation.Role;
             if (!InvitationIdentity.CanGrant(tenant, request.Actor, invitation.Role) ||

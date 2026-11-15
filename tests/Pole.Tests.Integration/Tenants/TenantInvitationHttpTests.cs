@@ -157,6 +157,78 @@ public sealed class TenantInvitationHttpTests(
         Assert.DoesNotContain("invited@example.test", await response.Content.ReadAsStringAsync());
     }
 
+    [Theory]
+    [InlineData("revoke", false)]
+    [InlineData("revoke", true)]
+    [InlineData("resend", false)]
+    [InlineData("resend", true)]
+    [InlineData("update", false)]
+    [InlineData("update", true)]
+    public async Task ManagementChecksLiveAuthorityBeforeInvitationExistence(string operation, bool outsider)
+    {
+        await CreateInvitation();
+        var invitation = await Fixture.Database
+            .GetCollection<TenantInvitation>("TenantInvitations")
+            .Find(item => item.TenantId == Data.TenantId)
+            .SingleAsync();
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(
+            item => item.Id == tenant.Id,
+            tenant with
+            {
+                Members = tenant.Members.Select(member => member with { Role = TenantRole.Viewer }).ToImmutableList()
+            });
+        if (outsider)
+        {
+            Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+            Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, "outside-admin");
+        }
+
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        foreach (var id in new[] { invitation.Id, new string('A', 64) })
+        {
+            var path = $"/api/v1/tenants/{tenant.Id}/invitations/{id}";
+            using var response = operation == "update"
+                ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member))
+                : await Client.PostAsync(path + "/" + operation, null);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        var retained = await Fixture.Database
+            .GetCollection<TenantInvitation>("TenantInvitations")
+            .Find(item => item.Id == invitation.Id)
+            .SingleAsync();
+        Assert.Equal(invitation.Revision, retained.Revision);
+        Assert.Equal(invitation.Status, retained.Status);
+        Assert.Equal(invitation.Role, retained.Role);
+    }
+
+    [Theory]
+    [InlineData("revoke")]
+    [InlineData("resend")]
+    [InlineData("update")]
+    public async Task TenantAdminCannotManageAnExistingOwnerInvitation(string operation)
+    {
+        using var created = await Client.PostAsJsonAsync(
+            $"/api/v1/tenants/{Data.TenantId}/invitations",
+            new CreateTenantInvitationBody("owner-invited@example.test", TenantRole.Owner));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var invitation = (await created.Content.ReadFromJsonAsync<InvitationDto>())!;
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
+        await Fixture.DbContext.Tenants.ReplaceOneAsync(
+            item => item.Id == tenant.Id,
+            tenant with
+            {
+                Members = tenant.Members.Select(member => member with { Role = TenantRole.Admin }).ToImmutableList()
+            });
+        Client.DefaultRequestHeaders.Add("X-Test-Platform-Admin", "true");
+        var path = $"/api/v1/tenants/{tenant.Id}/invitations/{invitation.Id}";
+        using var response = operation == "update"
+            ? await Client.PutAsJsonAsync(path, new UpdateTenantInvitationBody(TenantRole.Member))
+            : await Client.PostAsync(path + "/" + operation, null);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private async Task<string> CreateInvitation()
     {
         using var result = await Client.PostAsJsonAsync(
