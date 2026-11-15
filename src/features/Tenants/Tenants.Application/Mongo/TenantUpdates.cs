@@ -10,6 +10,10 @@ internal static class TenantUpdates
     public static UpdateDefinition<Tenant> AddMember(TenantMember member) =>
         Builders<Tenant>.Update.Push(tenant => tenant.Members, member);
 
+    public static UpdateDefinition<Tenant> SetMemberDefault(bool isDefault) => Builders<Tenant>.Update.Set(
+        tenant => tenant.Members.FirstMatchingElement().IsDefault,
+        isDefault);
+
     public static UpdateDefinition<Tenant> SetMemberRole(TenantRole role) => Builders<Tenant>.Update.Set(
         tenant => tenant.Members.FirstMatchingElement().Role,
         role);

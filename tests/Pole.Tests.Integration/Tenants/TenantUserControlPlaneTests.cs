@@ -13,9 +13,13 @@ using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Endpoints;
 using Pole.Features.Tenants.Application.Endpoints.Members;
+using Pole.Features.Tenants.Application.Endpoints.Invitations;
+using Pole.Features.Tenants.Application.Invitations;
 using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
+using Pole.Features.Users.Application;
+using Microsoft.Extensions.Configuration;
 using Pole.Mediator;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
@@ -41,6 +45,8 @@ public sealed class TenantUserControlPlaneTests(
         services.AddSingleton<IMongoClient>(Fixture.Client);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton(Fixture.StoreOutboxWrites);
+        services.AddSingleton(TimeProvider.System);
+        services.AddUsersFeature(new ConfigurationBuilder().Build());
         services.AddTenantsFeature();
         _services = services.BuildServiceProvider(validateScopes: true);
     }
@@ -124,11 +130,13 @@ public sealed class TenantUserControlPlaneTests(
     public async Task TenantMemberAuthorization_ReadOnlyMembershipCannotAddMembers(TenantRole role)
     {
         var tenant = await InsertTenantAsync(role);
-        var request = new AddTenantMemberRequest(
+        var request = new CreateTenantInvitationRequest(
             tenant.Id,
-            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
+            new CreateTenantInvitationBody("other@example.com", TenantRole.Member),
+            new InvitationActor("user-1"));
         var behavior
-            = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, AddTenantMemberOutcome>("user-1");
+            = CreateTenantMemberAuthorizationBehavior<CreateTenantInvitationRequest, CreateTenantInvitationOutcome>(
+                "user-1");
         var nextCalled = false;
 
         var result = await behavior.Handle(
@@ -136,9 +144,16 @@ public sealed class TenantUserControlPlaneTests(
             () =>
             {
                 nextCalled = true;
-                return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
-                    new AddTenantMemberOutcome(
-                        new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member)));
+                return Task.FromResult<MediatorResult<CreateTenantInvitationOutcome>>(
+                    new CreateTenantInvitationOutcome(
+                        new InvitationDto(
+                            "invitation",
+                            tenant.Id,
+                            "other@example.com",
+                            TenantRole.Member,
+                            DateTime.UtcNow.AddDays(7),
+                            TenantInvitationStatus.Pending,
+                            InvitationDeliveryStatus.Pending)));
             },
             CancellationToken.None);
 
@@ -151,11 +166,13 @@ public sealed class TenantUserControlPlaneTests(
     public async Task TenantMemberAuthorization_AdminCanAddMembers()
     {
         var tenant = await InsertTenantAsync(TenantRole.Admin);
-        var request = new AddTenantMemberRequest(
+        var request = new CreateTenantInvitationRequest(
             tenant.Id,
-            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Member));
+            new CreateTenantInvitationBody("other@example.com", TenantRole.Member),
+            new InvitationActor("user-1"));
         var behavior
-            = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, AddTenantMemberOutcome>("user-1");
+            = CreateTenantMemberAuthorizationBehavior<CreateTenantInvitationRequest, CreateTenantInvitationOutcome>(
+                "user-1");
         var nextCalled = false;
 
         var result = await behavior.Handle(
@@ -163,14 +180,21 @@ public sealed class TenantUserControlPlaneTests(
             () =>
             {
                 nextCalled = true;
-                return Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
-                    new AddTenantMemberOutcome(
-                        new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Member)));
+                return Task.FromResult<MediatorResult<CreateTenantInvitationOutcome>>(
+                    new CreateTenantInvitationOutcome(
+                        new InvitationDto(
+                            "invitation",
+                            tenant.Id,
+                            "other@example.com",
+                            TenantRole.Member,
+                            DateTime.UtcNow.AddDays(7),
+                            TenantInvitationStatus.Pending,
+                            InvitationDeliveryStatus.Pending)));
             },
             CancellationToken.None);
 
         var member = AssertOutcome(result);
-        Assert.True(member is TenantMemberDto);
+        Assert.True(member is InvitationDto);
         Assert.True(nextCalled);
     }
 
@@ -178,17 +202,26 @@ public sealed class TenantUserControlPlaneTests(
     public async Task TenantMemberAuthorization_AdminCannotGrantOwner()
     {
         var tenant = await InsertTenantAsync(TenantRole.Admin);
-        var request = new AddTenantMemberRequest(
+        var request = new CreateTenantInvitationRequest(
             tenant.Id,
-            new AddTenantMemberRequestBody("user-2", "other@example.com", TenantRole.Owner));
+            new CreateTenantInvitationBody("other@example.com", TenantRole.Owner),
+            new InvitationActor("user-1"));
         var behavior
-            = CreateTenantMemberAuthorizationBehavior<AddTenantMemberRequest, AddTenantMemberOutcome>("user-1");
+            = CreateTenantMemberAuthorizationBehavior<CreateTenantInvitationRequest, CreateTenantInvitationOutcome>(
+                "user-1");
 
         var result = await behavior.Handle(
             request,
-            () => Task.FromResult<MediatorResult<AddTenantMemberOutcome>>(
-                new AddTenantMemberOutcome(
-                    new TenantMemberDto("member-2", tenant.Id, "user-2", "other@example.com", TenantRole.Owner))),
+            () => Task.FromResult<MediatorResult<CreateTenantInvitationOutcome>>(
+                new CreateTenantInvitationOutcome(
+                    new InvitationDto(
+                        "invitation",
+                        tenant.Id,
+                        "other@example.com",
+                        TenantRole.Owner,
+                        DateTime.UtcNow.AddDays(7),
+                        TenantInvitationStatus.Pending,
+                        InvitationDeliveryStatus.Pending))),
             CancellationToken.None);
 
         var rejection = Assert.IsType<TenantRoleRequired>(AssertRejected(result));
@@ -341,7 +374,8 @@ public sealed class TenantUserControlPlaneTests(
         var owner = tenant.Members.Single();
         using var scope = Services.CreateScope();
         var handler = new UpdateTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>());
+            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>(),
+            PlatformAdminContext());
 
         var result = await handler.HandleAsync(
             new UpdateTenantMemberRequest(tenant.Id, owner.Id, new UpdateTenantMemberRequestBody(TenantRole.Admin)));
@@ -363,7 +397,8 @@ public sealed class TenantUserControlPlaneTests(
 
         using var scope = Services.CreateScope();
         var handler = new UpdateTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>());
+            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>(),
+            PlatformAdminContext());
         var result = await handler.HandleAsync(
             new UpdateTenantMemberRequest(
                 tenant.Id,
@@ -382,7 +417,8 @@ public sealed class TenantUserControlPlaneTests(
         var owner = tenant.Members.Single();
         using var scope = Services.CreateScope();
         var handler = new DeleteTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>());
+            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>(),
+            PlatformAdminContext());
 
         var result = await handler.HandleAsync(new DeleteTenantMemberRequest(tenant.Id, owner.Id));
 
@@ -403,7 +439,8 @@ public sealed class TenantUserControlPlaneTests(
 
         using var scope = Services.CreateScope();
         var handler = new DeleteTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>());
+            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>(),
+            PlatformAdminContext());
         var result = await handler.HandleAsync(new DeleteTenantMemberRequest(tenant.Id, firstOwner.Id));
 
         Assert.True(result is TenantMemberRemoved removed && removed.MemberId == firstOwner.Id);
@@ -440,21 +477,31 @@ public sealed class TenantUserControlPlaneTests(
         async Task<bool> Mutate(string memberId, bool delete)
         {
             if (delete)
-                return await remove(new RemoveTenantMember(tenant.Id, memberId)) switch
+                return await remove(
+                        new RemoveTenantMember(tenant.Id, memberId, new TenantMemberActor("test-admin", true))) switch
+                    {
+                        TenantMemberRemoved => true,
+                        TenantLastOwner => false,
+                        TenantNotFound => throw new XunitException("Tenant unexpectedly missing."),
+                        TenantMemberNotFound => throw new XunitException("Member unexpectedly missing."),
+                        TenantMemberManagementForbidden => throw new XunitException(
+                            "Test platform actor unexpectedly forbidden."),
+                    };
+
+            return await update(
+                    new UpdateTenantMemberRole(
+                        tenant.Id,
+                        memberId,
+                        TenantRole.Member,
+                        new TenantMemberActor("test-admin", true))) switch
                 {
-                    TenantMemberRemoved => true,
+                    TenantMember => true,
                     TenantLastOwner => false,
                     TenantNotFound => throw new XunitException("Tenant unexpectedly missing."),
                     TenantMemberNotFound => throw new XunitException("Member unexpectedly missing."),
+                    TenantMemberManagementForbidden => throw new XunitException(
+                        "Test platform actor unexpectedly forbidden."),
                 };
-
-            return await update(new UpdateTenantMemberRole(tenant.Id, memberId, TenantRole.Member)) switch
-            {
-                TenantMember => true,
-                TenantLastOwner => false,
-                TenantNotFound => throw new XunitException("Tenant unexpectedly missing."),
-                TenantMemberNotFound => throw new XunitException("Member unexpectedly missing."),
-            };
         }
     }
 
@@ -551,4 +598,15 @@ public sealed class TenantUserControlPlaneTests(
         string CurrentUserEmail,
         IEnumerable<string> Roles
     );
+
+    private static IHttpContextAccessor PlatformAdminContext() => new HttpContextAccessor
+    {
+        HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(Claims.UserId, "test-admin"), new Claim(Claims.Roles, Roles.Admin)],
+                    "test")),
+        },
+    };
 }

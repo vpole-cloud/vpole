@@ -3,6 +3,7 @@ export type RealtimeTopic =
   | 'operations'
   | 'web-services'
   | 'tenant-access'
+  | 'tenant-members'
   | 'resource-groups'
   | 'workspace-inventory'
   | 'postgres'

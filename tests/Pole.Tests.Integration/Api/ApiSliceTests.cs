@@ -9,6 +9,9 @@ using Pole.Features.StorageProfiles.Application.Endpoints;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Endpoints;
 using Pole.Features.Tenants.Application.Endpoints.Members;
+using Pole.Features.Tenants.Application.Endpoints.Invitations;
+using Pole.Features.Tenants.Domain;
+using MongoDB.Driver;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Application.Endpoints;
 using Pole.Features.WebServices.Application.Endpoints;
@@ -118,16 +121,24 @@ public sealed class ApiSliceTests(
             Assert.Equal(owner.Id, problem.RootElement.GetProperty("memberId").GetString());
         }
 
-        var request = new AddTenantMemberRequestBody("new-member", "member@example.test", TenantRole.Member);
-        using var created = await Client.PostAsJsonAsync(path, request);
+        using var directAdd = await Client.PostAsJsonAsync(
+            path,
+            new { userId = "new-member", email = "member@example.test", role = "Member" });
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, directAdd.StatusCode);
+        var invitePath = $"/api/v1/tenants/{Data.TenantId}/invitations";
+        var request = new CreateTenantInvitationBody("member@example.test", TenantRole.Member);
+        using var created = await Client.PostAsJsonAsync(invitePath, request);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var member = await created.Content.ReadFromJsonAsync<TenantMemberDto>();
-        Assert.NotNull(member);
-        using var duplicate = await Client.PostAsJsonAsync(path, request);
+        using var duplicate = await Client.PostAsJsonAsync(invitePath, request);
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
         using var duplicateProblem = JsonDocument.Parse(await duplicate.Content.ReadAsStringAsync());
-        Assert.Equal("tenants.member.already-exists", duplicateProblem.RootElement.GetProperty("code").GetString());
-        Assert.Equal(request.UserId, duplicateProblem.RootElement.GetProperty("userId").GetString());
+        Assert.Equal(
+            "tenants.invitation.already-pending",
+            duplicateProblem.RootElement.GetProperty("code").GetString());
+        var member = TenantFactory.CreateMember(Data.TenantId, "new-member", "member@example.test", TenantRole.Member);
+        await Fixture.DbContext.Tenants.UpdateOneAsync(
+            item => item.Id == Data.TenantId,
+            Builders<Tenant>.Update.Push(item => item.Members, member));
         using var updated = await Client.PutAsJsonAsync(
             $"{path}/{member.Id}",
             new UpdateTenantMemberRequestBody(TenantRole.Viewer));

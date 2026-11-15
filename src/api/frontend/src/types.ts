@@ -110,3 +110,10 @@ export type {
 } from './api/types'
 export type { RuntimeLogSelection, RuntimeLogFrame } from './modules/operations/types'
 export type { ResourceConnection } from './modules/web-services/connectionTypes'
+
+export type {
+  TenantMember,
+  TenantInvitation,
+  InvitationPreview,
+  InvitationAccepted,
+} from './modules/tenants/types'

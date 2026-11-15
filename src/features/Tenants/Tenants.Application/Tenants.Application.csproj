@@ -14,6 +14,7 @@
 
     <ItemGroup>
         <PackageReference Include="FluentValidation"/>
+        <PackageReference Include="MassTransit"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -22,6 +23,7 @@
         <ProjectReference Include="..\Tenants.Events\Tenants.Events.csproj"/>
         <ProjectReference Include="..\..\Outbox\Outbox.Contracts\Outbox.Contracts.csproj"/>
         <ProjectReference Include="..\..\Realtime\Realtime.Contracts\Realtime.Contracts.csproj"/>
+        <ProjectReference Include="..\..\Users\Users.Contracts\Users.Contracts.csproj"/>
         <ProjectReference Include="..\..\Users\Users.Events\Users.Events.csproj"/>
         <ProjectReference Include="..\..\..\shared\helpers\ASP\ASP.csproj"/>
         <ProjectReference Include="..\..\..\shared\Database\Database.csproj"/>

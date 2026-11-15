@@ -15,7 +15,8 @@ public sealed record TenantMemberDto(
     string TenantId,
     string UserId,
     string Email,
-    TenantRole Role
+    TenantRole Role,
+    bool IsDefault
 );
 
 public static class TenantDtoExtensions
@@ -30,5 +31,6 @@ public static class TenantDtoExtensions
         member.TenantId,
         member.UserId,
         member.Email,
-        member.Role);
+        member.Role,
+        member.IsDefault);
 }

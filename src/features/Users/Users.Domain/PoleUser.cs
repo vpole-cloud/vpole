@@ -6,7 +6,8 @@ public sealed record PoleUser(
     string? FirstName,
     string? LastName,
     string DefaultTenantId,
-    DateTime CreatedAtUtc
+    DateTime CreatedAtUtc,
+    long MembershipFence
 );
 
 public static class PoleUserFactory
@@ -23,5 +24,6 @@ public static class PoleUserFactory
         FirstName: firstName,
         LastName: lastName,
         DefaultTenantId: defaultTenantId,
-        CreatedAtUtc: createdAtUtc);
+        CreatedAtUtc: createdAtUtc,
+        MembershipFence: 0);
 }

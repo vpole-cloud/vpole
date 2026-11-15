@@ -8,6 +8,8 @@
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
     </ItemGroup>
     <ItemGroup>
+        <ProjectReference Include="../../features/Tenants/Tenants.Migrations/Tenants.Migrations.csproj"/>
+        <ProjectReference Include="../../features/Users/Users.Migrations/Users.Migrations.csproj"/>
         <ProjectReference Include="../../features/Domains/Domains.Migrations/Domains.Migrations.csproj"/>
         <ProjectReference Include="../../features/GitOps/GitOps.Application/GitOps.Application.csproj"/>
         <ProjectReference Include="../../features/Realtime/Realtime.Application/Realtime.Application.csproj"/>

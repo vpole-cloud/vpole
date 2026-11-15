@@ -29,10 +29,12 @@ public union UpdateTenantMemberOutcome(
     TenantMemberDto,
     TenantNotFound,
     TenantMemberNotFound,
-    TenantLastOwner);
+    TenantLastOwner,
+    TenantMemberManagementForbidden);
 
 public sealed class UpdateTenantMemberHandler(
-    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole
+    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole,
+    IHttpContextAccessor contextAccessor
 ) : IMediatorOutcomeHandler<UpdateTenantMemberRequest, UpdateTenantMemberOutcome>
 {
     public async Task<UpdateTenantMemberOutcome> HandleAsync(
@@ -40,7 +42,11 @@ public sealed class UpdateTenantMemberHandler(
         CancellationToken cancellationToken = default)
     {
         var persisted = await persistUpdatedTenantMemberRole(
-            new UpdateTenantMemberRole(request.TenantId, request.MemberId, request.Body.Role),
+            new UpdateTenantMemberRole(
+                request.TenantId,
+                request.MemberId,
+                request.Body.Role,
+                TenantMemberActor.From(contextAccessor.HttpContext)),
             cancellationToken);
         return persisted switch
         {
@@ -48,6 +54,7 @@ public sealed class UpdateTenantMemberHandler(
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
             TenantLastOwner error => error,
+            TenantMemberManagementForbidden error => error,
         };
     }
 }
@@ -69,6 +76,7 @@ public static class UpdateTenantMemberEndpoint
                         TenantNotFound error => MapTenantNotFound(error),
                         TenantMemberNotFound error => MapMemberNotFound(error),
                         TenantLastOwner error => MapLastOwner(error),
+                        TenantMemberManagementForbidden error => MapMemberManagementForbidden(error),
                     });
                 })
             .WithName("UpdateTenantMember")

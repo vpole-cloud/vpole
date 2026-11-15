@@ -45,10 +45,18 @@ else
 
 var mongoReplicaSet = builder.AddMongoReplicaSet("pole-database", mongoServer.Resource);
 
+var mail = builder.AddContainer("pole-mail", "axllent/mailpit", "v1.33.1")
+    .WithEndpoint(port: e2eEnabled ? null : 1025, targetPort: 1025, name: "smtp")
+    .WithHttpEndpoint(port: e2eEnabled ? null : 8025, targetPort: 8025, name: "http")
+    .WithLifetime(ContainerLifetime.Session);
+
 var keycloakUsername = builder.AddParameter("keycloak-username");
 var keycloakPassword = builder.AddParameter("keycloak-password", secret: true);
 var keycloak = builder.AddKeycloak("pole-keycloak", e2eEnabled ? null : 8080, keycloakUsername, keycloakPassword)
     .WithRealmImport("../../../infrastructure/keycloak/realms/pole.control-plane.realm.json")
+    .WithEnvironment("POLE_SMTP_HOST", mail.GetEndpoint("smtp").Property(EndpointProperty.Host))
+    .WithEnvironment("POLE_SMTP_PORT", mail.GetEndpoint("smtp").Property(EndpointProperty.Port))
+    .WaitFor(mail)
     .WithEnvironment("KC_HTTP_MANAGEMENT_SCHEME", "http")
     .WithEndpoint("management", endpoint => endpoint.UriScheme = "http");
 if (!e2eEnabled)
@@ -289,6 +297,12 @@ var frontend = builder.AddViteApp("frontend", "../frontend")
     .WithHttpHealthCheck("/", endpointName: "http")
     .WithExternalHttpEndpoints();
 
+api.WithEnvironment("Invitations__FrontendUrl", frontend.GetEndpoint("http"));
+api.WithEnvironment("Invitations__Smtp__Host", mail.GetEndpoint("smtp").Property(EndpointProperty.Host));
+api.WithEnvironment("Invitations__Smtp__Port", mail.GetEndpoint("smtp").Property(EndpointProperty.Port));
+api.WithEnvironment("Invitations__Smtp__EnableSsl", "false");
+api.WithEnvironment("Invitations__Smtp__From", "pole@example.test");
+api.WaitFor(mail);
 api.WithEnvironment("Cors__FrontendOrigin", frontend.GetEndpoint("http"));
 api.WithEnvironment("Realtime__AllowedOrigins__0", frontend.GetEndpoint("http"));
 api.WithEnvironment("KeycloakAdmin__BaseUrl", keycloak.GetEndpoint("http"));

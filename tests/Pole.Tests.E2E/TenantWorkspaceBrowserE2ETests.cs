@@ -30,17 +30,11 @@ public sealed class TenantWorkspaceBrowserE2ETests(
         {
             var alphaTenant = fixture.Alpha.DefaultTenantId;
             var betaTenant = fixture.Beta.DefaultTenantId;
-            var member = await SendAsync(
-                HttpMethod.Post,
-                $"/api/v1/tenants/{alphaTenant}/members",
-                fixture.Alpha,
+            var member = await fixture.InviteAndJoinAsync(
                 alphaTenant,
-                new
-                {
-                    userId = fixture.Beta.KeycloakUserId,
-                    email = fixture.Beta.Email,
-                    role = TenantRole.Viewer.ToString(),
-                },
+                fixture.Alpha,
+                fixture.Beta,
+                TenantRole.Viewer,
                 ct);
             var memberId = Text(member, "id");
             resources.Defer(

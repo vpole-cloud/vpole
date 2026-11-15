@@ -19,10 +19,12 @@ public union DeleteTenantMemberOutcome(
     TenantMemberRemoved,
     TenantNotFound,
     TenantMemberNotFound,
-    TenantLastOwner);
+    TenantLastOwner,
+    TenantMemberManagementForbidden);
 
 public sealed class DeleteTenantMemberHandler(
-    PersistRemovedTenantMember persistRemovedTenantMember
+    PersistRemovedTenantMember persistRemovedTenantMember,
+    IHttpContextAccessor contextAccessor
 ) : IMediatorOutcomeHandler<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>
 {
     public async Task<DeleteTenantMemberOutcome> HandleAsync(
@@ -30,7 +32,10 @@ public sealed class DeleteTenantMemberHandler(
         CancellationToken cancellationToken = default)
     {
         var persisted = await persistRemovedTenantMember(
-            new RemoveTenantMember(request.TenantId, request.MemberId),
+            new RemoveTenantMember(
+                request.TenantId,
+                request.MemberId,
+                TenantMemberActor.From(contextAccessor.HttpContext)),
             cancellationToken);
         return persisted switch
         {
@@ -38,6 +43,7 @@ public sealed class DeleteTenantMemberHandler(
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
             TenantLastOwner error => error,
+            TenantMemberManagementForbidden error => error,
         };
     }
 }
@@ -59,6 +65,7 @@ public static class DeleteTenantMemberEndpoint
                         TenantNotFound error => MapTenantNotFound(error),
                         TenantMemberNotFound error => MapMemberNotFound(error),
                         TenantLastOwner error => MapLastOwner(error),
+                        TenantMemberManagementForbidden error => MapMemberManagementForbidden(error),
                     });
                 })
             .WithName("DeleteTenantMember")

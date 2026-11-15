@@ -33,6 +33,7 @@ export function matchesPilotQuery(
   meta?: Record<string, unknown>,
 ) {
   const [namespace, kind, resourceId] = key
+  if (event.topic === 'tenant-members') return namespace === 'tenant-members'
   if (matchesEndpointQuery(key, event)) return true
   if (event.topic === 'storage-observations') {
     const context = queryObservationContext(undefined, key)

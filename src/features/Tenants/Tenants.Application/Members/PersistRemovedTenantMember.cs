@@ -5,12 +5,14 @@ using Pole.Features.Outbox.Contracts;
 using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Mongo;
 using Pole.Features.Tenants.Domain;
+using Pole.Features.Users.Contracts;
 
 namespace Pole.Features.Tenants.Application.Members;
 
 public sealed record RemoveTenantMember(
     string TenantId,
-    string MemberId
+    string MemberId,
+    TenantMemberActor Actor
 );
 
 public sealed record TenantMemberRemoved(
@@ -21,7 +23,8 @@ public union PersistRemovedTenantMemberOutcome(
     TenantMemberRemoved,
     TenantNotFound,
     TenantMemberNotFound,
-    TenantLastOwner);
+    TenantLastOwner,
+    TenantMemberManagementForbidden);
 
 public delegate Task<PersistRemovedTenantMemberOutcome> PersistRemovedTenantMember(
     RemoveTenantMember request,
@@ -30,7 +33,8 @@ public delegate Task<PersistRemovedTenantMemberOutcome> PersistRemovedTenantMemb
 internal sealed class MongoPersistRemovedTenantMember(
     IMongoCollection<Tenant> _tenants,
     StoreOutboxWrites storeOutboxWrites,
-    RunMongoOutcomeTransaction<PersistRemovedTenantMemberOutcome> runTransaction
+    RunMongoOutcomeTransaction<PersistRemovedTenantMemberOutcome> runTransaction,
+    ReconcileUserDefaultTenant reconcileDefault
 )
 {
     public Task<PersistRemovedTenantMemberOutcome> InvokeAsync(
@@ -47,6 +51,9 @@ internal sealed class MongoPersistRemovedTenantMember(
             if (existingMember is null)
                 return transaction.Abort(new TenantMemberNotFound(request.TenantId, request.MemberId));
 
+            if (!request.Actor.CanManage(tenant, existingMember, null))
+                return transaction.Abort(new TenantMemberManagementForbidden());
+
             if (existingMember.Role == TenantRole.Owner &&
                 tenant.Members.Count(member => member.Role == TenantRole.Owner) == 1)
                 return transaction.Abort(new TenantLastOwner(request.TenantId, request.MemberId));
@@ -58,6 +65,25 @@ internal sealed class MongoPersistRemovedTenantMember(
                 cancellationToken: ct);
             if (result.ModifiedCount != 0)
             {
+                var remaining = await _tenants.Find(
+                        transaction.Session,
+                        TenantFilters.ForMemberUser(existingMember.UserId))
+                    .ToListAsync(ct);
+                await reconcileDefault(
+                    new ReconcileUserDefaultTenantRequest(
+                        existingMember.UserId,
+                        remaining.Select(item => item.Id).ToArray()),
+                    transaction.Session,
+                    ct);
+                var defaultTenantId = remaining.FirstOrDefault(item => item.Members.Any(member =>
+                        member.UserId == existingMember.UserId && member.IsDefault))
+                    ?.Id ?? remaining.FirstOrDefault()?.Id;
+                if (defaultTenantId is not null)
+                    await _tenants.UpdateOneAsync(
+                        transaction.Session,
+                        TenantFilters.ByIdForMemberUser(defaultTenantId, existingMember.UserId),
+                        TenantUpdates.SetMemberDefault(true),
+                        cancellationToken: ct);
                 await storeOutboxWrites(
                     transaction.Session,
                     [TenantAccessEventExtensions.MembershipChanged(request.TenantId, existingMember.UserId)],

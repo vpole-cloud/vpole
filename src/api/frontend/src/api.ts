@@ -118,3 +118,14 @@ export {
   deleteResourceConnection,
 } from './modules/web-services/connectionApi'
 export { RuntimeLogUnavailableError, readResourceRuntimeLogs } from './api/runtimeLogApi'
+
+export {
+  fetchTenantMembers,
+  fetchTenantInvitations,
+  inviteTenantMember,
+  changeTenantInvitation,
+  updateTenantMember,
+  removeTenantMember,
+  previewTenantInvitation,
+  acceptTenantInvitation,
+} from './modules/tenants/api'

@@ -8,6 +8,8 @@ using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
 using Pole.Features.Tenants.Domain;
+using Pole.Features.Users.Application;
+using Microsoft.Extensions.Configuration;
 using Pole.Mediator;
 using Pole.Platform.Hosting;
 using Pole.Tests.Integration.Infrastructure;
@@ -29,6 +31,8 @@ public sealed class TenantFeatureProductionDiTests(
         services.AddSingleton(Fixture.Client);
         services.AddSingleton<MongoRunTransaction>();
         services.AddSingleton<StoreOutboxWrites>(Fixture.StoreOutboxWrites);
+        services.AddSingleton(TimeProvider.System);
+        services.AddUsersFeature(new ConfigurationBuilder().Build());
         services.AddTenantsFeature();
 
         Assert.DoesNotContain(
@@ -44,7 +48,6 @@ public sealed class TenantFeatureProductionDiTests(
         AssertResolved<LoadTenant>(scope.ServiceProvider);
         AssertResolved<LoadTenantsForUser>(scope.ServiceProvider);
         AssertResolved<PersistCreatedTenant>(scope.ServiceProvider);
-        AssertResolved<PersistAddedTenantMember>(scope.ServiceProvider);
         AssertResolved<PersistUpdatedTenantMemberRole>(scope.ServiceProvider);
         AssertResolved<PersistRemovedTenantMember>(scope.ServiceProvider);
         AssertResolved<EnsureDefaultTenant>(scope.ServiceProvider);
@@ -56,6 +59,8 @@ public sealed class TenantFeatureProductionDiTests(
     public void FeatureRegistration_PreservesTheTenantAuthorizationPipelineOrder()
     {
         var services = new ServiceCollection();
+        services.AddSingleton(TimeProvider.System);
+        services.AddUsersFeature(new ConfigurationBuilder().Build());
         services.AddTenantsFeature();
         services.AddPoleMediator();
 
@@ -78,6 +83,8 @@ public sealed class TenantFeatureProductionDiTests(
     {
         var services = new ServiceCollection();
         services.AddSingleton(Fixture.Database);
+        services.AddSingleton(TimeProvider.System);
+        services.AddUsersFeature(new ConfigurationBuilder().Build());
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -94,6 +101,8 @@ public sealed class TenantFeatureProductionDiTests(
         await Fixture.Database.GetCollection<Tenant>("Tenants").InsertOneAsync(tenant);
         var services = new ServiceCollection();
         services.AddSingleton(Fixture.Database);
+        services.AddSingleton(TimeProvider.System);
+        services.AddUsersFeature(new ConfigurationBuilder().Build());
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider(validateScopes: true);
         using var scope = provider.CreateScope();
@@ -119,6 +128,8 @@ public sealed class TenantFeatureProductionDiTests(
     public void FeatureRegistration_RegistersOnlyPipelineRejectionMappings()
     {
         var services = new ServiceCollection();
+        services.AddSingleton(TimeProvider.System);
+        services.AddUsersFeature(new ConfigurationBuilder().Build());
         services.AddTenantsFeature();
         using var provider = services.BuildServiceProvider();
         var mappings = provider.GetServices<HttpProblemMapping>().ToArray();

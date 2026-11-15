@@ -3,6 +3,7 @@ import { useContext } from 'react'
 import { CredentialVersionContext } from './auth/credentialVersion'
 import { SessionQueries } from './data/SessionQueries'
 import { useKeycloak } from '@react-keycloak/web'
+import { InvitationPage } from './modules/tenants/InvitationPage'
 import { AppShell } from './shell/AppShell'
 import { useTenants } from './hooks/useTenants'
 import { readIntegrationNavigation } from './modules/platform/integrationsState'
@@ -42,7 +43,11 @@ function App() {
           Boolean(keycloak.authenticated) && import.meta.env.VITE_REALTIME_ENABLED !== 'false'
         }
       >
-        <AuthenticatedWorkspace />
+        {window.location.pathname === '/invitations' ? (
+          <InvitationPage />
+        ) : (
+          <AuthenticatedWorkspace />
+        )}
       </RealtimeProvider>
     </SessionQueries>
   )

@@ -38,6 +38,7 @@ export function TopBandPlaceholder({
             tenants.map((tenant) => (
               <option key={tenant.id} value={tenant.id}>
                 {tenant.name} · {tenant.role}
+                {tenant.isDefault ? ' · Default' : ''}
               </option>
             ))
           )}

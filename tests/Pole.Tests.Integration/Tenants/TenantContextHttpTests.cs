@@ -81,7 +81,9 @@ public sealed class TenantContextHttpTests
                     or "/api/v1/integrations/github/setup-complete") or ("POST", "/api/v1/integrations/github/webhook");
                 var imageTagCredential = (method, route) is ("PATCH", "/api/v1/web-services/{Id}/image-tag");
                 var disabledRealtime = !realtimeEnabled && (method, route) is ("POST", "/api/v1/realtime/session");
-                var anonymous = githubCallback || imageTagCredential || disabledRealtime;
+                var invitationCapability = (method, route) is ("POST", "/api/v1/tenant-invitations/preview"
+                    or "/api/v1/tenant-invitations/onboarding");
+                var anonymous = githubCallback || imageTagCredential || disabledRealtime || invitationCapability;
                 Assert.True(anonymous == (endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null), route);
                 if (imageTagCredential)
                     Assert.Equal(
@@ -114,6 +116,7 @@ public sealed class TenantContextHttpTests
                 var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
+                    route.StartsWith("/api/v1/tenant-invitations/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/users", StringComparison.Ordinal);
                 Assert.Equal(
                     independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,

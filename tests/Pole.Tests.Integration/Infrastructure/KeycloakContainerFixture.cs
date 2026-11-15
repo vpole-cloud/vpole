@@ -23,6 +23,8 @@ public sealed class KeycloakContainerFixture : IAsyncLifetime
         var identity = TestRunIdentity.Create();
 
         _container = new ContainerBuilder("quay.io/keycloak/keycloak:26.4.7").WithTestOwnership(identity)
+            .WithEnvironment("POLE_SMTP_HOST", "localhost")
+            .WithEnvironment("POLE_SMTP_PORT", "1025")
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
             .WithResourceMapping(new FileInfo(realmFile), "/opt/keycloak/data/import/")
@@ -210,5 +212,7 @@ public sealed record KeycloakAdminUser(
     [property: JsonPropertyName("enabled")]
     bool Enabled,
     [property: JsonPropertyName("requiredActions")]
-    IReadOnlyCollection<string>? RequiredActions
+    IReadOnlyCollection<string>? RequiredActions,
+    [property: JsonPropertyName("attributes")]
+    IReadOnlyDictionary<string, string[]>? Attributes
 );

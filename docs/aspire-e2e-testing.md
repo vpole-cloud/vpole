@@ -84,7 +84,8 @@ The following scenarios retain independent test boundaries:
 | Storage CRUD and helper tests                 | Admin profile revision/mapping UI and screenshots; every existing isolated helper assertion and frozen Theory row.                                                                                                                                                                        |
 
 The image-service lifecycle creates an owned tenant through the platform-admin
-`POST /api/v1/tenants` API, then grants Alpha Owner membership through the public member API.
+`POST /api/v1/tenants` API, then invites Alpha as Owner, reads the actual Pole email from the
+isolated Mailpit inbox, and accepts with Alpha’s verified Keycloak identity.
 Every functional UI action, HTTP helper and namespace discovery uses Alpha and that tenant
 explicitly; tenant creation does not broaden Alpha's platform role. Its tenant document
 lives until disposable fixture database teardown. After both original viewport branches finish,

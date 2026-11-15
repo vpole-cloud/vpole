@@ -56,7 +56,9 @@ completion notifications from a previous tenant are ignored. Neither tokens nor 
 are persisted by the shell. Theme preference is stored in `pole.console.theme`; tenant selection
 retains `pole.activeTenantId`.
 
-The header has one tenant selector with the membership role, plus theme and login/logout actions.
+The header has one tenant selector with the membership role and default-tenant indicator, plus theme and login/logout actions.
+The Members view manages invitations and membership with tenant Owner/Admin authority. A signed-in account with no memberships sees “No tenant access”; tenant workspace views stay hidden while account and platform administration remain available.
+See [tenant invitations](../../features/Tenants/README.md) for the explicit onboarding and acceptance flow.
 The shell does not repeat the selected tenant or account name in a separate session card.
 
 Modules can register dirty forms with the shell's navigation service. Leaving a module, selecting

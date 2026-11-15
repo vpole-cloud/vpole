@@ -27,6 +27,7 @@ public sealed class TestAuthenticationHandler(
         {
             new(Claims.UserId, userId.ToString()),
             new(Claims.Email, Request.Headers[EmailHeader].ToString()),
+            new("email_verified", Request.Headers["X-Test-Email-Verified"] == "true" ? "true" : "false"),
         };
 
         if (Request.Headers.TryGetValue("X-Test-Platform-Admin", out var isPlatformAdmin) && string.Equals(

@@ -51,6 +51,80 @@ afterEach(async () => {
 })
 
 describe('app module composition', () => {
+  it('blocks public Overview with zero memberships and preserves platform/account access', async () => {
+    const registry = createAppRegistry([
+      {
+        id: 'home',
+        views: [
+          {
+            id: 'overview',
+            label: 'Overview',
+            component: () => <p>Tenant summary resources</p>,
+            access: 'public',
+          },
+        ],
+      },
+      {
+        id: 'members',
+        views: [
+          {
+            id: 'members',
+            label: 'Members',
+            component: () => <p>Private members</p>,
+            access: 'tenant',
+          },
+        ],
+      },
+      {
+        id: 'platform',
+        views: [
+          {
+            id: 'platform',
+            label: 'Platform',
+            component: () => <p>Platform administration</p>,
+            access: 'authenticated',
+          },
+        ],
+      },
+    ])
+    const empty = { ...tenants('alpha'), items: [], activeTenant: null, activeTenantId: '' }
+    const platformAuth = { ...auth, isPlatformAdmin: true }
+    await act(async () =>
+      root.render(
+        <AppShell
+          registry={registry}
+          auth={platformAuth}
+          api={{ baseUrl: '/api' }}
+          tenants={empty}
+          initialViewId="overview"
+        />,
+      ),
+    )
+    expect(container.textContent).toContain('No tenant access')
+    expect(container.textContent).toContain(
+      'Ask a tenant owner or administrator for an invitation.',
+    )
+    expect(container.textContent).not.toContain('Tenant summary resources')
+    expect(button('Members')).toBeUndefined()
+    expect(button('Log out')).toBeDefined()
+    await act(async () => button('Platform').click())
+    expect(container.textContent).toContain('Platform administration')
+    await act(async () =>
+      root.render(
+        <AppShell
+          registry={registry}
+          auth={platformAuth}
+          api={{ baseUrl: '/api' }}
+          tenants={tenants('alpha')}
+          initialViewId="overview"
+        />,
+      ),
+    )
+    expect(button('Members')).toBeDefined()
+    await act(async () => button('Overview').click())
+    expect(container.textContent).toContain('Tenant summary resources')
+  })
+
   it('keeps control names separate from hints and preserves existing validation descriptions', async () => {
     await act(async () =>
       root.render(
@@ -327,7 +401,9 @@ describe('app module composition', () => {
       )
     })
     expect(container.querySelectorAll('.tenant-selector select')).toHaveLength(1)
-    expect(container.querySelector('.tenant-selector option')?.textContent).toBe('alpha · Owner')
+    expect(container.querySelector('.tenant-selector option')?.textContent).toBe(
+      'alpha · Owner · Default',
+    )
     expect(container.textContent).not.toContain('Active tenant')
     expect(container.querySelector('.side-nav__footer')).toBeNull()
     await act(async () => {
