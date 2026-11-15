@@ -24,7 +24,8 @@ public sealed record AcceptTenantInvitationRequest(
 public union AcceptTenantInvitationHttpOutcome(
     InvitationAcceptedDto,
     InvitationUnavailable,
-    InvitationIdentityMismatch);
+    InvitationIdentityMismatch,
+    InvitationIdentityConflict);
 
 public sealed class AcceptTenantInvitationHandler(
     PersistAcceptedTenantInvitation persist
@@ -73,6 +74,7 @@ public static class AcceptTenantInvitationEndpoint
                         InvitationAcceptedDto accepted => Results.Ok(accepted),
                         InvitationUnavailable error => InvitationHttpProblems.Unavailable(error),
                         InvitationIdentityMismatch error => InvitationHttpProblems.IdentityMismatch(error),
+                        InvitationIdentityConflict error => InvitationHttpProblems.IdentityConflict(error),
                     });
                 })
             .WithoutTenantContext()

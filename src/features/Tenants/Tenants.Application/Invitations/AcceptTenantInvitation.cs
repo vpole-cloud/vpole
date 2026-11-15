@@ -89,9 +89,14 @@ internal sealed class MongoAcceptTenantInvitation(
                     new JoinInvitedUserRequest(request.Subject, email, tenant.Id, request.FirstName, request.LastName),
                     context.Session,
                     ct);
-                if (joined is not InvitedUserJoined userJoined)
-                    return context.Abort(new InvitationIdentityMismatch());
-                var defaultTenantId = userJoined.DefaultTenantId;
+                var defaultTenantId = joined switch
+                {
+                    InvitedUserJoined userJoined => userJoined.DefaultTenantId,
+                    InvitedUserIdentityConflict => null,
+                };
+                if (defaultTenantId is null)
+                    return context.Abort(new InvitationIdentityConflict());
+
                 var member = tenant.Members.FirstOrDefault(item => item.UserId == request.Subject);
                 if (member is null)
                 {

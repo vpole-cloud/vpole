@@ -10,6 +10,7 @@ using Pole.Features.Tenants.Application.Endpoints.Invitations;
 using Pole.Features.Tenants.Application.Invitations;
 using Pole.Features.Tenants.Domain;
 using Pole.Features.Users.Contracts;
+using Pole.Features.Users.Domain;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 
@@ -201,6 +202,51 @@ public sealed class TenantInvitationHttpTests(
         Assert.Equal(invitation.Revision, retained.Revision);
         Assert.Equal(invitation.Status, retained.Status);
         Assert.Equal(invitation.Role, retained.Role);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AcceptanceReturnsSafeIdentityConflictAndLeavesInvitationUnconsumed(bool subjectCollision)
+    {
+        var token = await CreateInvitation();
+        var existing = PoleUserFactory.Create(
+            subjectCollision ? "recipient" : "existing-recipient",
+            subjectCollision ? "old@example.test" : "invited@example.test",
+            null,
+            null,
+            "",
+            DateTime.UtcNow);
+        await Fixture.DbContext.Users.InsertOneAsync(existing);
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, "recipient");
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.EmailHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.EmailHeader, "invited@example.test");
+        Client.DefaultRequestHeaders.Add("X-Test-Email-Verified", "true");
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/tenant-invitations/accept",
+            new InvitationTokenBody(token));
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("tenants.invitation.identity-conflict", body);
+        Assert.DoesNotContain(existing.Email, body);
+        Assert.DoesNotContain("existing-recipient", body);
+        var tenant = await Fixture.DbContext.Tenants.Find(item => item.Id == Data.TenantId).SingleAsync();
+        Assert.DoesNotContain(tenant.Members, item => item.UserId == "recipient");
+        Assert.Equal(
+            TenantInvitationStatus.Pending,
+            (await Fixture.Database
+                .GetCollection<TenantInvitation>("TenantInvitations")
+                .Find(item => item.TenantId == tenant.Id)
+                .SingleAsync()).Status);
+        Assert.Equal(
+            0,
+            await Fixture.Database
+                .GetCollection<TenantInvitationAcceptance>("TenantInvitationAcceptances")
+                .CountDocumentsAsync(FilterDefinition<TenantInvitationAcceptance>.Empty));
+        Assert.Equal(
+            "",
+            (await Fixture.DbContext.Users.Find(item => item.Id == existing.Id).SingleAsync()).DefaultTenantId);
     }
 
     [Theory]

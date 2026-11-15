@@ -27,7 +27,9 @@ tokens. Reopen the original invitation email after finishing the separate Keyclo
 
 Acceptance requires the invited verified email and OIDC subject, live invitation state, and the
 issuer's current authority for its current role. Issuer removal or downgrade therefore invalidates
-unacceptable grants. A tenant-document write fences concurrent authority changes. Membership,
+unacceptable grants. Identity collisions with existing Pole accounts return a safe `409` with
+`tenants.invitation.identity-conflict`; a wrong or unverified recipient receives `403`.
+A tenant-document write fences concurrent authority changes. Membership,
 first Pole user, default selection, immutable acceptance receipt and membership outbox write
 commit in one Mongo transaction. Concurrent first joins fence one subject's Users document, so
 exactly one membership becomes default. Later acceptance opens that tenant without changing an

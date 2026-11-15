@@ -19,6 +19,11 @@ internal static class InvitationHttpProblems
         "identity-mismatch",
         "Sign in with the verified invited email address.");
 
+    public static HttpProblem IdentityConflict(InvitationIdentityConflict _) => Problem(
+        409,
+        "identity-conflict",
+        "The invited identity conflicts with an existing account.");
+
     public static HttpProblem Pending(InvitationAlreadyPending _) => Problem(
         409,
         "already-pending",

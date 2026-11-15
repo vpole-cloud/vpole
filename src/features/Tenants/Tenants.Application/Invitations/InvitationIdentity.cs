@@ -49,4 +49,6 @@ public sealed record InvitationUnavailable;
 
 public sealed record InvitationIdentityMismatch;
 
+public sealed record InvitationIdentityConflict;
+
 public sealed record InvitationEncryptionUnavailable;
