@@ -70,6 +70,28 @@ public sealed class TenantContextHttpTests
             tenantEndpoints,
             endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateSecret");
         var apiEndpoints = endpoints.OfType<RouteEndpoint>().ToArray();
+        string[] membershipEndpoints =
+        [
+            "CreateTenantInvitation", "GetTenantInvitations", "UpdateTenantInvitation", "RevokeTenantInvitation",
+            "ResendTenantInvitation", "PreviewTenantInvitation", "StartInvitationOnboarding", "AcceptTenantInvitation",
+            "GetTenantMembers", "UpdateTenantMember", "DeleteTenantMember"
+        ];
+        foreach (var name in membershipEndpoints)
+        {
+            var endpoint = Assert.Single(
+                apiEndpoints,
+                candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == name);
+            var parameters = endpoint.Metadata.GetMetadata<MethodInfo>()!.GetParameters();
+            var input = Assert.Single(
+                parameters,
+                parameter => parameter.ParameterType != typeof(IMediator) &&
+                    parameter.ParameterType != typeof(CancellationToken));
+            Assert.True(input.IsDefined(typeof(AsParametersAttribute)), name);
+            Assert.Contains(
+                input.ParameterType.GetInterfaces(),
+                type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IMediatorRequest<>));
+        }
+
         Assert.All(
             apiEndpoints,
             endpoint =>
@@ -77,21 +99,6 @@ public sealed class TenantContextHttpTests
                 var route = endpoint.RoutePattern.RawText!;
                 var methods = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods;
                 var method = methods?.Count == 1 ? methods[0] : null;
-                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.Ordinal) ||
-                    route.StartsWith("/api/v1/tenants/{TenantId}/invitations", StringComparison.Ordinal) ||
-                    route.StartsWith("/api/v1/tenant-invitations/", StringComparison.Ordinal))
-                {
-                    var parameters = endpoint.Metadata.GetMetadata<MethodInfo>()!.GetParameters();
-                    var input = Assert.Single(
-                        parameters,
-                        parameter => parameter.ParameterType != typeof(IMediator) &&
-                            parameter.ParameterType != typeof(CancellationToken));
-                    Assert.True(input.IsDefined(typeof(AsParametersAttribute)), route);
-                    Assert.Contains(
-                        input.ParameterType.GetInterfaces(),
-                        type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IMediatorRequest<>));
-                }
-
                 var githubCallback
                     = (method, route) is ("GET", "/api/v1/integrations/github/oauth-callback"
                     or "/api/v1/integrations/github/setup-complete") or ("POST", "/api/v1/integrations/github/webhook");
@@ -119,7 +126,7 @@ public sealed class TenantContextHttpTests
                 if (route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
                     (method, route.TrimEnd('/')) is ("POST", "/api/v1/users" or "/api/v1/tenants"))
                     Assert.Contains(authorization, requirement => requirement.Policy == Policy.Admin);
-                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.Ordinal))
+                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.OrdinalIgnoreCase))
                 {
                     var marker = method == "GET"
                         ? typeof(ITenantMemberReadOperation)
