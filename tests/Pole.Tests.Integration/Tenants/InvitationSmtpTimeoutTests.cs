@@ -42,6 +42,50 @@ public sealed class InvitationSmtpTimeoutTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => send.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
+    [Fact]
+    public async Task SmtpBodyReportsTheExactUtcExpiry()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var services = Services(((IPEndPoint)listener.LocalEndpoint).Port, TimeSpan.FromSeconds(10));
+        using var scope = services.CreateScope();
+        var receive = ReceiveMailAsync(listener);
+        await scope.ServiceProvider.GetRequiredService<SendInvitationMail>()(Mail(), CancellationToken.None);
+        var body = await receive.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("expires at 2026-11-22 13:45:00 UTC", body);
+        Assert.DoesNotContain("in seven days", body);
+    }
+
+    private static async Task<string> ReceiveMailAsync(TcpListener listener)
+    {
+        using var connection = await listener.AcceptTcpClientAsync();
+        using var stream = connection.GetStream();
+        using var reader = new StreamReader(stream);
+        using var writer = new StreamWriter(stream) { AutoFlush = true, NewLine = "\r\n" };
+        await writer.WriteLineAsync("220 test relay");
+        var message = new System.Text.StringBuilder();
+        var inData = false;
+        while (await reader.ReadLineAsync() is { } line)
+        {
+            if (inData && line != ".")
+            {
+                message.AppendLine(line);
+                continue;
+            }
+
+            if (line == ".")
+            {
+                await writer.WriteLineAsync("250 accepted");
+                return message.ToString();
+            }
+
+            inData = line == "DATA";
+            await writer.WriteLineAsync(inData ? "354 send message" : "250 OK");
+        }
+
+        throw new InvalidOperationException("SMTP connection closed before message delivery.");
+    }
+
     private static ServiceProvider Services(int port, TimeSpan timeout)
     {
         var services = new ServiceCollection();
@@ -62,5 +106,6 @@ public sealed class InvitationSmtpTimeoutTests
     private static InvitationMail Mail() => new(
         "recipient@example.test",
         "Tenant",
-        "https://console.example.test/invitations");
+        "https://console.example.test/invitations",
+        new DateTime(2026, 11, 22, 13, 45, 0, DateTimeKind.Utc));
 }

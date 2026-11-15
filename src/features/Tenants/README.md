@@ -40,7 +40,8 @@ A fresh acceptance restores a valid default. Used-link retries cannot restore re
 Invitation secrets contain 256 random bits. Mongo stores only a hash for lookup and an envelope-
 protected delivery value bound to tenant, invitation and revision. Outbox messages contain IDs
 and revision only. The delivery consumer rechecks current revision, expiry and issuer authority,
-then uses SMTP outside the transaction. Delivery state and its notification commit atomically.
+then uses SMTP outside the transaction. Email reports the persisted UTC expiry, including
+when delivery is delayed or a resend has rotated the expiry. Delivery state and its notification commit atomically.
 SMTP is at-least-once: an in-flight email can arrive after a revoke/resend or be duplicated after
 a process failure, but the obsolete link cannot grant access. Failed delivery is visible and
 an authorized resend generates a new revision. Retain envelope keys needed by pending deliveries.

@@ -69,7 +69,9 @@ public sealed class DeliverTenantInvitation(
 
             // SMTP is at-least-once. A message already in flight may arrive after revocation;
             // every subsequent preview/onboarding/accept checks the live revision and authority.
-            await sendMail(new InvitationMail(invitation.Email, tenant.Name, links.Acceptance(token)), ct);
+            await sendMail(
+                new InvitationMail(invitation.Email, tenant.Name, links.Acceptance(token), invitation.ExpiresAtUtc),
+                ct);
             await RecordAsync(invitation, InvitationDeliveryStatus.Sent, ct);
         }
         catch (Exception) when (!ct.IsCancellationRequested)

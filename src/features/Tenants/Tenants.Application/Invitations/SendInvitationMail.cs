@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Options;
@@ -18,7 +19,8 @@ public sealed class InvitationSmtpOptions
 public sealed record InvitationMail(
     string Recipient,
     string TenantName,
-    string AcceptanceUrl
+    string AcceptanceUrl,
+    DateTime ExpiresAtUtc
 )
 {
     public override string ToString() => "InvitationMail(redacted)";
@@ -41,7 +43,8 @@ internal sealed class SmtpInvitationMail(
             "You are invited to a Pole tenant",
             $"You have been invited to join {mail.TenantName}.\n\n" +
             $"Review the invitation and choose whether to accept:\n{mail.AcceptanceUrl}\n\n" +
-            "This invitation expires in seven days. Opening the link does not grant access.");
+            $"This invitation expires at {mail.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)} UTC. " +
+            "Opening the link does not grant access.");
         using var client = new SmtpClient(settings.Host, settings.Port)
         {
             EnableSsl = settings.EnableSsl,

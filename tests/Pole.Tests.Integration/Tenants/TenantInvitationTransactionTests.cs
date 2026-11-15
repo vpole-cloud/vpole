@@ -234,12 +234,32 @@ public sealed class TenantInvitationTransactionTests(
         var mail = Assert.Single(_delivered);
         Assert.StartsWith("https://console.example.test/invitations#token=", mail.AcceptanceUrl);
         Assert.DoesNotContain(oldToken, mail.AcceptanceUrl);
+        Assert.Equal(current.ExpiresAtUtc, mail.ExpiresAtUtc);
         Assert.Equal(
             InvitationDeliveryStatus.Sent,
             (await Invitations.Find(item => item.Id == current.Id).SingleAsync()).DeliveryStatus);
         Assert.IsType<InvitationUnavailable>(
             (await Services.GetRequiredService<PersistAcceptedTenantInvitation>()(
                 new AcceptTenantInvitation(oldToken, "recipient", "new@example.test", true, null, null))).Value);
+    }
+
+    [Fact]
+    public async Task DelayedDeliveryUsesPersistedExpiry()
+    {
+        var tenant = await CreateTenant();
+        await Invite(tenant);
+        var invitation = await Invitations.Find(item => item.TenantId == tenant.Id).SingleAsync();
+        var expiresAt = DateTime.UtcNow.AddHours(2);
+        // A queued delivery has only the persisted remaining lifetime, not another seven days.
+        await Invitations.UpdateOneAsync(
+            item => item.Id == invitation.Id,
+            Builders<TenantInvitation>.Update.Set(item => item.ExpiresAtUtc, expiresAt));
+        var persisted = await Invitations.Find(item => item.Id == invitation.Id).SingleAsync();
+        await Services.GetRequiredService<DeliverTenantInvitation>()
+            .InvokeAsync(
+                new TenantInvitationDeliveryRequested(invitation.Id, invitation.Revision, EventCore.Create(tenant.Id)),
+                CancellationToken.None);
+        Assert.Equal(persisted.ExpiresAtUtc, Assert.Single(_delivered).ExpiresAtUtc);
     }
 
     [Fact]
