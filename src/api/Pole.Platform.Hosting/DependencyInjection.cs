@@ -33,7 +33,7 @@ public static class DependencyInjection
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
             services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TenantAuthorizationBehavior<,>));
-            services.AddTenantMemberAuthorizationBehavior();
+            services.AddTenantFeatureAuthorizationBehaviors();
 
             foreach (var assembly in assemblies)
             {

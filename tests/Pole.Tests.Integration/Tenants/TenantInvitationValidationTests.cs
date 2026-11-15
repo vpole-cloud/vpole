@@ -56,7 +56,13 @@ public sealed class TenantInvitationValidationTests
         Assert.Equal(
             valid,
             new StartInvitationOnboardingValidator().Validate(new StartInvitationOnboardingRequest(body)).IsValid);
-        var accept = new AcceptTenantInvitationRequest(token, new("subject", "invited@example.test", true, null, null));
+        var accept = new AcceptTenantInvitationRequest(
+            body,
+            new("subject"),
+            new("invited@example.test"),
+            new("true"),
+            default,
+            default);
         Assert.Equal(valid, new AcceptTenantInvitationValidator().Validate(accept).IsValid);
     }
 }

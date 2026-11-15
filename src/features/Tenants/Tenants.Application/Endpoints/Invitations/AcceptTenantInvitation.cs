@@ -18,7 +18,7 @@ public sealed record InvitationTokenBody(
 
 public sealed record InvitationRecipient(
     string Subject,
-    string? Email,
+    string Email,
     bool EmailVerified,
     string? FirstName,
     string? LastName
@@ -35,10 +35,22 @@ public sealed class InvitationRecipientValidator : AbstractValidator<InvitationR
 }
 
 public sealed record AcceptTenantInvitationRequest(
-    string Token,
-    InvitationRecipient Recipient
+    [FromBody] InvitationTokenBody Body,
+    [FromClaim(Claims.UserId)] ClaimValue Subject,
+    [FromClaim(Claims.Email)] ClaimValue<string?> Email,
+    [FromClaim("email_verified")] ClaimValue<string?> EmailVerified,
+    [FromClaim("given_name")] ClaimValue<string?> FirstName,
+    [FromClaim("family_name")] ClaimValue<string?> LastName
 ) : IMediatorRequest<AcceptTenantInvitationHttpOutcome>
 {
+    public InvitationRecipient Recipient =>
+        new(
+            Subject,
+            Email.Value ?? string.Empty,
+            string.Equals(EmailVerified.Value, "true", StringComparison.OrdinalIgnoreCase),
+            FirstName.Value,
+            LastName.Value);
+
     public override string ToString() => "AcceptTenantInvitationRequest(redacted)";
 }
 
@@ -48,24 +60,36 @@ public union AcceptTenantInvitationHttpOutcome(
     InvitationIdentityMismatch,
     InvitationIdentityConflict);
 
+public sealed class InvitationRecipientAuthorizationBehavior(
+    IValidator<InvitationRecipient> validator
+) : IPipelineBehavior<AcceptTenantInvitationRequest, AcceptTenantInvitationHttpOutcome>
+{
+    public async Task<MediatorResult<AcceptTenantInvitationHttpOutcome>> Handle(
+        AcceptTenantInvitationRequest request,
+        RequestHandlerDelegate<AcceptTenantInvitationHttpOutcome> next,
+        CancellationToken cancellationToken)
+    {
+        if (!(await validator.ValidateAsync(request.Recipient, cancellationToken)).IsValid)
+            return new PipelineRejected(new InvitationIdentityMismatch());
+
+        return await next();
+    }
+}
+
 public sealed class AcceptTenantInvitationHandler(
-    PersistAcceptedTenantInvitation persist,
-    IValidator<InvitationRecipient> recipientValidator
+    PersistAcceptedTenantInvitation persist
 ) : IMediatorOutcomeHandler<AcceptTenantInvitationRequest, AcceptTenantInvitationHttpOutcome>
 {
-    public async Task<AcceptTenantInvitationHttpOutcome> HandleAsync(
+    public Task<AcceptTenantInvitationHttpOutcome> HandleAsync(
         AcceptTenantInvitationRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (!recipientValidator.Validate(request.Recipient).IsValid)
-            return new InvitationIdentityMismatch();
-
         var recipient = request.Recipient;
-        return await persist(
+        return persist(
             new AcceptTenantInvitation(
-                request.Token,
+                request.Body.Token,
                 recipient.Subject,
-                recipient.Email!,
+                recipient.Email,
                 recipient.FirstName,
                 recipient.LastName),
             cancellationToken);
@@ -74,7 +98,9 @@ public sealed class AcceptTenantInvitationHandler(
 
 public sealed class AcceptTenantInvitationValidator : AbstractValidator<AcceptTenantInvitationRequest>
 {
-    public AcceptTenantInvitationValidator() => RuleFor(request => request.Token).InvitationToken();
+    public AcceptTenantInvitationValidator() => RuleFor(request => request.Body.Token)
+        .InvitationToken()
+        .OverridePropertyName(nameof(InvitationTokenBody.Token));
 }
 
 public static class AcceptTenantInvitationEndpoint
@@ -84,23 +110,10 @@ public static class AcceptTenantInvitationEndpoint
         app.MapPost(
                 "/tenant-invitations/accept",
                 async (
-                    [FromBody] InvitationTokenBody body, [FromClaim(Claims.UserId)] ClaimValue subject,
-                    [FromClaim(Claims.Email)] ClaimValue<string?> email,
-                    [FromClaim("email_verified")] ClaimValue<string?> emailVerified,
-                    [FromClaim("given_name")] ClaimValue<string?> firstName,
-                    [FromClaim("family_name")] ClaimValue<string?> lastName, IMediator mediator,
+                    [AsParameters] AcceptTenantInvitationRequest request, IMediator mediator,
                     CancellationToken ct) =>
                 {
-                    var result = await mediator.Send(
-                        new AcceptTenantInvitationRequest(
-                            body.Token,
-                            new InvitationRecipient(
-                                subject,
-                                email.Value,
-                                string.Equals(emailVerified.Value, "true", StringComparison.OrdinalIgnoreCase),
-                                firstName.Value,
-                                lastName.Value)),
-                        ct);
+                    var result = await mediator.Send(request, ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {
                         InvitationAcceptedDto accepted => Results.Ok(accepted),

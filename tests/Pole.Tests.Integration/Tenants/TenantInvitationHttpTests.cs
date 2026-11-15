@@ -251,6 +251,20 @@ public sealed class TenantInvitationHttpTests(
             (await Fixture.DbContext.Users.Find(item => item.Id == existing.Id).SingleAsync()).DefaultTenantId);
     }
 
+    [Fact]
+    public async Task AcceptanceValidatesTheTokenBeforeAuthorizingTheRecipient()
+    {
+        Client.DefaultRequestHeaders.Remove("X-Test-Email-Verified");
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/tenant-invitations/accept",
+            new InvitationTokenBody("invalid"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("request.validation.failed", problem.GetProperty("code").GetString());
+        Assert.True(problem.GetProperty("errors").TryGetProperty("Token", out _));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("false")]
