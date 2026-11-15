@@ -55,7 +55,6 @@ public sealed class TenantMemberAuthorizationBehavior<TRequest, TResponse>(
         var targetMemberId = request switch
         {
             ITenantMemberTargetOperation targetOperation => targetOperation.MemberId,
-            ITenantMemberRoleOperation { MemberId: not null } roleTargetOperation => roleTargetOperation.MemberId,
             _ => null,
         };
 

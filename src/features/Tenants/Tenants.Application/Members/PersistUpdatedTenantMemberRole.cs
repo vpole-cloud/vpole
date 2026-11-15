@@ -11,14 +11,16 @@ namespace Pole.Features.Tenants.Application.Members;
 public sealed record UpdateTenantMemberRole(
     string TenantId,
     string MemberId,
-    TenantRole Role
+    TenantRole Role,
+    TenantMemberActor Actor
 );
 
 public union PersistUpdatedTenantMemberRoleOutcome(
     TenantMember,
     TenantNotFound,
     TenantMemberNotFound,
-    TenantLastOwner);
+    TenantLastOwner,
+    TenantMemberManagementForbidden);
 
 public delegate Task<PersistUpdatedTenantMemberRoleOutcome> PersistUpdatedTenantMemberRole(
     UpdateTenantMemberRole request,
@@ -43,6 +45,9 @@ internal sealed class MongoPersistUpdatedTenantMemberRole(
             var existingMember = tenant.Members.FirstOrDefault(member => member.Id == request.MemberId);
             if (existingMember is null)
                 return transaction.Abort(new TenantMemberNotFound(request.TenantId, request.MemberId));
+
+            if (!request.Actor.CanManage(tenant, existingMember, request.Role))
+                return transaction.Abort(new TenantMemberManagementForbidden());
 
             if (existingMember.Role == request.Role)
                 return transaction.Abort(existingMember);

@@ -189,15 +189,11 @@ public sealed partial class GitOpsRepositoryFlowE2ETests
         await RefreshConsoleSourceAsync(page, source);
         await ConsoleCommandAsync(page, source, "pause");
 
-        var member = await JsonAsync(
-            HttpMethod.Post,
-            $"/api/v1/tenants/{fixture.Alpha.DefaultTenantId}/members",
-            new
-            {
-                userId = fixture.Beta.KeycloakUserId,
-                email = fixture.Beta.Email,
-                role = TenantRole.Viewer.ToString(),
-            },
+        var member = await fixture.InviteAndJoinAsync(
+            fixture.Alpha.DefaultTenantId,
+            fixture.Alpha,
+            fixture.Beta,
+            TenantRole.Viewer,
             ct);
         try
         {

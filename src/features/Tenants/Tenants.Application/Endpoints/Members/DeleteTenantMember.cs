@@ -1,9 +1,11 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
+using Pole.Features.Tenants.Application.Common;
 using Pole.Features.Tenants.Application.Members;
 using Pole.Mediator;
 using static Pole.Features.Tenants.Application.TenantMemberAuthorizationHttpProblemMappings;
@@ -12,14 +14,26 @@ namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
 public sealed record DeleteTenantMemberRequest(
     [FromRoute] string TenantId,
-    [FromRoute] string MemberId
+    [FromRoute] string MemberId,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
+    [FromClaim(Claims.Roles)] ClaimValue<List<string>?> CurrentRoles
 ) : IMediatorRequest<DeleteTenantMemberOutcome>, ITenantMemberTargetOperation;
 
 public union DeleteTenantMemberOutcome(
     TenantMemberRemoved,
     TenantNotFound,
     TenantMemberNotFound,
-    TenantLastOwner);
+    TenantLastOwner,
+    TenantMemberManagementForbidden);
+
+public sealed class DeleteTenantMemberValidator : AbstractValidator<DeleteTenantMemberRequest>
+{
+    public DeleteTenantMemberValidator()
+    {
+        RuleFor(request => request.TenantId).RouteObjectId();
+        RuleFor(request => request.MemberId).RouteObjectId();
+    }
+}
 
 public sealed class DeleteTenantMemberHandler(
     PersistRemovedTenantMember persistRemovedTenantMember
@@ -30,7 +44,10 @@ public sealed class DeleteTenantMemberHandler(
         CancellationToken cancellationToken = default)
     {
         var persisted = await persistRemovedTenantMember(
-            new RemoveTenantMember(request.TenantId, request.MemberId),
+            new RemoveTenantMember(
+                request.TenantId,
+                request.MemberId,
+                TenantMemberActor.From(request.CurrentUserId, request.CurrentRoles.Value)),
             cancellationToken);
         return persisted switch
         {
@@ -38,6 +55,7 @@ public sealed class DeleteTenantMemberHandler(
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
             TenantLastOwner error => error,
+            TenantMemberManagementForbidden error => error,
         };
     }
 }
@@ -59,6 +77,7 @@ public static class DeleteTenantMemberEndpoint
                         TenantNotFound error => MapTenantNotFound(error),
                         TenantMemberNotFound error => MapMemberNotFound(error),
                         TenantLastOwner error => MapLastOwner(error),
+                        TenantMemberManagementForbidden error => MapMemberManagementForbidden(error),
                     });
                 })
             .WithName("DeleteTenantMember")

@@ -66,6 +66,11 @@ public static class TenantMemberAuthorizationHttpProblemMappings
             ["userId"] = conflict.UserId,
         });
 
+    public static HttpProblem MapMemberManagementForbidden(TenantMemberManagementForbidden _) => Problem(
+        HttpStatusCode.Forbidden,
+        "Tenant member management forbidden",
+        "tenants.member.management-forbidden");
+
     public static HttpProblem MapLastOwner(TenantLastOwner conflict) => Problem(
         HttpStatusCode.Conflict,
         "Tenant must keep an owner",

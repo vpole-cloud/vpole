@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,11 @@ public sealed record GetTenantMembersRequest(
 ) : IMediatorRequest<GetTenantMembersOutcome>, ITenantMemberReadOperation;
 
 public union GetTenantMembersOutcome(IReadOnlyCollection<TenantMemberDto>, TenantNotFound);
+
+public sealed class GetTenantMembersValidator : AbstractValidator<GetTenantMembersRequest>
+{
+    public GetTenantMembersValidator() => RuleFor(request => request.TenantId).RouteObjectId();
+}
 
 public sealed class GetTenantMembersHandler(
     LoadTenant loadTenant

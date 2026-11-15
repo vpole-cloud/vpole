@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Playwright;
+using Pole.Features.Core.Multitenancy;
 using Pole.Testing;
 using Pole.Tests.E2E.Infrastructure;
 using Xunit;
@@ -805,19 +806,12 @@ public sealed class BrowserSmokeE2ETests(
         var tenant = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal("Owner", tenant.GetProperty("role").GetString());
         var tenantId = tenant.GetProperty("id").GetString()!;
-        using var membership = fixture.CreatePlatformAdminRequest(
-            HttpMethod.Post,
-            $"/api/v1/tenants/{tenantId}/members");
-        membership.Content = JsonContent.Create(
-            new
-            {
-                userId = fixture.Alpha.KeycloakUserId,
-                email = fixture.Alpha.Email,
-                role = "Owner",
-            });
-        using var granted = await fixture.Api.SendAsync(membership, ct);
-        Assert.Equal(HttpStatusCode.Created, granted.StatusCode);
-        var owner = await granted.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var owner = await fixture.InviteAndJoinAsync(
+            tenantId,
+            fixture.PlatformAdminUser,
+            fixture.Alpha,
+            TenantRole.Owner,
+            ct);
         Assert.Equal(tenantId, owner.GetProperty("tenantId").GetString());
         Assert.Equal(fixture.Alpha.KeycloakUserId, owner.GetProperty("userId").GetString());
         Assert.Equal("Owner", owner.GetProperty("role").GetString());

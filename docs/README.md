@@ -54,6 +54,9 @@ requirement when adding or changing one feature.
 
 ## Feature documentation
 
+- [Tenant membership and invitations](../src/features/Tenants/README.md)
+- [Users and identity](../src/features/Users/README.md)
+
 - [Web console and static frontend modules](../src/api/frontend/README.md)
 - [Resource groups and resource registrations](../src/features/ResourceGroups/README.md)
 - [Directed resource connections](../src/features/ResourceConnections/README.md)

@@ -18,6 +18,7 @@ using Pole.Features.Tenants.Application;
 using Pole.Features.Tenants.Application.Middleware;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Domain;
+using Pole.Mediator;
 using Pole.Platform.Hosting;
 using Pole.Server.Extensions;
 using Xunit;
@@ -69,6 +70,28 @@ public sealed class TenantContextHttpTests
             tenantEndpoints,
             endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "CreateSecret");
         var apiEndpoints = endpoints.OfType<RouteEndpoint>().ToArray();
+        string[] membershipEndpoints =
+        [
+            "CreateTenantInvitation", "GetTenantInvitations", "UpdateTenantInvitation", "RevokeTenantInvitation",
+            "ResendTenantInvitation", "PreviewTenantInvitation", "StartInvitationOnboarding", "AcceptTenantInvitation",
+            "GetTenantMembers", "UpdateTenantMember", "DeleteTenantMember"
+        ];
+        foreach (var name in membershipEndpoints)
+        {
+            var endpoint = Assert.Single(
+                apiEndpoints,
+                candidate => candidate.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == name);
+            var parameters = endpoint.Metadata.GetMetadata<MethodInfo>()!.GetParameters();
+            var input = Assert.Single(
+                parameters,
+                parameter => parameter.ParameterType != typeof(IMediator) &&
+                    parameter.ParameterType != typeof(CancellationToken));
+            Assert.True(input.IsDefined(typeof(AsParametersAttribute)), name);
+            Assert.Contains(
+                input.ParameterType.GetInterfaces(),
+                type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IMediatorRequest<>));
+        }
+
         Assert.All(
             apiEndpoints,
             endpoint =>
@@ -81,7 +104,9 @@ public sealed class TenantContextHttpTests
                     or "/api/v1/integrations/github/setup-complete") or ("POST", "/api/v1/integrations/github/webhook");
                 var imageTagCredential = (method, route) is ("PATCH", "/api/v1/web-services/{Id}/image-tag");
                 var disabledRealtime = !realtimeEnabled && (method, route) is ("POST", "/api/v1/realtime/session");
-                var anonymous = githubCallback || imageTagCredential || disabledRealtime;
+                var invitationCapability = (method, route) is ("POST", "/api/v1/tenant-invitations/preview"
+                    or "/api/v1/tenant-invitations/onboarding");
+                var anonymous = githubCallback || imageTagCredential || disabledRealtime || invitationCapability;
                 Assert.True(anonymous == (endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null), route);
                 if (imageTagCredential)
                     Assert.Equal(
@@ -101,7 +126,7 @@ public sealed class TenantContextHttpTests
                 if (route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
                     (method, route.TrimEnd('/')) is ("POST", "/api/v1/users" or "/api/v1/tenants"))
                     Assert.Contains(authorization, requirement => requirement.Policy == Policy.Admin);
-                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.Ordinal))
+                if (route.StartsWith("/api/v1/tenants/{TenantId}/members", StringComparison.OrdinalIgnoreCase))
                 {
                     var marker = method == "GET"
                         ? typeof(ITenantMemberReadOperation)
@@ -114,6 +139,7 @@ public sealed class TenantContextHttpTests
                 var independent = route.StartsWith("/api/v1/platform/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/realtime/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/tenants", StringComparison.Ordinal) ||
+                    route.StartsWith("/api/v1/tenant-invitations/", StringComparison.Ordinal) ||
                     route.StartsWith("/api/v1/users", StringComparison.Ordinal);
                 Assert.Equal(
                     independent ? ActiveTenantRequirement.None : ActiveTenantRequirement.Required,
@@ -283,6 +309,8 @@ public sealed class TenantContextHttpTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
+        builder.Configuration["Invitations:Smtp:Host"] = "localhost";
+        builder.Configuration["Invitations:Smtp:From"] = "pole@example.test";
         builder.Services.AddPoleHttpJson();
         builder.Services.AddTenantsFeature();
         builder.Services.AddPoleMediator();

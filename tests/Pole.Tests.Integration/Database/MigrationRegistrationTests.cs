@@ -28,7 +28,8 @@ public sealed class MigrationRegistrationTests
                     "Backups", "ComputeProfiles", "ContainerRegistries", "DeploymentTargets", "Domains", "Functions",
                     "GitOps",
                     "GitProviders", "Outbox", "PrivateAccess", "Quotas", "ResourceConnections", "ResourceDeployments",
-                    "ResourceGroups", "Search", "Secrets", "SourceBuilds", "StorageProfiles", "WebServices",
+                    "ResourceGroups", "Search", "Secrets", "SourceBuilds", "StorageProfiles", "Tenants", "Users",
+                    "WebServices",
                 }.Select(feature => $"Pole.Features.{feature}.Migrations")
                 .Order(StringComparer.Ordinal),
             featureAssemblies.Order(StringComparer.Ordinal));

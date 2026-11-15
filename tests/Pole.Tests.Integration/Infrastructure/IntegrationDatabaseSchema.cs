@@ -55,7 +55,12 @@ internal static class IntegrationDatabaseSchema
             typeof(FunctionAppsInitialMigration).Assembly,
             typeof(ResourceConnectionIndexesMigration).Assembly,
         ],
-        IntegrationSchemaProfile.Identity => [typeof(OutboxMessageMigration).Assembly],
+        IntegrationSchemaProfile.Identity =>
+        [
+            typeof(OutboxMessageMigration).Assembly,
+            typeof(Pole.Features.Tenants.Migrations.TenantInvitationIndexesMigration).Assembly,
+            typeof(Pole.Features.Users.Migrations.UserIdentityIndexesMigration).Assembly,
+        ],
         IntegrationSchemaProfile.DeploymentTargets =>
         [
             typeof(DeploymentTargetMigration).Assembly,

@@ -37,7 +37,7 @@ public sealed class TenantAccessRealtimeJourney(
             var alphaTenant = fixture.Alpha.DefaultTenantId;
             var betaTenant = fixture.Beta.DefaultTenantId;
             var memberId = Text(
-                await ManageMemberAsync(HttpMethod.Post, alphaTenant, null, TenantRole.Member, ct),
+                await fixture.InviteAndJoinAsync(alphaTenant, fixture.Alpha, fixture.Beta, TenantRole.Member, ct),
                 "id");
             resources.Defer(
                 "remove owned realtime Alpha membership",
@@ -280,7 +280,13 @@ public sealed class TenantAccessRealtimeJourney(
                     await page.EvaluateAsync("window.dispatchEvent(new Event('online'))");
                     await held.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
                     var previousHints = journal.OwnHints;
-                    await ManageMemberAsync(HttpMethod.Put, tenantId, memberId, TenantRole.Viewer, ct);
+                    await SendAsync(
+                        HttpMethod.Put,
+                        $"/api/v1/tenants/{tenantId}/members/{memberId}",
+                        fixture.Alpha,
+                        null,
+                        new { role = TenantRole.Viewer.ToString() },
+                        ct);
                     await WaitUntilAsync(
                         () => journal.OwnHints > previousHints,
                         TimeSpan.FromSeconds(15),
@@ -394,7 +400,9 @@ public sealed class TenantAccessRealtimeJourney(
                 // Beta has no access to Alpha here. Its account-scoped subscription must still learn
                 // that membership was restored; only the subsequent HTTP read can restore write access.
                 var hintsBeforeRestore = journal.OwnHints;
-                memberId = Text(await ManageMemberAsync(HttpMethod.Post, tenantId, null, TenantRole.Member, ct), "id");
+                memberId = Text(
+                    await fixture.InviteAndJoinAsync(tenantId, fixture.Alpha, fixture.Beta, TenantRole.Member, ct),
+                    "id");
                 await WaitUntilAsync(
                     () => journal.OwnHints > hintsBeforeRestore,
                     TimeSpan.FromSeconds(15),
@@ -661,29 +669,6 @@ public sealed class TenantAccessRealtimeJourney(
         TimeSpan timeout,
         string message,
         CancellationToken ct) => TestWait.UntilAsync(condition, timeout, message, ct);
-
-    private async Task<JsonElement> ManageMemberAsync(
-        HttpMethod method,
-        string tenantId,
-        string? memberId,
-        TenantRole role,
-        CancellationToken ct) => await SendAsync(
-        method,
-        $"/api/v1/tenants/{tenantId}/members" + (memberId is null ? "" : $"/{memberId}"),
-        fixture.Alpha,
-        null,
-        method == HttpMethod.Post
-            ? new
-            {
-                userId = fixture.Beta.KeycloakUserId,
-                email = fixture.Beta.Email,
-                role = role.ToString(),
-            }
-            : new
-            {
-                role = role.ToString(),
-            },
-        ct);
 
     private Task DeleteMemberAsync(
         string tenantId,

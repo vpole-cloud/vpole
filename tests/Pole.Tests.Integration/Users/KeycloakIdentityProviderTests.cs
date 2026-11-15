@@ -1,4 +1,5 @@
 using Pole.Features.Users.Application.Identity;
+using Pole.Features.Users.Contracts;
 using Pole.Tests.Integration.Infrastructure;
 using Xunit;
 using Xunit.Sdk;
@@ -106,6 +107,35 @@ public sealed class KeycloakIdentityProviderTests(
 
         Assert.True(result is IdentityUserCreationFailed);
         Assert.Null(user);
+    }
+
+    [Fact]
+    public async Task InvitationSetupMarkerPersistsInRealKeycloakAcrossFailedEmailRetries()
+    {
+        var email = CreateEmail();
+        try
+        {
+            // This fixture intentionally has no SMTP relay: creation must remain recoverable after mail fails.
+            var request = new StartInvitedIdentityRequest(email, "http://localhost:5173/invitations");
+            var first = await fixture.IdentityProvider.StartInvitationAsync(request, CancellationToken.None);
+            Assert.True(first is InvitedIdentityUnavailable);
+            var identity = await fixture.FindUserByUsernameAsync(email);
+            Assert.NotNull(identity);
+            Assert.NotNull(identity.Attributes);
+            Assert.Equal("true", Assert.Single(identity.Attributes["pole-invitation-setup"]));
+            Assert.Contains("UPDATE_PASSWORD", identity.RequiredActions ?? []);
+            var second = await fixture.IdentityProvider.StartInvitationAsync(request, CancellationToken.None);
+            Assert.True(second is InvitedIdentityUnavailable);
+            var retained = await fixture.FindUserByUsernameAsync(email);
+            Assert.NotNull(retained);
+            Assert.Equal(identity.Id, retained.Id);
+            Assert.Equal("true", Assert.Single(retained.Attributes!["pole-invitation-setup"]));
+            Assert.Contains("UPDATE_PASSWORD", retained.RequiredActions ?? []);
+        }
+        finally
+        {
+            await fixture.DeleteUserIfExistsAsync(email);
+        }
     }
 
     private static string AssertCreated(CreateIdentityUserOutcome result) => result switch

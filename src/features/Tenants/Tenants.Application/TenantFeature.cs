@@ -1,11 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Realtime.Contracts;
 using Pole.Features.Tenants.Application.Identity;
+using Pole.Features.Tenants.Application.Invitations;
 using Pole.Features.Tenants.Application.Members;
 using Pole.Features.Tenants.Application.Tenants;
 using Pole.Features.Tenants.Contracts;
@@ -21,9 +23,28 @@ public static class TenantFeature
     {
         services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
             .GetCollection<Tenant>("Tenants"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<TenantInvitation>("TenantInvitations"));
+        services.TryAddSingleton(provider => provider.GetRequiredService<IMongoDatabase>()
+            .GetCollection<TenantInvitationAcceptance>("TenantInvitationAcceptances"));
+        services.TryAddScoped<MongoPersistTenantInvitation>();
+        services.TryAddScoped<PersistTenantInvitation>(provider => provider
+            .GetRequiredService<MongoPersistTenantInvitation>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoAcceptTenantInvitation>();
+        services.TryAddScoped<PersistAcceptedTenantInvitation>(provider => provider
+            .GetRequiredService<MongoAcceptTenantInvitation>()
+            .InvokeAsync);
+        services.AddOptions<InvitationOptions>().BindConfiguration("Invitations");
+        services.TryAddSingleton<InvitationLinks>();
+        services.TryAddScoped<MongoLoadInvitation>();
+        services.TryAddScoped<ManageInvitation>();
+        services.AddSingleton(new RealtimeTopic("tenant-members", RealtimeScope.Tenant));
+        services.TryAddScoped<StartInvitationOnboarding>();
+        AddDefaultInvitationMail(services);
+        services.TryAddScoped<DeliverTenantInvitation>();
         services.AddHttpContextAccessor();
         services.AddSingleton(new RealtimeTopic("tenant-access", RealtimeScope.User));
-        services.AddOutcomeTransaction<PersistAddedTenantMemberOutcome>();
         services.AddOutcomeTransaction<PersistRemovedTenantMemberOutcome>();
         services.AddOutcomeTransaction<PersistUpdatedTenantMemberRoleOutcome>();
         services.AddOutcomeTransaction<Unit>();
@@ -39,10 +60,6 @@ public static class TenantFeature
         services.TryAddScoped<MongoPersistCreatedTenant>();
         services.TryAddScoped<PersistCreatedTenant>(provider => provider
             .GetRequiredService<MongoPersistCreatedTenant>()
-            .InvokeAsync);
-        services.TryAddScoped<MongoPersistAddedTenantMember>();
-        services.TryAddScoped<PersistAddedTenantMember>(provider => provider
-            .GetRequiredService<MongoPersistAddedTenantMember>()
             .InvokeAsync);
         services.TryAddScoped<MongoPersistUpdatedTenantMemberRole>();
         services.TryAddScoped<PersistUpdatedTenantMemberRole>(provider => provider
@@ -74,6 +91,19 @@ public static class TenantFeature
             .InvokeAsync);
 
         return services;
+    }
+
+    private static void AddDefaultInvitationMail(IServiceCollection services)
+    {
+        if (services.Any(service => service.ServiceType == typeof(SendInvitationMail) && !service.IsKeyedService))
+            return;
+
+        services.AddSingleton<IValidateOptions<InvitationSmtpOptions>, InvitationSmtpOptionsValidator>();
+        services.AddOptions<InvitationSmtpOptions>()
+            .BindConfiguration(InvitationSmtpOptions.SectionName)
+            .ValidateOnStart();
+        services.TryAddScoped<SmtpInvitationMail>();
+        services.AddScoped<SendInvitationMail>(provider => provider.GetRequiredService<SmtpInvitationMail>().SendAsync);
     }
 
     private static void AddOutcomeTransaction<TOutcome>(this IServiceCollection services)

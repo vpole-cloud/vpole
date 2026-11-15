@@ -66,6 +66,8 @@ using Pole.Features.Tenants.Events;
 using Pole.Features.Users.Application;
 using Pole.Features.Users.Application.Common;
 using Pole.Features.Users.Events;
+using Pole.Features.Users.Migrations;
+using Pole.Features.Tenants.Migrations;
 
 namespace Pole.Platform.Hosting;
 
@@ -95,6 +97,8 @@ public static class PolePlatform
 
     public static Assembly[] MigrationAssemblies =>
     [
+        typeof(TenantInvitationIndexesMigration).Assembly,
+        typeof(UserIdentityIndexesMigration).Assembly,
         typeof(GitOpsIndexesMigration).Assembly,
         typeof(SecretIndexesMigration).Assembly,
         typeof(PrivateAccessIndexesMigration).Assembly,

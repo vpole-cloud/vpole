@@ -308,8 +308,11 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
     notifications: { publish },
     resourceTypes: registry.resourceTypes,
   }
+  const zeroTenantAccess =
+    auth.authenticated && tenants.status === 'success' && tenants.items.length === 0
   const permitted =
     activeView &&
+    (!zeroTenantAccess || activeView.access === 'authenticated') &&
     (activeView.access === 'public' ||
       (auth.authenticated && (activeView.access === 'authenticated' || activeTenant !== null)))
   const View = activeView?.component
@@ -346,18 +349,20 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
               </div>
             </div>
             <nav className="side-nav__menu" aria-label="Primary">
-              {registry.views.map((view) => (
-                <button
-                  key={view.id}
-                  type="button"
-                  className={`side-nav__item${view.id === viewId ? ' is-active' : ''}`}
-                  aria-current={view.id === viewId ? 'page' : undefined}
-                  disabled={view.access !== 'public' && !auth.authenticated}
-                  onClick={() => goTo(view.id)}
-                >
-                  {view.label}
-                </button>
-              ))}
+              {registry.views
+                .filter((view) => !zeroTenantAccess || view.access !== 'tenant')
+                .map((view) => (
+                  <button
+                    key={view.id}
+                    type="button"
+                    className={`side-nav__item${view.id === viewId ? ' is-active' : ''}`}
+                    aria-current={view.id === viewId ? 'page' : undefined}
+                    disabled={view.access !== 'public' && !auth.authenticated}
+                    onClick={() => goTo(view.id)}
+                  >
+                    {view.label}
+                  </button>
+                ))}
             </nav>
             {auth.authenticated &&
               activeTenant &&
@@ -451,12 +456,19 @@ function AppShellContent({ registry, auth, api, tenants, initialViewId }: AppShe
               <EmptyState
                 title={
                   auth.authenticated
-                    ? requestedTenantId !== null && tenants.status === 'success'
-                      ? 'This tenant is unavailable to your account. Select an available tenant.'
-                      : 'Select an available tenant.'
+                    ? tenants.status === 'success' && tenants.items.length === 0
+                      ? 'No tenant access'
+                      : requestedTenantId !== null && tenants.status === 'success'
+                        ? 'This tenant is unavailable to your account. Select an available tenant.'
+                        : 'Select an available tenant.'
                     : 'Sign in to continue.'
                 }
               >
+                {auth.authenticated &&
+                  tenants.status === 'success' &&
+                  tenants.items.length === 0 && (
+                    <p>Ask a tenant owner or administrator for an invitation.</p>
+                  )}
                 {tenants.status === 'error' && tenants.error}
                 {!auth.authenticated && <Button onClick={auth.login}>Log in</Button>}
               </EmptyState>

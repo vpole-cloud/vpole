@@ -5,6 +5,7 @@ using MongoDB.Driver;
 using Pole.Features.Users.Application.Identity;
 using Pole.Features.Users.Application.Registration;
 using Pole.Features.Users.Domain;
+using Pole.Features.Users.Contracts;
 
 namespace Pole.Features.Users.Application;
 
@@ -16,6 +17,19 @@ public static class UserFeature
             .GetCollection<PoleUser>("Users"));
         services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
         services.AddHttpClient<IIdentityProvider, KeycloakIdentityProvider>();
+        services.AddHttpClient<KeycloakIdentityProvider>();
+        services.TryAddScoped<StartInvitedIdentity>(provider => provider
+            .GetRequiredService<KeycloakIdentityProvider>()
+            .StartInvitationAsync);
+
+        services.TryAddScoped<MongoReconcileUserDefaultTenant>();
+        services.TryAddScoped<ReconcileUserDefaultTenant>(provider => provider
+            .GetRequiredService<MongoReconcileUserDefaultTenant>()
+            .InvokeAsync);
+        services.TryAddScoped<MongoJoinInvitedUser>();
+        services.TryAddScoped<JoinInvitedUser>(provider => provider
+            .GetRequiredService<MongoJoinInvitedUser>()
+            .InvokeAsync);
 
         services.TryAddScoped<MongoEnsureUserEmailAvailable>();
         services.TryAddScoped<EnsureUserEmailAvailable>(provider => provider

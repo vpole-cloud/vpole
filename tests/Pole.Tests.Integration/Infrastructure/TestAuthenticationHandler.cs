@@ -29,6 +29,18 @@ public sealed class TestAuthenticationHandler(
             new(Claims.Email, Request.Headers[EmailHeader].ToString()),
         };
 
+        if (Request.Headers.TryGetValue("X-Test-Email-Verified", out var verified))
+            claims.Add(new Claim("email_verified", verified.ToString()));
+        if (Request.Headers.TryGetValue("X-Test-Roles", out var roles))
+            claims.AddRange(
+                roles.ToString()
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Select(role => new Claim(Claims.Roles, role)));
+        if (Request.Headers.TryGetValue("X-Test-Given-Name", out var firstName))
+            claims.Add(new Claim("given_name", firstName.ToString()));
+        if (Request.Headers.TryGetValue("X-Test-Family-Name", out var lastName))
+            claims.Add(new Claim("family_name", lastName.ToString()));
+
         if (Request.Headers.TryGetValue("X-Test-Platform-Admin", out var isPlatformAdmin) && string.Equals(
                 isPlatformAdmin.FirstOrDefault(),
                 "true",

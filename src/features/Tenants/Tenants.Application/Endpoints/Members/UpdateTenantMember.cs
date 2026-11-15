@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -15,21 +17,34 @@ namespace Pole.Features.Tenants.Application.Endpoints.Members;
 public sealed record UpdateTenantMemberRequest(
     [FromRoute] string TenantId,
     [FromRoute] string MemberId,
-    [FromBody] UpdateTenantMemberRequestBody Body
-) : IMediatorRequest<UpdateTenantMemberOutcome>, ITenantMemberRoleOperation
+    [FromBody] UpdateTenantMemberRequestBody Body,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
+    [FromClaim(Claims.Roles)] ClaimValue<List<string>?> CurrentRoles
+) : IMediatorRequest<UpdateTenantMemberOutcome>, ITenantMemberRoleOperation, ITenantMemberTargetOperation
 {
     public TenantRole Role => Body.Role;
 }
 
 public sealed record UpdateTenantMemberRequestBody(
-    TenantRole Role
+    [property: JsonRequired] TenantRole Role
 );
 
 public union UpdateTenantMemberOutcome(
     TenantMemberDto,
     TenantNotFound,
     TenantMemberNotFound,
-    TenantLastOwner);
+    TenantLastOwner,
+    TenantMemberManagementForbidden);
+
+public sealed class UpdateTenantMemberValidator : AbstractValidator<UpdateTenantMemberRequest>
+{
+    public UpdateTenantMemberValidator()
+    {
+        RuleFor(request => request.TenantId).RouteObjectId();
+        RuleFor(request => request.MemberId).RouteObjectId();
+        RuleFor(request => request.Body.Role).IsInEnum();
+    }
+}
 
 public sealed class UpdateTenantMemberHandler(
     PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole
@@ -40,7 +55,11 @@ public sealed class UpdateTenantMemberHandler(
         CancellationToken cancellationToken = default)
     {
         var persisted = await persistUpdatedTenantMemberRole(
-            new UpdateTenantMemberRole(request.TenantId, request.MemberId, request.Body.Role),
+            new UpdateTenantMemberRole(
+                request.TenantId,
+                request.MemberId,
+                request.Body.Role,
+                TenantMemberActor.From(request.CurrentUserId, request.CurrentRoles.Value)),
             cancellationToken);
         return persisted switch
         {
@@ -48,6 +67,7 @@ public sealed class UpdateTenantMemberHandler(
             TenantNotFound error => error,
             TenantMemberNotFound error => error,
             TenantLastOwner error => error,
+            TenantMemberManagementForbidden error => error,
         };
     }
 }
@@ -69,6 +89,7 @@ public static class UpdateTenantMemberEndpoint
                         TenantNotFound error => MapTenantNotFound(error),
                         TenantMemberNotFound error => MapMemberNotFound(error),
                         TenantLastOwner error => MapLastOwner(error),
+                        TenantMemberManagementForbidden error => MapMemberManagementForbidden(error),
                     });
                 })
             .WithName("UpdateTenantMember")

@@ -1,4 +1,5 @@
 import { createAppRegistry } from '../shell/moduleRegistry'
+import { tenantsModule } from './tenants/TenantsModule'
 import { gitOpsModule } from './gitops/GitOpsModule'
 import { backupsModule } from './backups/BackupsModule'
 import {
@@ -16,6 +17,7 @@ import { secretModule } from './secrets/SecretModule'
 // All modules are trusted, statically bundled contributions. This is the only composition root.
 export const appRegistry = createAppRegistry([
   overviewModule,
+  tenantsModule,
   resourceGroupsModule,
   webServicesModule,
   postgresModule,

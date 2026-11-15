@@ -11,6 +11,9 @@ public sealed class NotifyTenantAccessChangedConsumer(
     public Task Consume(ConsumeContext<TenantMembershipChangedEvent> context) =>
         HandleAsync(context.Message, context.CancellationToken);
 
-    public Task HandleAsync(TenantMembershipChangedEvent message, CancellationToken cancellationToken = default) =>
-        publish(new RealtimeChange("tenant-access", ResourceId: message.UserId), cancellationToken);
+    public async Task HandleAsync(TenantMembershipChangedEvent message, CancellationToken cancellationToken = default)
+    {
+        await publish(new RealtimeChange("tenant-access", ResourceId: message.UserId), cancellationToken);
+        await publish(new RealtimeChange("tenant-members", message.EventCore.TenantId), cancellationToken);
+    }
 }

@@ -33,7 +33,6 @@ public interface ITenantMemberManageOperation : ITenantMemberOperation;
 
 public interface ITenantMemberRoleOperation : ITenantMemberManageOperation
 {
-    string? MemberId { get; }
     TenantRole Role { get; }
 }
 

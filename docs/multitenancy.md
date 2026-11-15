@@ -25,7 +25,7 @@ Each `TenantMember` stores:
 - `Email`
 - `Role`
 
-`PoleUser` records are stored in the `Users` collection and use the Keycloak user id as `Id`. A user also has a `DefaultTenantId`. Creating a Pole user creates a Keycloak user first, then creates the Pole user record and a personal default tenant in one Mongo transaction.
+`PoleUser` records are stored in the `Users` collection and use the Keycloak user id as `Id`. A user also has a `DefaultTenantId`. Explicit platform-admin user creation provisions Keycloak first, then commits the Pole user and default-tenant request outbox atomically; a consumer creates the personal tenant. Invitation acceptance instead creates the Pole user, invited membership, first default and acceptance receipt atomically, without a personal tenant.
 
 Tenant roles are ordered by capability:
 
@@ -230,7 +230,8 @@ Tenant and user control-plane endpoints:
 - `GET /api/v1/tenants`: returns tenants where the current user is a member, including role and default-tenant flag.
 - `POST /api/v1/tenants`: creates a tenant owned by the current user; requires platform admin policy.
 - `GET /api/v1/tenants/{tenantId}/members`: lists members for a tenant.
-- `POST /api/v1/tenants/{tenantId}/members`: adds a member.
+- `POST /api/v1/tenants/{tenantId}/invitations`: invites a member by email.
+- `POST /api/v1/tenant-invitations/accept`: accepts a verified recipient’s invitation without an active tenant.
 - `PUT /api/v1/tenants/{tenantId}/members/{memberId}`: changes a member role.
 - `DELETE /api/v1/tenants/{tenantId}/members/{memberId}`: removes a member.
 - `POST /api/v1/users`: creates a Keycloak user, Pole user, and personal default tenant.
@@ -238,9 +239,9 @@ Tenant and user control-plane endpoints:
 Tenant member endpoints are protected by mediator authorization:
 
 - Listing members requires tenant membership with `Viewer` or higher.
-- Adding, updating, and deleting members requires `Admin` or higher.
+- Inviting, updating, and deleting members requires `Admin` or higher; invitations always require live tenant authority.
 - Granting `Owner`, changing an existing `Owner`, or removing an existing `Owner` requires `Owner`.
-- Platform admins bypass tenant membership checks but still cannot remove or demote the last tenant owner.
+- Platform admins retain member-management authority but still cannot remove or demote the last tenant owner. Invitation issuance, resend and acceptance recheck live tenant Owner/Admin authority for the current grant.
 
 Frontend tenant behavior:
 
@@ -271,3 +272,6 @@ For a new tenant-owned feature:
 6. Filter reads, updates, deletes, and consumer lookups by tenant id.
 7. Include `TenantId` in search projections, outbox messages, and any denormalized read model.
 8. Add tests for same-id or same-name resources in two tenants, cross-tenant reference rejection, and missing or invalid tenant headers.
+
+Tenant membership additions require [explicit invitation acceptance](../src/features/Tenants/README.md).
+Invited users receive their first accepted tenant as their default without a personal tenant.
