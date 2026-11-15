@@ -190,6 +190,8 @@ public sealed class TestApiApplication : IAsyncDisposable
                 ["GitHubWebhook:Secret"] = GitHubWebhookSecret,
                 ["PrivateAccess:Enabled"] = privateAccessEnabled.ToString(),
                 ["kubernetes:NamespaceNamePrefix"] = "test",
+                ["Invitations:Smtp:Host"] = "localhost",
+                ["Invitations:Smtp:From"] = "pole@example.test",
             });
 
         builder.WebHost.UseTestServer();

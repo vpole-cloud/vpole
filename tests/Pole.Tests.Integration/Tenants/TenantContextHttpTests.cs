@@ -309,6 +309,8 @@ public sealed class TenantContextHttpTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
+        builder.Configuration["Invitations:Smtp:Host"] = "localhost";
+        builder.Configuration["Invitations:Smtp:From"] = "pole@example.test";
         builder.Services.AddPoleHttpJson();
         builder.Services.AddTenantsFeature();
         builder.Services.AddPoleMediator();

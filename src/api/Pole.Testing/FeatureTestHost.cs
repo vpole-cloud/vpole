@@ -69,6 +69,8 @@ public sealed class FeatureTestHost : IAsyncDisposable
                     new Dictionary<string, string?>
                     {
                         ["kubernetes:NamespaceNamePrefix"] = "feature-test",
+                        ["Invitations:Smtp:Host"] = "localhost",
+                        ["Invitations:Smtp:From"] = "pole@example.test",
                     })
                 .AddConfiguration(encryption.Configuration)
                 .AddConfiguration(configuration);

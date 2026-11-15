@@ -76,6 +76,11 @@ Configure Pole with a trusted frontend origin; request Host/Origin headers never
 }
 ```
 
+The built-in sender validates `Invitations:Smtp` at host startup. Set a relay hostname or IP
+address and a sender email address. The port must be 1–65535 and the send timeout must be
+positive and at most five minutes (default 30 seconds). Omit both credentials for an anonymous
+relay, or set both username and password. Connectivity and authentication are checked during delivery.
+
 Provide `Invitations__Smtp__Password` and `KeycloakAdmin__AdminClientSecret` through your secret
 store/environment. Configure SMTP separately on the Keycloak realm, with its own host, port,
 sender, authentication and TLS settings. The development realm's `POLE_SMTP_HOST` and

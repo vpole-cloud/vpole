@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Pole.ASP.Helpers;
 using Pole.Database;
@@ -40,10 +41,7 @@ public static class TenantFeature
         services.TryAddScoped<ManageInvitation>();
         services.AddSingleton(new RealtimeTopic("tenant-members", RealtimeScope.Tenant));
         services.TryAddScoped<StartInvitationOnboarding>();
-        services.AddOptions<InvitationSmtpOptions>().BindConfiguration("Invitations:Smtp");
-        services.TryAddScoped<SmtpInvitationMail>();
-        services.TryAddScoped<SendInvitationMail>(provider =>
-            provider.GetRequiredService<SmtpInvitationMail>().SendAsync);
+        AddDefaultInvitationMail(services);
         services.TryAddScoped<DeliverTenantInvitation>();
         services.AddHttpContextAccessor();
         services.AddSingleton(new RealtimeTopic("tenant-access", RealtimeScope.User));
@@ -93,6 +91,19 @@ public static class TenantFeature
             .InvokeAsync);
 
         return services;
+    }
+
+    private static void AddDefaultInvitationMail(IServiceCollection services)
+    {
+        if (services.Any(service => service.ServiceType == typeof(SendInvitationMail) && !service.IsKeyedService))
+            return;
+
+        services.AddSingleton<IValidateOptions<InvitationSmtpOptions>, InvitationSmtpOptionsValidator>();
+        services.AddOptions<InvitationSmtpOptions>()
+            .BindConfiguration(InvitationSmtpOptions.SectionName)
+            .ValidateOnStart();
+        services.TryAddScoped<SmtpInvitationMail>();
+        services.AddScoped<SendInvitationMail>(provider => provider.GetRequiredService<SmtpInvitationMail>().SendAsync);
     }
 
     private static void AddOutcomeTransaction<TOutcome>(this IServiceCollection services)

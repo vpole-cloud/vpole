@@ -5,17 +5,6 @@ using Microsoft.Extensions.Options;
 
 namespace Pole.Features.Tenants.Application.Invitations;
 
-public sealed class InvitationSmtpOptions
-{
-    public string Host { get; init; } = "";
-    public int Port { get; init; } = 587;
-    public bool EnableSsl { get; init; } = true;
-    public string From { get; init; } = "";
-    public string Username { get; init; } = "";
-    public string Password { get; init; } = "";
-    public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(30);
-}
-
 public sealed record InvitationMail(
     string Recipient,
     string TenantName,
@@ -35,8 +24,6 @@ internal sealed class SmtpInvitationMail(
     public async Task SendAsync(InvitationMail mail, CancellationToken ct)
     {
         var settings = options.Value;
-        if (string.IsNullOrWhiteSpace(settings.Host) || string.IsNullOrWhiteSpace(settings.From))
-            throw new InvalidOperationException("Invitations:Smtp host and sender must be configured.");
         using var message = new MailMessage(
             settings.From,
             mail.Recipient,
@@ -53,8 +40,6 @@ internal sealed class SmtpInvitationMail(
                 ? null
                 : new NetworkCredential(settings.Username, settings.Password),
         };
-        if (settings.SendTimeout <= TimeSpan.Zero || settings.SendTimeout > TimeSpan.FromMinutes(5))
-            throw new InvalidOperationException("Invitation SMTP timeout must be positive and at most five minutes.");
         using var deadline = new CancellationTokenSource(settings.SendTimeout);
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         try
