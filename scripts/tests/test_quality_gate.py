@@ -380,7 +380,14 @@ class EvidenceTests(unittest.TestCase):
         self.assertNotIn("--", feature)
         self.assertIn("-maxcpucount:1", central)
 
+    def create_lab_test_scripts(self):
+        directory = self.root / "infrastructure/kubernetes-lab/tests"
+        directory.mkdir(parents=True)
+        for name in ("recovery.sh", "backup-recovery.sh", "seaweedfs.sh"):
+            (directory / name).touch()
+
     def test_pr_gate_does_not_require_cluster_commands(self):
+        self.create_lab_test_scripts()
         with patch.object(gate, "ROOT", self.root), patch.object(gate, "ARTIFACTS", self.root / "quality"), \
                 patch.object(gate, "RECEIPT", self.root / "receipt.json"), \
                 patch.object(gate, "git", return_value="base"), patch.object(gate, "source_fingerprint", return_value="unchanged"), \
@@ -391,6 +398,10 @@ class EvidenceTests(unittest.TestCase):
                 patch.object(gate, "load_template_report", return_value=complete_report()):
             gate.run_full("origin/master", "pr")
         names = [call.args[0] for call in execute.call_args_list]
+        shell_files = [Path(call.args[1][1]).name for call in execute.call_args_list if call.args[1][0] == "bash"]
+        self.assertIn("recovery.sh", shell_files)
+        self.assertNotIn("backup-recovery.sh", shell_files)
+        self.assertNotIn("seaweedfs.sh", shell_files)
         self.assertNotIn("lab-verify", names)
         self.assertNotIn("resource-audit", names)
         self.assertIn("frontend-tests", names)
@@ -422,6 +433,8 @@ class EvidenceTests(unittest.TestCase):
             gate.run_backend(output)
 
     def test_full_gate_uses_the_common_backend_lane(self):
+        self.create_lab_test_scripts()
+
         def emit_template_report(name, command, *args):
             if name == "feature-template":
                 output = Path(command[-1])
@@ -440,6 +453,11 @@ class EvidenceTests(unittest.TestCase):
                 patch.object(gate, "read_vitest", return_value={"total": 1, "passed": 1}), patch("builtins.print"), \
                 patch.object(gate, "run_backend") as backend:
             gate.run_full("origin/master")
+        commands = [call.args[1] for call in execute.call_args_list]
+        verify = commands.index(["bash", "infrastructure/kubernetes-lab/lab.sh", "verify"])
+        for name in ("backup-recovery.sh", "seaweedfs.sh"):
+            live_test = ["bash", str(self.root / "infrastructure/kubernetes-lab/tests" / name)]
+            self.assertGreater(commands.index(live_test), verify)
         backend.assert_called_once()
         template_calls = [call for call in execute.call_args_list if call.args[0] == "feature-template"]
         self.assertEqual(1, len(template_calls))
