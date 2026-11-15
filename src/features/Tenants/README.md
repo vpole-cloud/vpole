@@ -23,7 +23,9 @@ current members, pending/expired invitations, delivery state and last-owner prot
 There is no direct-add member endpoint or implementation. New and existing identities must use
 invitations. An invitation alone never grants access. Opening `/invitations#token=...` previews
 it; an explicit setup action starts account onboarding, and an explicit authenticated acceptance
-is the only operation that grants membership. The frontend captures/removes the fragment before
+is the only operation that grants membership. A new invitation fragment in the same open document replaces its capability immediately,
+clears the fragment and fences all preview/onboarding/acceptance callbacks from the former link.
+The frontend captures/removes the fragment before
 initializing Keycloak; identity callbacks never contain that capability. A brief per-tab
 sessionStorage handoff supports OIDC login, is cleared on initialization, and never stores bearer
 tokens. Reopen the original invitation email after finishing the separate Keycloak actions email.

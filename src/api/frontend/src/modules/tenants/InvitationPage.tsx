@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 import { useKeycloak } from '@react-keycloak/web'
 import { ApiError } from '../../api/transport'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
@@ -7,36 +7,51 @@ import { acceptTenantInvitation, invitationAction, previewTenantInvitation } fro
 import type { InvitationPreview } from './types'
 import {
   clearInvitationHandoff,
-  initialInvitationToken,
+  captureInvitationFragment,
+  getInvitationCapability,
+  subscribeInvitationCapability,
+  type InvitationCapability,
   saveInvitationHandoff,
 } from './invitationHandoff'
 
 export function InvitationPage() {
+  const capability = useSyncExternalStore(subscribeInvitationCapability, getInvitationCapability)
+  useLayoutEffect(captureInvitationFragment, [])
+  return <InvitationContent key={capability.epoch} capability={capability} />
+}
+
+function InvitationContent({ capability }: { capability: InvitationCapability }) {
   const { keycloak, initialized } = useKeycloak()
-  const [secret] = useState(initialInvitationToken)
+  const secret = capability.secret
   const [preview, setPreview] = useState<InvitationPreview | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const [message, setMessage] = useState('')
   const [previewError, setPreviewError] = useState('')
   const [previewAttempt, setPreviewAttempt] = useState(0)
   const baseUrl = import.meta.env.VITE_API_BASE_URL as string
-  const mutation = useScopedMutation(`invitation:${keycloak.subject ?? 'guest'}`)
+  const mutation = useScopedMutation(
+    `invitation:${capability.epoch}:${keycloak.subject ?? 'guest'}`,
+  )
   useEffect(() => {
-    if (!secret) return
+    if (!secret || capability.signal.aborted) return
     const controller = new AbortController()
-    void previewTenantInvitation(baseUrl, secret, controller.signal)
-      .then(setPreview)
+    const signal = AbortSignal.any([controller.signal, capability.signal])
+    void previewTenantInvitation(baseUrl, secret, signal)
+      .then((value) => {
+        if (!signal.aborted) setPreview(value)
+      })
       .catch((error: unknown) => {
-        if (controller.signal.aborted) return
+        if (signal.aborted) return
         if (error instanceof ApiError && error.status === 410) setUnavailable(true)
         else setPreviewError('Unable to load the invitation. Please try again.')
       })
     return () => controller.abort()
-  }, [baseUrl, secret, previewAttempt])
+  }, [baseUrl, secret, previewAttempt, capability.signal])
   useEffect(() => {
     if (initialized) clearInvitationHandoff()
   }, [initialized])
   const setup = () => {
+    if (capability.signal.aborted) return
     void mutation
       .run(
         (signal) =>
@@ -45,9 +60,10 @@ export function InvitationPage() {
             'onboarding',
             secret,
             undefined,
-            signal,
+            AbortSignal.any([signal, capability.signal]),
           ),
         (result) => {
+          if (capability.signal.aborted) return
           setMessage(
             result.setupEmailSent
               ? 'Check your email to finish account setup or verify your email. Then open your Pole invitation email to continue.'
@@ -58,14 +74,23 @@ export function InvitationPage() {
       .catch(() => {})
   }
   const signIn = () => {
+    if (capability.signal.aborted) return
     saveInvitationHandoff(secret)
     void keycloak.login({ redirectUri: `${window.location.origin}/invitations` })
   }
   const accept = () => {
+    if (capability.signal.aborted) return
     void mutation
       .run(
-        (signal) => acceptTenantInvitation(baseUrl, secret, keycloak.token, signal),
+        (signal) =>
+          acceptTenantInvitation(
+            baseUrl,
+            secret,
+            keycloak.token,
+            AbortSignal.any([signal, capability.signal]),
+          ),
         (result) => {
+          if (capability.signal.aborted) return
           try {
             localStorage.setItem('pole.activeTenantId', result.tenantId)
           } catch {
@@ -152,6 +177,7 @@ export function InvitationPage() {
                 <Button
                   disabled={mutation.busy}
                   onClick={() => {
+                    if (capability.signal.aborted) return
                     saveInvitationHandoff(secret)
                     void keycloak.logout({ redirectUri: `${window.location.origin}/invitations` })
                   }}
