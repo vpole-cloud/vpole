@@ -1,3 +1,5 @@
+using FluentValidation;
+using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -15,8 +17,10 @@ namespace Pole.Features.Tenants.Application.Endpoints.Members;
 public sealed record UpdateTenantMemberRequest(
     [FromRoute] string TenantId,
     [FromRoute] string MemberId,
-    [FromBody] UpdateTenantMemberRequestBody Body
-) : IMediatorRequest<UpdateTenantMemberOutcome>, ITenantMemberRoleOperation
+    [FromBody] UpdateTenantMemberRequestBody Body,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
+    [FromClaim(Claims.Roles)] ClaimValue<List<string>?> CurrentRoles
+) : IMediatorRequest<UpdateTenantMemberOutcome>, ITenantMemberRoleOperation, ITenantMemberTargetOperation
 {
     public TenantRole Role => Body.Role;
 }
@@ -32,9 +36,18 @@ public union UpdateTenantMemberOutcome(
     TenantLastOwner,
     TenantMemberManagementForbidden);
 
+public sealed class UpdateTenantMemberValidator : AbstractValidator<UpdateTenantMemberRequest>
+{
+    public UpdateTenantMemberValidator()
+    {
+        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
+        RuleFor(request => request.MemberId).Must(value => ObjectId.TryParse(value, out _));
+        RuleFor(request => request.Body.Role).IsInEnum();
+    }
+}
+
 public sealed class UpdateTenantMemberHandler(
-    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole,
-    IHttpContextAccessor contextAccessor
+    PersistUpdatedTenantMemberRole persistUpdatedTenantMemberRole
 ) : IMediatorOutcomeHandler<UpdateTenantMemberRequest, UpdateTenantMemberOutcome>
 {
     public async Task<UpdateTenantMemberOutcome> HandleAsync(
@@ -46,7 +59,7 @@ public sealed class UpdateTenantMemberHandler(
                 request.TenantId,
                 request.MemberId,
                 request.Body.Role,
-                TenantMemberActor.From(contextAccessor.HttpContext)),
+                TenantMemberActor.From(request.CurrentUserId, request.CurrentRoles.Value)),
             cancellationToken);
         return persisted switch
         {

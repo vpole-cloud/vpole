@@ -13,7 +13,6 @@ public sealed record AcceptTenantInvitation(
     string Token,
     string Subject,
     string Email,
-    bool EmailVerified,
     string? FirstName,
     string? LastName
 )
@@ -39,9 +38,6 @@ internal sealed class MongoAcceptTenantInvitation(
         AcceptTenantInvitation request,
         CancellationToken cancellationToken = default)
     {
-        if (!request.EmailVerified || string.IsNullOrWhiteSpace(request.Subject) ||
-            string.IsNullOrWhiteSpace(request.Email))
-            return Task.FromResult<AcceptTenantInvitationHttpOutcome>(new InvitationIdentityMismatch());
         return transaction.InvokeOutcomeAsync<AcceptTenantInvitationHttpOutcome>(
             async (context, ct) =>
             {

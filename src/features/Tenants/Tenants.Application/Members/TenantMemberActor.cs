@@ -1,5 +1,3 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Http;
 using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
@@ -11,9 +9,8 @@ public sealed record TenantMemberActor(
     bool PlatformAdmin
 )
 {
-    public static TenantMemberActor From(HttpContext? context) => new(
-        context?.User.FindFirstValue(Claims.UserId) ?? "",
-        context?.User.HasClaim(Claims.Roles, Roles.Admin) == true);
+    public static TenantMemberActor From(string subject, IReadOnlyCollection<string>? roles) =>
+        new(subject, roles?.Contains(Roles.Admin) == true);
 
     public bool CanManage(
         Tenant tenant,

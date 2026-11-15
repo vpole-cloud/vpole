@@ -20,8 +20,7 @@ public union StartInvitationOnboardingOutcome(
 
 public sealed class StartInvitationOnboardingValidator : AbstractValidator<StartInvitationOnboardingRequest>
 {
-    public StartInvitationOnboardingValidator() =>
-        RuleFor(request => request.Body.Token).NotEmpty().Matches("^[A-Za-z0-9_-]{43}$");
+    public StartInvitationOnboardingValidator() => RuleFor(request => request.Body.Token).InvitationToken();
 }
 
 public sealed class StartInvitationOnboardingHandler(

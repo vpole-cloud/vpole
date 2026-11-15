@@ -17,8 +17,7 @@ public union PreviewTenantInvitationOutcome(InvitationPreviewDto, InvitationUnav
 
 public sealed class PreviewTenantInvitationValidator : AbstractValidator<PreviewTenantInvitationRequest>
 {
-    public PreviewTenantInvitationValidator() =>
-        RuleFor(request => request.Body.Token).NotEmpty().Matches("^[A-Za-z0-9_-]{43}$");
+    public PreviewTenantInvitationValidator() => RuleFor(request => request.Body.Token).InvitationToken();
 }
 
 public sealed class PreviewTenantInvitationHandler(

@@ -250,6 +250,87 @@ public sealed class TenantInvitationHttpTests(
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("false")]
+    [InlineData("malformed")]
+    public async Task AcceptanceRejectsMissingFalseAndMalformedVerificationWithoutBindingFailure(string? verified)
+    {
+        var token = await CreateInvitation();
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, "recipient");
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.EmailHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.EmailHeader, "invited@example.test");
+        if (verified is not null)
+            Client.DefaultRequestHeaders.Add("X-Test-Email-Verified", verified);
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/tenant-invitations/accept",
+            new { token, emailVerified = true, subject = "spoofed-subject" });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("tenants.invitation.identity-mismatch", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task AcceptanceWithoutEmailClaimIsForbidden()
+    {
+        var token = await CreateInvitation();
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, "recipient");
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.EmailHeader);
+        Client.DefaultRequestHeaders.Add("X-Test-Email-Verified", "true");
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/tenant-invitations/accept",
+            new InvitationTokenBody(token));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("tenants.invitation.identity-mismatch", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task AcceptanceBindsOptionalNamesAndIgnoresUntrustedIdentityFields()
+    {
+        var token = await CreateInvitation();
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, "recipient");
+        Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.EmailHeader);
+        Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.EmailHeader, "invited@example.test");
+        Client.DefaultRequestHeaders.Add("X-Test-Email-Verified", "true");
+        Client.DefaultRequestHeaders.Add("X-Test-Given-Name", "Invited");
+        Client.DefaultRequestHeaders.Add("X-Test-Family-Name", "Person");
+        using var response = await Client.PostAsJsonAsync(
+            "/api/v1/tenant-invitations/accept",
+            new { token, subject = "spoofed-subject", firstName = "Spoofed", lastName = "Spoofed" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var user = await Fixture.DbContext.Users.Find(item => item.Id == "recipient").SingleAsync();
+        Assert.Equal("Invited", user.FirstName);
+        Assert.Equal("Person", user.LastName);
+        Assert.False(await Fixture.DbContext.Users.Find(item => item.Id == "spoofed-subject").AnyAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MemberWritesBindOptionalRolesAndPreserveEveryPlatformRoleClaim(bool platformAdmin)
+    {
+        var member = TenantFactory.CreateMember(Data.TenantId, "target", "target@example.test", TenantRole.Member);
+        await Fixture.DbContext.Tenants.UpdateOneAsync(
+            item => item.Id == Data.TenantId,
+            Builders<Tenant>.Update.Push(item => item.Members, member));
+        if (platformAdmin)
+        {
+            Client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.UserHeader);
+            Client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserHeader, "outside-admin");
+            Client.DefaultRequestHeaders.Add("X-Test-Roles", new[] { "other-role", Pole.ASP.Helpers.Roles.Admin });
+        }
+
+        var path = $"/api/v1/tenants/{Data.TenantId}/members/{member.Id}";
+        using var update = await Client.PutAsJsonAsync(
+            path,
+            new { role = "Viewer", currentUserId = "spoofed", currentRoles = new[] { "spoofed" } });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        using var delete = await Client.DeleteAsync(path + "?CurrentUserId=spoofed&CurrentRoles=spoofed");
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+    }
+
+    [Theory]
     [InlineData("revoke")]
     [InlineData("resend")]
     [InlineData("update")]

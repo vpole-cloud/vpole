@@ -21,7 +21,6 @@ public sealed record UpdateTenantInvitationRequest(
 ) : IMediatorRequest<UpdateTenantInvitationOutcome>, ITenantMemberRoleOperation
 {
     public string TenantId => Invitation.TenantId;
-    public string? MemberId => null;
 }
 
 public union UpdateTenantInvitationOutcome(
@@ -37,7 +36,7 @@ public sealed class UpdateTenantInvitationValidator : AbstractValidator<UpdateTe
     {
         RuleFor(request => request.Role).IsInEnum();
         RuleFor(request => request.Invitation.TenantId).Must(value => ObjectId.TryParse(value, out _));
-        RuleFor(request => request.Invitation.InvitationId).NotEmpty().Matches("^[0-9A-F]{64}$");
+        RuleFor(request => request.Invitation.InvitationId).InvitationId();
     }
 }
 
@@ -69,12 +68,12 @@ public static class UpdateTenantInvitationEndpoint
                 "/{tenantId}/invitations/{invitationId}",
                 async (
                     string tenantId, string invitationId,
-                    [FromBody] UpdateTenantInvitationBody body, HttpContext context,
+                    [FromBody] UpdateTenantInvitationBody body, [FromClaim(Claims.UserId)] ClaimValue currentUserId,
                     IMediator mediator, CancellationToken ct) =>
                 {
                     var result = await mediator.Send(
                         new UpdateTenantInvitationRequest(
-                            new ManageInvitationRequest(tenantId, invitationId, InvitationActor.From(context)),
+                            new ManageInvitationRequest(tenantId, invitationId, new InvitationActor(currentUserId)),
                             body.Role),
                         ct);
                     return result.ToHttpResult(outcome => outcome switch

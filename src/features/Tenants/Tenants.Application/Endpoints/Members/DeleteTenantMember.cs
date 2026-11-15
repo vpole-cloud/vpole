@@ -1,3 +1,5 @@
+using FluentValidation;
+using MongoDB.Bson;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +14,9 @@ namespace Pole.Features.Tenants.Application.Endpoints.Members;
 
 public sealed record DeleteTenantMemberRequest(
     [FromRoute] string TenantId,
-    [FromRoute] string MemberId
+    [FromRoute] string MemberId,
+    [FromClaim(Claims.UserId)] ClaimValue CurrentUserId,
+    [FromClaim(Claims.Roles)] ClaimValue<List<string>?> CurrentRoles
 ) : IMediatorRequest<DeleteTenantMemberOutcome>, ITenantMemberTargetOperation;
 
 public union DeleteTenantMemberOutcome(
@@ -22,9 +26,17 @@ public union DeleteTenantMemberOutcome(
     TenantLastOwner,
     TenantMemberManagementForbidden);
 
+public sealed class DeleteTenantMemberValidator : AbstractValidator<DeleteTenantMemberRequest>
+{
+    public DeleteTenantMemberValidator()
+    {
+        RuleFor(request => request.TenantId).Must(value => ObjectId.TryParse(value, out _));
+        RuleFor(request => request.MemberId).Must(value => ObjectId.TryParse(value, out _));
+    }
+}
+
 public sealed class DeleteTenantMemberHandler(
-    PersistRemovedTenantMember persistRemovedTenantMember,
-    IHttpContextAccessor contextAccessor
+    PersistRemovedTenantMember persistRemovedTenantMember
 ) : IMediatorOutcomeHandler<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>
 {
     public async Task<DeleteTenantMemberOutcome> HandleAsync(
@@ -35,7 +47,7 @@ public sealed class DeleteTenantMemberHandler(
             new RemoveTenantMember(
                 request.TenantId,
                 request.MemberId,
-                TenantMemberActor.From(contextAccessor.HttpContext)),
+                TenantMemberActor.From(request.CurrentUserId, request.CurrentRoles.Value)),
             cancellationToken);
         return persisted switch
         {

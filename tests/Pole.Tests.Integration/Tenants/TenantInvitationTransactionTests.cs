@@ -62,7 +62,7 @@ public sealed class TenantInvitationTransactionTests(
         var tenantCount = await DbContext.Tenants.CountDocumentsAsync(FilterDefinition<Tenant>.Empty);
         var token = await Invite(tenant, "New@Example.test");
         var accept = Services.GetRequiredService<PersistAcceptedTenantInvitation>();
-        var request = new AcceptTenantInvitation(token, "new-subject", "new@example.test", true, null, null);
+        var request = new AcceptTenantInvitation(token, "new-subject", "new@example.test", null, null);
         var accepted = Assert.IsType<InvitationAcceptedDto>((await accept(request)).Value);
         Assert.Equal(tenant.Id, accepted.TenantId);
         Assert.Equal(tenant.Id, accepted.DefaultTenantId);
@@ -85,17 +85,13 @@ public sealed class TenantInvitationTransactionTests(
     }
 
     [Fact]
-    public async Task IssuerDowngradeAndUnverifiedOrWrongRecipientCannotGrantMembership()
+    public async Task IssuerDowngradeAndWrongRecipientCannotGrantMembership()
     {
         var tenant = await CreateTenant();
         var token = await Invite(tenant);
         var accept = Services.GetRequiredService<PersistAcceptedTenantInvitation>();
         Assert.IsType<InvitationIdentityMismatch>(
-            (await accept(new AcceptTenantInvitation(token, "recipient", "other@example.test", true, null, null)))
-            .Value);
-        Assert.IsType<InvitationIdentityMismatch>(
-            (await accept(new AcceptTenantInvitation(token, "recipient", "new@example.test", false, null, null)))
-            .Value);
+            (await accept(new AcceptTenantInvitation(token, "recipient", "other@example.test", null, null))).Value);
         var issuer = tenant.Members[0];
         var replacement = TenantFactory.CreateMember(
             tenant.Id,
@@ -106,7 +102,7 @@ public sealed class TenantInvitationTransactionTests(
             item => item.Id == tenant.Id,
             tenant with { Members = [issuer with { Role = TenantRole.Viewer }, replacement] });
         Assert.IsType<InvitationUnavailable>(
-            (await accept(new AcceptTenantInvitation(token, "recipient", "new@example.test", true, null, null))).Value);
+            (await accept(new AcceptTenantInvitation(token, "recipient", "new@example.test", null, null))).Value);
         Assert.False(await DbContext.Users.Find(item => item.Id == "recipient").AnyAsync());
     }
 
@@ -140,9 +136,9 @@ public sealed class TenantInvitationTransactionTests(
         using var secondScope = Services.CreateScope();
         var results = await Task.WhenAll(
             firstScope.ServiceProvider.GetRequiredService<PersistAcceptedTenantInvitation>()(
-                new AcceptTenantInvitation(first, "recipient", "new@example.test", true, null, null)),
+                new AcceptTenantInvitation(first, "recipient", "new@example.test", null, null)),
             secondScope.ServiceProvider.GetRequiredService<PersistAcceptedTenantInvitation>()(
-                new AcceptTenantInvitation(second, "recipient", "new@example.test", true, null, null)));
+                new AcceptTenantInvitation(second, "recipient", "new@example.test", null, null)));
         Assert.All(results, result => Assert.IsType<InvitationAcceptedDto>(result.Value));
         var tenants = await DbContext.Tenants
             .Find(item => item.Members.Any(member => member.UserId == "recipient"))
@@ -163,7 +159,7 @@ public sealed class TenantInvitationTransactionTests(
     {
         var tenant = await CreateTenant();
         var token = await Invite(tenant);
-        var request = new AcceptTenantInvitation(token, "recipient", "new@example.test", true, null, null);
+        var request = new AcceptTenantInvitation(token, "recipient", "new@example.test", null, null);
         var accept = Services.GetRequiredService<PersistAcceptedTenantInvitation>();
         await accept(request);
         var member = (await DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync()).Members.Single(item =>
@@ -195,7 +191,7 @@ public sealed class TenantInvitationTransactionTests(
         using var scope = provider.CreateScope();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             scope.ServiceProvider.GetRequiredService<PersistAcceptedTenantInvitation>()(
-                new AcceptTenantInvitation(token, "recipient", "new@example.test", true, null, null)));
+                new AcceptTenantInvitation(token, "recipient", "new@example.test", null, null)));
         Assert.False(await DbContext.Users.Find(item => item.Id == "recipient").AnyAsync());
         Assert.Equal(
             TenantInvitationStatus.Pending,
@@ -240,7 +236,7 @@ public sealed class TenantInvitationTransactionTests(
             (await Invitations.Find(item => item.Id == current.Id).SingleAsync()).DeliveryStatus);
         Assert.IsType<InvitationUnavailable>(
             (await Services.GetRequiredService<PersistAcceptedTenantInvitation>()(
-                new AcceptTenantInvitation(oldToken, "recipient", "new@example.test", true, null, null))).Value);
+                new AcceptTenantInvitation(oldToken, "recipient", "new@example.test", null, null))).Value);
     }
 
     [Fact]
@@ -286,7 +282,7 @@ public sealed class TenantInvitationTransactionTests(
         Assert.Empty(_delivered);
         var accept = Services.GetRequiredService<PersistAcceptedTenantInvitation>();
         Assert.IsType<InvitationUnavailable>(
-            (await accept(new AcceptTenantInvitation(token, "recipient", "new@example.test", true, null, null))).Value);
+            (await accept(new AcceptTenantInvitation(token, "recipient", "new@example.test", null, null))).Value);
         var fresh = await Invite(tenant);
         invitation = await Invitations.Find(item => item.Id == invitation.Id).SingleAsync();
         await Invitations.UpdateOneAsync(
@@ -297,7 +293,7 @@ public sealed class TenantInvitationTransactionTests(
             CancellationToken.None);
         Assert.Empty(_delivered);
         Assert.IsType<InvitationUnavailable>(
-            (await accept(new AcceptTenantInvitation(fresh, "recipient", "new@example.test", true, null, null))).Value);
+            (await accept(new AcceptTenantInvitation(fresh, "recipient", "new@example.test", null, null))).Value);
     }
 
     [Fact]
@@ -360,7 +356,7 @@ public sealed class TenantInvitationTransactionTests(
         var first = await CreateTenant();
         var firstToken = await Invite(first);
         var accept = Services.GetRequiredService<PersistAcceptedTenantInvitation>();
-        await accept(new AcceptTenantInvitation(firstToken, "recipient", "new@example.test", true, null, null));
+        await accept(new AcceptTenantInvitation(firstToken, "recipient", "new@example.test", null, null));
         var member = (await DbContext.Tenants.Find(item => item.Id == first.Id).SingleAsync()).Members.Single(item =>
             item.UserId == "recipient");
         await Services.GetRequiredService<PersistRemovedTenantMember>()(
@@ -370,15 +366,13 @@ public sealed class TenantInvitationTransactionTests(
         var next = await CreateTenant();
         var nextToken = await Invite(next);
         var joined = Assert.IsType<InvitationAcceptedDto>(
-            (await accept(new AcceptTenantInvitation(nextToken, "recipient", "new@example.test", true, null, null)))
-            .Value);
+            (await accept(new AcceptTenantInvitation(nextToken, "recipient", "new@example.test", null, null))).Value);
         Assert.Equal(next.Id, joined.DefaultTenantId);
         Assert.Equal(
             next.Id,
             (await DbContext.Users.Find(item => item.Id == "recipient").SingleAsync()).DefaultTenantId);
         Assert.IsType<InvitationUnavailable>(
-            (await accept(new AcceptTenantInvitation(firstToken, "recipient", "new@example.test", true, null, null)))
-            .Value);
+            (await accept(new AcceptTenantInvitation(firstToken, "recipient", "new@example.test", null, null))).Value);
     }
 
     [Fact]
@@ -407,7 +401,7 @@ public sealed class TenantInvitationTransactionTests(
         var unique = await Assert.ThrowsAsync<MongoWriteException>(() => raw.InsertOneAsync(duplicate));
         Assert.Equal(11000, unique.WriteError.Code);
         await Services.GetRequiredService<PersistAcceptedTenantInvitation>()(
-            new AcceptTenantInvitation(token, "recipient", "new@example.test", true, null, null));
+            new AcceptTenantInvitation(token, "recipient", "new@example.test", null, null));
         var receipts = DbContext.Database.GetCollection<BsonDocument>("TenantInvitationAcceptances");
         var receipt = await receipts.Find(FilterDefinition<BsonDocument>.Empty).SingleAsync();
         receipt["_id"] = new string('D', 64);

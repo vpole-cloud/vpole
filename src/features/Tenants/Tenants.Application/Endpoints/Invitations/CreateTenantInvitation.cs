@@ -23,7 +23,6 @@ public sealed record CreateTenantInvitationRequest(
     InvitationActor Actor
 ) : IMediatorRequest<CreateTenantInvitationOutcome>, ITenantMemberRoleOperation
 {
-    public string? MemberId => null;
     public TenantRole Role => Body.Role;
 }
 
@@ -67,11 +66,11 @@ public static class CreateTenantInvitationEndpoint
                 "/{tenantId}/invitations",
                 async (
                     string tenantId, [FromBody] CreateTenantInvitationBody body,
-                    HttpContext context, IMediator mediator,
+                    [FromClaim(Claims.UserId)] ClaimValue currentUserId, IMediator mediator,
                     CancellationToken ct) =>
                 {
                     var result = await mediator.Send(
-                        new CreateTenantInvitationRequest(tenantId, body, InvitationActor.From(context)),
+                        new CreateTenantInvitationRequest(tenantId, body, new InvitationActor(currentUserId)),
                         ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {

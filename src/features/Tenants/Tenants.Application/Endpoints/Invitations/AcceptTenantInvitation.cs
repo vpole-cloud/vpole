@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -17,9 +16,31 @@ public sealed record InvitationTokenBody(
     public override string ToString() => "InvitationTokenBody(redacted)";
 }
 
+public sealed record InvitationRecipient(
+    string Subject,
+    string? Email,
+    bool EmailVerified,
+    string? FirstName,
+    string? LastName
+);
+
+public sealed class InvitationRecipientValidator : AbstractValidator<InvitationRecipient>
+{
+    public InvitationRecipientValidator()
+    {
+        RuleFor(recipient => recipient.Subject).NotEmpty();
+        RuleFor(recipient => recipient.Email).NotEmpty().EmailAddress().MaximumLength(254);
+        RuleFor(recipient => recipient.EmailVerified).Equal(true);
+    }
+}
+
 public sealed record AcceptTenantInvitationRequest(
-    AcceptTenantInvitation Invitation
-) : IMediatorRequest<AcceptTenantInvitationHttpOutcome>;
+    string Token,
+    InvitationRecipient Recipient
+) : IMediatorRequest<AcceptTenantInvitationHttpOutcome>
+{
+    public override string ToString() => "AcceptTenantInvitationRequest(redacted)";
+}
 
 public union AcceptTenantInvitationHttpOutcome(
     InvitationAcceptedDto,
@@ -28,21 +49,32 @@ public union AcceptTenantInvitationHttpOutcome(
     InvitationIdentityConflict);
 
 public sealed class AcceptTenantInvitationHandler(
-    PersistAcceptedTenantInvitation persist
+    PersistAcceptedTenantInvitation persist,
+    IValidator<InvitationRecipient> recipientValidator
 ) : IMediatorOutcomeHandler<AcceptTenantInvitationRequest, AcceptTenantInvitationHttpOutcome>
 {
     public async Task<AcceptTenantInvitationHttpOutcome> HandleAsync(
         AcceptTenantInvitationRequest request,
         CancellationToken cancellationToken = default)
     {
-        return await persist(request.Invitation, cancellationToken);
+        if (!recipientValidator.Validate(request.Recipient).IsValid)
+            return new InvitationIdentityMismatch();
+
+        var recipient = request.Recipient;
+        return await persist(
+            new AcceptTenantInvitation(
+                request.Token,
+                recipient.Subject,
+                recipient.Email!,
+                recipient.FirstName,
+                recipient.LastName),
+            cancellationToken);
     }
 }
 
 public sealed class AcceptTenantInvitationValidator : AbstractValidator<AcceptTenantInvitationRequest>
 {
-    public AcceptTenantInvitationValidator() =>
-        RuleFor(request => request.Invitation.Token).NotEmpty().Matches("^[A-Za-z0-9_-]{43}$");
+    public AcceptTenantInvitationValidator() => RuleFor(request => request.Token).InvitationToken();
 }
 
 public static class AcceptTenantInvitationEndpoint
@@ -52,22 +84,22 @@ public static class AcceptTenantInvitationEndpoint
         app.MapPost(
                 "/tenant-invitations/accept",
                 async (
-                    [FromBody] InvitationTokenBody body, HttpContext context,
-                    IMediator mediator, CancellationToken ct) =>
+                    [FromBody] InvitationTokenBody body, [FromClaim(Claims.UserId)] ClaimValue subject,
+                    [FromClaim(Claims.Email)] ClaimValue<string?> email,
+                    [FromClaim("email_verified")] ClaimValue<string?> emailVerified,
+                    [FromClaim("given_name")] ClaimValue<string?> firstName,
+                    [FromClaim("family_name")] ClaimValue<string?> lastName, IMediator mediator,
+                    CancellationToken ct) =>
                 {
-                    var user = context.User;
                     var result = await mediator.Send(
                         new AcceptTenantInvitationRequest(
-                            new AcceptTenantInvitation(
-                                body.Token,
-                                user.FindFirstValue(Claims.UserId) ?? "",
-                                user.FindFirstValue(Claims.Email) ?? "",
-                                string.Equals(
-                                    user.FindFirstValue("email_verified"),
-                                    "true",
-                                    StringComparison.OrdinalIgnoreCase),
-                                user.FindFirstValue("given_name"),
-                                user.FindFirstValue("family_name"))),
+                            body.Token,
+                            new InvitationRecipient(
+                                subject,
+                                email.Value,
+                                string.Equals(emailVerified.Value, "true", StringComparison.OrdinalIgnoreCase),
+                                firstName.Value,
+                                lastName.Value)),
                         ct);
                     return result.ToHttpResult(outcome => outcome switch
                     {

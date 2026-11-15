@@ -1,8 +1,5 @@
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.AspNetCore.Http;
-using Pole.ASP.Helpers;
 using Pole.Features.Core.Multitenancy;
 using Pole.Features.Tenants.Domain;
 
@@ -10,10 +7,7 @@ namespace Pole.Features.Tenants.Application.Invitations;
 
 public sealed record InvitationActor(
     string Subject
-)
-{
-    public static InvitationActor From(HttpContext context) => new(context.User.FindFirstValue(Claims.UserId) ?? "");
-}
+);
 
 internal static class InvitationIdentity
 {

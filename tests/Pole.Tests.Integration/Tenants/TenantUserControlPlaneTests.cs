@@ -303,7 +303,7 @@ public sealed class TenantUserControlPlaneTests(
     {
         var tenant = await InsertTenantAsync(TenantRole.Owner);
         const string missingMemberId = "missing-member";
-        var request = new DeleteTenantMemberRequest(tenant.Id, missingMemberId);
+        var request = new DeleteTenantMemberRequest(tenant.Id, missingMemberId, new ClaimValue("user-1"), new(null));
         var behavior
             = CreateTenantMemberAuthorizationBehavior<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>("user-1");
 
@@ -328,7 +328,11 @@ public sealed class TenantUserControlPlaneTests(
             Members = tenant.Members.Add(owner),
         };
         await Fixture.DbContext.Tenants.ReplaceOneAsync(stored => stored.Id == tenant.Id, tenant);
-        var request = new DeleteTenantMemberRequest(tenant.Id, owner.Id);
+        var request = new DeleteTenantMemberRequest(
+            tenant.Id,
+            owner.Id,
+            new ClaimValue("test-admin"),
+            new([Roles.Admin]));
         var behavior
             = CreateTenantMemberAuthorizationBehavior<DeleteTenantMemberRequest, DeleteTenantMemberOutcome>("user-1");
 
@@ -374,11 +378,15 @@ public sealed class TenantUserControlPlaneTests(
         var owner = tenant.Members.Single();
         using var scope = Services.CreateScope();
         var handler = new UpdateTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>(),
-            PlatformAdminContext());
+            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>());
 
         var result = await handler.HandleAsync(
-            new UpdateTenantMemberRequest(tenant.Id, owner.Id, new UpdateTenantMemberRequestBody(TenantRole.Admin)));
+            new UpdateTenantMemberRequest(
+                tenant.Id,
+                owner.Id,
+                new UpdateTenantMemberRequestBody(TenantRole.Admin),
+                new ClaimValue("test-admin"),
+                new([Roles.Admin])));
 
         Assert.True(result is TenantLastOwner);
     }
@@ -397,13 +405,14 @@ public sealed class TenantUserControlPlaneTests(
 
         using var scope = Services.CreateScope();
         var handler = new UpdateTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>(),
-            PlatformAdminContext());
+            scope.ServiceProvider.GetRequiredService<PersistUpdatedTenantMemberRole>());
         var result = await handler.HandleAsync(
             new UpdateTenantMemberRequest(
                 tenant.Id,
                 firstOwner.Id,
-                new UpdateTenantMemberRequestBody(TenantRole.Admin)));
+                new UpdateTenantMemberRequestBody(TenantRole.Admin),
+                new ClaimValue("test-admin"),
+                new([Roles.Admin])));
 
         Assert.True(result is TenantMemberDto { Role: TenantRole.Admin });
         var stored = await Fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
@@ -417,10 +426,10 @@ public sealed class TenantUserControlPlaneTests(
         var owner = tenant.Members.Single();
         using var scope = Services.CreateScope();
         var handler = new DeleteTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>(),
-            PlatformAdminContext());
+            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>());
 
-        var result = await handler.HandleAsync(new DeleteTenantMemberRequest(tenant.Id, owner.Id));
+        var result = await handler.HandleAsync(
+            new DeleteTenantMemberRequest(tenant.Id, owner.Id, new ClaimValue("test-admin"), new([Roles.Admin])));
 
         Assert.True(result is TenantLastOwner);
     }
@@ -439,9 +448,9 @@ public sealed class TenantUserControlPlaneTests(
 
         using var scope = Services.CreateScope();
         var handler = new DeleteTenantMemberHandler(
-            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>(),
-            PlatformAdminContext());
-        var result = await handler.HandleAsync(new DeleteTenantMemberRequest(tenant.Id, firstOwner.Id));
+            scope.ServiceProvider.GetRequiredService<PersistRemovedTenantMember>());
+        var result = await handler.HandleAsync(
+            new DeleteTenantMemberRequest(tenant.Id, firstOwner.Id, new ClaimValue("test-admin"), new([Roles.Admin])));
 
         Assert.True(result is TenantMemberRemoved removed && removed.MemberId == firstOwner.Id);
         var stored = await Fixture.DbContext.Tenants.Find(item => item.Id == tenant.Id).SingleAsync();
@@ -598,15 +607,4 @@ public sealed class TenantUserControlPlaneTests(
         string CurrentUserEmail,
         IEnumerable<string> Roles
     );
-
-    private static IHttpContextAccessor PlatformAdminContext() => new HttpContextAccessor
-    {
-        HttpContext = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(
-                new ClaimsIdentity(
-                    [new Claim(Claims.UserId, "test-admin"), new Claim(Claims.Roles, Roles.Admin)],
-                    "test")),
-        },
-    };
 }
