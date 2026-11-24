@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pole Events Outbox"
-  short_description: "Protect event and outbox flows"
-  default_prompt: "Use $pole-events-outbox to implement or review Pole events, outbox records, and consumers."

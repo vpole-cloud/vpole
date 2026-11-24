@@ -59,7 +59,7 @@ includes frontend. Documentation/proven-formatting exemptions and recorded safe-
 
 Docker is required for `tests/Pole.Tests.Integration`. Aspire E2E and live Kubernetes checks require their documented services and cluster prerequisites. Read `docs/testing.md`, `docs/aspire-local-development.md`, and `docs/aspire-e2e-testing.md`; never claim these lanes passed when their prerequisites were unavailable.
 
-Use `$pole-test-runner` for focused development checks. Before opening a PR, run
+Use the `pole-test-runner` skill for focused development checks. Before opening a PR, run
 `python3 scripts/quality_gate.py run --profile pr`: it selects verification from the complete PR diff.
 Docs/proven formatting require structural evidence; template changes require generated-code evidence;
 behavioral/uncertain changes retain full PR suites. Use `--profile full` for broad/infrastructure work
@@ -78,10 +78,10 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 - Preserve feature ownership: synchronous cross-feature access uses provider-owned Contracts; asynchronous integration uses provider-owned Events.
 - Keep one Minimal API endpoint, its request/response types, validator, and Mediator handler together per endpoint file.
 - Use typed outcomes for expected failures. Let unexpected infrastructure exceptions reach the standard exception path.
-- Tenant-owned behavior must preserve tenant IDs in request markers, filters, events, projections, and frontend headers. Use `$pole-tenant-scoping`.
-- Persist mutations and outbox records atomically. Keep external side effects in consumers. Use `$pole-events-outbox`.
-- Validate Kubernetes object shape with manifest tests before reaching for live-cluster tests. Use `$pole-kubernetes-resource`.
-- Keep frontend API calls centralized in `api.ts` and align `types.ts`, hooks, and active-tenant behavior. Use `$pole-frontend-api`.
+- Tenant-owned behavior must preserve tenant IDs in request markers, filters, events, projections, and frontend headers. Use the `pole-tenant-scoping` skill.
+- Persist mutations and outbox records atomically. Keep external side effects in consumers. Use the `pole-events-outbox` skill.
+- Validate Kubernetes object shape with manifest tests before reaching for live-cluster tests. Use the `pole-kubernetes-resource` skill.
+- Keep frontend API calls centralized in `api.ts` and align `types.ts`, hooks, and active-tenant behavior. Use the `pole-frontend-api` skill.
 - Never print or commit secrets. Keep local credentials in ignored local settings or environment variables.
 
 ## Git and delivery
@@ -91,22 +91,22 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 - Do not discard, rewrite, or revert changes you did not make. Other agents or the user may be editing the same checkout.
 - Do not commit, push, create branches, or open pull requests unless the user explicitly asks for that action.
 - When a task branch is authorized, create it after any required plan or diagnosis approval and before implementation changes.
-- In issue bodies, identify [agent-ready work and decisions for the maintainer](.codex/skills/pole-github-issue-planning/SKILL.md#issue-template).
+- In issue bodies, identify [agent-ready work and decisions for the maintainer](.claude/skills/pole-github-issue-planning/SKILL.md#issue-template).
 - Check existing issues before creating a new one. Creating issues requires explicit publish intent; drafting does not.
-- Local approved implementation plans belong in `.codex/notes/`, which is ignored.
+- Local approved implementation plans belong in `.claude/notes/`, which is ignored.
 
 ## Agent workflow
 
 - The primary agent owns requirements, decisions, edits, and the final synthesis.
-- Do not create persistent project-specific agent personas. Compose a bounded prompt for the current task and use built-in agents only when delegation materially helps.
+- Do not create persistent project-specific agent personas. Compose a bounded prompt for the current task and use built-in subagents (the Agent tool) only when delegation materially helps.
 - Prefer no delegation for ordinary implementation. Use parallel agents for independent, read-heavy exploration, review, or log analysis; use parallel writers only when file ownership is unquestionably disjoint.
 - Agents in the same worktree share its files and build outputs. Give independent writers separate worktrees; within one worktree, do not overlap builds or invocations of the same test project.
 - Tests in separate worktrees are isolated, including Docker and Kubernetes resources. Docker-backed suites may run concurrently across worktrees. Kubernetes-backed suites may also overlap, but queue them by default because of host load; the primary agent coordinates heavy runs and permits overlap when capacity allows. See [test scheduling](docs/testing.md#parallelism-across-worktrees).
 - Within a worktree, build once before parallel `--no-build --no-restore` runs of distinct infrastructure-free projects; use the gate’s configured per-group limits. Kubernetes and E2E each default to one concurrent project.
-- For an explicit multi-issue/team-lead delivery workflow, use `$pole-deliver-issues` to coordinate scope, separate worktrees, review, verification and authorized PR/merge actions.
+- For an explicit multi-issue/team-lead delivery workflow, use the `pole-deliver-issues` skill to coordinate scope, separate worktrees, review, verification and authorized PR/merge actions.
 - Before opening a pull request, complete the selected verification for the whole PR diff with zero failed/skipped selected tests. Docs/proven formatting and templates use their documented reduced lanes. Broad/infrastructure changes also require the full profile including Kubernetes, Harbor and Aspire E2E. Evidence proves only its selected boundaries.
 - For new features or repeated endpoint families, give agents exact canonical reference files and review one complete representative slice before repeating its pattern. This primary-agent checkpoint does not require another user approval.
-- Before an authorized push or pull request for a non-trivial code change, complete the applicable gate profile and self-review, then delegate one independent review to a fresh built-in agent using `$pole-post-task-review`. Do not create a persistent reviewer persona or run multiple reviewers by default.
+- Before an authorized push or pull request for a non-trivial code change, complete the applicable gate profile and self-review, then delegate one independent review to a fresh built-in agent using the `pole-post-task-review` skill. Do not create a persistent reviewer persona or run multiple reviewers by default.
 - Give that reviewer a bounded prompt containing the request or issue, approved plan when present, base branch or commit, exact diff target, test commands and outcomes, skipped checks, and known risks. The reviewer inspects the shared checkout read-only, does not edit or delegate further, and returns prioritized findings with file and line references.
 - The primary agent owns triage and fixes, reruns affected checks, and requests at most one further independent pass when review fixes materially change behavior. Skip the independent agent for documentation, skills, agent guidance, or mechanical-only changes unless the user requests it or the change carries unusual risk.
 
@@ -116,5 +116,5 @@ Do not substitute `Pole Full Cleanup` in the gate; it performs semantic changes.
 - Before retrying a failed check, follow [diagnosis before retry](docs/agent-delivery.md#diagnose-before-retrying-a-failed-run).
 - If tests fail, the first sentence of every summary must name the tests and explain why (or state that diagnosis is pending). If suites cannot run, lead with the suite and missing prerequisite. This applies to progress summaries, handoffs, PR descriptions and final answers.
 - Turn recurring defects into a focused regression test, semantic rule, formatter rule or corrected canonical example; keep rules precise.
-- Inspect the actual diff, complete [the review checklist](docs/review-checklist.md), and use `$pole-post-task-review` before handoff.
+- Inspect the actual diff, complete [the review checklist](docs/review-checklist.md), and use the `pole-post-task-review` skill before handoff.
 - Report changed files, checks and outcomes, remaining risks, and any action that still requires user authorization.

@@ -18,7 +18,7 @@ class ScopeTests(unittest.TestCase):
         return scope.classify_trees({name: self.item(before)}, {name: self.item(after)}, proof=lambda pairs: [False] * len(pairs))
 
     def test_docs_paths_are_narrow_and_do_not_hide_executable_assets_or_test_fixtures(self):
-        for name in ["docs/rules.md", "AGENTS.md", ".codex/skills/example/SKILL.md",
+        for name in ["docs/rules.md", "AGENTS.md", "CLAUDE.md", ".claude/skills/example/SKILL.md",
                      "src/features/Example/README.md", "templates/feature/README.md.tpl",
                      "src/api/frontend/README.md", "src/shared/Observation/README.md",
                      "infrastructure/kubernetes-lab/README.md", "src/features/Functions/sdk/README.md"]:

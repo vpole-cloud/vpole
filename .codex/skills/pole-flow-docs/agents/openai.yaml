@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pole Flow Tracing"
-  short_description: "Trace a Pole flow with exact evidence"
-  default_prompt: "Use $pole-flow-docs to trace this Pole flow end to end."

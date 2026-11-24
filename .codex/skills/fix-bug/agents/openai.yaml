@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pole Bug Fix"
-  short_description: "Reproduce, diagnose, and fix a Pole bug"
-  default_prompt: "Use $fix-bug to reproduce and fix this Pole bug with a regression test."

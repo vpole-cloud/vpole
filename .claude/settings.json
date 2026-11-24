@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledMcpjsonServers": ["aspire"],
+  "env": {
+    "MCP_TIMEOUT": "20000",
+    "MCP_TOOL_TIMEOUT": "120000"
+  },
+  "permissions": {
+    "allow": [
+      "mcp__aspire__list_apphosts",
+      "mcp__aspire__list_resources",
+      "mcp__aspire__list_traces",
+      "mcp__aspire__doctor",
+      "mcp__aspire__select_apphost",
+      "mcp__aspire__refresh_tools",
+      "mcp__aspire__get_doc"
+    ]
+  }
+}

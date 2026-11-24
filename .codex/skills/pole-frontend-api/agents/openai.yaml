@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pole Frontend API"
-  short_description: "Update Pole SPA and API clients"
-  default_prompt: "Use $pole-frontend-api to update the Pole frontend API layer, hooks, and control-plane pages."

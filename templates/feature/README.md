@@ -64,7 +64,7 @@ production role is weakened for a template.
    the relevant tests. Update the generated feature README with its actual scope.
 
 See `Pole.Server/Extensions` and `Pole.Platform.Hosting` for current composition, and follow the
-[feature-slice skill](../../.codex/skills/pole-add-feature-slice/SKILL.md). The generator deliberately
+[feature-slice skill](../../.claude/skills/pole-add-feature-slice/SKILL.md). The generator deliberately
 leaves these decisions visible for review.
 
 ## Behavior represented by the example

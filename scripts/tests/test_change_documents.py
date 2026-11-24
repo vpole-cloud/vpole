@@ -42,7 +42,7 @@ class DocumentChecksTests(unittest.TestCase):
             check(self.base, self.root)
 
     def test_skill_metadata_is_required(self):
-        skill = self.root / ".codex/skills/test/SKILL.md"
+        skill = self.root / ".claude/skills/test/SKILL.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("# No frontmatter\n")
         with self.assertRaisesRegex(ValueError, "metadata"):
