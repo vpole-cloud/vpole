@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pole Feature Delivery"
-  short_description: "Plan and deliver a staged Pole feature"
-  default_prompt: "Use $feature to plan and implement this Pole feature with an approval gate."

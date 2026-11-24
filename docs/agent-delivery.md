@@ -6,7 +6,7 @@ the user flow were reviewed.
 
 ## Multi-issue delivery and current planning context
 
-Use [pole-deliver-issues](../.codex/skills/pole-deliver-issues/SKILL.md) when coordinating a batch of
+Use [pole-deliver-issues](../.claude/skills/pole-deliver-issues/SKILL.md) when coordinating a batch of
 issues and delegated worktrees. It applies the rules here and links assignment/handoff templates;
 it does not grant permission to publish or merge. Use [test scheduling](testing.md#parallelism-across-worktrees)
 to distinguish test-resource isolation from host capacity.

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Pole Kubernetes Resource"
-  short_description: "Build Kubernetes-backed resources"
-  default_prompt: "Use $pole-kubernetes-resource to implement or review a Kubernetes-backed resource in Pole."

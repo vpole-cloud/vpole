@@ -25,5 +25,8 @@ LICENSE
 README.md
 .tmp
 .codex
+.claude
+CLAUDE.md
+.mcp.json
 packages
 **/testsettings.local.json

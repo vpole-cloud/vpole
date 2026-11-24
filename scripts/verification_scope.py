@@ -80,8 +80,8 @@ def documentation(name):
         return False
     module_readme = path.name == "README.md" and name.startswith(
         ("src/", "infrastructure/", "tests/", "examples/", ".github/"))
-    return (name in {"AGENTS.md", "README.md", "templates/feature/README.md"}
-            or module_readme or name.startswith(("docs/", ".codex/skills/"))
+    return (name in {"AGENTS.md", "CLAUDE.md", "README.md", "templates/feature/README.md"}
+            or module_readme or name.startswith(("docs/", ".claude/skills/"))
             or (name.startswith("src/features/") and len(path.parts) >= 4 and path.parts[3] == "docs"))
 
 
