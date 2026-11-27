@@ -1,13 +1,15 @@
-# Pole 🌱
+# vPole 🌱
 
-**Pole** is a self-hosted control plane for running your own projects in a home lab —  
+> Some code namespaces and tools still use the project's former name, **Pole**.
+
+**vPole** is a self-hosted control plane for running your own projects in a home lab —  
 a step toward having **your own cloud provider at home**.
 
-The goal of Pole is to make deployment, management, and observability **simple and friendly**, without relying on public cloud providers and without requiring deep Kubernetes knowledge.
+The goal of vPole is to make deployment, management, and observability **simple and friendly**, without relying on public cloud providers and without requiring deep Kubernetes knowledge.
 
 ---
 
-## Why Pole exists
+## Why vPole exists
 
 Running services at home (or on your own servers) usually means:
 - learning Kubernetes in depth
@@ -16,7 +18,7 @@ Running services at home (or on your own servers) usually means:
 - gluing together observability tools
 - maintaining everything yourself
 
-Pole exists to **remove this complexity**.
+vPole exists to **remove this complexity**.
 
 You should be able to:
 - deploy apps
@@ -28,15 +30,15 @@ You should be able to:
 
 ---
 
-## What Pole is
+## What vPole is
 
-Pole is:
+vPole is:
 - a **self-hosted platform**
 - that manages a **Kubernetes cluster for you**
 - through a **user-friendly API and UI**
 - acting like a **personal cloud provider**
 
-You tell Pole *what you want to run* — Pole takes care of *how it runs*.
+You tell vPole *what you want to run* — vPole takes care of *how it runs*.
 
 ---
 
@@ -52,7 +54,7 @@ You tell Pole *what you want to run* — Pole takes care of *how it runs*.
 
 ## Current stage (Stage 1)
 
-Pole currently focuses on **web application deployment**.
+vPole currently focuses on **web application deployment**.
 
 ### What is supported now
 
@@ -97,13 +99,13 @@ Including:
 
 ---
 
-## What Pole is *not*
+## What vPole is *not*
 
 - ❌ Not a replacement for Kubernetes
 - ❌ Not a managed cloud service
 - ❌ Not a PaaS locked to a vendor
 
-Pole is a **local, self-hosted control plane** that makes Kubernetes usable without learning Kubernetes.
+vPole is a **local, self-hosted control plane** that makes Kubernetes usable without learning Kubernetes.
 
 ---
 
@@ -111,7 +113,7 @@ Pole is a **local, self-hosted control plane** that makes Kubernetes usable with
 
 > Kubernetes should be an implementation detail, not a requirement.
 
-Pole treats Kubernetes as an internal engine —  
+vPole treats Kubernetes as an internal engine —  
 users interact with **applications**, not clusters.
 
 ---
@@ -127,11 +129,15 @@ The project is actively evolving and APIs may change.
 ## Documentation
 
 Start with the [documentation index](docs/README.md). It links to installation, architecture,
-engineering, operations, testing, and feature-owned documentation such as [Pole
+engineering, operations, testing, and feature-owned documentation such as [vPole
 Functions](src/features/Functions/README.md).
 
 ---
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE.txt)
+vPole is licensed under the [GNU Affero General Public License v3.0 only](LICENSE.txt)
+(`AGPL-3.0-only`). Commercial licenses are available from the maintainer on request.
+
+Contributions require a signed [Contributor License Agreement](CLA.md); see
+[CONTRIBUTING.md](CONTRIBUTING.md).
