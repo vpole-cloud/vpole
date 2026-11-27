@@ -41,7 +41,7 @@ For the full snapshot, edit these application-specific inputs before the first s
   with the application repository identity and branch. This ID is GitHub's external repository ID;
   the YAML contains no internal Pole resource ID.
 - `function-app.yaml`: replace the `registry.example.test/pole/functions:replace-with-sdk-image`
-  image with your published application built using the [Pole Functions SDK](https://github.com/lsbV/Pole.Functions).
+  image with your published application built using the [Pole Functions SDK](https://github.com/vpole-cloud/vpole-functions).
   Register its `hello` HTTP handler and arrange server-owned registry access where required.
 - `domain-zone.yaml`: choose an available managed child-zone label if `gitops-mixed` is reserved.
   The target's public ingress and managed-domain policy must permit the binding.
