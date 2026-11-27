@@ -123,13 +123,13 @@ to HTTP 400 from an internal capability. Examples include:
 The capability must keep fail-fast guards for these cases and throw an appropriate
 exception:
 
-| Condition | Default behavior |
-| --- | --- |
-| Required argument is `null` | `ArgumentNullException` |
-| Argument violates a documented structural precondition | `ArgumentException` or `ArgumentOutOfRangeException` |
-| Caller violates an operation protocol | `InvalidOperationException` |
-| MongoDB, network, serialization, or provider infrastructure fails | Propagate the infrastructure exception |
-| Valid request is rejected by current application state | Typed expected error |
+| Condition                                                         | Default behavior                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------- |
+| Required argument is `null`                                       | `ArgumentNullException`                              |
+| Argument violates a documented structural precondition            | `ArgumentException` or `ArgumentOutOfRangeException` |
+| Caller violates an operation protocol                             | `InvalidOperationException`                          |
+| MongoDB, network, serialization, or provider infrastructure fails | Propagate the infrastructure exception               |
+| Valid request is rejected by current application state            | Typed expected error                                 |
 
 A configured batch limit requires explicit classification. If a normal valid user
 workflow can exceed it, it is a named expected limit outcome. If it is purely an
