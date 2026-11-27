@@ -2,7 +2,7 @@
 
 > Some code namespaces and tools still use the project's former name, **Pole**.
 
-**vPole** is a self-hosted control plane for running your own projects in a home lab —  
+**vPole** is a self-hosted control plane for running your own projects in a home lab —\
 a step toward having **your own cloud provider at home**.
 
 The goal of vPole is to make deployment, management, and observability **simple and friendly**, without relying on public cloud providers and without requiring deep Kubernetes knowledge.
@@ -12,6 +12,7 @@ The goal of vPole is to make deployment, management, and observability **simple 
 ## Why vPole exists
 
 Running services at home (or on your own servers) usually means:
+
 - learning Kubernetes in depth
 - writing YAMLs
 - manually configuring ingress, secrets, networking
@@ -21,6 +22,7 @@ Running services at home (or on your own servers) usually means:
 vPole exists to **remove this complexity**.
 
 You should be able to:
+
 - deploy apps
 - manage configuration
 - expose services
@@ -33,12 +35,13 @@ You should be able to:
 ## What vPole is
 
 vPole is:
+
 - a **self-hosted platform**
 - that manages a **Kubernetes cluster for you**
 - through a **user-friendly API and UI**
 - acting like a **personal cloud provider**
 
-You tell vPole *what you want to run* — vPole takes care of *how it runs*.
+You tell vPole _what you want to run_ — vPole takes care of _how it runs_.
 
 ---
 
@@ -60,14 +63,14 @@ vPole currently focuses on **web application deployment**.
 
 - Deployment of web apps using **public Docker images**
 - Automatic creation and management of:
-  - Deployments
-  - ConfigMaps
-  - Secrets
-  - Ingress resources
+    - Deployments
+    - ConfigMaps
+    - Secrets
+    - Ingress resources
 - Kubernetes resources are managed **programmatically**, not via raw YAML
 - Designed to run on **self-hosted Kubernetes clusters** (e.g. k3s)
 
-### What is *not* supported yet
+### What is _not_ supported yet
 
 - Private Docker registries
 - GitHub / GitHub Actions integration
@@ -81,25 +84,29 @@ These are planned next.
 ## Roadmap
 
 ### Stage 2 — Databases
+
 Easy, one-click deployment and management of common databases:
+
 - MongoDB
 - Redis
 - PostgreSQL
 - (and others)
 
 Including:
+
 - sane defaults
 - persistent storage
 - safe exposure options
 
 ### Stage 3 — Integrations
+
 - Private image registries
 - GitHub / CI integrations
 - Automated deployments
 
 ---
 
-## What vPole is *not*
+## What vPole is _not_
 
 - ❌ Not a replacement for Kubernetes
 - ❌ Not a managed cloud service
@@ -113,7 +120,7 @@ vPole is a **local, self-hosted control plane** that makes Kubernetes usable wit
 
 > Kubernetes should be an implementation detail, not a requirement.
 
-vPole treats Kubernetes as an internal engine —  
+vPole treats Kubernetes as an internal engine —\
 users interact with **applications**, not clusters.
 
 ---
