@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // All HTTP I/O passes through this transport; feature clients own routes and DTO mapping.
 export const request = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)
 

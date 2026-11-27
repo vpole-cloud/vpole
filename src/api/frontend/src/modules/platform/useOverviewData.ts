@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useLayoutEffect, useState } from 'react'
 import { fetchProtectedGreeting, fetchResourceGroups, fetchWebServices } from '../../api'
 import { useApiScope } from '../../data/useApiScope'

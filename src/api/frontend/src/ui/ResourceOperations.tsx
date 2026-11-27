@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useState } from 'react'
 import { fetchResourceOperations, type ResourceOperationsFilter } from '../modules/operations/api'
 import { useScopedQuery } from '../data/useScopedQuery'

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hasHealthyCurrentQueryData } from '../../data/hasHealthyCurrentQueryData'
 import { canConfirmBackup, backupConfirmationText } from './confirmations'

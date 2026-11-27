@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using k8s.Models;
 using Pole.Features.Core.Kubernetes;
 using Pole.Features.Functions.Runtime.Kubernetes;

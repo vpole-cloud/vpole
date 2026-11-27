@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using MassTransit;
 using Pole.Features.Secrets.Application.Projections;
 using Pole.Features.Secrets.Events;

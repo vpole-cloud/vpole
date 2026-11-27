@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // @vitest-environment jsdom
 import { strictFetch } from '../test/http'
 import { useQuerySession } from '../data/querySession'

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { canEditDesiredConfiguration } from '../../data/gitOps'
 import { GitOwnershipNotice } from '../../ui/GitOwnershipNotice'
 import { ResourceOperations } from '../../ui/ResourceOperations'

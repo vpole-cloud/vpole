@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { RealtimeChange, RealtimeSubscription } from '../../realtime/types'
 import type { ProviderBranch, RepositoryAnalysis, SourceRepository } from '../../types'
 

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 export function selectedReference(search: string, sourceId: string, kind: 'run' | 'preview') {
   const params = new URLSearchParams(search)
   return params.get('resource') === sourceId && params.get('selectionSource') === sourceId

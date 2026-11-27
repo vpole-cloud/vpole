@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Identity evidence stays local to the authenticated controller lifetime. Never retain a
 // historical bearer or publish this fingerprint in query keys, storage or tab messages.
 export async function fingerprintCredential(credential: string): Promise<string | undefined> {

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 namespace Pole.Tests.E2E.GitHubStub;
 
 /// <summary>Real application probes; responses contain fixed outcomes only, never credentials or exception bodies.</summary>

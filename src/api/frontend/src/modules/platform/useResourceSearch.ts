@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { searchResources } from '../../api'

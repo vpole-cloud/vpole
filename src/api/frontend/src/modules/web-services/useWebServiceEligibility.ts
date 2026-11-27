@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useCallback, useEffect, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { fetchAvailableComputeProfiles, fetchAvailableDeploymentTargets } from '../../api'

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { LoadStatus } from '../types'

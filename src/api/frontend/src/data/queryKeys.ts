@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Include every server filter. Absent optional scope IDs have one canonical identity.
 export const eligibilityKeys = {
   scopes: (groupId: string | undefined) => ['resource-groups', 'scopes', groupId ?? null] as const,

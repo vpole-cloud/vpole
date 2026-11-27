@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Attributes;

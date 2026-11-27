@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using MongoDB.Driver;
 using Pole.Features.ResourceDeployments.Application.Finalization;
 using Pole.Features.ResourceDeployments.Contracts;

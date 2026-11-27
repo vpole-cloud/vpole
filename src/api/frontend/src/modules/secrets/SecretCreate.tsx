@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { eligibilityKeys } from '../../data/queryKeys'
 import { useEffect, useState } from 'react'
 import { createSecret, fetchIsolationScopes } from '../../api'

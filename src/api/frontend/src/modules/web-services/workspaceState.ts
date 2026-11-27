@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { readResourceRoute, readWorkspace as readStoredWorkspace } from '../../shell/workspaceState'
 import type { ResourceTab, ResourceWorkspace } from '../../shell/workspaceState'
 export {

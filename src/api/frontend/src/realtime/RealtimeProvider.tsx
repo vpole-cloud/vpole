@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { useQuerySession } from '../data/querySession'
 import { createRealtimeConnection } from './connection'

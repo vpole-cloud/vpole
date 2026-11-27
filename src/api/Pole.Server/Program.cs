@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using System.Reflection;
 using Pole.Features.Backups.Application;
 using Pole.Features.Backups.Events;

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { AppServices } from '../../shell/contracts'
 export function gitOpsTestServices(overrides: Partial<AppServices> = {}): AppServices {
   return {

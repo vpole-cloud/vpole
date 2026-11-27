@@ -1,4 +1,7 @@
-﻿using System.Text.Json;
+﻿// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+using System.Text.Json;
 using Pole.Observability;
 
 namespace Pole.Features.Events.Abstractions;

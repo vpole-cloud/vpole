@@ -1,4 +1,7 @@
-﻿using System.Collections;
+﻿// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+using System.Collections;
 using System.Globalization;
 using System.Reflection;
 using Microsoft.AspNetCore.Http;

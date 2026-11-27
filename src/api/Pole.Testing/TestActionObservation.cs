@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 namespace Pole.Testing;
 
 /// <summary>Arm an observer before an action, then bound only its post-action completion.</summary>

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { canEditDesiredConfiguration } from '../data/gitOps'
 import { useState } from 'react'
 import { Button, ConfirmationDialog, DataTable, EmptyState } from '../ui/components'

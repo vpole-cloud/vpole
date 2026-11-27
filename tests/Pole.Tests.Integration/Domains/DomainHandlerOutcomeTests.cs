@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using Pole.Features.Domains.Application.DomainZones;
 using Pole.Features.Domains.Application.Endpoints;
 using Pole.Features.Domains.Contracts;

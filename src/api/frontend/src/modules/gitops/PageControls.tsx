@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { Button } from '../../ui/components'
 import type { Page } from './types'
 export function PageControls({

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { createContext, useContext, useEffect, useSyncExternalStore } from 'react'
 import type { RealtimeController } from './controller'
 import { subscriptionKey, type RealtimeSubscription } from './types'

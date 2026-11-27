@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'

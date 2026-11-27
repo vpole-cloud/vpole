@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { fetchScopedQuery } from '../../data/fetchScopedQuery'
 import { useWebServiceEligibility } from './useWebServiceEligibility'
 import { useAppServices } from '../../shell/AppContext'

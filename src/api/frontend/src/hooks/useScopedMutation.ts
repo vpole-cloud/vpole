@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 // Accepted writes can finish on the server; callbacks must stay in the originating scope.

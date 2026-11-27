@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { SessionQueries } from '../data/SessionQueries'
 import { useQuerySession } from '../data/querySession'
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'

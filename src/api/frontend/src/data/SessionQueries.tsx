@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createQueryClient, QuerySessionContext, type QuerySession } from './querySession'

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { GitOpsPreview, PreviewAction } from './types'
 export function previewFixture(count = 2): GitOpsPreview {
   const actions: PreviewAction[] = Array.from({ length: count }, (_, index) => ({

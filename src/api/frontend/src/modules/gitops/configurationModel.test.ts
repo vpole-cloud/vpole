@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { expect, it } from 'vitest'
 import { sourceDraft, sourceDirty, reapplySourceDraft } from './configurationModel'
 import { gitOpsSourceFixture as source } from './testFixtures'

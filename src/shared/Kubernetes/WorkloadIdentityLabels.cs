@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 namespace Pole.Features.Core.Kubernetes;
 
 /// <summary>Immutable authorization identity shared by pod, Service and policy selectors.</summary>

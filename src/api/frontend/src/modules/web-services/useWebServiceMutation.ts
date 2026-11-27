@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useApiScope } from '../../data/useApiScope'
 import { useScopedMutation } from '../../hooks/useScopedMutation'
 import { useAppServices } from '../../shell/AppContext'

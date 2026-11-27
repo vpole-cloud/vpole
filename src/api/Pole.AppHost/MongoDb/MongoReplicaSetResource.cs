@@ -1,4 +1,7 @@
-﻿namespace Pole.AppHost.MongoDb;
+﻿// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+namespace Pole.AppHost.MongoDb;
 
 public class MongoReplicaSetResource(
     string name,

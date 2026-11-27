@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { ResourcePlacement } from '../../types'
 export function liveBindingPlacements(items: ResourcePlacement[], isolationScopeId: string) {
   const live = items.filter(

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { fetchWebService } from './api'
 import type { WebService } from './types'
 import { useApiScope } from '../../data/useApiScope'

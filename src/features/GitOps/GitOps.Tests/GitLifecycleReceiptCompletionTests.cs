@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 using Pole.Features.GitOps.Domain;
 using Pole.Features.GitOps.Primitives;
 using Xunit;

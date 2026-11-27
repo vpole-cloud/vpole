@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useEffect, useId, useRef, useState } from 'react'
 import { useResourceSearch } from '../modules/platform/useResourceSearch'
 import { Button, Notice } from '../ui/components'

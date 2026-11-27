@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Victor Shnaider and vPole contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { useState } from 'react'
 import { ApiError } from '../../api/transport'
 import { Button, Field, Notice } from '../../ui/components'
