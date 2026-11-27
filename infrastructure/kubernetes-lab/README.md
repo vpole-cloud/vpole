@@ -109,7 +109,7 @@ in the CNPG operator namespace. Re-run `up` to apply this addition to an existin
 Run the backup/recovery acceptance scenario against that lab:
 
 ```bash
-bash infrastructure/kubernetes-lab/tests/backup-recovery.sh
+bash infrastructure/kubernetes-lab/acceptance/backup-recovery.sh
 ```
 
 The scenario creates its own namespace and S3-compatible RustFS pod, signs S3 requests from the host
