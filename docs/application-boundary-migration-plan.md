@@ -136,7 +136,7 @@ workflow can exceed it, it is a named expected limit outcome. If it is purely an
 internal capability precondition, exceeding it is an argument error.
 
 This work completes the validation-boundary audit tracked by
-[issue #64](https://github.com/lsbV/Pole/issues/64). The remaining production
+[issue #64](https://github.com/vpole-cloud/vpole/issues/64). The remaining production
 `ValidationFailure` use is FluentValidation's internal request-validation value
 inside the mediator pipeline; application and capability outcomes use typed
 rejections instead.
