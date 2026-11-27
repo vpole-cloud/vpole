@@ -6,7 +6,7 @@ scaling policy. Pole currently supports HTTP and timer triggers and can scale ac
 zero.
 
 This document is the canonical entry point for the Functions feature. The [.NET SDK and Agent
-contract](https://github.com/lsbV/Pole.Functions) documents how user code runs inside an image. The
+contract](https://github.com/vpole-cloud/vpole-functions) documents how user code runs inside an image. The
 deeper documents describe the [runtime architecture](docs/runtime-architecture.md) and [revision
 lifecycle](docs/revision-lifecycle.md).
 
@@ -62,8 +62,8 @@ app.Run();
 ```
 
 See the [sample
-application](https://github.com/lsbV/Pole.Functions/tree/main/samples/Pole.Functions.Sample) and [SDK
-documentation](https://github.com/lsbV/Pole.Functions) for the complete Agent contract,
+application](https://github.com/vpole-cloud/vpole-functions/tree/main/samples/Pole.Functions.Sample) and [SDK
+documentation](https://github.com/vpole-cloud/vpole-functions) for the complete Agent contract,
 authentication, concurrency, shutdown, and attempt semantics.
 
 ## Function App specification
@@ -150,7 +150,7 @@ the deletion intent and event; runtime cleanup for that event is not implemented
   language-neutral Agent HTTP/JSON contract.
 - [Pole.Functions.Sdk](https://www.nuget.org/packages/Pole.Functions.Sdk) is the official .NET
   handler API and in-process Agent runtime. Its source, sample, and tests live in the separate
-  MIT-licensed [Pole.Functions repository](https://github.com/lsbV/Pole.Functions).
+  MIT-licensed [Pole.Functions repository](https://github.com/vpole-cloud/vpole-functions).
 
 Function application data is stored in the main Pole Mongo database and scoped by `TenantId`.
 Cross-instance runtime coordination is stored separately by the Orleans Mongo provider. See

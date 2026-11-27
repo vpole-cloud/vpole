@@ -84,4 +84,4 @@ requirement when adding or changing one feature.
 
 ## SDKs
 
-- [Pole Functions .NET SDK and Agent contract](https://github.com/lsbV/Pole.Functions)
+- [Pole Functions .NET SDK and Agent contract](https://github.com/vpole-cloud/vpole-functions)
