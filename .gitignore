@@ -25,3 +25,6 @@ aspire.config.json
 
 # Optional host-specific test concurrency.
 .quality-gate.local.json
+
+# Personal Rider/ReSharper settings.
+*.DotSettings.user
