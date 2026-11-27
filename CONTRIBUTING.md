@@ -11,6 +11,8 @@ When you open your first pull request, the CLA bot asks you to accept the agreem
 GitHub account. The pull request cannot be merged until you accept. You only need to accept once
 for each CLA version.
 
+The [contributor privacy notice](PRIVACY.md) explains how the data you enter is used.
+
 ## License
 
 vPole is licensed under the [GNU Affero General Public License v3.0 only](LICENSE.txt). By submitting a
