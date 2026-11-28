@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Victor Shnaider and vPole contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Exercise the same renderer used by lab up without changing local or cluster configuration.
 set -Eeuo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lab.sh"

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Victor Shnaider and vPole contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # No cluster calls: the owned kubectl stand-in binds and holds an OS-assigned loopback socket.
 set -Eeuo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lab.sh"
