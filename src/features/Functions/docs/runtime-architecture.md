@@ -172,10 +172,10 @@ converged to zero and it has no durable invocation left to process.
 The same MongoDB server can host both categories, but they have different ownership and default
 logical databases:
 
-| State | Owner | Default database |
-| --- | --- | --- |
-| Apps, revisions, routes, timers, invocations, meter facts, usage buckets | Pole repositories using `MongoDB.Driver` | `pole-database` |
-| Orleans membership and revision coordination state | Orleans Mongo providers | `pole-orleans` |
+| State                                                                    | Owner                                    | Default database |
+| ------------------------------------------------------------------------ | ---------------------------------------- | ---------------- |
+| Apps, revisions, routes, timers, invocations, meter facts, usage buckets | Pole repositories using `MongoDB.Driver` | `pole-database`  |
+| Orleans membership and revision coordination state                       | Orleans Mongo providers                  | `pole-orleans`   |
 
 Domain state stays in Pole collections because it is queried transactionally by endpoints,
 schedulers, migrations, usage aggregation, and lifecycle services. Orleans storage is used for
@@ -198,11 +198,11 @@ registry does not own activation or scaling decisions.
 
 The options define the intended listener roles and default port numbers:
 
-| Listener | Option | Default | Accepted traffic |
-| --- | --- | --- | --- |
-| Control plane | `Functions:Gateway:ControlPort` | `8080` | Pole API and health endpoints |
-| Public Functions | `Functions:Gateway:PublicPort` | `8081` | `/functions/...` handlers with `Public` exposure |
-| Internal Functions | `Functions:Gateway:InternalPort` | `8082` | `/functions/...` handlers with `Internal` exposure |
+| Listener           | Option                           | Default | Accepted traffic                                   |
+| ------------------ | -------------------------------- | ------- | -------------------------------------------------- |
+| Control plane      | `Functions:Gateway:ControlPort`  | `8080`  | Pole API and health endpoints                      |
+| Public Functions   | `Functions:Gateway:PublicPort`   | `8081`  | `/functions/...` handlers with `Public` exposure   |
+| Internal Functions | `Functions:Gateway:InternalPort` | `8082`  | `/functions/...` handlers with `Internal` exposure |
 
 The ports must be distinct, and the host must bind them. Request isolation treats the configured
 public and internal ports specially; any other bound endpoint follows the control-plane pipeline.
@@ -267,4 +267,4 @@ pieces explicitly.
   code that ignores cancellation.
 
 For the complete SDK-side attempt and shutdown contract, see the [Functions SDK
-documentation](../../../sdk/README.md).
+documentation](https://github.com/vpole-cloud/vpole-functions).

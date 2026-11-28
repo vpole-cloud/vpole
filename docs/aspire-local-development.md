@@ -4,7 +4,7 @@ Use the Aspire AppHost when a change must be verified against Pole's real local 
 
 ## Prerequisites
 
-- Docker is running.
+- Docker, or Podman with `ASPIRE_CONTAINER_RUNTIME=podman`, is running.
 - The repository's .NET SDK and Node.js dependencies are available.
 - On Linux, the selected MongoDB image supports the host kernel. MongoDB 8.x currently rejects
   kernels 6.19 and later; track [SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912).
@@ -41,9 +41,9 @@ Keycloak's management interface uses HTTP locally for Aspire readiness checks. T
 1. Run Aspire's environment diagnostics before the first start.
 2. Start the AppHost from the repository root:
 
-   ```powershell
-   aspire run --apphost src/api/Pole.AppHost/Pole.AppHost.csproj
-   ```
+    ```powershell
+    aspire run --apphost src/api/Pole.AppHost/Pole.AppHost.csproj
+    ```
 
 3. Select this AppHost in Aspire MCP if more than one AppHost is detected.
 4. Poll the resource list until required resources report a healthy running state.
