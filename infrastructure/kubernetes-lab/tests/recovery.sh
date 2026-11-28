@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Victor Shnaider and vPole contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Infrastructure-free regression tests; runtime calls are replaced, not the ownership checks.
 set -Eeuo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lab.sh"

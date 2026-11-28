@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Victor Shnaider and vPole contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Run every Python automation test and reject skips as well as failures."""
 
 import json

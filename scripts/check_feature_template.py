@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Victor Shnaider and vPole contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Build and test a generated feature with normal production roles in an owned source snapshot."""
 
 import argparse
