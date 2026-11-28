@@ -57,7 +57,7 @@ npm run lint
 includes frontend. Documentation/proven-formatting exemptions and recorded safe-delta reuse follow
 `docs/agent-delivery.md`; never present unrelated historical results as current evidence.
 
-Docker is required for `tests/Pole.Tests.Integration`. Aspire E2E and live Kubernetes checks require their documented services and cluster prerequisites. Read `docs/testing.md`, `docs/aspire-local-development.md`, and `docs/aspire-e2e-testing.md`; never claim these lanes passed when their prerequisites were unavailable.
+A Docker-compatible container runtime (Docker or a configured Podman socket) is required for `tests/Pole.Tests.Integration`. Aspire E2E and live Kubernetes checks require their documented services and cluster prerequisites. Read `docs/testing.md`, `docs/aspire-local-development.md`, and `docs/aspire-e2e-testing.md`; never claim these lanes passed when their prerequisites were unavailable.
 
 Use the `pole-test-runner` skill for focused development checks. Before opening a PR, run
 `python3 scripts/quality_gate.py run --profile pr`: it selects verification from the complete PR diff.

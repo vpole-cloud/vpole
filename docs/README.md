@@ -35,7 +35,7 @@ requirement when adding or changing one feature.
 
 ## Getting started
 
-- [Installation](instalation.md)
+- [Installation](installation.md)
 - [Architecture overview](architecture_overview.md)
 - [Aspire local development](aspire-local-development.md)
 
@@ -50,16 +50,23 @@ requirement when adding or changing one feature.
 - [Workload placement](workload-placement.md)
 - [Deployment targets](deployment-targets.md)
 - [Demand-driven observation lifecycle](../src/shared/Observation/README.md)
+- [UTC scheduling primitives](../src/shared/Scheduling/README.md)
+- [Outbox delivery](../src/features/Outbox/README.md)
+- [Realtime notifications](../src/features/Realtime/README.md) and
+  [realtime hosting across API replicas](realtime-hosting.md)
+- [Application boundary migration plan](application-boundary-migration-plan.md) and its
+  [compatibility ledger](application-boundary-compatibility-ledger.md)
 - [Observability](observability.md)
 
 ## Feature documentation
 
 - [Tenant membership and invitations](../src/features/Tenants/README.md)
 - [Users and identity](../src/features/Users/README.md)
-
 - [Web console and static frontend modules](../src/api/frontend/README.md)
 - [Resource groups and resource registrations](../src/features/ResourceGroups/README.md)
 - [Directed resource connections](../src/features/ResourceConnections/README.md)
+- [Resource deployments and placement state](../src/features/ResourceDeployments/README.md)
+- [Domains and hostname bindings](../src/features/Domains/README.md)
 - [Pole Functions](../src/features/Functions/README.md)
 - [Compute profiles](../src/features/ComputeProfiles/README.md)
 - [Service backups and PostgreSQL restore](../src/features/Backups/README.md)
@@ -68,8 +75,10 @@ requirement when adding or changing one feature.
 - [Tenant secrets](../src/features/Secrets/README.md)
 - [Repository GitOps API and durable execution](../src/features/GitOps/README.md)
 - [Web services](../src/features/WebServices/README.md)
+- [Source builds](../src/features/SourceBuilds/README.md)
 - [Search](search.md) (existing central document; it can move beside the feature independently)
-- [Private Access operations](private-access.md)
+- [Private access](../src/features/PrivateAccess/README.md), its
+  [operations](private-access.md) and the [`pole` CLI](../src/tools/Pole.Cli/README.md)
 
 ## Development and verification
 

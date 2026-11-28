@@ -4,34 +4,34 @@ Pole's cross-cutting code design conventions are documented in [engineering guid
 
 ### Backend
 
-* **.NET 11 Preview / ASP.NET Core**
-* Aspire for local development
-* Custom control-plane APIs (not kubectl wrappers)
-* Database-backed Kubernetes deployment targets with encrypted remote credentials and a zero-configuration local bootstrap; see [deployment targets](deployment-targets.md)
-* Kubernetes official **C# client**
-* **MongoDB**
-* **RabbitMQ** (events, outbox patterns)
-* **Hangfire + background hosted services**
-* OpenTelemetry-based tracing with Pole-level correlation IDs
-* Strong focus on:
+- **.NET 11 / ASP.NET Core**, in C# with some features (PostgreSQL, Search) in F#
+- Aspire for local development
+- Custom control-plane APIs (not kubectl wrappers)
+- Database-backed Kubernetes deployment targets with encrypted remote credentials and a zero-configuration local bootstrap; see [deployment targets](deployment-targets.md)
+- Kubernetes official **C# client**
+- **MongoDB**
+- **RabbitMQ** (events, outbox patterns)
+- **Hangfire + background hosted services**
+- OpenTelemetry-based tracing with Pole-level correlation IDs
+- Strong focus on:
 
-    * Transactions
-    * Event reliability
-    * Idempotency
-    * Resource-oriented APIs
+    - Transactions
+    - Event reliability
+    - Idempotency
+    - Resource-oriented APIs
 
 ### Auth
 
-* **Keycloak**
-* OIDC / JWT
-* Invite-only user model
-* Pole-managed tenant and membership records for multitenant authorization
+- **Keycloak**
+- OIDC / JWT
+- Invite-only user model
+- Pole-managed tenant and membership records for multitenant authorization
 
 ### Frontend
 
-* Vite-based SPA
-* Talks only to Pole API
-* Clean separation from auth provider
+- Vite-based SPA
+- Talks only to Pole API
+- Clean separation from auth provider
 
 ### Multitenancy
 
